@@ -1,0 +1,62 @@
+# Data paths — environment-specific, not committed if paths differ across machines
+# All paths point to /mnt/d/ (external drive, present on local workstation)
+# When promoting to HPC, copy this file and update paths to the HPC data mount.
+# All downstream pipeline code reads paths from here — no hardcoded /mnt/d/ in scripts.
+
+drive: "/mnt/d"
+
+raw:
+  treemap_2022:
+    tif:        "/mnt/d/TreeMap-2022/Data/TreeMap2022_CONUS.tif"
+    tree_table: "/mnt/d/TreeMap-2022/Data/TreeMap2022_CONUS_Tree_Table.csv"
+    data_dict:  "/mnt/d/TreeMap-2022/Data/TreeMap2022_CONUS_Data_Dictionary.pdf"
+    var_desc:   "/mnt/d/TreeMap-2022/Data/_variable_descriptions.csv"
+
+  ownership:
+    tif:        "/mnt/d/RDS-2025-0045/Data/US_forest_ownership.tif"
+
+  fia_sqlite:
+    db:         "/mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"
+    # FVS-Ready tables present in this DB (no FIA2FVS conversion needed):
+    #   FVS_TREEINIT_PLOT  — tree list records keyed to plot
+    #   FVS_TREEINIT_COND  — tree list records keyed to condition
+    #   FVS_STANDINIT_PLOT — stand initialization keyed to plot
+    #   FVS_STANDINIT_COND — stand initialization keyed to condition
+    #   FVS_PLOTINIT_PLOT  — plot-level initialization
+    #   FVS_GROUPADDFILESANDKEYWORDS — keyword group assignments
+
+  landfire:
+    evt_tif:    "/mnt/d/LF2022_EVT_CONUS/LF2022_EVT_CONUS/Tif/LF2022_EVT_CONUS.tif"
+    vcc_tif:    "/mnt/d/LF2022_VCC_CONUS/LF2022_VCC_CONUS/Tif/LF2022_VCC_CONUS.tif"
+
+  nhd:
+    fl_gdb:     "/mnt/d/US SE Streams - FINAL/US SE Streams - FINAL/Streams By State/nhdplus_epasnapshot2022_fl.gdb"
+    se_gdb:     "/mnt/d/US SE Waterbodies Final/US SE Streams 10.20.2023/US SE Streams/US SE Streams.gdb"
+    # Source: EPA NHDPlus snapshot 2022, state-level GDBs
+
+  parcels:
+    fl_all:     "/mnt/d/All_FL_Parcels"
+    fl_5co:     "/mnt/d/FL_5_Co_Parcels.gdb"
+
+  usfs_admin:
+    gdb:        "/mnt/d/BdyAdm_LSRS_AdministrativeForest.gdb"
+
+  roads:
+    se_gdb:     "/mnt/d/SE_rds100k"
+
+  treemap_fvs_map:
+    aprx:       "/mnt/d/TreeMap_FVS_map/TreeMap_FVS_map.aprx"
+    gdb:        "/mnt/d/TreeMap_FVS_map/Default.gdb"
+    # ArcGIS project mapping FVS variants to TreeMap plots — review for variant assignments
+
+  # GEE-only datasets (no local copy — exported to data/raw/ during GEE step)
+  # lcms:       GEE asset  projects/lcms-292214/assets/CONUS/LCMS_CONUS_v2024-10
+  # polaris:    GEE asset  projects/sat-io/open-datasets/POLARIS/
+  # dem_3dep:   GEE asset  USGS/3DEP/1_3_arc_second_or_10m
+  # prism:      GEE asset  OREGONSTATE/PRISM/Norm91m
+
+interim:
+  root:         "data/interim"
+
+processed:
+  root:         "data/processed"

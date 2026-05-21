@@ -1,0 +1,42 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+.coverage
+htmlcov/
+
+# Data — inputs and outputs are not committed; versions.lock documents what to acquire
+data/raw/
+data/interim/
+data/processed/
+
+# GEE credentials
+.config/earthengine/
+
+# FVS binaries and build artifacts
+fvs/bin/
+fvs/build/
+*.db          # SQLite FVS runs (large); keep fvs_input.db path in versions.lock
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/**/.ipynb_checkpoints/
+
+# Rust (future)
+target/
+Cargo.lock    # exception: re-add if this becomes a binary crate
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

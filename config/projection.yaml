@@ -1,0 +1,54 @@
+# Core projection configuration
+# All pipeline components read from this file. Do not hardcode these values.
+
+spatial:
+  crs: "EPSG:5070"                  # CONUS Albers Equal Area
+  resolution_m: 30                   # Target pixel size; matches TreeMap 2022 native
+  snap_reference: "treemap_2022"     # All rasters snapped to this grid
+  chunk_strategy: "huc8"             # Chunking unit for Zarr stores and FVS batching
+  # chunk_strategy alternatives: "degree_tile" (1°×1°), "state"
+
+projection:
+  horizon_years: 50
+  cycle_years: 5
+  n_cycles: 10                       # horizon / cycle = 10 output time steps
+  base_year: 2022                    # TreeMap / ownership vintage year
+  output_years: [2022, 2047, 2072]   # Year-0, Year-25, Year-50 headline rasters
+
+fvs:
+  default_variant: "SN"              # Southern variant for Florida
+  # Variant assignment when expanding: keyed by state FIPS in fvs_variants.yaml
+  carbon_extension: true             # Enable CARBON keyword extension in all runs
+  carbon_pools:                      # All five IPCC pools
+    - aboveground_live
+    - belowground_live
+    - dead_wood
+    - forest_floor
+    - soil_organic
+
+harvest:
+  forward_method: "pseudo_deterministic"
+  random_seed: 42                    # Document this in versions.lock; never change post-publication
+  # random_seed must be locked before any results are reported externally
+
+ownership:
+  source: "harris_2025"
+  # Pixel values confirmed from US_forest_ownership.tif.xml metadata
+  classes:
+    0: unknown_forest
+    1: non_forest                    # Mask — excluded from FVS pipeline
+    2: water                         # Mask — excluded from FVS pipeline
+    3: family_forest
+    4: corporate_forest              # Full label: "Corporate/Other Private Forest"
+    5: tribal_forest
+    6: federal_forest
+    7: state_forest
+    8: local_forest
+  mask_values: [1, 2]               # non_forest and water
+  # Tribal class: fall back to pooled estimate if training sample < 500 harvest events
+
+storage:
+  zarr_compressor: "blosc"
+  zarr_clevel: 5
+  parquet_compression: "zstd"
+  parquet_row_group_size: 100000

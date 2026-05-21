@@ -1,0 +1,39 @@
+# Riparian BMP buffer widths by state FIPS
+# Units: feet (each side of stream centerline)
+# Source per state is listed under citation.
+# Add states here as the pipeline expands beyond Florida.
+#
+# NHD FCode groups used for classification:
+#   ephemeral_intermittent: FCodes 46000, 46003, 46007 (intermittent/ephemeral streams)
+#   perennial_small:        FCodes 46006 (perennial), Strahler order 1-2, channel width < 15 ft
+#   perennial_large:        FCodes 46006, Strahler order 3+, channel width >= 15 ft
+#   waterbody:              FCodes 39000-39012 (lakes, ponds, reservoirs), 49300 (canal/ditch excluded)
+
+states:
+  "12":  # Florida
+    name: Florida
+    citation: "Florida Department of Agriculture and Consumer Services, Florida Forest Service. 2020. Silviculture Best Management Practices. Tallahassee, FL."
+    url: "https://www.fdacs.gov/content/download/78640/file/silvicultureBMP.pdf"
+    buffers:
+      ephemeral_intermittent:
+        width_ft: 35
+        description: "Intermittent and ephemeral streams"
+      perennial_small:
+        width_ft: 50
+        description: "Perennial streams less than 15 ft wide"
+      perennial_large:
+        width_ft: 75
+        description: "Perennial streams 15 ft wide or greater"
+      waterbody:
+        width_ft: 75
+        description: "Lakes, ponds, and other standing waterbodies"
+
+  # Expansion states — populate before running pipeline beyond Florida
+  # "13":  # Georgia
+  #   ...
+  # "45":  # South Carolina
+  #   ...
+  # "37":  # North Carolina
+  #   ...
+  # "01":  # Alabama
+  #   ...
