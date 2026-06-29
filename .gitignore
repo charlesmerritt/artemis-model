@@ -31,6 +31,7 @@ fvs/build/
 # Jupyter
 .ipynb_checkpoints/
 notebooks/**/.ipynb_checkpoints/
+notebooks/Mgmt-Units-Pilot_5co_FL.ipynb
 
 # Rust (future)
 target/
