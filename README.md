@@ -93,6 +93,9 @@ uv sync
 # Run tests
 uv run pytest
 
+# Enable tracked Git hooks (blocks accidental >99 MiB commits)
+git config core.hooksPath .githooks
+
 # Activate environment (optional — uv run works without activation)
 source .venv/bin/activate
 ```
