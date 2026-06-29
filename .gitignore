@@ -17,6 +17,7 @@ htmlcov/
 data/raw/
 data/interim/
 data/processed/
+data/build/
 
 # GEE credentials
 .config/earthengine/
