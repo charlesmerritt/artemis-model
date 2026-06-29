@@ -26,7 +26,9 @@ raw:
     #   FVS_GROUPADDFILESANDKEYWORDS — keyword group assignments
 
   landfire:
+    # Existing Vegetation Type
     evt_tif:    "/mnt/d/LF2022_EVT_CONUS/LF2022_EVT_CONUS/Tif/LF2022_EVT_CONUS.tif"
+    # Vegatation Condition Class
     vcc_tif:    "/mnt/d/LF2022_VCC_CONUS/LF2022_VCC_CONUS/Tif/LF2022_VCC_CONUS.tif"
 
   nhd:
@@ -44,17 +46,28 @@ raw:
   roads:
     se_gdb:     "/mnt/d/SE_rds100k"
 
-  treemap_fvs_map:
-    aprx:       "/mnt/d/TreeMap_FVS_map/TreeMap_FVS_map.aprx"
-    gdb:        "/mnt/d/TreeMap_FVS_map/Default.gdb"
-    # ArcGIS project mapping FVS variants to TreeMap plots — review for variant assignments
+  counties:
+    p010g_shp:  "/mnt/d/county_p010g.shp_nt00934/countyp010g.shp"
 
-  # GEE-only datasets (no local copy — exported to data/raw/ during GEE step)
+  
+  # GEE-only datasets 
   # lcms:       GEE asset  projects/lcms-292214/assets/CONUS/LCMS_CONUS_v2024-10
   # polaris:    GEE asset  projects/sat-io/open-datasets/POLARIS/
   # dem_3dep:   GEE asset  USGS/3DEP/1_3_arc_second_or_10m
   # prism:      GEE asset  OREGONSTATE/PRISM/Norm91m
 
+  ecoregions:
+    us_eco_l3_shp: "/mnt/d/us_eco_l3/us_eco_l3.shp"
+    us_eco_l3_state_boundaries_shp: "/mnt/d/us_eco_l3_state_boundaries/us_eco_l3_state_boundaries.shp"
+    us_eco_l4_shp: "/mnt/d/us_eco_l4/us_eco_l4.shp"
+    us_eco_l4_state_boundaries_shp: "/mnt/d/us_eco_l4_state_boundaries/us_eco_l4_state_boundaries.shp"
+
+  Artemis_project_fvs_copy_no_management:
+    # For outputs of FVS run from the Windows GUI, the only working interface with FVS so far.
+    # Open with duckdb, summary csvs created 'fvs_trajectory.csv', 'fvs_stand_change.csv', and 'fvs_weighted_trajectory.csv'
+    FVS_Data_db: "/mnt/d/Artemis_project_fvs_copy/FVS_Data.db"
+    FVSOut_db: "/mnt/d/Artemis_project_fvs_copy/FVSOut.db"
+    
 interim:
   root:         "data/interim"
 

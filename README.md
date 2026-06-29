@@ -1,4 +1,4 @@
-# Eastern US Forest Projection Pipeline
+# ARTEMIS: Adaptive Regional Timber and Ecosystem Modeling Integrated Simulator
 
 Deterministic, pixel-level (30 m) forward projection of forest stand dynamics using
 **FVS Southern variant**, initialized from **TreeMap 2022** + **FIA tree lists**,
