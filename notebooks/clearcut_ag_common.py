@@ -710,3 +710,147 @@ def build_feature_table(
     feats = derive_feature_label(feats, evt2016_names, evt2022_lookup)
     feats["pre_year"], feats["event_year"] = pre_year, event_year
     return feats, feature_dictionary()
+
+
+# ======================================================================================
+# Embedding-similarity AOI finder: pick reference clearcuts, find similar land in an AOI
+# ======================================================================================
+
+SIMILARITY_AGG = ("max", "mean")
+
+
+def normalize_reference_points(points) -> list[tuple[float, float]]:
+    """Coerce assorted (lon, lat) inputs into a clean list of float tuples.
+
+    Accepts lists/tuples of pairs or dicts with lon/lat (or lng/latitude) keys — handy for
+    points pulled off an ipyleaflet/geemap draw control. Raises on malformed input.
+    """
+    out: list[tuple[float, float]] = []
+    for p in points:
+        if isinstance(p, dict):
+            lon = p.get("lon", p.get("lng", p.get("longitude")))
+            lat = p.get("lat", p.get("latitude"))
+        else:
+            lon, lat = p[0], p[1]
+        if lon is None or lat is None:
+            raise ValueError(f"Could not read lon/lat from reference point: {p!r}")
+        out.append((float(lon), float(lat)))
+    return out
+
+
+def vector_scale_for_area_km2(area_km2: float) -> int:
+    """Adaptive vectorization scale (m): finer for small AOIs, coarser for large ones."""
+    if area_km2 <= 8000:      # ~ a Florida county or two
+        return 20
+    if area_km2 <= 40000:
+        return 40
+    return 90                 # ~ all of Florida (~170,000 km2)
+
+
+def constant_vector_image(vector, bands: tuple[str, ...] = EMBEDDING_BANDS):
+    import ee
+
+    return ee.Image.constant(ee.Dictionary(vector).values(list(bands))).rename(list(bands))
+
+
+def point_embedding_vector(image, lon: float, lat: float, scale: int = EMBEDDING_SCALE_M):
+    import ee
+
+    sample = image.sample(region=ee.Geometry.Point([lon, lat]), scale=scale, numPixels=1).first()
+    return sample.toDictionary(list(EMBEDDING_BANDS))
+
+
+def cosine_similarity_image(image, vector, name: str = "similarity"):
+    import ee
+
+    v = constant_vector_image(vector)
+    numerator = image.multiply(v).reduce(ee.Reducer.sum())
+    image_norm = image.pow(2).reduce(ee.Reducer.sum()).sqrt()
+    vector_norm = v.pow(2).reduce(ee.Reducer.sum()).sqrt()
+    return numerator.divide(image_norm.multiply(vector_norm)).rename(name)
+
+
+def reference_vectors(year: int, points: list[tuple[float, float]], region):
+    """Sample each reference point's embedding vector at ``year`` (over ``region``)."""
+    image = annual_embedding(year, region)
+    return [point_embedding_vector(image, lon, lat) for lon, lat in points]
+
+
+def similarity_image(year: int, aoi, ref_vectors: list, agg: str = "max"):
+    """Per-pixel similarity to the reference set within the AOI.
+
+    ``max`` = similarity to the closest reference (find land like ANY exemplar);
+    ``mean`` = average similarity to all references.
+    """
+    import ee
+
+    if agg not in SIMILARITY_AGG:
+        raise ValueError(f"agg must be one of {SIMILARITY_AGG}, got {agg!r}")
+    image = annual_embedding(year, aoi)
+    sims = ee.ImageCollection([cosine_similarity_image(image, v) for v in ref_vectors])
+    combined = sims.max() if agg == "max" else sims.mean()
+    return combined.rename("similarity").clip(aoi)
+
+
+def counties_aoi(names: list[str] | None, statefp: str = "12"):
+    """Dissolved geometry for the named counties (GEE TIGER/2018), default all of state."""
+    import ee
+
+    fc = ee.FeatureCollection("TIGER/2018/Counties").filter(ee.Filter.eq("STATEFP", statefp))
+    if names:
+        fc = fc.filter(ee.Filter.inList("NAME", ee.List(list(names))))
+    return fc.geometry().dissolve(maxError=100)
+
+
+def vectorize_similarity(sim_image, aoi, threshold: float, scale: int, min_area_ha: float = 1.0):
+    """Polygonize the ``similarity >= threshold`` mask within the AOI.
+
+    Each polygon gets an ``area_ha`` property; polygons smaller than ``min_area_ha`` are
+    dropped server-side to cut salt-and-pepper speckle (a 20 m pixel is only 0.04 ha, so a
+    similarity mask vectorizes into tens of thousands of specks without this filter).
+    """
+    import ee
+
+    mask = sim_image.gte(threshold).selfMask().rename("similar")
+    vectors = mask.reduceToVectors(
+        geometry=aoi,
+        scale=scale,
+        geometryType="polygon",
+        eightConnected=False,
+        labelProperty="similar",
+        maxPixels=1e10,
+        bestEffort=True,
+    )
+    vectors = vectors.map(
+        lambda f: f.set("area_ha", f.geometry().area(maxError=scale / 2.0).divide(1e4))
+    )
+    if min_area_ha and min_area_ha > 0:
+        vectors = vectors.filter(ee.Filter.gte("area_ha", min_area_ha))
+    return vectors
+
+
+def fc_to_gdf(fc, max_features: int = 5000):
+    """Pull an ee.FeatureCollection to a GeoDataFrame (EPSG:4326), capped with a warning."""
+    import ee
+    import geopandas as gpd
+
+    n = fc.size().getInfo()
+    if n > max_features:
+        print(f"WARNING: {n} features exceeds max_features={max_features}; pulling first "
+              f"{max_features}. Raise the threshold/scale or export to Drive for the full result.")
+        fc = ee.FeatureCollection(fc.toList(max_features))
+    data = fc.getInfo()
+    if not data["features"]:
+        return gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs="EPSG:4326")
+    return gpd.GeoDataFrame.from_features(data["features"], crs="EPSG:4326")
+
+
+def reference_points_gdf(points: list[tuple[float, float]]):
+    import geopandas as gpd
+
+    pts = normalize_reference_points(points)
+    return gpd.GeoDataFrame(
+        {"ref_id": list(range(len(pts)))},
+        geometry=gpd.points_from_xy([p[0] for p in pts], [p[1] for p in pts]),
+        crs="EPSG:4326",
+    )

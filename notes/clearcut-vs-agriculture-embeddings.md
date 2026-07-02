@@ -144,3 +144,27 @@ recently clearcut forest.** New code lives in `clearcut_ag_common.py`.
 - **Next to make it rigorous:** define the label with an earlier pre-year than the embedding
   pre-year (decouple label from feature), and validate the apply set against NAIP/hand labels.
   Easy feature adds already in-repo: ownership, terrain, soils, climate.
+
+## Embedding-similarity AOI finder (2026-07-02)
+
+`notebooks/Embedding-Similarity-AOI-Finder.ipynb` is a standalone tool: pick reference
+clearcut points (coord list or draw on a geemap map), choose an AOI (all Florida or selected
+counties via GEE `TIGER/2018/Counties`), pick an embedding year, and it returns a vector layer
+of everything similar. Helpers are in `clearcut_ag_common.py`.
+
+- **Similarity** = max cosine similarity to any reference embedding (`similarity_image`,
+  `agg="max"`); AlphaEarth vectors are unit-length so cosine = dot product.
+- **AOI** via `counties_aoi(names)`; vectorize scale is adaptive (`vector_scale_for_area_km2`:
+  20 m ≤8000 km², 40 m ≤40000, else 90 m — so all-Florida ≈ 90 m).
+- **`vectorize_similarity`** polygonizes `similarity >= threshold`, tags `area_ha`, and drops
+  patches below `min_area_ha` **server-side** — essential, since a 20 m mask otherwise
+  vectorizes into tens of thousands of specks (Marion County at 0.85 gave 14,065 polygons; with
+  a 1 ha min it's a manageable set of real patches).
+- **Output**: a GeoPackage with two layers — `reference_points` (what you selected) and
+  `similar_regions` (polygons with `area_ha`) — under `data/interim/similarity_finder/`.
+- **Smoke/demo run** (Marion County, 2023, threshold 0.86, 1 reference clearcut, min 1 ha):
+  **1889 similar patches totaling 24,401 ha**. Threshold sensitivity in Marion: 0.80→29,711 /
+  0.85→14,065 / 0.90→3,482 raw polygons (pre-area-filter).
+- **Gotcha:** the geemap/ipyleaflet map cells embed widget state into the notebook on execution
+  (a 16.9 MB file!). Strip `nb.metadata["widgets"]` (and widget-view outputs) before committing —
+  the committed notebook is ~17 KB.

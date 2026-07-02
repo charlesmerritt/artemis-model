@@ -143,6 +143,27 @@ def test_derive_feature_label_roles():
     assert (out["emb_delta_l2"] == 0.0).all()  # zero embeddings -> zero delta
 
 
+def test_normalize_reference_points():
+    assert cac.normalize_reference_points([(-81.8, 29.2), [-82.0, 30.1]]) == [
+        (-81.8, 29.2), (-82.0, 30.1)
+    ]
+    # dict inputs (as produced by a map draw control), various key spellings
+    assert cac.normalize_reference_points([{"lng": -81.5, "lat": 29.0}]) == [(-81.5, 29.0)]
+    assert cac.normalize_reference_points([{"longitude": -80.0, "latitude": 27.0}]) == [(-80.0, 27.0)]
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        cac.normalize_reference_points([{"x": 1}])
+
+
+@pytest.mark.parametrize(
+    "area_km2,expected",
+    [(500, 20), (8000, 20), (8001, 40), (40000, 40), (40001, 90), (170000, 90)],
+)
+def test_vector_scale_for_area_km2(area_km2, expected):
+    assert cac.vector_scale_for_area_km2(area_km2) == expected
+
+
 def test_load_evt2022_lookup(tmp_path):
     csv_path = tmp_path / "evt.csv"
     csv_path.write_text(
