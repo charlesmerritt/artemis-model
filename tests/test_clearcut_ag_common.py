@@ -95,6 +95,54 @@ def test_derive_labels_assigns_expected_primary_labels():
     assert bool(out.loc[0, "is_clearcut"]) is True  # overlap flag preserved despite label
 
 
+def test_feature_dictionary_and_clean_columns():
+    fd = cac.feature_dictionary()
+    # 64 event + 64 pre + 1 delta + 3 evt + 6 lcms = 138
+    assert len(fd) == 138
+    assert set(fd["family"]) == {"embedding_event", "embedding_pre", "embedding_delta", "evt", "lcms"}
+    clean = cac.clean_feature_columns()
+    assert len(clean) == 132  # everything except the 6 lcms_derived columns
+    assert not any(fd.loc[fd.column.isin(clean), "lcms_derived"])
+    assert "lc_event" not in clean and "lcms_tree_removal_count" not in clean
+    assert "A00" in clean and "emb_delta_l2" in clean and "evt_change_strict" in clean
+
+
+def test_evt_value_selectors():
+    lookup = {
+        10: {"name": "Row Crop", "lifeform": "Agriculture", "physiognomy": "Agricultural"},
+        20: {"name": "Grassland", "lifeform": "Herb", "physiognomy": "Grassland"},
+        30: {"name": "Pine", "lifeform": "Tree", "physiognomy": "Conifer"},
+    }
+    assert set(cac.evt_values_by_lifeform(lookup, ("Herb", "Shrub"))) == {20}
+    assert set(cac.evt_values_by_physiognomy(lookup, ("Agricultural",))) == {10}
+
+
+def test_derive_feature_label_roles():
+    import numpy as np
+    import pandas as pd
+
+    evt2016_names = {100: "Pine Forest", 200: "Row Crop"}
+    evt2022_lookup = {
+        7997: {"name": "Pasture", "lifeform": "Herb", "physiognomy": "Agricultural"},
+        3000: {"name": "Grassland", "lifeform": "Herb", "physiognomy": "Grassland"},
+        5000: {"name": "Pine", "lifeform": "Tree", "physiognomy": "Conifer"},
+    }
+    bands = {b: 0.0 for b in cac.EMBEDDING_BANDS}
+    bands.update({f"P{i:02d}": 0.0 for i in range(64)})
+    base = dict(bands)
+    df = pd.DataFrame([
+        {**base, "lc_pre": 1, "change_event": 9, "evt2016": 100, "evt2022": 5000, "lcms_ever_trees": 5},   # clearcut
+        {**base, "lc_pre": 10, "change_event": 15, "evt2016": 200, "evt2022": 3000, "lcms_ever_trees": 0},  # stable grass
+        {**base, "lc_pre": 10, "change_event": 15, "evt2016": 200, "evt2022": 7997, "lcms_ever_trees": 0},  # confused
+        {**base, "lc_pre": 10, "change_event": 15, "evt2016": 100, "evt2022": 5000, "lcms_ever_trees": 0},  # forest -> other
+    ])
+    out = cac.derive_feature_label(df, evt2016_names, evt2022_lookup)
+    assert list(out["role"]) == ["positive_forest", "negative_grassland", "apply_confused", "other"]
+    assert out["y"].tolist()[:2] == [1.0, 0.0]
+    assert np.isnan(out["y"].tolist()[2]) and np.isnan(out["y"].tolist()[3])
+    assert (out["emb_delta_l2"] == 0.0).all()  # zero embeddings -> zero delta
+
+
 def test_load_evt2022_lookup(tmp_path):
     csv_path = tmp_path / "evt.csv"
     csv_path.write_text(

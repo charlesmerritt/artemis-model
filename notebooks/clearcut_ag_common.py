@@ -395,3 +395,318 @@ def build_sample_table(
     df["pre_year"] = pre_year
     df["event_year"] = event_year
     return df
+
+
+# ======================================================================================
+# Feature engineering for the "is this grassland pixel actually forest?" model
+# ======================================================================================
+#
+# The eventual model predicts, for a pixel LANDFIRE EVT calls grassland/ag/shrub, whether
+# it is actually recently clearcut forest. LCMS tree-removal almost never fires *inside*
+# those EVT classes, so labels cannot come from within the grassland universe. Instead the
+# model is anchor-based / semi-supervised:
+#   - positive anchors ("forest"): confident clearcuts (LCMS pre-Trees -> Tree Removal)
+#   - negative anchors ("grassland"): stable genuine non-forest (never Trees in LCMS,
+#     not forest in EVT-2016, not a clearcut)
+#   - apply set: the three confused EVT classes, scored by the trained model.
+# This module builds the labeled feature table; the notebook trains/validates.
+
+HIST_START_YEAR = 2015  # LCMS history window start for temporal features
+
+# Feature families and their leakage relationship to an LCMS-derived label. A model whose
+# label is defined by LCMS must NOT use lcms_derived features (trivial leakage); the
+# "clean" predictor set is embeddings + EVT.
+FEATURE_FAMILIES = {
+    "embedding_event": {"lcms_derived": False},
+    "embedding_pre": {"lcms_derived": False},
+    "embedding_delta": {"lcms_derived": False},
+    "evt": {"lcms_derived": False},
+    "lcms": {"lcms_derived": True},
+}
+
+
+def evt_values_by_lifeform(evt2022_lookup: dict[int, dict], lifeforms: tuple[str, ...]) -> list[int]:
+    return [v for v, rec in evt2022_lookup.items() if rec["lifeform"] in lifeforms]
+
+
+def evt_values_by_physiognomy(evt2022_lookup: dict[int, dict], phys: tuple[str, ...]) -> list[int]:
+    return [v for v, rec in evt2022_lookup.items() if rec["physiognomy"] in phys]
+
+
+def stratified_evt_points(
+    strata: dict[str, list[int]],
+    n_per_stratum: int | dict[str, int],
+    florida_gdf_5070,
+    tif_path: str | Path,
+    dec: int = 8,
+    seed: int = 42,
+    oversample: float = 3.0,
+) -> pd.DataFrame:
+    """Sample points of specific LF2022 EVT classes from a *single* decimated read.
+
+    A decimated (factor ``dec``) read of the Florida window is fast (~5 s) yet still contains
+    hundreds of pixels of even rare classes (e.g. floodplain shrubland). Pass all strata at
+    once so the window is read only once. ``n_per_stratum`` may be an int or per-stratum dict.
+    Returns a DataFrame with ``lon, lat, stratum`` (points confirmed inside Florida).
+    """
+    import geopandas as gpd
+    import numpy as np
+    import rasterio
+    from rasterio.transform import xy as transform_xy
+    from rasterio.windows import Window, from_bounds
+    from pyproj import Transformer
+
+    rng = np.random.default_rng(seed)
+    minx, miny, maxx, maxy = florida_gdf_5070.total_bounds
+
+    def n_for(stratum: str) -> int:
+        return n_per_stratum[stratum] if isinstance(n_per_stratum, dict) else n_per_stratum
+
+    rows: list[dict] = []
+    with rasterio.open(tif_path) as ds:
+        win = from_bounds(minx, miny, maxx, maxy, ds.transform)
+        col0, row0 = win.col_off, win.row_off
+        full_w, full_h = int(win.width), int(win.height)
+        out_w, out_h = full_w // dec, full_h // dec
+        step_x, step_y = full_w / out_w, full_h / out_h
+        arr = ds.read(1, window=win, out_shape=(out_h, out_w))  # decimated: locate blocks
+        to_lonlat = Transformer.from_crs(ds.crs, "EPSG:4326", always_xy=True)
+        fl_geom = florida_gdf_5070.geometry.union_all()
+
+        for stratum, values in strata.items():
+            blocks = np.argwhere(np.isin(arr, values))  # decimated (row, col) of blocks with the class
+            if len(blocks) == 0:
+                continue
+            take = min(len(blocks), int(n_for(stratum) * oversample) + 20)
+            picks = blocks[rng.choice(len(blocks), size=take, replace=False)]
+            kept = 0
+            for br, bc in picks:
+                if kept >= n_for(stratum):
+                    break
+                # full-res block window covering this decimated cell; find the exact class pixel
+                acol = int(round(col0 + bc * step_x))
+                arow = int(round(row0 + br * step_y))
+                bw, bh = int(np.ceil(step_x)) + 1, int(np.ceil(step_y)) + 1
+                block = ds.read(1, window=Window(acol, arow, bw, bh))
+                local = np.argwhere(np.isin(block, values))
+                if len(local) == 0:
+                    continue
+                lr, lc = local[rng.integers(len(local))]
+                x, y = transform_xy(ds.transform, arow + lr, acol + lc)  # pixel center in raster CRS
+                if not fl_geom.contains(gpd.points_from_xy([x], [y])[0]):
+                    continue
+                lon, lat = to_lonlat.transform(x, y)
+                rows.append({"lon": float(lon), "lat": float(lat), "stratum": stratum})
+                kept += 1
+    return pd.DataFrame(rows)
+
+
+def sample_features(
+    lonlats: list[tuple[float, float]],
+    event_year: int,
+    pre_year: int,
+    florida,
+    hist_start: int = HIST_START_YEAR,
+    chunk_size: int = 300,
+) -> pd.DataFrame:
+    """Sample the full engineered feature stack at each point (issues GEE calls).
+
+    Columns: ``pid, lon, lat``; event embedding ``A00..A63``; pre embedding ``P00..P63``;
+    ``lc_event, lc_pre, lu_event, change_event, evt2016``; and LCMS history
+    ``lcms_tree_removal_count`` (# Tree-Removal years hist_start..event) and ``lcms_ever_trees``.
+    """
+    import ee
+
+    pre_bands = [f"P{i:02d}" for i in range(64)]
+    event_img = annual_embedding(event_year, florida)
+    pre_img = annual_embedding(pre_year, florida).rename(pre_bands)
+    lc_event = lcms_image(event_year, "Land_Cover", florida).rename("lc_event")
+    lc_pre = lcms_image(pre_year, "Land_Cover", florida).rename("lc_pre")
+    lu_event = lcms_image(event_year, "Land_Use", florida).rename("lu_event")
+    change_event = lcms_image(event_year, "Change", florida).rename("change_event")
+    evt2016 = ee.Image(EVT_2016_ASSET).select("EVT").rename("evt2016")
+
+    years = list(range(hist_start, event_year + 1))
+    removal = ee.ImageCollection(
+        [lcms_image(y, "Change", florida).eq(LCMS_CHANGE_TREE_REMOVAL) for y in years]
+    ).sum().rename("lcms_tree_removal_count")
+    ever_trees = ee.ImageCollection(
+        [lcms_image(y, "Land_Cover", florida).eq(LCMS_LAND_COVER_TREES) for y in years]
+    ).max().rename("lcms_ever_trees")
+
+    stack = event_img.addBands(
+        [pre_img, lc_event, lc_pre, lu_event, change_event, evt2016, removal, ever_trees]
+    )
+
+    rows: list[dict] = []
+    for start in range(0, len(lonlats), chunk_size):
+        chunk = lonlats[start : start + chunk_size]
+        fc = _feature_collection(chunk, id_start=start)
+        sampled = stack.sampleRegions(
+            collection=fc, scale=EMBEDDING_SCALE_M, geometries=True, tileScale=4
+        ).getInfo()
+        for feature in sampled["features"]:
+            props = feature["properties"]
+            lon, lat = feature["geometry"]["coordinates"]
+            props["lon"], props["lat"] = lon, lat
+            rows.append(props)
+    return pd.DataFrame(rows).sort_values("pid").reset_index(drop=True)
+
+
+def derive_feature_label(
+    df: pd.DataFrame,
+    evt2016_names: dict[int, str],
+    evt2022_lookup: dict[int, dict],
+) -> pd.DataFrame:
+    """Attach EVT attributes, the embedding delta, role, and the anchor label ``y``.
+
+    Roles: ``positive_forest`` (LCMS clearcut), ``negative_grassland`` (stable non-forest),
+    ``apply_confused`` (one of the three confused EVT classes; the inference target), or
+    ``other``. ``y`` = 1 for positive_forest, 0 for negative_grassland, NaN otherwise.
+    """
+    import numpy as np
+
+    out = df.copy()
+    event_bands = list(EMBEDDING_BANDS)
+    pre_bands = [f"P{i:02d}" for i in range(64)]
+    out["emb_delta_l2"] = np.linalg.norm(
+        out[event_bands].to_numpy() - out[pre_bands].to_numpy(), axis=1
+    )
+
+    out["evt2016_name"] = out["evt2016"].map(lambda v: evt2016_names.get(int(v)) if pd.notna(v) else None)
+    out["is_forest_2016"] = out["evt2016_name"].map(evt_name_is_forest)
+
+    def _field(value, key):
+        if pd.isna(value):
+            return None
+        rec = evt2022_lookup.get(int(value))
+        return rec[key] if rec else None
+
+    out["evt2022_name"] = out["evt2022"].map(lambda v: _field(v, "name"))
+    out["evt2022_lifeform"] = out["evt2022"].map(lambda v: _field(v, "lifeform"))
+    out["evt2022_phys"] = out["evt2022"].map(lambda v: _field(v, "physiognomy"))
+
+    out["is_clearcut"] = (out["lc_pre"] == LCMS_LAND_COVER_TREES) & (
+        out["change_event"] == LCMS_CHANGE_TREE_REMOVAL
+    )
+    out["is_confused"] = out["evt2022"].isin(CONFUSED_EVT_VALUES)
+    out["confused_name"] = out["evt2022"].map(lambda v: CONFUSED_EVT_SHORT.get(int(v)) if pd.notna(v) else None)
+    out["evt_nonforest_universe"] = out["evt2022_lifeform"].isin(AG_HERB_SHRUB_LIFEFORMS)
+    out["evt_change_strict"] = out.apply(
+        lambda r: evt_change_clearcut(bool(r["is_forest_2016"]), r["evt2022"]), axis=1
+    )
+    out["evt_change_broad"] = out.apply(
+        lambda r: evt_change_clearcut_broad(bool(r["is_forest_2016"]), r["evt2022"], evt2022_lookup),
+        axis=1,
+    )
+
+    stable_nonforest = (
+        out["evt_nonforest_universe"]
+        & (~out["is_clearcut"])
+        & (~out["is_forest_2016"])
+        & (out["lcms_ever_trees"] == 0)
+    )
+
+    def _role(row):
+        if row["is_clearcut"]:
+            return "positive_forest"
+        if row["is_confused"]:
+            return "apply_confused"
+        if stable_nonforest.loc[row.name]:
+            return "negative_grassland"
+        return "other"
+
+    out["role"] = out.apply(_role, axis=1)
+    out["y"] = np.where(
+        out["role"] == "positive_forest", 1.0,
+        np.where(out["role"] == "negative_grassland", 0.0, np.nan),
+    )
+    return out
+
+
+def feature_dictionary() -> pd.DataFrame:
+    """Column -> {family, lcms_derived, dtype, note} for leakage-aware model building."""
+    rows = []
+    for b in EMBEDDING_BANDS:
+        rows.append({"column": b, "family": "embedding_event", "lcms_derived": False,
+                     "dtype": "float", "note": "AlphaEarth event-year band"})
+    for i in range(64):
+        rows.append({"column": f"P{i:02d}", "family": "embedding_pre", "lcms_derived": False,
+                     "dtype": "float", "note": "AlphaEarth pre-year band"})
+    rows += [
+        {"column": "emb_delta_l2", "family": "embedding_delta", "lcms_derived": False,
+         "dtype": "float", "note": "L2 distance event vs pre embedding (disturbance magnitude)"},
+        {"column": "is_forest_2016", "family": "evt", "lcms_derived": False,
+         "dtype": "bool", "note": "EVT 2016 name denotes forest/woodland"},
+        {"column": "evt_change_strict", "family": "evt", "lcms_derived": False,
+         "dtype": "bool", "note": "forest 2016 -> one of the three confused classes"},
+        {"column": "evt_change_broad", "family": "evt", "lcms_derived": False,
+         "dtype": "bool", "note": "forest 2016 -> any ag/grass/shrub lifeform 2022"},
+        {"column": "lc_event", "family": "lcms", "lcms_derived": True,
+         "dtype": "int", "note": "LCMS Land_Cover at event year"},
+        {"column": "lc_pre", "family": "lcms", "lcms_derived": True,
+         "dtype": "int", "note": "LCMS Land_Cover at pre year"},
+        {"column": "lu_event", "family": "lcms", "lcms_derived": True,
+         "dtype": "int", "note": "LCMS Land_Use at event year"},
+        {"column": "change_event", "family": "lcms", "lcms_derived": True,
+         "dtype": "int", "note": "LCMS Change at event year"},
+        {"column": "lcms_tree_removal_count", "family": "lcms", "lcms_derived": True,
+         "dtype": "int", "note": "# Tree-Removal years in history window"},
+        {"column": "lcms_ever_trees", "family": "lcms", "lcms_derived": True,
+         "dtype": "int", "note": "ever LCMS Trees in history window"},
+    ]
+    return pd.DataFrame(rows)
+
+
+def clean_feature_columns() -> list[str]:
+    """Predictor columns with no leakage against an LCMS-derived label (embeddings + EVT)."""
+    fd = feature_dictionary()
+    return fd.loc[~fd["lcms_derived"], "column"].tolist()
+
+
+def build_feature_table(
+    florida,
+    florida_gdf_5070,
+    repo_root: Path,
+    event_year: int = DEFAULT_EVENT_YEAR,
+    pre_year: int = DEFAULT_PRE_YEAR,
+    n_per_confused: int = 300,
+    n_agriculture: int = 300,
+    n_grass_shrub_other: int = 300,
+    n_clearcut: int = 500,
+    seed: int = 42,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build the labeled feature table + its data dictionary (issues GEE + raster calls)."""
+    evt2022_lookup = load_evt2022_lookup(evt2022_csv_path(repo_root))
+    ag_values = [v for v in evt_values_by_physiognomy(evt2022_lookup, ("Agricultural",))
+                 if v not in CONFUSED_EVT_VALUES]
+    grass_shrub_other = [v for v in evt_values_by_lifeform(evt2022_lookup, ("Herb", "Shrub"))
+                         if v not in CONFUSED_EVT_VALUES]
+    strata = {
+        "pasture_hay": [7997],
+        "ruderal_grass": [9823],
+        "floodplain_shrub": [9585],
+        "agriculture_rowcrop": ag_values,
+        "grass_shrub_other": grass_shrub_other,
+    }
+    n_map = {"pasture_hay": n_per_confused, "ruderal_grass": n_per_confused,
+             "floodplain_shrub": n_per_confused, "agriculture_rowcrop": n_agriculture,
+             "grass_shrub_other": n_grass_shrub_other}
+
+    evt_pts = stratified_evt_points(strata, n_map, florida_gdf_5070,
+                                    evt2022_tif_path(repo_root), seed=seed)
+    cc_pts = clearcut_sample_points(pre_year, event_year, n_clearcut, florida, seed=seed)
+    cc_df = pd.DataFrame({"lon": [p[0] for p in cc_pts], "lat": [p[1] for p in cc_pts],
+                          "stratum": "lcms_clearcut"})
+    pool = pd.concat([evt_pts, cc_df], ignore_index=True)
+
+    feats = sample_features(list(zip(pool["lon"], pool["lat"])), event_year, pre_year, florida)
+    # attach sampling stratum by nearest pid order (sample_features preserves point order)
+    feats = feats.merge(pool.reset_index().rename(columns={"index": "pid"})[["pid", "stratum"]],
+                        on="pid", how="left")
+    feats["evt2022"] = sample_local_evt2022(list(zip(feats["lon"], feats["lat"])),
+                                            evt2022_tif_path(repo_root))
+    evt2016_names = load_evt2016_name_lookup()
+    feats = derive_feature_label(feats, evt2016_names, evt2022_lookup)
+    feats["pre_year"], feats["event_year"] = pre_year, event_year
+    return feats, feature_dictionary()

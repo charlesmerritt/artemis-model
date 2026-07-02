@@ -105,3 +105,42 @@ floodplain_shrub **1**), 1129 other. Outputs in
 - Figures in `data/interim/clearcut_ag/`: `embeddings_pca.png`, `validation_spatial_map.png`,
   `validation_confused_prob.png`. Output CSV invariants are guarded by
   `tests/test_clearcut_ag_outputs.py` (skips if the run hasn't been produced).
+
+## Feature-engineering step (2026-07-02)
+
+`notebooks/Clearcut-Grassland-Feature-Engineering.ipynb` builds the model-ready table for the
+ultimate goal: **predict whether a pixel LANDFIRE EVT calls grassland/ag/shrub is actually
+recently clearcut forest.** New code lives in `clearcut_ag_common.py`.
+
+- **Sampling fix (floodplain shrubland n=1 solved).** `stratified_evt_points` does a two-stage
+  read of the local LF2022 tif: a fast decimated (factor 8) read of the FL window locates blocks
+  containing a target class, then a tiny full-res read of each block pins the exact pixel. The
+  naive decimated-coordinate approach only matched the rare class 2/30 at full res; two-stage is
+  **150/150**. Each confused class now gets a guaranteed N (250 each in the run).
+- **Anchor-based labels** (LCMS tree-removal ≈0 inside the confused classes, so no in-universe
+  labels): `positive_forest` = LCMS clearcut; `negative_grassland` = stable non-forest (never
+  Trees, not EVT-2016 forest, not clearcut); `apply_confused` = the three EVT classes, scored not
+  trained. `derive_feature_label` assigns roles/`y`.
+- **Features** (`sample_features`, 156 cols): AlphaEarth event (`A00..A63`) + pre-year
+  (`P00..P63`) embeddings, `emb_delta_l2` (disturbance magnitude), LCMS multi-year history
+  (`lcms_tree_removal_count`, `lcms_ever_trees`, land cover/use/change), and EVT-change flags.
+  `feature_dictionary()` tags each column with `lcms_derived`; `clean_feature_columns()` returns
+  the 132 leakage-free predictors (embeddings + EVT). Outputs: `feature_table.csv`,
+  `feature_dictionary.csv`, `confused_scored_full_features.csv`.
+
+### Run results (1750 rows; 400 pos / 281 neg anchors) and the key caveat
+- `emb_delta_l2` by role: positive_forest **0.72** vs negative_grassland 0.40 — the temporal
+  disturbance signal is real.
+- Spatial block CV (GroupKFold 0.5° cell): featset A (event embeddings only) AUC **0.994**;
+  B (+pre+delta) and C (+EVT) AUC **1.000**.
+- **AUC ≈ 1.0 is largely by construction, not a solved problem.** Positives are defined as
+  pre-forest (LCMS Trees in PRE_YEAR) and negatives as never-forest, and the pre-year embedding
+  encodes exactly that — so B/C are near-circular and should be read as an upper bound. Featset A
+  (0.994) is the honest appearance-based number.
+- Apply-set `frac_forest` (the deliverable): floodplain_shrub **0.81**, ruderal_grass **0.41**,
+  pasture_hay **0.06**. Differs from the embeddings-only Method-1 ranking because temporal
+  features re-weight toward "was it forest 2 years ago." These are estimates needing imagery/field
+  validation.
+- **Next to make it rigorous:** define the label with an earlier pre-year than the embedding
+  pre-year (decouple label from feature), and validate the apply set against NAIP/hand labels.
+  Easy feature adds already in-repo: ownership, terrain, soils, climate.
