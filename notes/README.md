@@ -10,3 +10,4 @@ Durable context for future agents and collaborators.
 - [FVS five-county growth smoke notebook](fvs-5county-growth-smoke.md) — notebook, helper scripts, generated keyfile bundles, local `FVSsn.so` failure mode, and Windows GUI handoff instructions.
 - [TreeMap COG county summary notebook](treemap-cog-county-summary.md) — remote COG/STAC raster clipping and county/state zonal summaries for Southeast states.
 - [Management pipeline plan](management-pipeline-plan.md) — plan for moving from no-management FVS baseline to constrained harvest simulation using TPO targets, ownership/county constraints, and management unit scheduling.
+- [Clearcut vs agriculture discrimination](clearcut-vs-agriculture-embeddings.md) — two notebooks (AlphaEarth embedding separability + LANDFIRE EVT year-over-year change) testing whether three EVT ag/grass/shrub classes (7997/9823/9585) mislabel recent clearcuts; documents the GEE single-EVT-vintage constraint and the forest-vs-not bridge.
