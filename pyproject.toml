@@ -20,5 +20,7 @@ dependencies = [
     "pytest>=9.0.3",
     "pyyaml>=6.0.3",
     "rasterio>=1.5.0",
+    "scikit-image>=0.26.0",
+    "seaborn>=0.13.2",
     "shapely>=2.1.2",
 ]
