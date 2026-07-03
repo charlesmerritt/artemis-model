@@ -14,7 +14,7 @@ htmlcov/
 .jupyter-runtime/
 
 # Data — inputs and outputs are not committed; versions.lock documents what to acquire
-data/raw/
+data/raw
 data/interim/
 data/processed/
 data/build/
