@@ -123,3 +123,16 @@ See `versions.lock` for full version pins. Primary sources:
 - PRISM 1991–2020 normals — Oregon State PRISM Climate Group
 - POLARIS — Chaney et al. 2019, via GEE community catalog
 - FIA CONUS SQLite — USFS FIA DataMart (download date recorded in `versions.lock`)
+
+---
+
+## Project Status (auto-generated 2026-07-01)
+
+**Git status:** On `main`, 1 commit ahead of `origin/main` (not yet pushed). Uncommitted: `main.py` and two notes files modified, plus untracked `notes/fvs-to-raster-painting.md`, `notes/treemap-methodology.md`, a new `pipeline/` subtree, and `tests/test_s4_paint_fvs_to_raster.py`. Last commit 2 days ago.
+
+**Maturity:** Active WIP — ambitious, well-organized research pipeline (s0–s6 staged design in `PLAN.md`), with uv/pytest tooling, a large-file pre-commit guard, and dataset version pinning already in place, but the pipeline stages themselves are still mid-implementation.
+
+**Low-hanging fruit:**
+- A fair amount of new work (`pipeline/`, a new test file, notes) is sitting uncommitted — worth a commit checkpoint before it's at risk of being lost.
+- One local commit hasn't been pushed to `origin/main` yet.
+- Note: a 266 MB `artemis-model-pre-largefile-cleanup-*.bundle` backup sits alongside this repo in `~/projects/` (from the recent large-file cleanup) — safe to delete once you've confirmed the cleanup is good, since it's just a pre-cleanup safety snapshot.
