@@ -8,12 +8,11 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 
 - **FVS no-management baseline**: Complete. 693 stands, 9,260 trajectory rows, FVS SN variant FS2026.1, ~50-year projections. Output CSVs in `FVS/fvs-outputs/` (zipped).
 - **TreeMap-FVS linkage**: `TreeMap_FVS_linkage.csv` (688 rows) maps TM_ID → PLT_CN → STAND_CN → STAND_ID → pixel count/acres.
-- **Management units**: Pilot notebook + `sketch_management_units.py` (in worktree, not main) produce candidate polygons from parcel/EVT/buffer overlays. Union County smoke test yielded 17,020 polygons.
 - **Ownership raster**: Harris et al. 2025, 30m, 7 forest classes. Path in `config/data_paths.yaml`.
 - **TPO harvest guidance**: `data/raw/Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx`. Two sheets:
   - `ByOwnerGroup`: Federal NF ~1.77M, Other public ~3.97M, Private ~66.3M, All ~72.05M cuft/yr
   - `ByCounty`: Baker ~11.76M, Columbia ~17.80M, Hamilton ~15.33M, Suwannee ~18.47M, Union ~8.70M cuft/yr
-- **FVS infrastructure**: `pipeline/s4_fvs/` has keyword builder, runner, summarizer. Linux FVS segfaults on DB-backed runs; Windows GUI is the working path.
+- **FVS infrastructure**: FVS is installed in Linux and can be run from command line. FVS lives in the ~/projects/ForestVegetationSimulator directory.
 
 ---
 
