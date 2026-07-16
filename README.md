@@ -83,10 +83,10 @@ uv run python -m pipeline.s3_management.sketch_management_units \
 # Build Union County and save QA layers
 uv run python -m pipeline.s3_management.sketch_management_units \
   --county-fips 125 --save-qa --overwrite
-
-# Process all Florida counties after pilot review
-uv run python -m pipeline.s3_management.sketch_management_units --all-florida
 ```
+
+Statewide `--all-florida` processing is not implemented; it currently exits with status 1.
+Use `--pilot-five-county` or run supported counties individually.
 
 See [`pipeline/README.md`](pipeline/README.md) and
 [`notes/management_units.md`](notes/management_units.md) before promoting draft polygons.
