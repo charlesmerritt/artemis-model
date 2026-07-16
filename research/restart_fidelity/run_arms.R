@@ -43,4 +43,70 @@ run_arm_b <- function() {
   invisible(rtn)
 }
 
-if (arm == "a") run_arm_a() else if (arm == "b") run_arm_b()
+run_arm_c <- function() {
+  # Segment 1: run from the keyword file, stop at 2004 and store all stands.
+  fvsLoad("FVSsn", bin = FVSBIN)
+  fvsSetCmdLine("--keywordfile=arm_c.key --stoppoint=2,2004,arm_c_2004.rst")
+  rtn <- fvsRun()
+  cat("arm c stored at 2004, rtn:", rtn, "\n")
+
+  # Later segments: restart from the previous file, store at the next barrier.
+  segs <- list(c("arm_c_2004.rst", "2009", "arm_c_2009.rst"),
+               c("arm_c_2009.rst", "2014", "arm_c_2014.rst"))
+  for (s in segs) {
+    fvsSetCmdLine(paste0("--restart=", s[1], " --stoppoint=2,", s[2], ",", s[3]))
+    rtn <- fvsRun()
+    cat("arm c restarted from", s[1], "stored at", s[2], "rtn:", rtn, "\n")
+  }
+
+  # Final segment: restart from 2014 and run to completion (no stop point).
+  fvsSetCmdLine("--restart=arm_c_2014.rst")
+  rtn <- fvsRun()
+  cat("arm c final return code:", rtn, "\n")
+  invisible(rtn)
+}
+
+# Arm C, one segment per process.
+#
+# FVS keeps stand state in global commons, so a fresh process per segment is both
+# the cleaner test and the shape production would actually use.
+#
+# A NEGATIVE restart code is a signal, not a result. cmdline.f:299 sets
+# `restartcode = -originalRestartCode ! signal return to caller` after getstd
+# restores a stand: fvsRun() reloads the stand and returns WITHOUT running, and
+# the caller must call fvsRun() again to actually resume. rFVS's own
+# fvsInteractRun does the same (`if (stopPoint < 0) stopPoint = -stopPoint`).
+# Calling fvsRun() once leaves the stand loaded but never grown.
+#
+# Usage: run_arms.R c1 | c2 | c3 | c4
+run_until_settled <- function(max_iter = 20) {
+  for (i in seq_len(max_iter)) {
+    rtn  <- fvsRun()
+    code <- fvsGetRestartcode()
+    cat("  iter", i, "rtn:", rtn, "restartcode:", code, "\n")
+    if (rtn != 0) return(list(rtn = rtn, code = code))   # 1 = error, 2 = all stands done
+    if (code >= 0) return(list(rtn = rtn, code = code))  # settled: stored, or finished
+    # code < 0 -> signal return after restore; loop to actually run
+  }
+  list(rtn = rtn, code = code)
+}
+
+run_arm_c_seg <- function(seg) {
+  fvsLoad("FVSsn", bin = FVSBIN)
+  cmd <- switch(seg,
+    c1 = "--keywordfile=arm_c.key --stoppoint=2,2004,arm_c_2004.rst",
+    c2 = "--restart=arm_c_2004.rst --stoppoint=2,2009,arm_c_2009.rst",
+    c3 = "--restart=arm_c_2009.rst --stoppoint=2,2014,arm_c_2014.rst",
+    c4 = "--restart=arm_c_2014.rst"
+  )
+  cat("segment", seg, "cmdline:", cmd, "\n")
+  fvsSetCmdLine(cmd)
+  res <- run_until_settled()
+  cat("segment", seg, "settled rtn:", res$rtn, "restartcode:", res$code, "\n")
+  invisible(res$rtn)
+}
+
+if (arm == "a") run_arm_a() else
+if (arm == "b") run_arm_b() else
+if (arm == "c") run_arm_c() else
+if (arm %in% c("c1", "c2", "c3", "c4")) run_arm_c_seg(arm)

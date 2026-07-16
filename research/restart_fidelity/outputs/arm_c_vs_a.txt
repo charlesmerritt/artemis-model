@@ -1,0 +1,38 @@
+ARM C (stop/restart) vs ARM A (continuous) -- 2026-07-16
+Chain: c1 store@2004 -> c2 restart+store@2009 -> c3 restart+store@2014 -> c4 restart->end
+
+=== BASE METRICS: exact match ===
+ Year  ba_delta  tpa_delta  sdi_delta
+ 1999       0.0        0.0          0
+ 2004       0.0        0.0          0
+ 2009       0.0        0.0          0
+ 2014       0.0        0.0          0
+ 2019       0.0        0.0          0
+
+=== CARBON: arm A ===
+ Year  Forest_Shrub_Herb  Forest_Down_Dead_Wood  Standing_Dead  Total_Stand_Carbon
+ 1999               3.60               2.595000       1.545347           40.946587
+ 2004               3.95               2.967804       0.701899           46.808506
+ 2009               4.55               4.001908       1.504454           55.812027
+ 2014               5.40               4.985489       2.038798           64.524498
+
+=== CARBON: arm C ===
+ Year  Forest_Shrub_Herb  Forest_Down_Dead_Wood  Standing_Dead  Total_Stand_Carbon
+ 1999               3.60               2.595000       1.545347           40.946587
+ 2004               0.02               2.967804       0.701899           42.878506
+ 2009               0.02               4.001908       1.504454           51.282028
+ 2014               0.02               4.985489       2.038798           59.144497
+
+=== NON-ZERO CARBON DELTAS ===
+ Year               pool  left_value  right_value    delta
+ 2004  Forest_Shrub_Herb    3.950000     0.020000 3.930000
+ 2004 Total_Stand_Carbon   46.808506    42.878506 3.930000
+ 2009  Forest_Shrub_Herb    4.550000     0.020000 4.530000
+ 2009 Total_Stand_Carbon   55.812027    51.282028 4.529999
+ 2014  Forest_Shrub_Herb    5.400000     0.020000 5.380000
+ 2014 Total_Stand_Carbon   64.524498    59.144497 5.380001
+
+VERDICT: base metrics exact (max |delta| = 0.0).
+Carbon diverges: Forest_Shrub_Herb collapses to 0.02 at every restart.
+Total_Stand_Carbon understated by 3.93-5.38 tons/acre (8.3% at 2014).
+Forest_Down_Dead_Wood and Standing_Dead survive restart exactly.
