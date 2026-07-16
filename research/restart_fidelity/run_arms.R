@@ -106,7 +106,35 @@ run_arm_c_seg <- function(seg) {
   invisible(res$rtn)
 }
 
+# Arm D: rebuild the tree list between segments.
+#
+# Only live-tree attributes carry forward. Calibration (CALCOM), RNG (RANCOM),
+# establishment (ESTREE) and all FFE state are lost, so this is expected to
+# diverge far more broadly than arm C.
+run_arm_d <- function() {
+  attrs <- c("id", "species", "dbh", "ht", "cratio", "tpa")
+
+  fvsLoad("FVSsn", bin = FVSBIN)
+  fvsSetCmdLine("--keywordfile=arm_d.key")
+  rtn <- fvsRun(2, PAUSE_YEARS[1])
+  cat("arm d segment 1 rtn:", rtn, "\n")
+  trees <- fvsGetTreeAttrs(attrs)
+  cat("  captured", nrow(trees), "tree records\n")
+
+  for (yr in PAUSE_YEARS[-1]) {
+    fvsSetCmdLine("--keywordfile=arm_d.key")
+    rtn <- fvsRun(2, yr)
+    fvsSetTreeAttrs(trees)
+    trees <- fvsGetTreeAttrs(attrs)
+    cat("arm d rebuilt at", yr, "rtn:", rtn, "trees:", nrow(trees), "\n")
+  }
+  rtn <- fvsRun()
+  cat("arm d final return code:", rtn, "\n")
+  invisible(rtn)
+}
+
 if (arm == "a") run_arm_a() else
 if (arm == "b") run_arm_b() else
 if (arm == "c") run_arm_c() else
+if (arm == "d") run_arm_d() else
 if (arm %in% c("c1", "c2", "c3", "c4")) run_arm_c_seg(arm)
