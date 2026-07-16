@@ -108,6 +108,40 @@ Total_Stand_Carbon, Total_Removed_Carbon, Carbon_Released_From_Fire`.
 **Watch `Forest_Down_Dead_Wood` and `Standing_Dead`** — these are the `FMCOM` `CWD`/`ALLDWN`
 pools that `putstd` does not serialize. If the finding holds, arm C diverges here first.
 
-### Arms B / C / D
+### Arm B — in-process pause (2026-07-16): EXACT MATCH
 
-Pending.
+Paused at stop point 2 in 2004/2009/2014 (`restartcode: 2` each), resumed in-process.
+**Summary max |delta| = 0.0, carbon max |delta| = 0.0** across all pools and all five cycles.
+In-process pause is transparent; segmentation itself introduces no error.
+
+### Arm C — stop/restart (2026-07-16): BASE EXACT, CARBON CORRUPTED
+
+Chain: `c1` store@2004 → `c2` restart+store@2009 → `c3` restart+store@2014 → `c4` restart→end.
+
+Base metrics exact (max |delta| = 0.0). `Forest_Shrub_Herb` collapses to a constant **0.02** at
+every restart; `Total_Stand_Carbon` understated by 3.93–5.38 tons/acre (**−8.3%** at 2014).
+`Forest_Down_Dead_Wood` and `Standing_Dead` **survive exactly** — contradicting the prediction.
+
+Likely mechanism: `COVTYP` (in `FMCOM`, absent from `putstd`) is lost; `fmcba.f:63-69` estimates
+herb/shrub from forest type, falling back to the hardwood default `(0.01+0.03) × 0.5 = 0.02`.
+
+**Operational gotcha (cost an hour):** a negative restart code is a *signal*, not a result.
+`cmdline.f:299` sets `restartcode = -originalRestartCode` after `getstd`; `fvsRun()` restores the
+stand and returns **without running**. Call `fvsRun()` again. Calling it once silently produces a
+**0-byte store file** that fails at the *next* segment with "Premature end of data". Use
+`run_until_settled()`.
+
+### Arm D — tree-list rebuild (2026-07-16): MECHANISM DOES NOT COMPOSE
+
+`fvsSetTreeAttrs` rejected the frame ("Length of 'id' must be 324") — FVS triples records during
+growth (108 captured vs 324 live). The rejection is a **warning, not an error**, so the injection
+silently no-op'd and segments ran as independent fresh runs (duplicate DB rows: 1999 ×3, 2004 ×2).
+
+**Arm D's numbers are confounded — not a measurement of rebuild divergence.** The rFVS in-memory
+tree-list path is closed on mechanism grounds; a faithful test needs `.tre` regeneration.
+
+### Decision
+
+See `notes/restart-fidelity-findings.md`. Restart-based global barriers are incompatible with
+valid carbon. Note the narrow variant: only one pool breaks, via one variable (`COVTYP`) —
+carrying it across the barrier may suffice, but that is **untested**.
