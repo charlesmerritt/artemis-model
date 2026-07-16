@@ -62,6 +62,42 @@ Carried forward from prior research and this session's review:
   falsifies restart fidelity, this decision must be revisited — it is a preference about
   sequencing, not a claim about FVS behaviour.
 
+## Data layer: DuckDB
+
+**Decision:** DuckDB is the database and aggregation engine for this project. All result
+aggregation, cross-arm comparison, and any work over large databases goes through DuckDB
+rather than pandas-in-memory or raw SQLite queries.
+
+FVS itself writes **SQLite** (`FVSOut.db`) and that is not negotiable — it is the engine's
+output format. DuckDB consumes it directly via the `sqlite` extension, so no export step is
+needed:
+
+```sql
+INSTALL sqlite; LOAD sqlite;
+ATTACH 'FVSOut.db' AS fvs (TYPE sqlite, READ_ONLY);
+SELECT Year, AVG(BA) FROM fvs.FVS_Summary2 GROUP BY Year;
+```
+
+**Verified 2026-07-16** against the real `/mnt/c/FVS/Artemis_project/FVSOut.db` (14 MB):
+attach, schema introspection, and per-cycle aggregation all work. `duckdb==1.5.4` added to
+`pyproject.toml`.
+
+This suits the spike well: each arm produces its own `FVSOut.db`, and DuckDB can attach all
+four simultaneously and diff them in one query, rather than loading each into memory.
+
+`FVS_Summary2` columns (verified): `CaseID, StandID, Year, RmvCode, Age, Tpa, TPrdTpa, BA,
+SDI, ZeideSDI, ReinekeSDI, SDIMax, RDSDI, CCF, ...`. `RmvCode` supports the removals ledger.
+
+The longer-term target schema is already specified in `notes/duckdb-iterative-coupling-cells.md`
+— three pillars: `fvs_cycle_change` (5-year state transition ledger), `fvs_removals`
+(management/removal ledger), and `fvs_spatial_crosswalk` (spatial unit → FVS simulation unit).
+The spike's comparison views are the first concrete step toward `fvs_cycle_change`.
+
+**Confirming observation:** the existing `FVSOut.db` contains `FVS_Cases`, `FVS_Error`,
+`FVS_InvReference`, `FVS_Summary2`, and the derived `fvs_trajectory` tables — but **no
+`FVS_Carbon` table**, because the current keyfile enables no carbon extension. This
+independently corroborates that the spike must add `FMIn`/`CarbRept` + `CARBREDB`.
+
 ## Verified findings
 
 All verified on 2026-07-16 by reading Open-FVS source at
@@ -216,12 +252,22 @@ The spike is informative in every direction:
 Carbon must be diffed **separately** from base metrics. A summary-only comparison would show
 arm C passing while carbon is silently corrupt — the exact failure this spike exists to catch.
 
-Per-arm comparison:
+Per-arm comparison, executed in DuckDB by attaching all four arms' `FVSOut.db` at once:
 
 - **Exact equality** where transparency is expected (A vs B).
 - Absolute and relative differences for TPA, BA, SDI, QMD, total/merch volume.
 - Carbon pools reported as their own table, per cycle.
 - Runtime and restart-file size (operational cost of each mechanism).
+
+Because each arm writes its own SQLite database, the diff is a single DuckDB query joining
+attached catalogs on `(StandID, Year)` — no per-arm export or in-memory merge:
+
+```sql
+ATTACH 'arm_a/FVSOut.db' AS a (TYPE sqlite, READ_ONLY);
+ATTACH 'arm_b/FVSOut.db' AS b (TYPE sqlite, READ_ONLY);
+SELECT a.Year, a.BA - b.BA AS ba_delta, ...
+FROM a.FVS_Summary2 a JOIN b.FVS_Summary2 b USING (StandID, Year);
+```
 
 ### Layout
 
@@ -229,7 +275,7 @@ Per-arm comparison:
 experiments/spike_restart_fidelity/
   make_keyfiles.py    # emit A/B/C/D keyfiles from the fixture stand
   run_arms.R          # rFVS driver, executed on Windows via Rscript.exe
-  compare_arms.py     # diff FVS_Summary2 and FVS_Carbon across arms
+  compare_arms.py     # DuckDB: attach arm DBs, diff FVS_Summary2 and FVS_Carbon
   README.md           # how to run, and the recorded results
 ```
 
@@ -238,9 +284,14 @@ Windows-visible working directory.
 
 ## Verification
 
-- `compare_arms.py` is a pure function over result tables and is unit-tested without FVS,
-  using small fixture frames (`tests/test_spike_restart_fidelity.py`).
+- The comparison logic is separated from I/O: arm databases are attached by a thin loader, and
+  the diff/tolerance logic is unit-tested without FVS against small fixture tables built
+  in-memory in DuckDB (`tests/test_spike_restart_fidelity.py`).
 - The A-vs-B exact-equality assertion is the primary automated check.
+- A guard test asserts the carbon diff is reported even when the base-metric diff is empty —
+  the silent-corruption failure mode this spike exists to catch.
+- A precondition check fails loudly if an arm's `FVSOut.db` lacks `FVS_Carbon`, since a missing
+  carbon table would otherwise read as "no carbon difference".
 - Results are recorded in the experiment README and promoted to `notes/` with the
   architecture decision.
 
