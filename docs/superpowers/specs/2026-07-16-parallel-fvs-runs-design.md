@@ -271,12 +271,18 @@ FROM a.FVS_Summary2 a JOIN b.FVS_Summary2 b USING (StandID, Year);
 
 ### Layout
 
+Following the existing `research/<topic>/` convention (as used by `research/mgmt_units/`),
+not a new top-level `experiments/` tree:
+
 ```
-experiments/spike_restart_fidelity/
+research/restart_fidelity/
+  BRIEF.md            # context + how to run, matching research/mgmt_units/BRIEF.md
+  paths.py            # WSL <-> Windows path constants and translation (isolated here)
   make_keyfiles.py    # emit A/B/C/D keyfiles from the fixture stand
-  run_arms.R          # rFVS driver, executed on Windows via Rscript.exe
   compare_arms.py     # DuckDB: attach arm DBs, diff FVS_Summary2 and FVS_Carbon
-  README.md           # how to run, and the recorded results
+  run_arms.R          # rFVS driver, executed on Windows via Rscript.exe
+  outputs/            # per-arm FVSOut.db, restart files, result CSVs
+tests/test_restart_fidelity.py
 ```
 
 WSL↔Windows path translation is confined to a single helper. FVS must execute from a
