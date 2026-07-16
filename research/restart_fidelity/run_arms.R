@@ -91,13 +91,20 @@ run_until_settled <- function(max_iter = 20) {
   list(rtn = rtn, code = code)
 }
 
-run_arm_c_seg <- function(seg) {
+run_arm_c_seg <- function(seg, code = 2, tag = "c") {
+  # `code` is the stop point used for the store. Stop point 2 (just after the
+  # first Event Monitor call) is early in the cycle; FMDOUT -- which recomputes
+  # BIOSHRB from FLIVE -- runs later (fmmain.f:202), immediately before the
+  # carbon report (fmmain.f:206). Varying `code` tests whether the carbon
+  # divergence is a stop-point PLACEMENT artifact rather than state loss.
   fvsLoad("FVSsn", bin = FVSBIN)
+  k <- paste0("arm_", tag)
+  f <- function(y) paste0(k, "_", y, ".rst")
   cmd <- switch(seg,
-    c1 = "--keywordfile=arm_c.key --stoppoint=2,2004,arm_c_2004.rst",
-    c2 = "--restart=arm_c_2004.rst --stoppoint=2,2009,arm_c_2009.rst",
-    c3 = "--restart=arm_c_2009.rst --stoppoint=2,2014,arm_c_2014.rst",
-    c4 = "--restart=arm_c_2014.rst"
+    c1 = paste0("--keywordfile=", k, ".key --stoppoint=", code, ",2004,", f(2004)),
+    c2 = paste0("--restart=", f(2004), " --stoppoint=", code, ",2009,", f(2009)),
+    c3 = paste0("--restart=", f(2009), " --stoppoint=", code, ",2014,", f(2014)),
+    c4 = paste0("--restart=", f(2014))
   )
   cat("segment", seg, "cmdline:", cmd, "\n")
   fvsSetCmdLine(cmd)
@@ -133,8 +140,14 @@ run_arm_d <- function() {
   invisible(rtn)
 }
 
+# Segment args accept an optional stop code and output tag:
+#   run_arms.R c2            -> stop point 2, arm_c.*
+#   run_arms.R c2 6 e        -> stop point 6, arm_e.*
+code <- if (length(args) > 1) as.integer(args[2]) else 2
+tag  <- if (length(args) > 2) args[3] else "c"
+
 if (arm == "a") run_arm_a() else
 if (arm == "b") run_arm_b() else
 if (arm == "c") run_arm_c() else
 if (arm == "d") run_arm_d() else
-if (arm %in% c("c1", "c2", "c3", "c4")) run_arm_c_seg(arm)
+if (arm %in% c("c1", "c2", "c3", "c4")) run_arm_c_seg(arm, code, tag)

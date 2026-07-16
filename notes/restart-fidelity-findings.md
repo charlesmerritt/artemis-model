@@ -21,6 +21,7 @@ four 5-year cycles, **no management**. Base metrics = BA / Tpa / SDI.
 | **B** | In-process pause at 2004/09/14, resume same process | **0.0** | **0.0** | **exact — pause is transparent** |
 | **C** | Stop/store → `--restart` chain across processes | **0.0** | **5.38** | base exact; **carbon corrupted** |
 | **D** | In-memory tree-list rebuild | n/a | n/a | **mechanism does not compose** — see below |
+| **E** | Same as C but storing at **stop point 6** | **0.0** | **5.38** | identical to C — **no stop-point fix** |
 
 ## Arm B: in-process pause is exact
 
@@ -48,21 +49,60 @@ not:
 understating `Total_Stand_Carbon` by 3.93–5.38 tons/acre. Year 1999 matches, because it precedes
 any restart. The error does not accumulate — it recurs at each barrier.
 
-### Mechanism (strongly supported, not fully traced)
+### Mechanism — two wrong hypotheses, then the measurement
 
-1. `putstd.f`/`getstd.f` share an identical 36-common list containing **no FFE commons**
-   (`FMCOM`/`FMFCOM`/`FMPARM`/`FMPROP`/`FMSVCM`) — grep count 0, no FFE stash routine exists.
-2. `FMCOM` holds `COVTYP`, "species number for the predominant cover type in the stand".
-3. `fmcba.f:63-69`: *"FOR SOME ECOLOGICAL UNITS, THE HERB AND SHRUB VALUES ARE ONLY ESTIMATED
-   FROM FOREST TYPE"*, with `DATA FULIV /0.1, 0.25 (pines), 0.01, 0.03 (hardwoods) …`.
-4. `fmcrbout.f:89`: carbon = biomass × 0.5 for shrubs.
-5. Lose `COVTYP` → the lookup falls to the hardwood default → `(0.01 + 0.03) × 0.5 = `**`0.02`** —
-   exactly the observed constant.
+**Both of my source-read hypotheses were falsified. The measurement stands regardless.**
+
+*Wrong hypothesis 1 — "`putstd` omits FFE state."* False. `putstd.f:868` calls
+`IF (LFM) CALL FMPPPUT(...)`; `getstd.f:856` calls `IF (LFM) CALL FMPPGET(...)`. FFE state **is**
+serialized via a delegated routine with its own includes. The original grep only searched
+`putstd.f`'s own include list, missing the delegation. `FLIVE` (`fmppput.f:268`), `BIOSHRB`
+(`REALS(51)`), and `COVTYP` are all serialized.
+
+*Wrong hypothesis 2 — "`COVTYP` is lost, so the herb/shrub lookup falls to the hardwood
+default."* Dead: `COVTYP` **is** serialized (`fmppput.f`/`fmppget.f`, 2 matches each). The `0.02`
+≡ `(0.01+0.03) × 0.5` arithmetic match was suggestive but not probative.
+
+*What is actually established:*
+
+- `V(8) = BIOSHRB` (`fmcrbout.f:150`), carbon = biomass × 0.5 (`fmcrbout.f:89`).
+- `BIOSHRB = FLIVE(1) + FLIVE(2)` (`fmdout.f:283`); `FLIVE` = live fuels, 1=herbs, 2=shrubs
+  (`FMCOM.F77:73`).
+- `fmmain.f` calls `FMDOUT` (line 202) then `FMCRBOUT` (line 206) — adjacent and unconditional,
+  so `BIOSHRB` is recomputed immediately before it is reported.
+- Observed `0.02` ⇒ `FLIVE(1)+FLIVE(2) = 0.04`. At 1999 both arms give 3.60 ⇒ `FLIVE` sums to
+  7.2 there. So **`FLIVE` is reset to a forest-type default after restore**, despite being
+  serialized — something re-runs the FFE fuel initialization (`fmcba`) on restart.
+
+The precise call path was not traced. **The empirical result does not depend on it.**
 
 **Prediction vs. outcome:** the spec predicted `CWD`/`CWD2B`/`ALLDWN` (down wood, snags) would
-break, since those live in `FMCOM` too. They **survive exactly** — presumably recomputed from
-preserved tree/mortality state. The direction of the finding held; the specific mechanism did
-not. Do not trust the un-executed parts of the original source reading.
+break. They **survive exactly** — presumably recomputed from preserved tree/mortality state. The
+direction of the finding held; the mechanism did not. Do not trust the un-executed parts of the
+original source reading; the false claim is annotated in place in the spec.
+
+### Arm E — is it a stop-point placement artifact? No.
+
+Because `FMDOUT`/`FMCRBOUT` run late in the cycle while stop point 2 is early, a natural
+hypothesis was that the store simply happens before the carbon is computed — i.e. a *placement*
+artifact with a cheap fix. **Tested and rejected.** Arm E repeats arm C storing at **stop point 6**
+(just before ESTAB, later in the cycle):
+
+| Year | Continuous (A) | Restart @ sp2 (C) | Restart @ sp6 (E) |
+|---|---|---|---|
+| 1999 | 3.60 | 3.60 | 3.60 |
+| 2004 | 3.95 | **0.02** | 3.95 ✓ |
+| 2009 | 4.55 | **0.02** | **0.02** |
+| 2014 | 5.40 | **0.02** | **0.02** |
+
+Stop point 6 rescued 2004 only because that row was written by segment c1 **before** the store.
+2009 and 2014 were written **after** a restart and collapsed anyway. The rule:
+
+> **Every carbon report emitted by a restarted segment is broken.** The stop point only shifts
+> which rows are pre-store (correct) vs post-restart (broken).
+
+Arm E base metrics: max |delta| = 0.0. Arm E carbon: max |delta| = 5.38 — identical to arm C.
+**There is no cheap stop-point fix.**
 
 ## Arm D: the in-memory rebuild path does not compose
 
@@ -110,10 +150,21 @@ spec's terms:
    source. Restores Candidate 2, at the cost of a maintained FVS fork and a non-official binary.
 4. **Global barriers with carbon accepted as invalid.** Contradicts `projection.yaml`. Not viable.
 
-A narrower variant worth noting: only **one pool** is broken, via **one variable** (`COVTYP`).
-Recomputing or carrying `COVTYP` across the barrier may be enough to make restart carbon-safe —
-far cheaper than a full `putstd` patch. This is **untested** and should be verified before being
-relied on.
+**The cheap fixes are gone — both were tested and failed:**
+
+- *Carry `COVTYP` across the barrier* — dead. `COVTYP` is already serialized.
+- *Move the stop point later in the cycle* — dead. Arm E (stop point 6) diverges identically to
+  arm C; the stop point only shifts which rows break.
+
+Option 3 (patch and rebuild FVS) is now harder to scope than first thought: the bug is not a
+missing common, it is that restore re-runs FFE fuel initialization and clobbers a restored
+`FLIVE`. Fixing it means changing FVS restart *behaviour*, not just widening what `putstd`
+writes — a deeper fork than "add the FM* commons".
+
+**Recommendation: Candidate 1 or outer-loop signalling.** Arm B proves per-stand in-process
+trajectories are exact and FFE-safe, at zero implementation risk. If AOI-wide constraints must
+bind, outer-loop signalling gets them without eviction. Restart-based global barriers should not
+be built on this evidence.
 
 ## Limitations
 

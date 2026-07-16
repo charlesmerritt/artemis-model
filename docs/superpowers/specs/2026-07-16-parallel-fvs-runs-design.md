@@ -142,7 +142,19 @@ appending to the same stream unit. `cmdline.f:179` comments: *"store the last us
 that was used to store all the stands."* A multi-stand run accumulates every stand into one
 restart file. A global barrier is therefore mechanically implementable.
 
-### **`putstd`/`getstd` omit all FFE (fire/fuels/carbon) state**
+### ~~**`putstd`/`getstd` omit all FFE (fire/fuels/carbon) state**~~ — **THIS CLAIM IS FALSE**
+
+> **CORRECTION (2026-07-16, after execution).** The section below is **wrong** and is kept only
+> as a record of the reasoning error. `putstd.f:868` calls `IF (LFM) CALL FMPPPUT(...)` and
+> `getstd.f:856` calls `IF (LFM) CALL FMPPGET(...)` — FFE state **is** serialized, through a
+> delegated routine with its own includes. The grep below only searched `putstd.f`'s own include
+> list and body, and so missed the delegation. `FLIVE` (`fmppput.f:268`), `BIOSHRB`
+> (`REALS(51)`), and `COVTYP` are all serialized.
+>
+> The *conclusion* nevertheless survived the experiment, for a different reason: restart
+> demonstrably corrupts the FFE live-fuel herb/shrub pool anyway. See
+> `notes/restart-fidelity-findings.md` for what was actually measured. **Trust the measurements,
+> not this section.**
 
 `putstd.f` (896 lines) and `getstd.f` (900 lines) include an **identical set of 36 commons**:
 
