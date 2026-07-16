@@ -5,9 +5,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import duckdb
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from research.restart_fidelity import make_keyfiles, paths
+from research.restart_fidelity import compare_arms, make_keyfiles, paths
 
 
 def test_to_windows_translates_mnt_c():
@@ -42,3 +45,57 @@ def test_keyfile_is_four_five_year_cycles():
 
 def test_keyfile_names_its_output_db():
     assert "arm_c.db" in make_keyfiles.build_keyfile("c", "arm_c.db")
+
+
+# --- DuckDB arm comparison -------------------------------------------------
+
+
+def _make_arm(tmp_path: Path, name: str, ba: float, carbon: float | None) -> Path:
+    """Build a tiny SQLite DB shaped like FVS output."""
+    import sqlite3
+
+    db = tmp_path / f"{name}.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE FVS_Summary2 (StandID TEXT, Year INT, Tpa REAL, BA REAL, SDI REAL)")
+    conn.execute("INSERT INTO FVS_Summary2 VALUES ('S1', 2004, 100.0, ?, 50.0)", (ba,))
+    if carbon is not None:
+        conn.execute("CREATE TABLE FVS_Carbon (StandID TEXT, Year INT, Aboveground_Total REAL)")
+        conn.execute("INSERT INTO FVS_Carbon VALUES ('S1', 2004, ?)", (carbon,))
+    conn.commit()
+    conn.close()
+    return db
+
+
+def _con(arms: dict[str, Path]):
+    con = duckdb.connect()
+    compare_arms.attach_arms(con, arms)
+    return con
+
+
+def test_identical_arms_have_zero_summary_delta(tmp_path):
+    arms = {"a": _make_arm(tmp_path, "a", 80.0, 10.0), "b": _make_arm(tmp_path, "b", 80.0, 10.0)}
+    df = compare_arms.diff_summary(_con(arms), "a", "b")
+    assert df["ba_delta"].abs().max() == 0.0
+
+
+def test_summary_delta_detects_difference(tmp_path):
+    arms = {"a": _make_arm(tmp_path, "a", 80.0, 10.0), "b": _make_arm(tmp_path, "b", 85.0, 10.0)}
+    df = compare_arms.diff_summary(_con(arms), "a", "b")
+    assert df["ba_delta"].abs().max() == pytest.approx(5.0)
+
+
+def test_carbon_diff_is_reported_even_when_summary_matches(tmp_path):
+    """The silent-corruption case: base metrics identical, carbon diverged."""
+    arms = {"a": _make_arm(tmp_path, "a", 80.0, 10.0), "b": _make_arm(tmp_path, "b", 80.0, 7.5)}
+    con = _con(arms)
+    assert compare_arms.diff_summary(con, "a", "b")["ba_delta"].abs().max() == 0.0
+    carbon = compare_arms.diff_carbon(con, "a", "b")
+    assert carbon["delta"].abs().max() == pytest.approx(2.5)
+
+
+def test_missing_carbon_table_fails_loudly(tmp_path):
+    """A missing FVS_Carbon must raise, never read as 'no difference'."""
+    arms = {"a": _make_arm(tmp_path, "a", 80.0, 10.0), "b": _make_arm(tmp_path, "b", 80.0, None)}
+    con = _con(arms)
+    with pytest.raises(compare_arms.CarbonTableMissing):
+        compare_arms.assert_carbon_present(con, "b")
