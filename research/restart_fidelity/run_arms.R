@@ -25,4 +25,22 @@ run_arm_a <- function() {
   invisible(rtn)
 }
 
-if (arm == "a") run_arm_a()
+run_arm_b <- function() {
+  fvsLoad("FVSsn", bin = FVSBIN)
+  fvsSetCmdLine("--keywordfile=arm_b.key")
+  for (yr in PAUSE_YEARS) {
+    rtn <- fvsRun(2, yr)                       # stop point 2, at year yr
+    cat("arm b paused at", yr, "rtn:", rtn, "code:", fvsGetRestartcode(), "\n")
+    if (rtn != 0) {
+      cat("arm b: unexpected return", rtn, "at", yr, "\n")
+      break
+    }
+    s <- fvsGetSummary()                        # read state at the barrier
+    cat("  summary rows:", nrow(s), "\n")
+  }
+  rtn <- fvsRun()                               # run to completion
+  cat("arm b final return code:", rtn, "\n")
+  invisible(rtn)
+}
+
+if (arm == "a") run_arm_a() else if (arm == "b") run_arm_b()
