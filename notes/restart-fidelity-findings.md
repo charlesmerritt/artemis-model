@@ -5,6 +5,29 @@
 **Spec:** `docs/superpowers/specs/2026-07-16-parallel-fvs-runs-design.md`
 **Code:** `research/restart_fidelity/` · **Raw results:** `research/restart_fidelity/outputs/`
 
+## Scope decision (2026-07-16): carbon is out of scope
+
+**The project owner has set carbon aside.** It is not a current concern; the metrics of interest
+are **stand values — SDI, TPA, BA, QMD, volume**.
+
+This changes the verdict. Carbon was the *only* thing that ever diverged. On stand values, both
+restart arms are **exact (max |Δ| = 0.0)**. **Restart-based global barriers are therefore viable
+for the metrics in scope**, and the owner's original global-barrier architecture is supported by
+the evidence — read this document with that filter.
+
+Three consequences to carry forward, not to forget:
+
+1. `config/projection.yaml` still declares `carbon_extension: true` with all five IPCC pools.
+   That config and this scope decision disagree. Before any carbon result is reported
+   externally, the divergence recorded here must be resolved.
+2. **The carbon bug is evidence that restore does not restore everything.** It is currently
+   harmless only because nothing feeds FFE state back into growth in this fixture. **If FFE fire
+   is ever enabled** (BURN, SALVAGE, fuel-driven mortality), corrupted `FLIVE` could propagate
+   into mortality and therefore into stand values. The exactness below is conditional on no fire.
+3. If carbon is genuinely never needed, the cleanest move is to **drop the `FMIn` section
+   entirely**: no FFE state exists, so restart has less to get wrong. Keeping FFE active while
+   ignoring its output preserves the corrupted state for no benefit.
+
 ## Question
 
 Does FVS stop/restart preserve FFE carbon state, and does in-process pause reproduce a
@@ -22,6 +45,8 @@ four 5-year cycles, **no management**. Base metrics = BA / Tpa / SDI.
 | **C** | Stop/store → `--restart` chain across processes | **0.0** | **5.38** | base exact; **carbon corrupted** |
 | **D** | In-memory tree-list rebuild | n/a | n/a | **mechanism does not compose** — see below |
 | **E** | Same as C but storing at **stop point 6** | **0.0** | **5.38** | identical to C — **no stop-point fix** |
+| **M** | Multi-stand continuous, 5 stands | — | — | multi-stand reference |
+| **N** | Multi-stand stop/restart, 5 stands | **0.0** | (out of scope) | **exact — global barrier works** |
 
 ## Arm B: in-process pause is exact
 
@@ -131,40 +156,68 @@ Codes observed: `-2` = restored, resume pending; `2` = stored at stop point; `10
 end; return `0` = good running state (**not** `2`, which the plan wrongly predicted for a
 completed single-stand run).
 
-## Architecture decision
+## Architecture decision (revised under the carbon-out-of-scope filter)
 
-Per the spec's falsification rules: **C carbon ≠ A carbon → the finding is confirmed.**
-Restart-based **true global barriers are incompatible with valid carbon output**, and
-`config/projection.yaml` requires `carbon_extension: true` with all five IPCC pools.
+**Restart preserves stand values exactly. Global barriers are viable.**
 
-The project owner had chosen true global barriers over per-stand trajectories, reasoning that
-county-level TPO constraints are coming and retrofitting later would be worse. That decision was
-explicitly conditional on this spike. **The evidence does not support it as-is.** Options, in the
-spec's terms:
+On the metrics in scope — BA, Tpa, SDI — every arm that used the official state-transfer path
+matched the continuous run with **max |Δ| = 0.0**:
 
-1. **Candidate 1 — per-stand in-process trajectories.** Arm B proves these are exact and FFE-safe.
-   Embarrassingly parallel, no restart files. Cost: no AOI-wide constraints.
-2. **Outer-loop signalling.** Inner per-stand exact trajectories driven by a shadow-price/target
-   signal; outer loop adjusts until AOI-wide targets are met. Global constraints without eviction.
-3. **Patch `putstd`/`getstd`** to serialize the FM* commons and rebuild `FVSsn` from Open-FVS
-   source. Restores Candidate 2, at the cost of a maintained FVS fork and a non-official binary.
-4. **Global barriers with carbon accepted as invalid.** Contradicts `projection.yaml`. Not viable.
+| Comparison | Base max \|Δ\| |
+|---|---|
+| In-process pause (B) vs continuous (A) | **0.0** |
+| Stop/restart @ sp2 (C) vs continuous (A) | **0.0** |
+| Stop/restart @ sp6 (E) vs continuous (A) | **0.0** |
 
-**The cheap fixes are gone — both were tested and failed:**
+The owner's original choice — true global barriers with restart-file state transfer, motivated by
+incoming county-level TPO constraints — **is supported by this evidence** for stand values. The
+carbon objection that previously blocked it is out of scope by decision (see top of document).
 
-- *Carry `COVTYP` across the barrier* — dead. `COVTYP` is already serialized.
-- *Move the stop point later in the cycle* — dead. Arm E (stop point 6) diverges identically to
-  arm C; the stop point only shifts which rows break.
+Both in-process pause and file-based restart are exact on stand values, so the architecture can
+use whichever suits the orchestration model. Global barriers need eviction, and eviction is now
+demonstrated to be lossless for the metrics in scope.
 
-Option 3 (patch and rebuild FVS) is now harder to scope than first thought: the bug is not a
-missing common, it is that restore re-runs FFE fuel initialization and clobbers a restored
-`FLIVE`. Fixing it means changing FVS restart *behaviour*, not just widening what `putstd`
-writes — a deeper fork than "add the FM* commons".
+*Historical note:* before the scope decision, the carbon divergence made restart-based global
+barriers unsupportable, and the recommendation was Candidate 1 (per-stand in-process) or
+outer-loop signalling. Both cheap carbon fixes were tested and failed — `COVTYP` is already
+serialized, and stop-point placement only shifts which rows break. That reasoning is retained
+above and remains valid **if carbon ever re-enters scope**.
 
-**Recommendation: Candidate 1 or outer-loop signalling.** Arm B proves per-stand in-process
-trajectories are exact and FFE-safe, at zero implementation risk. If AOI-wide constraints must
-bind, outer-loop signalling gets them without eviction. Restart-based global barriers should not
-be built on this evidence.
+## Multi-stand restart (arms M / N): EXACT — the global-barrier mechanism works
+
+The highest-value untested claim was the multi-stand round-trip: a global barrier requires
+storing *all* stands in one file and rehydrating them, and that had only ever been **inferred**
+from `cmdline.f:179`. Now executed.
+
+Fixture: **5 SN stands**, `Inv_Year 2019`, 2019–2039, four 5-year cycles, no management.
+Barriers at 2024/2029/2034, stop point 6. Arm M = multi-stand continuous; arm N = multi-stand
+stop/restart chain.
+
+| Check | Result |
+|---|---|
+| Stands round-tripped | 5 / 5 |
+| Joined rows compared | 25 (5 stands × 5 cycles) |
+| **Divergent rows (BA/Tpa/SDI)** | **0** |
+| **Base metric max \|Δ\|** | **0.0** |
+
+**Restart-file sizes confirm all stands land in one file** — `arm_n_2024.rst` is 4,644,885 bytes
+for 5 stands vs ~774–905 KB for a single stand. `cmdline.f:179`'s "store all the stands" is now
+**measured, not inferred**.
+
+Return-code semantics confirmed along the way: `fvsRun()` returns `0` after each stand with more
+pending, and `2` = "finished processing all the stands". Multi-stand drivers must loop until `2`.
+
+**This validates the core mechanism a global barrier depends on.**
+
+## What is still not established
+
+- **No management at the barriers.** The actual use case is pause → apply treatment → resume.
+  Every arm so far is management-free. This is now the largest untested gap.
+- **No fire.** Exactness is conditional on nothing coupling FFE state back into mortality; the
+  FFE live-fuel state *is* known to be corrupted by restart (see above), so enabling BURN/SALVAGE
+  could propagate that corruption into stand values.
+- **Narrow fixtures.** 6 stands total across all arms, one variant, one region, one FVS version.
+- Two of my source readings in this spike were wrong. Prefer the measurements.
 
 ## Limitations
 

@@ -18,8 +18,20 @@ STAND_ID = "010006100083"
 INV_YEAR = 1999
 CYCLE_YEARS = 5
 
-_TEMPLATE = """\
-!!title: restart_fidelity_arm_{arm}
+# Multi-stand fixture: five SN stands sharing Inv_Year 2019, so one barrier year
+# lands on the same cycle boundary for every stand. 28-70 tree records each.
+# Used to test the claim that a restart file stores and rehydrates ALL stands --
+# the mechanism a global barrier depends on.
+MULTI_STANDS: tuple[tuple[str, str], ...] = (
+    ("448939744489998", "121705900034"),
+    ("448939819489998", "121705900036"),
+    ("448939827489998", "121708300141"),
+    ("448939977489998", "121700100063"),
+    ("448940000489998", "121708900049"),
+)
+MULTI_INV_YEAR = 2019
+
+_STAND_BLOCK = """\
 StdIdent
 {stand_id}               RestartFidelity_arm_{arm}
 StandCN
@@ -59,25 +71,43 @@ END
 SPLabel
   All_FIA_Plots
 Process
-Stop
 """
 
 
+def _block(arm: str, stand_id: str, stand_cn: str, inv_year: int, out_db: str, num_cycle: int) -> str:
+    return _STAND_BLOCK.format(
+        arm=arm,
+        stand_id=stand_id,
+        stand_cn=stand_cn,
+        inv_year=inv_year,
+        cycle_years=CYCLE_YEARS,
+        num_cycle=num_cycle,
+        out_db=out_db,
+        in_db="FVS_Data.db",
+    )
+
+
 def build_keyfile(arm: str, out_db: str, num_cycle: int = 4) -> str:
-    """Return the keyfile text for one arm.
+    """Return the single-stand keyfile text for one arm.
 
     `arm` is one of ARMS; `out_db` is the SQLite output filename FVS writes,
     relative to the run directory.
     """
     if arm not in ARMS:
         raise ValueError(f"unknown arm {arm!r}; expected one of {ARMS}")
-    return _TEMPLATE.format(
-        arm=arm,
-        stand_id=STAND_ID,
-        stand_cn=STAND_CN,
-        inv_year=INV_YEAR,
-        cycle_years=CYCLE_YEARS,
-        num_cycle=num_cycle,
-        out_db=out_db,
-        in_db="FVS_Data.db",
+    header = f"!!title: restart_fidelity_arm_{arm}\n"
+    return header + _block(arm, STAND_ID, STAND_CN, INV_YEAR, out_db, num_cycle) + "Stop\n"
+
+
+def build_multistand_keyfile(arm: str, out_db: str, num_cycle: int = 4) -> str:
+    """Return a keyfile covering every stand in MULTI_STANDS.
+
+    One `Process` block per stand, a single trailing `Stop` for the file. This is
+    the shape a global barrier needs: `putstd` is called per stand at the stop
+    point and accumulates every stand into one restart file (cmdline.f:179).
+    """
+    header = f"!!title: restart_fidelity_multistand_arm_{arm}\n"
+    blocks = "".join(
+        _block(arm, sid, cn, MULTI_INV_YEAR, out_db, num_cycle) for cn, sid in MULTI_STANDS
     )
+    return header + blocks + "Stop\n"

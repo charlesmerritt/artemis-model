@@ -47,6 +47,24 @@ def test_keyfile_names_its_output_db():
     assert "arm_c.db" in make_keyfiles.build_keyfile("c", "arm_c.db")
 
 
+def test_multistand_keyfile_has_one_block_per_stand():
+    kf = make_keyfiles.build_multistand_keyfile("m", "arm_m.db")
+    # One Process per stand, one trailing Stop for the whole file.
+    assert kf.count("Process") == len(make_keyfiles.MULTI_STANDS)
+    assert kf.count("StandCN") == len(make_keyfiles.MULTI_STANDS)
+    assert kf.rstrip().endswith("Stop")
+    assert kf.count("Stop\n") == 1
+    for cn, sid in make_keyfiles.MULTI_STANDS:
+        assert cn in kf
+        assert sid in kf
+
+
+def test_multistand_keyfile_uses_2019_schedule():
+    kf = make_keyfiles.build_multistand_keyfile("m", "arm_m.db")
+    assert "InvYear       2019" in kf
+    assert "NumCycle      4" in kf
+
+
 # --- DuckDB arm comparison -------------------------------------------------
 
 

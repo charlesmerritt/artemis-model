@@ -25,6 +25,48 @@ run_arm_a <- function() {
   invisible(rtn)
 }
 
+# Arm M: multi-stand continuous reference (5 stands, Inv_Year 2019).
+# fvsRun() processes ONE stand then returns 0 ("good running state"); it must be
+# called until it returns 2 ("finished processing all the stands").
+run_arm_m <- function() {
+  fvsLoad("FVSsn", bin = FVSBIN)
+  fvsSetCmdLine("--keywordfile=arm_m.key")
+  for (i in 1:50) {
+    rtn <- fvsRun()
+    cat("  arm m stand-loop iter", i, "rtn:", rtn, "\n")
+    if (rtn != 0) break
+  }
+  cat("arm m final return code:", rtn, "\n")
+  invisible(rtn)
+}
+
+# Arm N: multi-stand stop/restart. Barriers at 2024/2029/2034 (Inv_Year 2019).
+# Tests the claim that ONE restart file stores and rehydrates ALL stands --
+# the mechanism a global barrier is.
+MULTI_PAUSE <- c(2024, 2029, 2034)
+
+run_arm_n_seg <- function(seg, code = 6) {
+  fvsLoad("FVSsn", bin = FVSBIN)
+  f <- function(y) paste0("arm_n_", y, ".rst")
+  cmd <- switch(seg,
+    n1 = paste0("--keywordfile=arm_n.key --stoppoint=", code, ",2024,", f(2024)),
+    n2 = paste0("--restart=", f(2024), " --stoppoint=", code, ",2029,", f(2029)),
+    n3 = paste0("--restart=", f(2029), " --stoppoint=", code, ",2034,", f(2034)),
+    n4 = paste0("--restart=", f(2034))
+  )
+  cat("segment", seg, "cmdline:", cmd, "\n")
+  fvsSetCmdLine(cmd)
+  # Drive until FVS reports all stands done (2) or errors (1). A negative
+  # restart code is a signal to call again; 0 means another stand is pending.
+  for (i in 1:200) {
+    rtn  <- fvsRun()
+    code_now <- fvsGetRestartcode()
+    if (rtn != 0) break
+  }
+  cat("segment", seg, "settled rtn:", rtn, "restartcode:", code_now, "\n")
+  invisible(rtn)
+}
+
 run_arm_b <- function() {
   fvsLoad("FVSsn", bin = FVSBIN)
   fvsSetCmdLine("--keywordfile=arm_b.key")
@@ -150,4 +192,6 @@ if (arm == "a") run_arm_a() else
 if (arm == "b") run_arm_b() else
 if (arm == "c") run_arm_c() else
 if (arm == "d") run_arm_d() else
+if (arm == "m") run_arm_m() else
+if (arm %in% c("n1", "n2", "n3", "n4")) run_arm_n_seg(arm, code) else
 if (arm %in% c("c1", "c2", "c3", "c4")) run_arm_c_seg(arm, code, tag)
