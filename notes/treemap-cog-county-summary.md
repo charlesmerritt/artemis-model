@@ -21,3 +21,4 @@ The notebook opens a direct COG URL or STAC Item URL, optionally clips it to an 
 - Parsed all notebook code cells with `ast.parse`.
 - Smoke-tested continuous summaries, categorical counts, and vector clipping against a synthetic 4x4 EPSG:5070 raster.
 - Opened the provided remote COG and inspected metadata successfully.
+- Re-verified 2026-07-14: remote COG still opens over the network (`GTiff 154179×97279 float32 EPSG:5070`). This is the only notebook in `notebooks/` that needs neither the `/mnt/d` drive nor Earth Engine, so it is the most runnable today.
