@@ -1,138 +1,175 @@
-# ARTEMIS: Adaptive Regional Timber and Ecosystem Modeling Integrated Simulator
+# ARTEMIS: Adaptive Regional Timber Ecosystem Modeling through Iterative Simulation
 
-Deterministic, pixel-level (30 m) forward projection of forest stand dynamics using
-**FVS Southern variant**, initialized from **TreeMap 2022** + **FIA tree lists**,
-with management calibrated from **LCMS**. v1 extent: Florida. Designed to scale to
-full eastern US.
+ARTEMIS is an active research prototype for reproducible, spatially explicit forest
+projection. It links **TreeMap**, **FIA tree lists**, the **Forest Vegetation Simulator
+(FVS)**, remotely sensed landscape data, and iterative management scenarios to model how
+forest structure, timber volume, and carbon change through time.
 
----
+The intended v1 extent is Florida. Current implementation and validation work concentrates
+on a five-county north Florida pilot before statewide and eastern-US expansion.
 
-## Architecture decisions (locked)
+## Modeling frame
 
-| Decision | Value |
-|----------|-------|
-| Extent v1 | Florida (FIPS 12), FVS Southern (SN) variant throughout |
-| CRS | EPSG:5070 — CONUS Albers Equal Area, snapped to TreeMap 2022 grid |
-| Resolution | 30 m |
-| Projection horizon | 50 years, 5-year FVS cycles |
-| Forest state initialization | TreeMap 2022 (Houtman et al. 2025) + FIA CONUS SQLite |
-| Ownership | Harris, Caputo & Butler 2025 — 7 forest classes, 30 m, circa 2022 |
-| Soils | POLARIS via GEE community catalog |
-| Terrain | 3DEP 1/3 arc-sec via GEE, resampled to 30 m |
-| Climate | PRISM 30-year normals 1991–2020 via GEE |
-| Management calibration | LCMS Change "Tree Removal" 1985–2024 |
-| Harvest forward method | Pseudo-deterministic, fixed random seed (documented in `versions.lock`) |
-| Carbon pools | All five IPCC pools via FVS CARBON extension |
-| BMP rules | State-specific; Florida FSB Manual 2020 for v1; `config/bmp_rules.yaml` |
-| Build order | Growth pipeline → growth validation → harvest model → harvest validation |
-| Compute | GEE (raster ops) + local (FIA SQL, FVS prototype, Zarr assembly) + HPC (trajectory library, gated) |
-| Python toolchain | uv + ruff + pytest |
-| Publication bar | Full validation suite, data dictionary, methods writeup, `versions.lock` |
+| Dimension | Current direction |
+|---|---|
+| Spatial reference | EPSG:5070 (CONUS Albers Equal Area) |
+| Working grid | 30 m, aligned to TreeMap 2022 |
+| Growth model | FVS Southern (`SN`) variant |
+| Projection horizon | Approximately 50 years, using FVS cycles |
+| Initial forest state | TreeMap 2022 linked to FIA/FVS-ready tree lists |
+| Management evidence | LCMS tree removal, ownership, parcels, roads, water, and Florida BMP constraints |
+| Compute model | GEE for remote raster preparation; local Python/FVS for joins, simulation, painting, and validation |
+| Reproducibility | `uv`, pytest, fixed inputs/configuration, and documented iteration |
 
----
+See [`PLAN.md`](PLAN.md) for the target architecture. It is a build plan, not a claim that
+every stage is implemented.
 
-## Repository layout
+## Current implementation
 
-```
-├── config/
-│   ├── extent.geojson       # Florida state boundary (EPSG:4326; pipeline reprojects)
-│   ├── bmp_rules.yaml       # Riparian BMP buffer widths keyed by state FIPS
-│   └── projection.yaml      # CRS, resolution, chunk size, FVS cycle config
-│
-├── data/
-│   ├── raw/                 # Downloaded inputs — gitignored, listed in versions.lock
-│   ├── interim/             # Intermediate rasters/tables — gitignored
-│   └── processed/           # Final outputs — gitignored
-│
-├── pipeline/                # Python pipeline modules, one sub-package per step
-│   ├── s0_scaffold/         # Extent, grid, storage setup
-│   ├── s1_initial_state/    # TreeMap acquisition, FIA join, FVS-ready tree lists
-│   ├── s2_site_attributes/  # Soils, terrain, climate, site index, Zarr stack
-│   ├── s3_management/       # Stand segmentation, stream buffers, ownership, harvest model
-│   ├── s4_fvs/              # FVS wrapper, keyword templates, trajectory library, painting
-│   ├── s5_validation/       # Hindcast validation, BIGMAP cross-check, EVALIDator comparison
-│   └── s6_outputs/          # Raster packaging, summary tables, documentation assembly
-│
-├── gee/                     # Google Earth Engine scripts (Python via earthengine-api / geemap)
-│   └── scripts/
-│
-├── fvs/
-│   ├── regimes/             # Parameterized FVS keyword (.key) templates
-│   └── wrapper/             # Python wrapper around the FVS binary
-│
-├── tests/                   # pytest test suite
-│
-├── notebooks/               # Exploratory analysis and QC notebooks
-│
-├── PLAN.md                  # Full build plan with all decisions documented
-├── versions.lock            # Pinned dataset versions and access paths
-└── pyproject.toml           # uv project definition
-```
+- **Management-unit sketching:** `pipeline/s3_management/sketch_management_units.py`
+  processes Florida county-by-county and can create draft units from parcels, forest cover,
+  roads, water, and BMP exclusions. A Union County smoke run has completed; segmentation,
+  sliver merging, road-buffer policy, and terrain integration remain under review.
+- **FVS raster painting:** `pipeline/s4_fvs/paint_fvs_to_raster.py` maps stand-level FVS
+  trajectories back to TreeMap pixels for initial and final snapshots. It requires external
+  five-county trajectory, crosswalk, and raster files.
+- **GEE acquisition:** `gee/scripts/` exports LCMS, POLARIS, PRISM, and terrain inputs.
+- **Exploratory workflows:** `notebooks/` contains TreeMap summaries, clearcut-versus-
+  agriculture investigations, embedding-based AOI search, and an experimental FVS smoke
+  workflow.
+- **Validation:** pytest covers configuration, TreeMap clipping, management-unit sketching,
+  FVS painting, and reusable notebook helpers.
 
----
-
-## Scope (v1)
-
-**In scope:** deterministic, pixel-level forward projection using FVS Southern variant,
-initialized from TreeMap 2022 + FIA tree lists, with calibrated management from LCMS.
-
-**Out of scope (v1):** natural disturbance overlays (hurricane, SPB, fire, ice),
-climate-modified growth, stochastic Monte Carlo replicates, uncertainty quantification.
-
----
+Detailed findings, run history, unresolved decisions, and environment-specific gotchas live in
+[`notes/`](notes/README.md).
 
 ## Quickstart
 
-```bash
-# Install uv if not already present
-curl -LsSf https://astral.sh/uv/install.sh | sh
+ARTEMIS currently requires Python 3.14 and uses [`uv`](https://docs.astral.sh/uv/).
 
-# Create environment and install dependencies
+```bash
+# Create the environment and install locked dependencies
 uv sync
 
-# Run tests
-uv run pytest
+# Run the tracked test suite. The explicit path avoids scanning external data links.
+uv run pytest tests/
 
-# Enable tracked Git hooks (blocks accidental >99 MiB commits)
+# Enable the tracked hook that rejects accidentally staged files larger than 99 MiB
 git config core.hooksPath .githooks
 
-# Activate environment (optional — uv run works without activation)
-source .venv/bin/activate
+# Start Jupyter for exploratory workflows
+uv run jupyter lab
 ```
 
----
+For Earth Engine workflows, authenticate separately:
 
-## Future Rust components
+```bash
+uv run earthengine authenticate
+```
 
-Performance-critical path candidates for Rust once the Python pipeline is validated:
-- FVS output parser (cycle report → Parquet; currently the hot loop in trajectory library construction)
-- Pixel-to-trajectory lookup painter (embarrassingly parallel read from Parquet → write to Zarr)
+Most production data is intentionally not stored in Git. Local paths are declared in
+[`config/data_paths.yaml`](config/data_paths.yaml) and currently assume an external `/mnt/d`
+mount. Update that configuration for another workstation or HPC environment.
 
-These will live in `src/` as a Cargo workspace and be called from Python via PyO3 bindings.
-Not in scope for v1.
+## Runnable workflows
 
----
+### Draft management units
 
-## Dataset citations
+```bash
+# Inspect the five-county pilot without writing outputs
+uv run python -m pipeline.s3_management.sketch_management_units \
+  --pilot-five-county --dry-run
 
-See `versions.lock` for full version pins. Primary sources:
+# Build Union County and save QA layers
+uv run python -m pipeline.s3_management.sketch_management_units \
+  --county-fips 125 --save-qa --overwrite
 
-- Houtman et al. (2025). TreeMap 2022 CONUS. doi:10.2737/RDS-2025-0032
-- Harris, Caputo & Butler (2025). Forest ownership circa 2022. doi:10.2737/RDS-2025-0045
-- LCMS v2024.10 — USFS GTAC
-- PRISM 1991–2020 normals — Oregon State PRISM Climate Group
-- POLARIS — Chaney et al. 2019, via GEE community catalog
-- FIA CONUS SQLite — USFS FIA DataMart (download date recorded in `versions.lock`)
+# Process all Florida counties after pilot review
+uv run python -m pipeline.s3_management.sketch_management_units --all-florida
+```
 
----
+See [`pipeline/README.md`](pipeline/README.md) and
+[`notes/management_units.md`](notes/management_units.md) before promoting draft polygons.
 
-## Project Status (auto-generated 2026-07-01)
+### Paint FVS trajectories to TreeMap
 
-**Git status:** On `main`, 1 commit ahead of `origin/main` (not yet pushed). Uncommitted: `main.py` and two notes files modified, plus untracked `notes/fvs-to-raster-painting.md`, `notes/treemap-methodology.md`, a new `pipeline/` subtree, and `tests/test_s4_paint_fvs_to_raster.py`. Last commit 2 days ago.
+After staging the expected trajectory and matching TreeMap files, run:
 
-**Maturity:** Active WIP — ambitious, well-organized research pipeline (s0–s6 staged design in `PLAN.md`), with uv/pytest tooling, a large-file pre-commit guard, and dataset version pinning already in place, but the pipeline stages themselves are still mid-implementation.
+```bash
+uv run python -m pipeline.s4_fvs.paint_fvs_to_raster
+```
 
-**Low-hanging fruit:**
-- A fair amount of new work (`pipeline/`, a new test file, notes) is sitting uncommitted — worth a commit checkpoint before it's at risk of being lost.
-- One local commit hasn't been pushed to `origin/main` yet.
-- Note: a 266 MB `artemis-model-pre-largefile-cleanup-*.bundle` backup sits alongside this repo in `~/projects/` (from the recent large-file cleanup) — safe to delete once you've confirmed the cleanup is good, since it's just a pre-cleanup safety snapshot.
+The script chooses between candidate TreeMap vintages by coverage and writes initial and final
+basal-area GeoTIFFs. Do not combine a TreeMap 2020 crosswalk with a TreeMap 2022 raster. See
+[`notes/fvs-to-raster-painting.md`](notes/fvs-to-raster-painting.md) for snapshot semantics and
+known data-version traps.
+
+### Export remote raster inputs
+
+See [`gee/README.md`](gee/README.md) for commands and authentication requirements.
+
+### Explore notebooks
+
+See [`notebooks/README.md`](notebooks/README.md) for purpose, prerequisites, and the maintained
+entry point for each notebook group.
+
+## Repository map
+
+```text
+config/                    Spatial, BMP, projection, and local data-path configuration
+data/                      Gitignored raw/interim/processed data products
+gee/                       Google Earth Engine export scripts
+notebooks/                 Exploratory analyses and reusable notebook helpers
+pipeline/
+  s3_management/           Draft management-unit generation
+  s4_fvs/                  FVS trajectory-to-raster painting
+research/mgmt_units/       Segmentation research, state, and next steps
+scripts/                    Repository utility scripts
+tests/                      Pytest suite
+notes/                      Durable findings, decisions, run status, and open questions
+PLAN.md                    Target v1 architecture and build sequence
+pyproject.toml             Python metadata and dependencies
+uv.lock                    Locked Python environment
+```
+
+## Known constraints and open decisions
+
+- The local `/mnt/d` data mount and interactive Earth Engine credentials are required for many
+  workflows; notebook availability can therefore be environment-dependent.
+- FIA inventory years differ among stands. The common trajectory anchors are the initial cycle
+  and shared final year; arbitrary calendar years do not form complete synchronized snapshots.
+- TreeMap raster, crosswalk, and FIA/FVS outputs must use the same TreeMap vintage.
+- The draft management-unit workflow still needs visual QA and decisions on road buffers,
+  large-unit splitting, terrain, and sub-2 ha sliver handling.
+- The committed repository paints existing FVS output but does not yet provide a complete,
+  automated FVS trajectory-generation pipeline.
+- Natural disturbances, climate-modified growth, stochastic replicates, and formal uncertainty
+  quantification remain outside v1 scope.
+
+## Documentation maintenance
+
+`notes/` records discoveries faster than stable documentation changes. Periodically—and before
+merging a README update—review its status and index:
+
+```bash
+git status --short -- notes/
+find notes -maxdepth 1 -type f -name '*.md' -printf '%f\n' | sort
+```
+
+Promote stable findings into the nearest README, leave experiment-specific details in notes, and
+add a nested README only when a directory needs its own entry points, prerequisites, or operating
+instructions. Keep [`notes/README.md`](notes/README.md) as the index rather than duplicating every
+research detail in the root README.
+
+## Primary datasets
+
+- Houtman et al. (2025), TreeMap 2022 CONUS, DOI: `10.2737/RDS-2025-0032`
+- Harris, Caputo & Butler (2025), forest ownership circa 2022, DOI: `10.2737/RDS-2025-0045`
+- USFS Forest Inventory and Analysis (FIA) DataMart
+- USFS Forest Vegetation Simulator, Southern variant
+- LCMS v2024.10
+- PRISM 1991–2020 normals
+- POLARIS soils via the GEE community catalog
+- USGS 3DEP terrain
+
+Dataset version pinning and a publication-ready data dictionary remain planned deliverables.
