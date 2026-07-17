@@ -168,3 +168,15 @@ of everything similar. Helpers are in `clearcut_ag_common.py`.
 - **Gotcha:** the geemap/ipyleaflet map cells embed widget state into the notebook on execution
   (a 16.9 MB file!). Strip `nb.metadata["widgets"]` (and widget-view outputs) before committing —
   the committed notebook is ~17 KB.
+
+### Predecessor prototype: `notebooks/Similarity-Embeddings.ipynb`
+The AOI finder is the productionized successor to `Similarity-Embeddings.ipynb`, a bare-bones
+scratch notebook that first demonstrated AlphaEarth cosine similarity. Keep it for reference, but
+**it is superseded and not maintained**:
+- Uses the raw `GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL` collection directly (dot-product similarity
+  to a single Ocala reference point), no county AOI, no vectorization, no helpers.
+- Calls `ee.Authenticate()` / `ee.Initialize()` inline (interactive) instead of `cac.init_ee()`.
+- **Brittle hardcoded path:** cell 4 reads `data/raw/tl_2022_us_state/tl_2022_us_state.shp`
+  (relative → the `data/raw → /mnt/d` symlink). Its committed output already carries a stored
+  `DataSourceError: ... No such file or directory` from when the drive was detached, and the last
+  cell is empty. Prefer the AOI finder for any real work.
