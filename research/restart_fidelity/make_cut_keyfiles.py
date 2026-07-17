@@ -20,6 +20,7 @@ from __future__ import annotations
 from research.restart_fidelity.make_keyfiles import (
     CYCLE_YEARS,
     INV_YEAR,
+    MULTI_INV_YEAR,
     STAND_CN,
     STAND_ID,
 )
@@ -63,7 +64,6 @@ END
 SPLabel
   All_FIA_Plots
 Process
-Stop
 """
 
 
@@ -110,4 +110,34 @@ def build_cut_keyfile(
     if thin_year is not None and thin_prop is not None:
         parts.append("\n" + _thindbh_line(thin_year, thin_prop) + "\n")
     parts.append(_OUTPUT_AND_INPUT.format(out_db=out_db))
+    parts.append("Stop\n")
+    return "".join(parts)
+
+
+def build_multistand_cut_keyfile(
+    arm: str,
+    out_db: str,
+    stands: tuple[tuple[str, str], ...],
+    num_cycle: int = 4,
+) -> str:
+    """Multi-stand gate keyfile, no carbon, no scheduled thin.
+
+    `stands` is a sequence of (stand_cn, stand_id). Cuts are injected per stand
+    at runtime (fvsCutNow / fvsAddActivity), so the orchestrator can cut some
+    stands in a bundle and not others. All stands share the 2019 schedule.
+    """
+    parts = [_HEADER.format(arm=arm)]
+    for cn, sid in stands:
+        parts.append(
+            _SCHEDULE.format(
+                arm=arm,
+                stand_id=sid,
+                stand_cn=cn,
+                inv_year=MULTI_INV_YEAR,
+                cycle_years=CYCLE_YEARS,
+                num_cycle=num_cycle,
+            )
+        )
+        parts.append(_OUTPUT_AND_INPUT.format(out_db=out_db))
+    parts.append("Stop\n")
     return "".join(parts)

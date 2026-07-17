@@ -34,3 +34,19 @@ Mechanism notes (cost real debugging):
 
 NOT yet tested: per-stand targeting within a multi-stand bundle (cut some
 stands, not others) -- the mechanism even-flow allocation needs. Next check.
+
+--- PER-STAND TARGETING (2026-07-17) ---
+
+2-stand bundle (121705900034, 121705900036), cut ONLY the first at 2024, 30%.
+Driver pauses each stand at stop point 2, checks fvsGetStandIDs, cuts only the
+target (cut-once guarded; each stand re-stops at SP2 twice, cut applied once).
+
+  target 121705900034 @2024:  pre 1656.3 -> post 1159.4 TPA = 0.700 (30% removed)
+  other  121705900036:        max |delta| vs no-cut baseline = 0.0 (untouched)
+
+VERDICT: PASS. Selective per-stand harvest within a bundle works; non-target
+stands are bit-identical to the no-cut baseline. This is the mechanism even-flow
+allocation needs -- cut the stands the allocation selects, leave the rest.
+
+Gotcha: fvsRun(2,year) re-stops at a stand's stop point 2 AFTER a cut, so a
+naive loop double-cuts. Guard each stand to at most one cut per barrier.

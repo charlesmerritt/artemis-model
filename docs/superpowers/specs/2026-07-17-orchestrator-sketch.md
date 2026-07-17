@@ -64,7 +64,21 @@ volume, so restart is faithful for everything this objective touches. `carbon_ex
    threshold value is itself a parameter to justify and tune. Excluded stands are a reviewable
    list, never silent drops.
 
-## The Gate: management-injection spike (next build)
+## The Gate: management-injection spike — PASSED (2026-07-17)
+
+**Result: PASS.** See `notes/restart-fidelity-findings.md` and
+`research/restart_fidelity/outputs/gate_cut_injection.txt`. A 30% proportional thin, three
+mechanisms: native `ThinDBH` keyword (G1) ≡ `fvsCutNow` in-process (G2) ≡ `fvsAddActivity`
+after a restart (G3), all exact on stand values (max |Δ| = 0.0). Per-stand targeting also
+proven: cutting one stand in a 2-stand bundle left the other bit-identical to a no-cut baseline.
+
+Two mechanism findings the orchestrator must respect:
+- `fvsCutNow` works only at stop point 2 and **not** right after a restart restore; the restart
+  path uses `fvsAddActivity(year, "base_thindbh", ...)` instead.
+- `fvsRun(2, year)` re-stops at a stand's stop point 2 *after* a cut, so a naive loop
+  double-cuts; guard each stand to one cut per barrier.
+
+The original gate description follows for context.
 
 Everything above rests on an **unproven** step: applying `fvsCutNow` at a barrier and resuming,
 and applying *different* cuts to *different* stands within one restart segment. The spike so far
@@ -111,7 +125,8 @@ owner's flow. Guards to build (before or alongside the orchestrator):
 | Multi-stand restart barrier, exact on stand values | **Proven** (arm N) |
 | In-process pause exact | **Proven** (arm B) |
 | Restart preserves carbon | **Disproven** — out of scope, `carbon_extension=false` |
-| Management injection at a barrier | **Unproven — the Gate** |
+| Management injection at a barrier | **Proven (2026-07-17)** — gate passed |
+| Per-stand selective cut within a bundle | **Proven (2026-07-17)** — non-target untouched |
 | Even-flow allocation / rolling-horizon LP | Not started |
 | Stand selection / bundling layer | Not started |
 

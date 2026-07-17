@@ -51,3 +51,18 @@ def test_thindbh_is_fixed_width_formatted():
     assert line.startswith("ThinDBH")
     # keyword occupies cols 1-10, then five 10-wide fields = 60 chars.
     assert len(line) == 60
+
+
+def test_multistand_cut_keyfile_has_block_per_stand():
+    from research.restart_fidelity.make_keyfiles import MULTI_STANDS
+
+    stands = MULTI_STANDS[:2]
+    kf = mck.build_multistand_cut_keyfile("t", "t.db", stands)
+    assert kf.count("StandCN") == 2
+    assert kf.count("Process") == 2
+    assert kf.rstrip().endswith("Stop")
+    for cn, sid in stands:
+        assert cn in kf and sid in kf
+    # no scheduled thin and no carbon: cuts are injected per stand at runtime.
+    assert "ThinDBH" not in kf
+    assert "FMIn" not in kf
