@@ -79,4 +79,4 @@ def start_and_report(task: ee.batch.Task, description: str) -> None:
     task.start()
     print(f"  ✓  {description}")
     print(f"     Task ID: {task.id}")
-    print(f"     Monitor: https://code.earthengine.google.com/tasks")
+    print("     Monitor: https://code.earthengine.google.com/tasks")

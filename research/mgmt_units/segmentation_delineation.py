@@ -23,11 +23,9 @@ import seaborn as sns
 import yaml
 from rasterio.features import shapes
 from rasterio.mask import mask as rio_mask
-from rasterio.windows import from_bounds
 from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 from skimage.segmentation import felzenszwalb, slic
-from skimage.util import img_as_float
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -325,8 +323,6 @@ def process_segmentation_strategy(
         "US SE Streams" / "US SE Streams.gdb"
     )
     evt_path = data_root / "LF2022_EVT_CONUS" / "LF2022_EVT_CONUS" / "Tif" / "LF2022_EVT_CONUS.tif"
-    treemap_path = data_root / "TreeMap-2022" / "Data" / "TreeMap2022_CONUS.tif"
-    ownership_path = data_root / "RDS-2025-0045" / "Data" / "US_forest_ownership.tif"
 
     # County name mapping
     county_name_map = {
@@ -605,8 +601,8 @@ def main():
         sigma=1.0,
     )
 
-    # 4. Compare strategies
-    summary = compare_strategies(naive_gdf, felz_gdf, slic_gdf, output_dir)
+    # 4. Compare strategies (writes comparison outputs to output_dir)
+    compare_strategies(naive_gdf, felz_gdf, slic_gdf, output_dir)
 
     logger.info("Analysis complete!")
     logger.info(f"Results saved to {output_dir}")
