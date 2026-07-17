@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # .python-version pins 3.14; pyproject requires >=3.14.
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run tests
+        run: uv run pytest tests/ -v
+
+# Scope notes
+#
+# Runs the host-independent suite. Tests needing the external data drive (/mnt/d)
+# skip automatically via `_data_paths_or_skip` in tests/test_config.py, and the
+# clearcut/ag tests skip when their generated CSVs are absent. Nothing here needs
+# that drive, so CI is green on a bare runner.
+#
+# NOT covered, deliberately:
+#   - FVS itself. FVS is a Windows DLL on the workstation; WSL2 (and this runner)
+#     cannot execute it. The restart-fidelity arms are run by hand -- see
+#     research/restart_fidelity/README.md. The 11 tests for that work ARE covered
+#     here, because keyfile generation and the DuckDB comparison are pure.
+#   - ruff. It is not configured in pyproject and currently reports 9 pre-existing
+#     errors in code unrelated to this branch, so enabling it here would red-build
+#     work this branch did not touch. research/restart_fidelity/ is already
+#     ruff-clean. Adding lint is a reasonable follow-up once those are addressed.
