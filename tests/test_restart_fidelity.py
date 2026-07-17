@@ -65,6 +65,18 @@ def test_multistand_keyfile_uses_2019_schedule():
     assert "NumCycle      4" in kf
 
 
+def test_parallel_demo_builds_one_stand_worker_keyfile():
+    """The parallel launcher gives each worker a single-stand keyfile."""
+    from research.restart_fidelity import parallel_demo
+
+    cn, sid = make_keyfiles.MULTI_STANDS[0]
+    kf = parallel_demo._worker_keyfile("pw1", sid, cn, "pw1.db")
+    assert kf.count("StandCN") == 1
+    assert cn in kf and sid in kf
+    assert "pw1.db" in kf
+    assert kf.rstrip().endswith("Stop")
+
+
 # --- DuckDB arm comparison -------------------------------------------------
 
 

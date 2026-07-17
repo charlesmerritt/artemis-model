@@ -109,6 +109,41 @@ print(s.to_string(index=False))
 comparison shows a restart arm passing while carbon is silently corrupt. `assert_carbon_present`
 raises `CarbonTableMissing` so an absent table can never read as "no difference".
 
+## 5b. Spin up multiple FVS instances (the parallelism demo)
+
+Official FVS keeps stand state in **global** common blocks, so two stands cannot
+share one process safely. Isolation is therefore per **OS process**: each stand (or
+bundle) gets its own keyfile, its own `Rscript` worker, and its own output DB.
+
+`parallel_demo.py` launches one concurrent worker per stand and reports timing:
+
+```bash
+# after staging the run dir (section 2)
+uv run python -m research.restart_fidelity.parallel_demo
+```
+
+Example output (5 stands, measured):
+
+```
+launched 5 concurrent FVS workers; wall-clock 0.8s
+  pw1  stand 121705900034  0.51s  ok
+  ...
+sum of per-worker time 3.0s vs wall-clock 0.8s  — the gap is the parallel win.
+```
+
+**Verified:** the 5 concurrent workers produce 5 distinct, correct projections, and
+each stand's values are **bit-identical** to running the same stands sequentially in
+one process (arm M). Process isolation fully contains FVS's global state.
+
+**What this is and isn't.** This demonstrates the *parallel spin-up* only. It is **not**
+the ARTEMIS orchestrator — there is no work queue, no management policy, and no 5-year
+barrier coupling; every worker runs straight to the horizon. Those are designed (see the
+spec) but not built. To scale it, a real launcher would cap concurrency (a process pool
+sized to cores) and group stands into bundles per worker rather than one process each.
+
+Files: `parallel_demo.py` (launcher, pure Python + subprocess) and `parallel_worker.R`
+(the one-worker unit it spawns).
+
 ## 6. Run the tests
 
 ```bash
@@ -127,6 +162,8 @@ The tests exercise keyfile generation and the DuckDB comparison against small in
 | `make_keyfiles.py` | Keyfile generation. `build_keyfile` (1 stand), `build_multistand_keyfile` (5 stands). |
 | `compare_arms.py` | DuckDB attach + diff. `diff_summary`, `diff_carbon`, `assert_carbon_present`. |
 | `run_arms.R` | rFVS driver for every arm. Runs on Windows. |
+| `parallel_demo.py` | Launches N concurrent FVS workers, one per stand (section 5b). |
+| `parallel_worker.R` | The single-worker unit `parallel_demo.py` spawns. Runs on Windows. |
 | `outputs/` | Committed result `.txt` files — the measurements, independent of the run dir. |
 | `BRIEF.md` | Research context, per-arm results, decisions. |
 
