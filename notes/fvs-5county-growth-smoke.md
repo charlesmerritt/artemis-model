@@ -1,5 +1,28 @@
 # FVS five-county growth smoke notebook
 
+## ⚠️ Current repo state (verified 2026-07-14) — notebook does not run as committed
+
+**Renamed `notebooks/FVS_5county_growth_smoke.ipynb` → `.ipynb.old` on 2026-07-14** to mark it
+retired/broken. Two independent blockers:
+
+1. **Missing pipeline modules (hard blocker, import-time).** The notebook's first code cell
+   imports `select_smoke_stands`, `write_smoke_keyfiles` from `pipeline.s4_fvs.keyword_builder`,
+   plus `pipeline.s4_fvs.probe_libraries`, `pipeline.s4_fvs.run_smoke`, and
+   `pipeline.s4_fvs.summarize_smoke`. **None of these four modules exist in the repo** — only
+   `pipeline/s4_fvs/paint_fvs_to_raster.py` is present. They were never committed to git history
+   (`git log --all -- '*keyword_builder*'` is empty) and are not gitignored. The
+   `tests/test_s4_fvs_keyword_builder.py` file this note references below is likewise absent.
+   The notebook therefore raises `ModuleNotFoundError` at cell 1, before touching any data. The
+   "Added pipeline helpers" and "Verification run" sections below describe code that must have
+   existed in an uncommitted/lost worktree — treat them as a spec for what to re-create, not as
+   the current repo contents.
+2. **External drive unmounted.** `INPUT_DB = /mnt/d/TreeMap_Chaz/output2020/FIA_5county_consolidated.db`
+   lives on the external PERSEUS_DAT drive, which is currently a stale mount (`/mnt/d` reads fail
+   with "No such device"). Even with the modules restored, the notebook needs that drive remounted.
+
+To restore the notebook: recover/rewrite the four `pipeline/s4_fvs/*` helper modules (and their
+test), then remount the D: drive.
+
 ## Purpose
 
 Sprint artifact for growing TreeMap/FIA stands in the five-county Florida AOI with FVS Southern (`SN`). The implementation uses the existing consolidated input DB rather than rebuilding TreeMap or FIA inputs.
@@ -10,9 +33,9 @@ Primary input:
 
 Primary notebook:
 
-- `notebooks/FVS_5county_growth_smoke.ipynb`
+- `notebooks/FVS_5county_growth_smoke.ipynb.old` (renamed from `.ipynb`, 2026-07-14 — broken)
 
-## Added pipeline helpers
+## Added pipeline helpers (⚠️ currently MISSING from the repo — see warning above)
 
 - `pipeline/s4_fvs/keyword_builder.py` — deterministic stand selection and no-management keyfile rendering for plot- or condition-level FIA2FVS tables.
 - `pipeline/s4_fvs/generate_smoke_keyfiles.py` — CLI for writing per-stand `.key` files plus `manifest.csv`.

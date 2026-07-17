@@ -1,28 +1,44 @@
-# GEE Scripts
+# Google Earth Engine exports
 
-Google Earth Engine scripts for raster acquisition and preprocessing.
-All scripts use the Python `earthengine-api` + `geemap` stack.
+`gee/scripts/` prepares remote raster inputs for ARTEMIS with the Python
+`earthengine-api`. Exports target the Florida extent and are intended to be aligned to the
+project's EPSG:5070, 30 m grid.
 
-Authenticate once with:
+## Setup
+
 ```bash
+uv sync
 uv run earthengine authenticate
 ```
 
+Pass `--project YOUR_GEE_PROJECT` when the default Earth Engine project is not configured.
+
 ## Script inventory
 
-| Script | Step | Output |
-|--------|------|--------|
-| `scripts/clip_treemap.py` | 1a | `treemap_2022_clipped.tif` exported to Drive/GCS |
-| `scripts/terrain_3dep.py` | 2b | `slope.tif`, `aspect.tif`, `elevation.tif` |
-| `scripts/soils_polaris.py` | 2a | `soil_awc.tif`, `clay_pct.tif`, `ph.tif` |
-| `scripts/climate_prism.py` | 2c | `tmean.tif`, `precip.tif` |
-| `scripts/lcms_export.py` | 3c | LCMS change stack for harvest model training |
-| `scripts/ownership_clip.py` | 3c | `ownership_class.tif` clipped to Florida |
+| Script | Purpose | Useful options |
+|---|---|---|
+| `scripts/export_lcms.py` | Export annual LCMS land-cover and change bands | `--start-year`, `--end-year`, `--folder` |
+| `scripts/export_polaris.py` | Export depth-weighted POLARIS soil properties | `--folder` |
+| `scripts/export_prism.py` | Export PRISM 1991–2020 climate normals | `--folder` |
+| `scripts/export_terrain.py` | Export elevation, slope, aspect, and optional TPI | `--dem-source`, `--export-tpi`, `--folder` |
+| `scripts/gee_utils.py` | Shared initialization, extent, grid, and export helpers | Imported by the export scripts |
 
-## Notes
+Examples:
 
-- All exports target EPSG:5070, 30 m resolution, snapped to TreeMap grid.
-- Use `crsTransform` not `scale` in GEE exports to guarantee pixel alignment.
-- POLARIS asset path: `projects/sat-io/open-datasets/POLARIS/`
-  (GEE community catalog — verify asset ID before running).
-- Export to Google Drive for local pipeline, or GCS bucket for HPC-bound jobs.
+```bash
+uv run python gee/scripts/export_lcms.py --start-year 1985 --end-year 2024
+uv run python gee/scripts/export_polaris.py
+uv run python gee/scripts/export_prism.py
+uv run python gee/scripts/export_terrain.py --dem-source 3dep --export-tpi
+```
+
+Each command submits Earth Engine export tasks; monitor and start tasks in the Earth Engine task
+manager when required. Use `--help` on a script for its current options.
+
+## Alignment and provenance
+
+- Keep categorical rasters categorical when reprojecting or resampling.
+- Use the shared grid helpers rather than independent `scale` settings so outputs remain aligned.
+- POLARIS uses the GEE community catalog; verify asset availability before a production run.
+- Record export dates and source versions in project notes until a formal dataset lock file is
+  implemented.
