@@ -21,7 +21,15 @@ Two things must be true for this to be publishable:
 
 1. **Parallel/segmented execution must not change results** versus an uninterrupted run.
 2. **State must survive the 5-year barriers** — including carbon/fuels, which
-   `projection.yaml` requires (`carbon_extension: true`, all five IPCC pools).
+   `projection.yaml` required at the time of writing (`carbon_extension: true`, all five IPCC
+   pools).
+
+> **Update (2026-07-16, post-execution).** Carbon was taken **out of scope** by the project owner;
+> the metrics of concern are stand values (SDI/TPA/BA). `config/projection.yaml` now sets
+> `carbon_extension: false`. Measured outcome: stop/restart and in-process pause are **exact on
+> stand values** (max |Δ| = 0.0, including a 5-stand multi-stand round-trip), and **only carbon
+> diverges** — so restart-based global barriers *are* viable for the metrics in scope. See
+> `notes/restart-fidelity-findings.md`.
 
 ## Framing correction
 

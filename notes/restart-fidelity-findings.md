@@ -17,9 +17,12 @@ the evidence — read this document with that filter.
 
 Three consequences to carry forward, not to forget:
 
-1. `config/projection.yaml` still declares `carbon_extension: true` with all five IPCC pools.
-   That config and this scope decision disagree. Before any carbon result is reported
-   externally, the divergence recorded here must be resolved.
+1. `config/projection.yaml` now sets **`carbon_extension: false`**, aligning the config with this
+   decision (it previously declared `true`). `carbon_pools` is retained as the intended set for
+   when carbon returns. `tests/test_config.py::test_projection_config_carbon_is_disabled` is a
+   **tripwire**: re-enabling the flag fails the suite, forcing a conscious decision rather than a
+   silent one. Before any carbon result is reported externally, the divergence recorded here must
+   be resolved. Continuous (unsegmented) runs are unaffected.
 2. **The carbon bug is evidence that restore does not restore everything.** It is currently
    harmless only because nothing feeds FFE state back into growth in this fixture. **If FFE fire
    is ever enabled** (BURN, SALVAGE, fuel-driven mortality), corrupted `FLIVE` could propagate

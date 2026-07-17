@@ -13,10 +13,15 @@ nothing else is built until this reports.
 **no FFE commons** (`FMCOM`/`FMFCOM`/`FMPARM`/`FMPROP`/`FMSVCM`). `FMCOM` holds `CWD` (coarse
 woody debris), `CWD2B` ("debris-in-waiting … scheduled to become down debris at appropriate
 points in the future"), and `ALLDWN` (snag falldown timing). If that reading is right,
-restart-based global barriers silently corrupt carbon — and `config/projection.yaml` requires
-`carbon_extension: true` with all five IPCC pools.
+restart-based global barriers silently corrupt carbon.
 
 This is **source-read evidence**. The spike tests it.
+
+> **Outcome (2026-07-16).** That source reading was **wrong** — `putstd` delegates FFE
+> serialization to `FMPPPUT` (`putstd.f:868`). But restart *does* corrupt carbon anyway, for a
+> different reason (`FLIVE` is reset on restore). Stand values are **exact**. Carbon is now out of
+> scope and `config/projection.yaml` sets `carbon_extension: false`. See the Results section and
+> `notes/restart-fidelity-findings.md`.
 
 ## 1. Operating environment (verified)
 
@@ -31,25 +36,8 @@ This is **source-read evidence**. The spike tests it.
 
 ## 2. How to run
 
-```bash
-# Stage (once)
-mkdir -p /mnt/c/FVS/artemis_spike
-cp /mnt/c/FVS/Artemis_project/FVS_Data.db /mnt/c/FVS/artemis_spike/FVS_Data.db
-
-# Generate a keyfile
-uv run python -c "
-from research.restart_fidelity import make_keyfiles, paths
-(paths.SPIKE_DIR_WSL / 'arm_a.key').write_text(make_keyfiles.build_keyfile('a', 'arm_a.db'))
-"
-
-# Run an arm (a | b | c | d)
-cd /mnt/c/FVS/artemis_spike && \
-  /mnt/c/FVS/FVSSoftware/R/R-4.5.0/bin/x64/Rscript.exe \
-  "$(wslpath -w /home/chazm/projects/artemis-model/.claude/worktrees/parallel-fvs-runs/research/restart_fidelity/run_arms.R)" a
-
-# Compare
-uv run pytest tests/test_restart_fidelity.py -v
-```
+See [`README.md`](README.md) — the operational guide (prerequisites, staging, per-arm commands,
+comparison, tests, and the gotchas). Kept there so there is one source of truth for commands.
 
 ## 3. Fixture (verified)
 

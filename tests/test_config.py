@@ -31,12 +31,30 @@ def test_projection_config_fvs_cycles(projection_config):
 
 
 def test_projection_config_carbon_pools(projection_config):
+    """The intended pool set for when carbon is re-enabled. See the test below."""
     expected = {
         "aboveground_live", "belowground_live", "dead_wood",
         "forest_floor", "soil_organic"
     }
     actual = set(projection_config["fvs"]["carbon_pools"])
     assert actual == expected
+
+
+def test_projection_config_carbon_is_disabled(projection_config):
+    """Carbon must stay off until the restart bug is fixed.
+
+    FVS stop/restart silently resets the FFE live-fuel state: Forest_Shrub_Herb
+    collapses to a constant 0.02 and Total_Stand_Carbon is understated by ~8% at
+    every 5-year barrier, while BA/Tpa/SDI remain bit-identical. Because the
+    corruption is invisible to any summary-level check, this is a tripwire rather
+    than a preference -- flipping the flag back must be a conscious act.
+
+    Evidence: notes/restart-fidelity-findings.md (arms A/C/E, measured 2026-07-16).
+    """
+    assert projection_config["fvs"]["carbon_extension"] is False, (
+        "carbon_extension must remain false for iteratively coupled runs; "
+        "see notes/restart-fidelity-findings.md"
+    )
 
 
 def test_projection_config_harvest_seed_is_locked(projection_config):
