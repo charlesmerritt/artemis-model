@@ -95,7 +95,18 @@ def build_cut_keyfile(
     If `thin_year`/`thin_prop` are given, a scheduled ThinDBH is inserted (arm G1
     baseline). Otherwise no management is scheduled and the cut is injected at
     runtime via fvsCutNow (arms G2/G3).
+
+    Supplying only one of the two is a caller error, not a request for the
+    unmanaged shape: silently dropping the thin would produce a G1 "baseline"
+    with no cut in it, invalidating every arm compared against it with no
+    signal at all.
     """
+    if (thin_year is None) != (thin_prop is None):
+        raise ValueError(
+            "thin_year and thin_prop must both be given (scheduled thin) or both "
+            f"be omitted (runtime injection); got thin_year={thin_year!r}, "
+            f"thin_prop={thin_prop!r}"
+        )
     parts = [
         _HEADER.format(arm=arm),
         _SCHEDULE.format(

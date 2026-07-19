@@ -9,6 +9,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from research.restart_fidelity import make_cut_keyfiles as mck
@@ -27,6 +29,20 @@ def test_nocut_keyfile_has_no_thin():
     """G2/G3 carry no scheduled thin -- the cut is injected at runtime."""
     kf = mck.build_cut_keyfile("g2", "g2.db")
     assert "ThinDBH" not in kf
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"thin_year": 2004}, {"thin_prop": 0.30}],
+)
+def test_partial_thin_arguments_raise(kwargs):
+    """Half a thin spec is a caller error, not a request for the unmanaged shape.
+
+    Silently dropping the thin would yield a G1 'baseline' with no cut in it,
+    invalidating every arm compared against it with no signal at all.
+    """
+    with pytest.raises(ValueError, match="both"):
+        mck.build_cut_keyfile("g1", "g1.db", **kwargs)
 
 
 def test_cut_keyfile_has_no_carbon():

@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 SPIKE_DIR_WSL = Path("/mnt/c/FVS/artemis_spike")
-SPIKE_DIR_WIN = r"C:\FVS\artemis_spike"
 
 FVS_DATA_DB = "FVS_Data.db"
 FVS_DATA_DB_SRC = Path("/mnt/c/FVS/Artemis_project/FVS_Data.db")
@@ -27,3 +26,10 @@ def to_windows(p: Path) -> str:
     drive = parts[2].upper()
     rest = "\\".join(parts[3:])
     return f"{drive}:\\{rest}" if rest else f"{drive}:\\"
+
+
+# Derived, never hand-maintained: the WSL and Windows spellings of the run dir
+# must always name the same directory. Two independent constants would let a
+# repoint drift -- keyfiles staged under the new WSL path while Rscript.exe
+# setwd()s into the stale Windows one, with no error, just FVS reading nothing.
+SPIKE_DIR_WIN = to_windows(SPIKE_DIR_WSL)

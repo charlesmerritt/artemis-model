@@ -1,13 +1,25 @@
 name: CI
 
 on:
+  # `pull_request` covers every branch that matters; a blanket push trigger
+  # would fire a second, identical run for each commit on a branch with an
+  # open PR. Push is scoped to main so post-merge state is still verified.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+
+# Supersede in-flight runs for the same ref: only the newest commit's result
+# is meaningful, and the rest are wasted runner minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Without a cap, a hung `uv sync` or stalled test runs to GitHub's 6-hour
+    # default. This suite takes well under a minute.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 

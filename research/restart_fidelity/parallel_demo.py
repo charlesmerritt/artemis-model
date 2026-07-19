@@ -19,6 +19,7 @@ Then inspect results with DuckDB (see the printed hint, or README section 5).
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -39,19 +40,33 @@ def _worker_keyfile(name: str, stand_id: str, stand_cn: str, out_db: str) -> str
     return header + block + "Stop\n"
 
 
-def launch(stands: tuple[tuple[str, str], ...] = mk.MULTI_STANDS) -> list[dict]:
+class RunDirNotStaged(RuntimeError):
+    """Raised when the Windows-visible run dir or its input DB is missing."""
+
+
+def launch(
+    stands: tuple[tuple[str, str], ...] = mk.MULTI_STANDS,
+    max_workers: int | None = None,
+) -> list[dict]:
     """Generate one keyfile per stand and run all workers concurrently.
 
     Returns one dict per worker: name, output DB path, return code, seconds.
+
+    `max_workers` caps concurrent FVS processes; it defaults to one per CPU.
+    Every worker is a real OS process running a Fortran DLL, so an uncapped
+    fan-out over a production-sized stand list would thrash the machine.
+
+    Raises RunDirNotStaged rather than exiting: this is an importable library
+    function, and a future orchestrator calling it deserves a catchable error.
     """
     if not paths.SPIKE_DIR_WSL.exists():
-        sys.exit(
+        raise RunDirNotStaged(
             f"run dir {paths.SPIKE_DIR_WSL} missing — stage it first:\n"
             f"  mkdir -p {paths.SPIKE_DIR_WSL}\n"
             f"  cp {paths.FVS_DATA_DB_SRC} {paths.SPIKE_DIR_WSL}/{paths.FVS_DATA_DB}"
         )
     if not (paths.SPIKE_DIR_WSL / paths.FVS_DATA_DB).exists():
-        sys.exit(f"input DB missing: {paths.SPIKE_DIR_WSL / paths.FVS_DATA_DB}")
+        raise RunDirNotStaged(f"input DB missing: {paths.SPIKE_DIR_WSL / paths.FVS_DATA_DB}")
 
     jobs = []
     for i, (cn, sid) in enumerate(stands, start=1):
@@ -78,21 +93,33 @@ def launch(stands: tuple[tuple[str, str], ...] = mk.MULTI_STANDS) -> list[dict]:
         )
         job["seconds"] = round(time.monotonic() - t0, 2)
         job["returncode"] = proc.returncode
-        job["ok"] = proc.returncode == 0
+        # Exit status alone is not proof of a run: check FVS actually produced
+        # its output DB. Otherwise a failed run reports ok, and the compare_arms
+        # hint below points at a DB that does not exist -- surfacing later as a
+        # confusing DuckDB error far from the real cause.
+        out_db = Path(job["db"])
+        job["db_bytes"] = out_db.stat().st_size if out_db.exists() else 0
+        job["ok"] = proc.returncode == 0 and job["db_bytes"] > 0
         if not job["ok"]:
             job["stderr"] = proc.stderr.strip()[-400:]
+            if proc.returncode == 0:
+                job["failure"] = f"exit 0 but output DB is missing/empty: {out_db}"
         return job
 
     t0 = time.monotonic()
-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+    # Cap fan-out at one process per core; `jobs` may be far longer than that.
+    pool_size = min(len(jobs), max_workers or os.cpu_count() or 1)
+    with ThreadPoolExecutor(max_workers=pool_size) as pool:
         results = list(pool.map(run_one, jobs))
     wall = round(time.monotonic() - t0, 2)
 
-    print(f"launched {len(jobs)} concurrent FVS workers; wall-clock {wall}s")
+    print(f"launched {len(jobs)} FVS workers, {pool_size} at a time; wall-clock {wall}s")
     for r in results:
         status = "ok" if r["ok"] else f"FAILED rc={r['returncode']}"
         print(f"  {r['name']}  stand {r['stand']}  {r['seconds']}s  {status}")
         if not r["ok"]:
+            if r.get("failure"):
+                print(f"    {r['failure']}")
             print(f"    stderr: {r.get('stderr', '')}")
 
     slowest = max((r["seconds"] for r in results), default=0)
@@ -113,4 +140,8 @@ def launch(stands: tuple[tuple[str, str], ...] = mk.MULTI_STANDS) -> list[dict]:
 
 
 if __name__ == "__main__":
-    launch()
+    # The entry point is where a staging problem becomes an exit code.
+    try:
+        launch()
+    except RunDirNotStaged as exc:
+        sys.exit(str(exc))

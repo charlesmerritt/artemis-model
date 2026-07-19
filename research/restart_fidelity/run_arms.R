@@ -17,6 +17,38 @@ setwd(SPIKE)
 args <- commandArgs(trailingOnly = TRUE)
 arm  <- if (length(args) > 0) args[1] else "a"
 
+# --- fvsRun() drivers -------------------------------------------------------
+#
+# Every arm drives fvsRun() in a loop, but with two genuinely different
+# termination conditions (see the two wrappers below). They share one engine so
+# the arms cannot silently diverge, and so that an exhausted loop is ALWAYS an
+# error: returning the last unsettled state would let a barrier that was never
+# reached print as "settled", which is exactly the silent-corruption class of
+# bug this spike exists to catch.
+drive_fvs <- function(done, max_iter, label) {
+  for (i in seq_len(max_iter)) {
+    rtn  <- fvsRun()
+    code <- fvsGetRestartcode()
+    cat("  ", label, "iter", i, "rtn:", rtn, "restartcode:", code, "\n")
+    if (rtn == 1) stop(label, ": FVS reported an error (rtn=1)")
+    if (done(rtn, code)) return(list(rtn = rtn, code = code))
+  }
+  stop(label, ": no completion after ", max_iter,
+       " fvsRun() calls (last rtn=", rtn, ", restartcode=", code, ")")
+}
+
+# Single-stand segment: settles when the stand stores or finishes. A NEGATIVE
+# restart code is the restore signal, so keep going until code >= 0.
+run_until_settled <- function(max_iter = 20, label = "segment") {
+  drive_fvs(function(rtn, code) rtn != 0 || code >= 0, max_iter, label)
+}
+
+# Multi-stand drain: fvsRun() returns 0 per stand and 2 only when ALL stands are
+# exhausted, so 0 means "another stand is pending" -- never a stopping point.
+run_until_all_stands_done <- function(max_iter = 200, label = "stand loop") {
+  drive_fvs(function(rtn, code) rtn != 0, max_iter, label)
+}
+
 run_arm_a <- function() {
   fvsLoad("FVSsn", bin = FVSBIN)
   fvsSetCmdLine("--keywordfile=arm_a.key")
@@ -31,13 +63,12 @@ run_arm_a <- function() {
 run_arm_m <- function() {
   fvsLoad("FVSsn", bin = FVSBIN)
   fvsSetCmdLine("--keywordfile=arm_m.key")
-  for (i in 1:50) {
-    rtn <- fvsRun()
-    cat("  arm m stand-loop iter", i, "rtn:", rtn, "\n")
-    if (rtn != 0) break
-  }
-  cat("arm m final return code:", rtn, "\n")
-  invisible(rtn)
+  res <- run_until_all_stands_done(label = "arm m")
+  # 2 means every stand finished. Anything else that got here is not a
+  # completed reference run and must not be compared against.
+  if (res$rtn != 2) stop("arm m: expected rtn 2 (all stands done), got ", res$rtn)
+  cat("arm m final return code:", res$rtn, "\n")
+  invisible(res$rtn)
 }
 
 # Arm N: multi-stand stop/restart. Barriers at 2024/2029/2034 (Inv_Year 2019).
@@ -56,15 +87,11 @@ run_arm_n_seg <- function(seg, code = 6) {
   )
   cat("segment", seg, "cmdline:", cmd, "\n")
   fvsSetCmdLine(cmd)
-  # Drive until FVS reports all stands done (2) or errors (1). A negative
-  # restart code is a signal to call again; 0 means another stand is pending.
-  for (i in 1:200) {
-    rtn  <- fvsRun()
-    code_now <- fvsGetRestartcode()
-    if (rtn != 0) break
-  }
-  cat("segment", seg, "settled rtn:", rtn, "restartcode:", code_now, "\n")
-  invisible(rtn)
+  # Multi-stand: drive until FVS reports all stands done. A negative restart
+  # code is a signal to call again; 0 means another stand is still pending.
+  res <- run_until_all_stands_done(label = paste("segment", seg))
+  cat("segment", seg, "settled rtn:", res$rtn, "restartcode:", res$code, "\n")
+  invisible(res$rtn)
 }
 
 run_arm_b <- function() {
@@ -121,18 +148,6 @@ run_arm_c <- function() {
 # Calling fvsRun() once leaves the stand loaded but never grown.
 #
 # Usage: run_arms.R c1 | c2 | c3 | c4
-run_until_settled <- function(max_iter = 20) {
-  for (i in seq_len(max_iter)) {
-    rtn  <- fvsRun()
-    code <- fvsGetRestartcode()
-    cat("  iter", i, "rtn:", rtn, "restartcode:", code, "\n")
-    if (rtn != 0) return(list(rtn = rtn, code = code))   # 1 = error, 2 = all stands done
-    if (code >= 0) return(list(rtn = rtn, code = code))  # settled: stored, or finished
-    # code < 0 -> signal return after restore; loop to actually run
-  }
-  list(rtn = rtn, code = code)
-}
-
 run_arm_c_seg <- function(seg, code = 2, tag = "c") {
   # `code` is the stop point used for the store. Stop point 2 (just after the
   # first Event Monitor call) is early in the cycle; FMDOUT -- which recomputes
@@ -150,7 +165,7 @@ run_arm_c_seg <- function(seg, code = 2, tag = "c") {
   )
   cat("segment", seg, "cmdline:", cmd, "\n")
   fvsSetCmdLine(cmd)
-  res <- run_until_settled()
+  res <- run_until_settled(label = paste("segment", seg))
   cat("segment", seg, "settled rtn:", res$rtn, "restartcode:", res$code, "\n")
   invisible(res$rtn)
 }
@@ -194,4 +209,7 @@ if (arm == "c") run_arm_c() else
 if (arm == "d") run_arm_d() else
 if (arm == "m") run_arm_m() else
 if (arm %in% c("n1", "n2", "n3", "n4")) run_arm_n_seg(arm, code) else
-if (arm %in% c("c1", "c2", "c3", "c4")) run_arm_c_seg(arm, code, tag)
+if (arm %in% c("c1", "c2", "c3", "c4")) run_arm_c_seg(arm, code, tag) else
+# A mistyped arm must not exit 0 doing nothing -- that is indistinguishable
+# from a successful run in logs, and silently produces no output DB.
+stop("unknown arm: ", arm, " (expected a|b|c|d|m, c1-c4, or n1-n4)")

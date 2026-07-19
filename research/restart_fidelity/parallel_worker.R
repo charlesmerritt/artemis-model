@@ -24,3 +24,8 @@ repeat {
   if (rc != 0) break
 }
 cat(keyfile, "done rc=", rc, "\n")
+
+# Translate FVS's return code into the PROCESS exit status. The launcher judges
+# a worker by its exit code, so exiting 0 after an FVS error (rc == 1) would
+# report a failed run as a successful one. 2 = all stands finished; 1 = error.
+quit(status = if (rc == 2) 0 else 1, save = "no")

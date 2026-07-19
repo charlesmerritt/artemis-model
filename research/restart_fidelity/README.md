@@ -104,10 +104,18 @@ print(s.to_string(index=False))
 "
 ```
 
-`diff_summary` returns per-year `ba_delta` / `tpa_delta` / `sdi_delta` (left − right).
+`diff_summary` returns per-year `ba_delta` / `tpa_delta` / `sdi_delta` (left − right), keyed by
+`Year` **and `RmvCode`**: a cut year emits two `FVS_Summary2` rows (1 pre-removal, 2 post-removal)
+against 0 for an unmanaged year, so joining on `Year` alone cross-joins pre against post and
+manufactures false deltas between arms that are in fact identical.
 `diff_carbon` returns per-year, per-pool deltas — **kept separate on purpose**: a summary-only
 comparison shows a restart arm passing while carbon is silently corrupt. `assert_carbon_present`
 raises `CarbonTableMissing` so an absent table can never read as "no difference".
+
+Both diffs raise `NoComparableRows` if the join matched nothing (mismatched StandIDs, an arm that
+died early, or a managed arm compared against an unmanaged one). An empty diff reads like "no
+differences" but means there was no basis for comparison at all — same principle as
+`CarbonTableMissing`.
 
 ## 5b. Spin up multiple FVS instances (the parallelism demo)
 
@@ -138,8 +146,10 @@ one process (arm M). Process isolation fully contains FVS's global state.
 **What this is and isn't.** This demonstrates the *parallel spin-up* only. It is **not**
 the ARTEMIS orchestrator — there is no work queue, no management policy, and no 5-year
 barrier coupling; every worker runs straight to the horizon. Those are designed (see the
-spec) but not built. To scale it, a real launcher would cap concurrency (a process pool
-sized to cores) and group stands into bundles per worker rather than one process each.
+spec) but not built. `launch()` caps concurrency at one process per core (override with
+`max_workers=`) and verifies each worker both exited 0 and actually wrote a non-empty output
+DB; to scale further, a real launcher would group stands into bundles per worker rather than
+one process each.
 
 Files: `parallel_demo.py` (launcher, pure Python + subprocess) and `parallel_worker.R`
 (the one-worker unit it spawns).
