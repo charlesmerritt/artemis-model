@@ -19,6 +19,7 @@ traces to one of them, not to a code bug.
 
 | Notebook | What it does | Needs | Runnable today? |
 |---|---|---|---|
+| [`LETO_Initial_State_Walkthrough.ipynb`](#leto_initial_state_walkthroughipynb) | Inspect non-ArcPy MU × TreeMap plot weights and build LETO-compatible FVS initial-state tables | local LETO/TreeMap/FIA inputs | Structure tested; real-data run pending |
 | [`TreeMap_COG_County_Summary.ipynb`](#treemap_cog_county_summaryipynb) | Clip a remote COG (URL or STAC) and compute zonal stats per polygon (default: TreeMap-like raster × Southeast counties) | network | **Yes** (only one needing neither drive nor GEE) |
 | [`Embedding-Similarity-AOI-Finder.ipynb`](#embedding-similarity-aoi-finderipynb) | Pick reference clearcut points → vector layer of all AlphaEarth-similar land in an AOI | GEE | Blocked by GEE re-auth only (no drive needed) |
 | [`Clearcut-vs-Agriculture-Embeddings.ipynb`](#the-clearcut-vs-agriculture-investigation) | Method 1: AlphaEarth embedding separability of clearcut vs farmland | GEE + `/mnt/d` | No (GEE + drive) |
@@ -27,6 +28,22 @@ traces to one of them, not to a code bug.
 | [`Similarity-Embeddings.ipynb`](#similarity-embeddingsipynb-prototype) | Original bare-bones AlphaEarth similarity prototype (superseded by the AOI finder) | GEE + `/mnt/d` | No — **superseded / stored error** |
 | [`FVS_5county_growth_smoke.ipynb.old`](#fvs_5county_growth_smokeipynbold) | Grow 10 TreeMap/FIA stands with FVS Southern (SN); write keyfiles; summarize output into DuckDB | missing modules + `/mnt/d` | **No — broken; renamed `.old`** |
 | `clearcut_ag_common.py` | Shared helpers for the 4 clearcut/similarity notebooks (constants, GEE/rasterio sampling, labeling, similarity, vectorization) | — | Imports OK; pure helpers covered by `tests/test_clearcut_ag_common.py` (pass) |
+
+---
+
+## `LETO_Initial_State_Walkthrough.ipynb`
+
+Walks through the non-ArcPy implementation in `pipeline/s1_initial_state/`:
+TreeMap-aligned management-unit rasterization, raw `MU_PLT_CN_Weights`, the
+five-percent donor threshold and renormalization, multistate FIA tree joins,
+FVS Southern species translation, weighted trees per acre, and nearest-runnable
+management-unit imputation. It maps direct, imputed, and missing initial state
+and can write the five LETO-compatible CSV outputs when `WRITE_OUTPUTS` is set.
+
+The notebook imports production functions instead of duplicating the pipeline.
+Its structure, Python syntax, clean outputs, and required workflow sections are
+covered by `tests/test_s1_leto_notebook.py`. It has not been run against the
+large local LETO datasets in this worktree; update the input-path cell first.
 
 ---
 
