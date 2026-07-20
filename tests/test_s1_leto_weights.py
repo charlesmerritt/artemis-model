@@ -102,3 +102,44 @@ def test_build_plot_weights_reports_missing_mu_id(treemap_inputs):
 
     with pytest.raises(ValueError, match="Management units missing column: MU_ID"):
         build_plot_weights(units, treemap_path, lookup)
+
+
+def test_build_plot_weights_rejects_all_nodata_window(tmp_path):
+    treemap_path = tmp_path / "nodata.tif"
+    with rasterio.open(
+        treemap_path,
+        "w",
+        driver="GTiff",
+        height=1,
+        width=1,
+        count=1,
+        dtype="int32",
+        crs="EPSG:5070",
+        transform=from_origin(0, 30, 30, 30),
+        nodata=-9999,
+    ) as destination:
+        destination.write(np.array([[-9999]], dtype="int32"), 1)
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1"]}, geometry=[box(0, 0, 30, 30)], crs="EPSG:5070"
+    )
+
+    with pytest.raises(ValueError, match="overlap no valid TreeMap cells"):
+        build_plot_weights(
+            units,
+            treemap_path,
+            pd.DataFrame({"VALUE": [10], "PLT_CN": ["101"]}),
+        )
+
+
+def test_build_plot_weights_rejects_all_unmapped_cells(treemap_inputs):
+    treemap_path, _ = treemap_inputs
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1"]}, geometry=[box(0, 0, 30, 30)], crs="EPSG:5070"
+    )
+
+    with pytest.raises(ValueError, match="empty after TreeMap lookup"):
+        build_plot_weights(
+            units,
+            treemap_path,
+            pd.DataFrame({"VALUE": [20], "PLT_CN": ["201"]}),
+        )

@@ -75,6 +75,7 @@ class InitialStateTables:
     stands: pd.DataFrame
     trees: pd.DataFrame
     missing_stands: pd.DataFrame
+    diagnostics: pd.Series
 
 
 def build_management_unit_crosswalk(
@@ -95,7 +96,7 @@ def build_management_unit_crosswalk(
     ranked["MU_ID"] = ranked["MU_ID"].astype("string")
     ranked["PLT_CN"] = ranked["PLT_CN"].astype("string")
     majority = ranked.sort_values(
-        ["MU_ID", "CELL_COUNT", "PLT_CN"], ascending=[True, False, True]
+        ["MU_ID", "CELL_COUNT", "TM_VALUE"], ascending=[True, False, True]
     ).drop_duplicates("MU_ID")[["MU_ID", "PLT_CN"]]
 
     crosswalk = units.merge(majority, on="MU_ID", how="left", validate="one_to_one")
@@ -127,6 +128,10 @@ def filter_and_normalize_weights(
 def load_species_lookup(path: Path | str, sheet_name: str) -> dict[str, str]:
     """Read the FIA-to-FVS species translator used by LETO."""
     frame = pd.read_excel(path, sheet_name=sheet_name, dtype=str)
+    required = {"FIA CODE", "SN_Mapped_To"}
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(f"Species crosswalk missing columns: {sorted(missing)}")
     clean_code = (
         pd.to_numeric(frame["FIA CODE"], errors="coerce")
         .astype("Int64")
@@ -281,12 +286,47 @@ def build_initial_state(
     missing_stands = missing_stands.loc[
         ~missing_stands["STAND_ID"].isin(live_stands)
     ].reset_index(drop=True)
+    weighted_plot_ids = set(normalized_weights["PLT_CN"].astype("string"))
+    fia_plot_ids = set(fia_trees["PLT_CN"].astype("string"))
+    matched_live_trees = normalized_weights.merge(fia_trees, on="PLT_CN", how="inner")
+    matched_live_trees = matched_live_trees.loc[
+        matched_live_trees["STATUSCD"] == "1"
+    ].copy()
+    matched_live_trees["FIA_CODE_CLEAN"] = (
+        pd.to_numeric(matched_live_trees["SPCD"], errors="coerce")
+        .astype("Int64")
+        .astype("string")
+        .str.zfill(3)
+    )
+    mapped_species = matched_live_trees["FIA_CODE_CLEAN"].map(species_lookup)
+    weight_sums = normalized_weights.groupby("MU_ID")["WEIGHT"].sum()
+    donor_counts = normalized_weights.groupby("MU_ID").size()
+    diagnostics = pd.Series(
+        {
+            "raw_weight_rows": len(weights),
+            "filtered_weight_rows": len(normalized_weights),
+            "unmatched_weighted_plots": len(weighted_plot_ids - fia_plot_ids),
+            "missing_fvs_species_tree_rows": int(mapped_species.isna().sum()),
+            "mean_weight_sum": float(weight_sums.mean()),
+            "min_weight_sum": float(weight_sums.min()),
+            "max_weight_sum": float(weight_sums.max()),
+            "average_donor_plots": float(donor_counts.mean()),
+            "maximum_donor_plots": int(donor_counts.max()),
+            "direct_stands": direct_trees["STAND_ID"].nunique(),
+            "imputed_stands": trees.loc[
+                trees["TREE_SOURCE"] == "IMPUTED_NEAREST", "STAND_ID"
+            ].nunique(),
+            "missing_stands": len(missing_stands),
+        },
+        name="value",
+    )
     return InitialStateTables(
         crosswalk=crosswalk,
         weights=weights.copy(),
         stands=stands,
         trees=trees,
         missing_stands=missing_stands,
+        diagnostics=diagnostics,
     )
 
 

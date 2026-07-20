@@ -86,6 +86,8 @@ def build_plot_weights(
         treemap = source.read(1, window=window, masked=True)
 
     valid = (mu_grid > 0) & ~np.ma.getmaskarray(treemap)
+    if not valid.any():
+        raise ValueError("Management units overlap no valid TreeMap cells")
     cells = pd.DataFrame(
         {
             "MU_CODE": mu_grid[valid].astype("int64"),
@@ -97,12 +99,14 @@ def build_plot_weights(
     )
     counts["MU_ID"] = counts["MU_CODE"].map(mu_by_code).astype("string")
     counts["CELL_COUNT"] = counts["CELL_COUNT"].astype("int64")
-    counts["TOTAL_CELLS"] = (
-        counts.groupby("MU_ID")["CELL_COUNT"].transform("sum").astype("int64")
-    )
-    counts["WEIGHT"] = counts["CELL_COUNT"] / counts["TOTAL_CELLS"]
-
     result = counts.merge(lookup, on="TM_VALUE", how="inner")
+    if result.empty:
+        raise ValueError("Weighted MU x PLT_CN table is empty after TreeMap lookup")
+    result["TOTAL_CELLS"] = (
+        result.groupby("MU_ID")["CELL_COUNT"].transform("sum").astype("int64")
+    )
+    result["WEIGHT"] = result["CELL_COUNT"] / result["TOTAL_CELLS"]
+
     return (
         result[WEIGHT_COLUMNS]
         .sort_values(["MU_ID", "WEIGHT", "TM_VALUE"], ascending=[True, False, True])

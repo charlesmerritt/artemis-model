@@ -55,7 +55,9 @@ tables = run_leto_initial_state(
 For inspection or custom orchestration, use
 `weights.build_plot_weights(...)` and the focused functions in
 `leto_initial_state.py`. The walkthrough notebook calls these functions one
-stage at a time.
+stage at a time. The returned `tables.diagnostics` series reports weight sums,
+donor counts, unmatched FIA plots, missing FVS species, and direct/imputed stand
+counts before any CSVs are written.
 
 ## Outputs
 
@@ -99,4 +101,3 @@ UV_CACHE_DIR=/tmp/artemis-leto-uv-cache uv run pytest --rootdir=. \
 The committed tests use synthetic data. A production-scale run still requires
 the local LETO management units, TreeMap raster/table, FIA trees, and species
 workbook.
-

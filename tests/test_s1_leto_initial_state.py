@@ -1,5 +1,6 @@
 """Tests for LETO tabular initial-state transformations."""
 
+import importlib.util
 from pathlib import Path
 import sys
 
@@ -100,6 +101,10 @@ def test_load_species_lookup_normalizes_fia_codes(tmp_path):
     assert lookup == {"007": "OS", "131": "LP"}
 
 
+def test_legacy_xls_species_crosswalk_engine_is_available():
+    assert importlib.util.find_spec("xlrd") is not None
+
+
 def test_load_fia_tree_files_combines_states_and_preserves_plot_ids(tmp_path):
     florida = tmp_path / "FL_TREE.csv"
     georgia = tmp_path / "GA_TREE.csv"
@@ -150,6 +155,16 @@ def test_load_species_lookup_rejects_conflicting_mappings(tmp_path):
     )
 
     with pytest.raises(ValueError, match="one FIA code to multiple FVS species"):
+        load_species_lookup(workbook, "EasternSpeciesTranslator")
+
+
+def test_load_species_lookup_reports_missing_columns(tmp_path):
+    workbook = tmp_path / "species.xlsx"
+    pd.DataFrame({"FIA CODE": [131]}).to_excel(
+        workbook, sheet_name="EasternSpeciesTranslator", index=False
+    )
+
+    with pytest.raises(ValueError, match="Species crosswalk missing columns"):
         load_species_lookup(workbook, "EasternSpeciesTranslator")
 
 
@@ -213,16 +228,16 @@ def test_build_and_write_initial_state_outputs(tmp_path):
     )
     fia_trees = pd.DataFrame(
         {
-            "CN": ["tree-1"],
-            "PLT_CN": ["101"],
-            "STATUSCD": ["1"],
-            "INVYR": ["2020"],
-            "SPCD": ["131"],
-            "DIA": ["10"],
-            "HT": ["50"],
-            "ACTUALHT": ["50"],
-            "CR": ["40"],
-            "TPA_UNADJ": ["5"],
+            "CN": ["tree-1", "tree-unmapped"],
+            "PLT_CN": ["101", "101"],
+            "STATUSCD": ["1", "1"],
+            "INVYR": ["2020", "2020"],
+            "SPCD": ["131", "999"],
+            "DIA": ["10", "8"],
+            "HT": ["50", "40"],
+            "ACTUALHT": ["50", "40"],
+            "CR": ["40", "50"],
+            "TPA_UNADJ": ["5", "2"],
         }
     )
 
@@ -235,6 +250,10 @@ def test_build_and_write_initial_state_outputs(tmp_path):
         "IMPUTED_NEAREST",
     ]
     pd.testing.assert_frame_equal(tables.weights, weights)
+    assert tables.diagnostics["unmatched_weighted_plots"] == 1
+    assert tables.diagnostics["missing_fvs_species_tree_rows"] == 1
+    assert tables.diagnostics["direct_stands"] == 1
+    assert tables.diagnostics["imputed_stands"] == 1
     assert tables.missing_stands.empty
     assert {path.name for path in paths.values()} == {
         "MU_FVS_Crosswalk.csv",

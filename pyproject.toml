@@ -24,4 +24,5 @@ dependencies = [
     "scikit-image>=0.26.0",
     "seaborn>=0.13.2",
     "shapely>=2.1.2",
+    "xlrd>=2.0.2",
 ]
