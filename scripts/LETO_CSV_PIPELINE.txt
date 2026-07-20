@@ -1,0 +1,494 @@
+import arcpy
+import pandas as pd
+import os
+
+# --------------------------------------------------------------------------------------
+# USER INPUT
+# --------------------------------------------------------------------------------------
+
+#First, input the path to the .gdb you are working out of, and the for "mu_fc_name" the name of the shapefile/layer created by the first script
+
+gdb = r"D:\forest_condition_2026\Stand_delineation\Attempt3\Attempt3.gdb"
+mu_fc_name = "ManagementUnits_Final"
+mu_fc = os.path.join(gdb, mu_fc_name)
+
+#Then the folder you created earlier for the output table from the last script
+
+out_folder = r"D:\forest_condition_2026\FVS\FVS_Inputs"
+os.makedirs(out_folder, exist_ok=True)
+
+# Add the path to the FIA/FVS Species translator downloadable here: https://www.fs.usda.gov/fmsc/ftp/fvs/docs/overviews/FVS_SpeciesCrosswalk.xls
+
+species_crosswalk_xls = r"D:\forest_condition_2026\FVS\FVS_SpeciesCrosswalk.xls"
+species_crosswalk_sheet = "EasternSpeciesTranslator"
+
+# I would recommend making another folder called "FIA_Tree_CSV" where you will store the data from the FIA plots
+# At this website: "https://research.fs.usda.gov/products/dataandtools/fia-datamart?utm_source=chatgpt.com"  download the "TREE.csv" files for your state and a handful of nearby states. 
+# I would recommend at the least any bordering states. 
+# This is because TreeMap will borrow plots from other states.
+# Add the paths to any state's "TREE.csv" you would like used below
+
+fia_tree_files = [
+    r"D:\forest_condition_2026\FVS\FIA_tree_CSV\FL_TREE.csv",
+    r"D:\forest_condition_2026\FVS\FIA_tree_CSV\GA_TREE.csv",
+    r"D:\forest_condition_2026\FVS\FIA_tree_CSV\AL_TREE.csv",
+    r"D:\forest_condition_2026\FVS\FIA_tree_CSV\SC_TREE.csv",
+]
+
+
+#You shouldn't have to touch these
+
+crosswalk_csv = os.path.join(out_folder, "MU_FVS_Crosswalk.csv")
+weights_csv = os.path.join(out_folder, "MU_PLT_CN_Weights.csv")
+
+fvs_stands_csv = os.path.join(out_folder, "FVS_StandInit.csv")
+fvs_trees_csv = os.path.join(out_folder, "FVS_TreeInit.csv")
+missing_csv = os.path.join(out_folder, "MU_FVS_Stands_No_Live_Trees.csv")
+
+near_table = os.path.join(gdb, "missing_to_nearest_runnable")
+
+# Alter this if desired. This is mostly to control how efficient everything is once put into FVS.
+# Basicaly the minimum percent of each stand the plot has to be to be included in the model.
+
+MIN_PLT_WEIGHT = 0.05   # keep PLT_CNs contributing at least 5%
+
+
+# --------------------------------------------------------------------------------------
+# READ SPECIES CROSSWALK
+# --------------------------------------------------------------------------------------
+
+species_xwalk = pd.read_excel(
+    species_crosswalk_xls,
+    sheet_name=species_crosswalk_sheet,
+    dtype=str
+)
+
+species_xwalk["FIA_CODE_CLEAN"] = (
+    pd.to_numeric(species_xwalk["FIA CODE"], errors="coerce")
+    .astype("Int64")
+    .astype(str)
+    .str.zfill(3)
+)
+
+species_lookup = dict(
+    zip(
+        species_xwalk["FIA_CODE_CLEAN"],
+        species_xwalk["SN_Mapped_To"]
+    )
+)
+
+print("Species in crosswalk:", len(species_lookup))
+
+
+# --------------------------------------------------------------------------------------
+# CREATE MANAGEMENT UNIT CROSSWALK
+# --------------------------------------------------------------------------------------
+
+mu_rows = []
+
+with arcpy.da.SearchCursor(
+    mu_fc,
+    ["MU_ID", "Acres", "PLT_CN", "OWN_CODE", "OWN_TYPE", "SMZ_Pct"]
+) as cur:
+    for mu_id, acres, plt_cn, own_code, own_type, smz_pct in cur:
+        mu_rows.append({
+            "Stand_ID": str(mu_id),
+            "MU_ID": str(mu_id),
+            "Acres": acres,
+            "PLT_CN": str(int(plt_cn)) if plt_cn is not None else None,
+            "OWN_CODE": own_code,
+            "OWN_TYPE": own_type,
+            "SMZ_Pct": smz_pct
+        })
+
+crosswalk = pd.DataFrame(mu_rows)
+crosswalk.to_csv(crosswalk_csv, index=False)
+
+print("Management units in crosswalk:", len(crosswalk))
+print("Unique majority PLT_CN in polygons:", crosswalk["PLT_CN"].nunique())
+
+
+# --------------------------------------------------------------------------------------
+# READ WEIGHTED MU × PLT_CN TABLE
+# --------------------------------------------------------------------------------------
+
+weights = pd.read_csv(weights_csv, dtype=str)
+
+weights["MU_ID"] = weights["MU_ID"].astype(str)
+weights["PLT_CN"] = weights["PLT_CN"].astype(str)
+weights["WEIGHT"] = pd.to_numeric(weights["WEIGHT"], errors="coerce")
+
+print("Original weighted rows:", len(weights))
+print("Original unique MUs:", weights["MU_ID"].nunique())
+print("Original unique PLT_CNs:", weights["PLT_CN"].nunique())
+
+weights = weights[weights["WEIGHT"] >= MIN_PLT_WEIGHT].copy()
+
+weights["WEIGHT"] = (
+    weights["WEIGHT"] /
+    weights.groupby("MU_ID")["WEIGHT"].transform("sum")
+)
+
+print("Filtered weighted rows:", len(weights))
+print("Filtered unique MUs:", weights["MU_ID"].nunique())
+print("Filtered unique PLT_CNs:", weights["PLT_CN"].nunique())
+
+weights = weights.merge(
+    crosswalk[["MU_ID", "Stand_ID", "Acres", "OWN_CODE", "OWN_TYPE", "SMZ_Pct"]],
+    on="MU_ID",
+    how="left"
+)
+
+
+# --------------------------------------------------------------------------------------
+# READ FIA TREE TABLES
+# --------------------------------------------------------------------------------------
+
+trees = pd.concat(
+    [pd.read_csv(f, dtype=str) for f in fia_tree_files],
+    ignore_index=True
+)
+
+trees["PLT_CN"] = trees["PLT_CN"].astype(str)
+
+print("Combined tree records:", len(trees))
+print("Unique PLT_CN in combined TREE:", trees["PLT_CN"].nunique())
+
+
+# --------------------------------------------------------------------------------------
+# JOIN WEIGHTED PLOTS TO FIA TREES
+# --------------------------------------------------------------------------------------
+
+fvs_trees = weights.merge(
+    trees,
+    on="PLT_CN",
+    how="left",
+    indicator=True
+)
+
+print(fvs_trees["_merge"].value_counts())
+
+missing = fvs_trees[fvs_trees["_merge"] == "left_only"].copy()
+
+print("Unmatched weighted rows:", len(missing))
+print("Unique unmatched PLT_CN:", missing["PLT_CN"].nunique())
+print(missing["PLT_CN"].value_counts().head(25))
+
+fvs_trees = fvs_trees[fvs_trees["_merge"] == "both"].copy()
+fvs_trees = fvs_trees[fvs_trees["STATUSCD"] == "1"].copy()
+
+
+# --------------------------------------------------------------------------------------
+# RENAME FIA FIELDS
+# --------------------------------------------------------------------------------------
+
+fvs_trees = fvs_trees.rename(columns={
+    "CN": "TREE_ID",
+    "INVYR": "INV_YEAR",
+    "SPCD": "Species_FIA",
+    "DIA": "DIAMETER",
+    "CR": "CRRATIO",
+    "TPA_UNADJ": "TREE_COUNT"
+})
+
+
+# --------------------------------------------------------------------------------------
+# SPECIES TRANSLATION
+# --------------------------------------------------------------------------------------
+
+fvs_trees["Species_FIA_CLEAN"] = (
+    pd.to_numeric(fvs_trees["Species_FIA"], errors="coerce")
+    .astype("Int64")
+    .astype(str)
+    .str.zfill(3)
+)
+
+fvs_trees["SPECIES"] = fvs_trees["Species_FIA_CLEAN"].map(species_lookup)
+
+print("Sample species translation:")
+print(fvs_trees[["Species_FIA", "Species_FIA_CLEAN", "SPECIES"]].head(25))
+
+print("Trees missing FVS species:", fvs_trees["SPECIES"].isna().sum())
+
+
+# --------------------------------------------------------------------------------------
+# PREPARE TREE FIELDS
+# --------------------------------------------------------------------------------------
+
+fvs_trees["STAND_ID"] = "MU_" + fvs_trees["Stand_ID"].astype(str)
+
+for col in ["DIAMETER", "HT", "ACTUALHT", "CRRATIO", "TREE_COUNT", "WEIGHT"]:
+    if col in fvs_trees.columns:
+        fvs_trees[col] = pd.to_numeric(fvs_trees[col], errors="coerce")
+
+fvs_trees["TREE_COUNT"] = fvs_trees["TREE_COUNT"] * fvs_trees["WEIGHT"]
+
+print()
+print("--------------- WEIGHT DIAGNOSTICS ---------------")
+
+# Verify weights sum to ~1 for every MU
+weight_check = (
+    weights.groupby("MU_ID")["WEIGHT"]
+    .sum()
+)
+
+print("Mean weight sum:", weight_check.mean())
+print("Min weight sum :", weight_check.min())
+print("Max weight sum :", weight_check.max())
+
+# Average number of donor plots
+plots_per_mu = (
+    weights.groupby("MU_ID")
+    .size()
+)
+
+print("Average donor plots/MU:", plots_per_mu.mean())
+print("Maximum donor plots/MU:", plots_per_mu.max())
+
+print("-----------------------------------------------")
+print()
+
+if "HT" in fvs_trees.columns and "ACTUALHT" in fvs_trees.columns:
+    fvs_trees["HT"] = fvs_trees["HT"].fillna(fvs_trees["ACTUALHT"])
+
+fvs_trees = fvs_trees.dropna(subset=[
+    "STAND_ID",
+    "SPECIES",
+    "DIAMETER",
+    "TREE_COUNT"
+]).copy()
+
+fvs_trees = fvs_trees[fvs_trees["TREE_COUNT"] > 0].copy()
+
+
+# --------------------------------------------------------------------------------------
+# FINAL TREE TABLE
+# --------------------------------------------------------------------------------------
+
+fvs_tree_final = fvs_trees[[
+    "STAND_ID",
+    "TREE_ID",
+    "SPECIES",
+    "DIAMETER",
+    "HT",
+    "CRRATIO",
+    "TREE_COUNT",
+    "MU_ID",
+    "PLT_CN",
+    "WEIGHT",
+    "Species_FIA"
+]].copy()
+
+fvs_tree_final["TREE_SOURCE"] = "FIA_WEIGHTED_DIRECT"
+fvs_tree_final["DONOR_STAND_ID"] = ""
+fvs_tree_final["NEAR_DIST"] = ""
+
+
+# --------------------------------------------------------------------------------------
+# CREATE STAND LIST
+# --------------------------------------------------------------------------------------
+
+standlist = crosswalk.drop_duplicates(subset=["Stand_ID"]).copy()
+standlist["STAND_ID"] = "MU_" + standlist["Stand_ID"].astype(str)
+standlist["INV_YEAR"] = 2022
+standlist["VARIANT"] = "SN"
+standlist["STATE"] = "FL"
+
+live_stands = set(fvs_tree_final["STAND_ID"].astype(str))
+
+fvs_stand_final = standlist[
+    standlist["STAND_ID"].astype(str).isin(live_stands)
+].copy()
+
+fvs_stand_final = fvs_stand_final[[
+    "STAND_ID",
+    "VARIANT",
+    "INV_YEAR",
+    "STATE",
+    "Stand_ID",
+    "MU_ID",
+    "Acres",
+    "PLT_CN",
+    "OWN_CODE",
+    "OWN_TYPE",
+    "SMZ_Pct"
+]].copy()
+
+
+# --------------------------------------------------------------------------------------
+# IMPUTE MISSING TREE LISTS USING NEAREST RUNNABLE MU
+# --------------------------------------------------------------------------------------
+
+all_stands = standlist.copy()
+all_stands["STAND_ID"] = "MU_" + all_stands["Stand_ID"].astype(str)
+
+runnable_ids = set(fvs_tree_final["STAND_ID"].astype(str))
+missing_stands = all_stands[~all_stands["STAND_ID"].isin(runnable_ids)].copy()
+
+print("Missing stands to impute:", len(missing_stands))
+
+arcpy.management.MakeFeatureLayer(mu_fc, "missing_mu_lyr")
+arcpy.management.MakeFeatureLayer(mu_fc, "runnable_mu_lyr")
+
+missing_mu_ids = tuple(missing_stands["MU_ID"])
+runnable_mu_ids = tuple(
+    all_stands[all_stands["STAND_ID"].isin(runnable_ids)]["MU_ID"]
+)
+
+def sql_in(field, values, numeric=True):
+    values = list(values)
+
+    if len(values) == 0:
+        return "1 = 0"
+
+    chunks = []
+
+    for i in range(0, len(values), 900):
+        chunk = values[i:i + 900]
+
+        if numeric:
+            vals = ",".join([str(int(float(v))) for v in chunk])
+        else:
+            vals = ",".join([f"'{str(v)}'" for v in chunk])
+
+        chunks.append(f"{field} IN ({vals})")
+
+    return " OR ".join(chunks)
+
+arcpy.management.SelectLayerByAttribute(
+    "missing_mu_lyr",
+    "NEW_SELECTION",
+    sql_in("MU_ID", missing_mu_ids, numeric=True)
+)
+
+arcpy.management.SelectLayerByAttribute(
+    "runnable_mu_lyr",
+    "NEW_SELECTION",
+    sql_in("MU_ID", runnable_mu_ids, numeric=True)
+)
+
+if arcpy.Exists(near_table):
+    arcpy.management.Delete(near_table)
+
+print("Missing selected:", arcpy.management.GetCount("missing_mu_lyr")[0])
+print("Runnable selected:", arcpy.management.GetCount("runnable_mu_lyr")[0])
+
+if int(arcpy.management.GetCount("missing_mu_lyr")[0]) > 0:
+    arcpy.analysis.GenerateNearTable(
+        in_features="missing_mu_lyr",
+        near_features="runnable_mu_lyr",
+        out_table=near_table,
+        search_radius="",
+        location="NO_LOCATION",
+        angle="NO_ANGLE",
+        closest="CLOSEST",
+        closest_count=1,
+        method="PLANAR"
+    )
+
+    oid_to_mu = {}
+
+    with arcpy.da.SearchCursor(mu_fc, ["OID@", "MU_ID"]) as cur:
+        for oid, mu_id in cur:
+            oid_to_mu[oid] = str(mu_id)
+
+    near_rows = []
+
+    with arcpy.da.SearchCursor(near_table, ["IN_FID", "NEAR_FID", "NEAR_DIST"]) as cur:
+        for in_fid, near_fid, dist in cur:
+            near_rows.append({
+                "MISSING_MU_ID": oid_to_mu[in_fid],
+                "DONOR_MU_ID": oid_to_mu[near_fid],
+                "NEAR_DIST": dist
+            })
+
+    nearest = pd.DataFrame(near_rows)
+
+    nearest["MISSING_STAND_ID"] = "MU_" + nearest["MISSING_MU_ID"].astype(str)
+    nearest["DONOR_STAND_ID"] = "MU_" + nearest["DONOR_MU_ID"].astype(str)
+
+    print("Nearest donor pairs:", len(nearest))
+
+    imputed_rows = []
+
+    for _, row in nearest.iterrows():
+        missing_stand = row["MISSING_STAND_ID"]
+        donor_stand = row["DONOR_STAND_ID"]
+
+        donor_trees = fvs_tree_final[
+            fvs_tree_final["STAND_ID"].astype(str) == donor_stand
+        ].copy()
+
+        if donor_trees.empty:
+            continue
+
+        donor_trees["DONOR_STAND_ID"] = donor_stand
+        donor_trees["TREE_SOURCE"] = "IMPUTED_NEAREST"
+        donor_trees["NEAR_DIST"] = row["NEAR_DIST"]
+
+        donor_trees["STAND_ID"] = missing_stand
+        donor_trees["MU_ID"] = row["MISSING_MU_ID"]
+
+        donor_trees["TREE_ID"] = range(1, len(donor_trees) + 1)
+
+        imputed_rows.append(donor_trees)
+
+    if imputed_rows:
+        imputed_trees = pd.concat(imputed_rows, ignore_index=True)
+
+        fvs_tree_final = pd.concat(
+            [fvs_tree_final, imputed_trees],
+            ignore_index=True
+        )
+
+
+# --------------------------------------------------------------------------------------
+# FINAL STAND TABLE AFTER IMPUTATION
+# --------------------------------------------------------------------------------------
+
+live_stands = set(fvs_tree_final["STAND_ID"].astype(str))
+
+fvs_stand_final = standlist.copy()
+fvs_stand_final["STAND_ID"] = "MU_" + fvs_stand_final["Stand_ID"].astype(str)
+
+fvs_stand_final = fvs_stand_final[
+    fvs_stand_final["STAND_ID"].isin(live_stands)
+].copy()
+
+fvs_stand_final = fvs_stand_final[[
+    "STAND_ID",
+    "VARIANT",
+    "INV_YEAR",
+    "STATE",
+    "Stand_ID",
+    "MU_ID",
+    "Acres",
+    "PLT_CN",
+    "OWN_CODE",
+    "OWN_TYPE",
+    "SMZ_Pct"
+]].copy()
+
+
+# --------------------------------------------------------------------------------------
+# EXPORT
+# --------------------------------------------------------------------------------------
+
+fvs_stand_final.to_csv(fvs_stands_csv, index=False)
+fvs_tree_final.to_csv(fvs_trees_csv, index=False)
+
+missing_stands = standlist[
+    ~standlist["STAND_ID"].astype(str).isin(live_stands)
+].copy()
+
+missing_stands.to_csv(missing_csv, index=False)
+
+print("Created FVS import files:")
+print(fvs_stands_csv)
+print(fvs_trees_csv)
+print(missing_csv)
+
+print("FVS stands:", len(fvs_stand_final))
+print("FVS tree records:", len(fvs_tree_final))
+print("Unique FVS stands in tree file:", fvs_tree_final["STAND_ID"].nunique())
+print("Stands with no live trees:", len(missing_stands))
