@@ -10,9 +10,11 @@ folder. This markdown is the plain-text record.
 > - **"Leto scripts"** — no literal match in the repo. Read as the **management-unit
 >   delineation code**: `pipeline/s3_management/sketch_management_units.py` +
 >   `research/mgmt_units/segmentation_delineation.py`.
-> - **"lamps" comparison** — read as the in-repo **naive-vs-segmentation** management-unit
->   comparison. If an external peer model was meant (LANDIS-II, LMS), it is not in the
->   codebase and would be positioning, not a measured result.
+> - **"lamps" = a PDF reference (LAMPS)** — a document, not the in-repo comparison. It is
+>   NOT reachable in this build sandbox: the external data drive (`/mnt/d`) is not mounted
+>   here and no `LAMPS` string exists anywhere in the tree, so its content is not folded in
+>   yet. **Need the path/filename to integrate it.** Likely LAMPS = *Landscape Management
+>   Policy Simulator*, the peer system for the harvest-scheduling comparison.
 
 ## At a glance
 
@@ -38,11 +40,15 @@ tree-list rebuild).
 - **Management-injection gate PASSED** — per-stand selective cut faithful and restart-safe.
 - Orchestrator sketched: **bundle-per-ownership, even-flow**. DuckDB adopted as data layer.
 
-### 2. Management units — the "Leto" delineation scripts — ENGINE DONE, COMPARISON PENDING
+### 2. Management units — the "Leto" delineation scripts — ENGINE DONE, MERGE + COMPARISON OWED
 - Naive engine (parcel ∩ LANDFIRE-forest, minus BMP stream buffers / waterbodies / road
   artifacts) reconstructed from a deleted state — **14/14 tests pass**.
 - **Union County baseline persisted:** 17,020 candidate polygons.
-- Segmentation coded (Felzenszwalb + SLIC, Polsby-Popper compactness) — **never run**.
+- **Owed #1 — run the segmentation comparison** (Felzenszwalb + SLIC, Polsby-Popper) — coded,
+  **never run**.
+- **Owed #2 — merge / eliminate the slivers.** Segmentation reduces fragmentation but does
+  not remove it; the 14,852 sub-2 ha slivers must be dissolved or merged to best neighbour so
+  each unit is a single runnable stand. Not yet built — on the harvest-scheduling critical path.
 
 ### 3. FVS → raster painting — flagship product — `s4_fvs` (PR #5, merged) — SHIPPED
 - FVS trajectory: 9,259 rows · 693 stands · 1997–2076.
@@ -79,12 +85,37 @@ distribution.
 compactness, forest-area retention, and downstream **FVS workload** (# unique unit × regime
 runs). Spine of the intended methods paper (`research/mgmt_units/BRIEF.md`).
 
+## The destination — harvest scheduling (the priority)
+
+Everything above serves a spatially explicit, **constrained harvest schedule** for the five
+counties: FVS no-management baseline as standing inventory, TPO reports as volume caps,
+ownership/county as constraint dimensions, then managed FVS per unit. Roadmap:
+`notes/management-pipeline-plan.md`.
+
+**Already in hand:** FVS baseline (693 stands, done) · TreeMap↔FVS linkage (688 rows) ·
+TPO caps by county (Baker 11.8M, Columbia 17.8M, Hamilton 15.3M, Suwannee 18.5M, Union 8.7M
+cuft/yr) and owner (Private 66.3M, Public 5.7M, All 72.0M) · ownership raster (Harris 2025).
+
+**Phases:**
+1. Inventory + TPO constraints — baseline done; TPO parse + inventory-by-dimension owed. *(no new FVS run)*
+2. Management units + ownership + crosswalk — **gating**; includes sliver resolution + unit×FVS-stand crosswalk.
+3. Regime library — 4–6 FVS keyword templates + default assignment by ownership × forest type. *(no new FVS run)*
+4. Constrained scheduler + managed FVS — **core deliverable**: per 5-yr cycle pick units by
+   regime + oldest-age priority, hold within TPO caps, render managed keyfiles, run managed FVS.
+5. Iteration + scaling — constraint sensitivity; trajectory-library approach for statewide.
+
+Critical path to a first end-to-end schedule is **Phase 2 → 4**, and Phase 2 can't close
+until the slivers are resolved.
+
 ## Open questions to raise
 
 1. **Does segmentation beat the sliver problem, and at what parameters?** Comparison never
    executed; params are guesses aimed at ~5–10 ha median. (`research/mgmt_units/`)
-2. **Sliver policy — merge-to-neighbor or discard?** 14,852 sub-2 ha fragments can't each be
-   an FVS stand; hybrid variant proposed but unbuilt.
+2. **Sliver policy — merge-to-best-neighbour or dissolve? (critical path).** 14,852 sub-2 ha
+   fragments can't each be an FVS stand, and Phase 2 can't close until they're resolved.
+   Segmentation alone won't do it — need an explicit merge rule (adjacency / ownership /
+   forest type?). Also: which silvicultural regimes and TPO constraint mode (independent vs.
+   joint caps)?
 3. **Do we accept dropping carbon?** Restart corrupts FFE carbon; stand values stay exact.
    Fine for growth/volume — carbon deliverable would need continuous runs.
    (`notes/restart-fidelity-findings.md`)
