@@ -18,8 +18,15 @@ projection:
 fvs:
   default_variant: "SN"              # Southern variant for Florida
   # Variant assignment when expanding: keyed by state FIPS in fvs_variants.yaml
-  carbon_extension: true             # Enable CARBON keyword extension in all runs
-  carbon_pools:                      # All five IPCC pools
+  # DISABLED 2026-07-16: carbon output is NOT trustworthy across a 5-year barrier.
+  # Measured (notes/restart-fidelity-findings.md): FVS stop/restart silently resets the
+  # FFE live-fuel state, collapsing Forest_Shrub_Herb to a constant 0.02 and understating
+  # Total_Stand_Carbon by ~8% at every restart -- while BA/Tpa/SDI stay bit-identical, so
+  # no summary-level check catches it. Stand values are exact; only carbon is affected.
+  # Do NOT re-enable for iteratively coupled runs until that is resolved; see the note.
+  # Continuous (unsegmented) runs are unaffected.
+  carbon_extension: false
+  carbon_pools:                      # All five IPCC pools -- the intended set when re-enabled
     - aboveground_live
     - belowground_live
     - dead_wood

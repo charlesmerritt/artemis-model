@@ -1,0 +1,21 @@
+ARM E (restart @ stop point 6) vs ARM C (stop point 2) vs ARM A (continuous)  -- 2026-07-16
+
+Tests whether the carbon divergence is a stop-point PLACEMENT artifact.
+Answer: NO. Stop point only shifts WHICH rows break, not whether.
+
+Forest_Shrub_Herb by year:
+ Year  continuous_A  restart_sp2_C  restart_sp6_E
+ 1999          3.60           3.60           3.60
+ 2004          3.95           0.02           3.95
+ 2009          4.55           0.02           0.02
+ 2014          5.40           0.02           0.02
+
+arm E base metrics max |delta|: 0.0
+arm E carbon max |delta|: 5.380001068115234
+
+READING: at stop point 6 the 2004 row was written by segment c1 BEFORE the
+store, so it survived (3.95). 2009/2014 were written AFTER a restart and
+collapsed to 0.02. Every carbon report emitted by a restarted segment is broken.
+
+CONCLUSION: restart corrupts FFE live-fuel (FLIVE herb/shrub) state on restore.
+Robust across stop points 2 and 6. No cheap stop-point fix exists.

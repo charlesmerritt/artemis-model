@@ -22,10 +22,9 @@ import numpy as np
 import pandas as pd
 import rasterio
 import yaml
-from pyogrio import list_layers
 from rasterio.features import shapes
 from rasterio.mask import mask as rio_mask
-from shapely.geometry import Point, box, mapping
+from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
 # Setup logging
@@ -129,7 +128,6 @@ def split_large_geometry(geometry, target_max_area_ha: float = TARGET_MAX_AREA_H
     Returns a list of polygon parts. Uses a fishnet overlay approach:
     creates a regular grid over the bounding box, then intersects with the input geometry.
     """
-    from shapely.geometry import Polygon
 
     target_area_m2 = target_max_area_ha * 10_000
 

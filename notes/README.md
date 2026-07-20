@@ -4,6 +4,7 @@ Durable context for future agents and collaborators.
 
 ## Index
 
+- [FVS restart fidelity findings](restart-fidelity-findings.md) — **measured**: in-process pause reproduces a continuous run exactly (0.0 delta incl. carbon), but `--restart` silently collapses `Forest_Shrub_Herb` to 0.02 and understates total stand carbon ~8% per barrier while BA/Tpa/SDI stay bit-identical. `putstd` omits the FFE commons; `COVTYP` is the likely culprit. Also: a negative FVS restart code is a *signal* — `fvsRun()` must be called again or the store file is empty.
 - [Notebooks index](notebooks.md) — what every notebook + helper in `notebooks/` does, what each needs to run (GEE / `/mnt/d` drive / network), links to the per-group deep-dive notes, and the 2026-07-14 test results (incl. the broken FVS notebook and the stored-error prototype).
 - [Management unit pilot workflow](management_units.md) — decisions, inputs, missing data, and first-notebook scope for Florida timber management units.
 - [TreeMap-to-FVS workflow](treemap-fvs-workflow.md) — findings from `/mnt/d/TreeMap_Chaz`, including R script roles, duplicate status, FVS run mechanics, gotchas, and ARTEMIS integration next steps.

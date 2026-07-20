@@ -21,8 +21,16 @@ Usage
     uv run python gee/scripts/export_prism.py
 """
 
+from typing import TYPE_CHECKING
+
 import click
 from gee_utils import export_to_drive, get_florida_geometry, init_ee, start_and_report
+
+if TYPE_CHECKING:
+    # earthengine-api is heavy and needs auth, so it is imported lazily inside
+    # each function. This makes the "ee.Image" annotations resolvable to type
+    # checkers and linters without importing it at module load.
+    import ee
 
 PRISM_ASSET = "OREGONSTATE/PRISM/Norm91m"
 

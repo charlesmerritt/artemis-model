@@ -1,0 +1,52 @@
+MANAGEMENT-INJECTION GATE -- 2026-07-17
+
+Question: is applying a cut at a barrier faithful, and does it survive restart?
+
+Fixture: stand 43393151010478, SN, 1999-2019, 30% proportional thin at 2004.
+
+Arms:
+  g1  scheduled ThinDBH  2004  0. 999. 0.30 0.     (authoritative in-FVS baseline)
+  g2  fvsCutNow(0.30) in-process at stop point 2   (external injection)
+  g3  fvsAddActivity(2004,"base_thindbh",...) after a stop/restart barrier
+
+The cut actually happened (arm g1, year 2004):
+  RmvCode 1 (pre-cut):  Tpa 1179.261  BA 106.456
+  RmvCode 2 (post-cut): Tpa  825.483  BA  74.519
+  825.483 / 1179.261 = 0.700  ->  exactly 30% of TPA removed
+   74.519 /  106.456 = 0.700  ->  exactly 30% of BA removed
+
+Equivalence (join on Year + RmvCode, all metrics):
+  g1 vs g2 : max |delta| = 0.0   (injection == native keyword)
+  g2 vs g3 : max |delta| = 0.0   (restart-injected cut == in-process)
+
+VERDICT: PASS. External cut injection is exact against native FVS management,
+and survives a stop/restart barrier exactly, on stand values.
+
+Mechanism notes (cost real debugging):
+- fvsCutNow works ONLY at stop point 2, and NOT right after a restart restore
+  ("function can only be used at stoppoint 2"): the restore leaves the stand
+  loaded but not in the stop-point-2 context. For the restart path use
+  fvsAddActivity(year,"base_thindbh",c(minDBH,maxDBH,prop,0,0)) instead -- it
+  has no stop-point restriction and schedules the thin for the resumed cycle.
+- FVS_Summary2 emits TWO rows for a cut year: RmvCode 1 (pre-removal) and
+  RmvCode 2 (post-removal). Join on (StandID, Year, RmvCode), never Year alone,
+  or the pre/post rows cross-join and manufacture huge false deltas.
+
+NOT yet tested: per-stand targeting within a multi-stand bundle (cut some
+stands, not others) -- the mechanism even-flow allocation needs. Next check.
+
+--- PER-STAND TARGETING (2026-07-17) ---
+
+2-stand bundle (121705900034, 121705900036), cut ONLY the first at 2024, 30%.
+Driver pauses each stand at stop point 2, checks fvsGetStandIDs, cuts only the
+target (cut-once guarded; each stand re-stops at SP2 twice, cut applied once).
+
+  target 121705900034 @2024:  pre 1656.3 -> post 1159.4 TPA = 0.700 (30% removed)
+  other  121705900036:        max |delta| vs no-cut baseline = 0.0 (untouched)
+
+VERDICT: PASS. Selective per-stand harvest within a bundle works; non-target
+stands are bit-identical to the no-cut baseline. This is the mechanism even-flow
+allocation needs -- cut the stands the allocation selects, leave the rest.
+
+Gotcha: fvsRun(2,year) re-stops at a stand's stop point 2 AFTER a cut, so a
+naive loop double-cuts. Guard each stand to at most one cut per barrier.

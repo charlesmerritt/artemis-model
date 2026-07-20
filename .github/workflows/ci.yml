@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  # `pull_request` covers every branch that matters; a blanket push trigger
+  # would fire a second, identical run for each commit on a branch with an
+  # open PR. Push is scoped to main so post-merge state is still verified.
+  push:
+    branches: [main]
+  pull_request:
+
+# Supersede in-flight runs for the same ref: only the newest commit's result
+# is meaningful, and the rest are wasted runner minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Without a cap, a hung `uv sync` or stalled test runs to GitHub's 6-hour
+    # default. This suite takes well under a minute.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # .python-version pins 3.14; pyproject requires >=3.14.
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Run tests
+        run: uv run pytest tests/ -v
+
+# Scope notes
+#
+# Runs the host-independent suite. Tests needing the external data drive (/mnt/d)
+# skip automatically via `_data_paths_or_skip` in tests/test_config.py, and the
+# clearcut/ag tests skip when their generated CSVs are absent. Nothing here needs
+# that drive, so CI is green on a bare runner.
+#
+# Lint config lives in pyproject.toml [tool.ruff]: ruff's default rules (E4/E7/E9
+# + F -- correctness and unused code, no style churn), notebooks excluded because
+# their mid-file imports and semicolons are normal cell style, not defects.
+#
+# NOT covered, deliberately:
+#   - FVS itself. FVS is a Windows DLL on the workstation; WSL2 (and this runner)
+#     cannot execute it. The restart-fidelity arms are run by hand -- see
+#     research/restart_fidelity/README.md. The 11 tests for that work ARE covered
+#     here, because keyfile generation and the DuckDB comparison are pure.
