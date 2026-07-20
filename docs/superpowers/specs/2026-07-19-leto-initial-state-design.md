@@ -46,7 +46,7 @@ later pipeline stages.
 ### Required inputs
 
 1. A GeoPandas-readable management-unit vector layer with:
-   `MU_ID`, `Acres`, `PLT_CN`, `OWN_CODE`, `OWN_TYPE`, `SMZ_Pct`, and geometry.
+   `MU_ID`, `Acres`, `OWN_CODE`, `OWN_TYPE`, `SMZ_Pct`, and geometry.
 2. The TreeMap 2022 plot-ID raster.
 3. A TreeMap lookup table mapping raster `VALUE` or `TM_ID` to `PLT_CN`.
 4. One or more FIA `TREE.csv` files.
@@ -91,7 +91,8 @@ valid TreeMap cells.
 
 This module owns tabular initial-state construction. Focused functions will:
 
-- build the management-unit crosswalk;
+- build the management-unit crosswalk, deriving its majority `PLT_CN` from the
+  generated plot-weight table;
 - filter plots below `MIN_PLT_WEIGHT` and renormalize retained weights per
   management unit;
 - join weighted plots to FIA trees and retain `STATUSCD == "1"`;
@@ -148,8 +149,10 @@ without weakening the comparison to static source-text checks.
 
 The implementation will fail clearly for missing required columns, duplicate
 management-unit IDs, geographic CRS input for distance imputation, a TreeMap
-lookup that maps one raster ID to multiple plot IDs, units left with zero total
-weight after filtering, or no runnable donor unit.
+lookup that maps one raster ID to multiple plot IDs, a retained weight group
+with a non-positive total, or no runnable donor unit. If filtering removes all
+weighted plots for a unit, that unit follows LETO's normal missing-tree path and
+is eligible for nearest-runnable-unit imputation.
 
 Diagnostics will include row and unique-ID counts, unmatched TreeMap/FIA plots,
 missing FVS species, per-unit weight sums, donor plots per unit, direct versus
