@@ -14,6 +14,7 @@ from shapely.geometry import box
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipeline.s1_initial_state.weights import build_plot_weights
+from pipeline.s1_initial_state.leto_initial_state import prepare_direct_tree_rows
 
 
 @pytest.fixture
@@ -69,3 +70,44 @@ def test_plot_weights_match_leto_assign_plt_cn(leto_spatial_fixture):
         }
     )
     pd.testing.assert_frame_equal(actual, expected)
+
+
+def test_tree_preparation_matches_leto_csv_pipeline():
+    """Match LETO's live-tree, species, height, and weighted-TPA expressions."""
+    normalized_weights = pd.DataFrame(
+        {
+            "MU_ID": ["1", "1"],
+            "PLT_CN": ["101", "102"],
+            "WEIGHT": [0.8, 0.2],
+            "Stand_ID": ["1", "1"],
+        }
+    )
+    fia_trees = pd.DataFrame(
+        {
+            "CN": ["t1", "t2", "t3", "t4"],
+            "PLT_CN": ["101", "101", "102", "102"],
+            "STATUSCD": ["1", "2", "1", "1"],
+            "INVYR": ["2020", "2020", "2021", "2021"],
+            "SPCD": ["131", "131", "999", "131"],
+            "DIA": ["10", "11", "12", "8"],
+            "HT": [None, "60", "45", "40"],
+            "ACTUALHT": ["55", "60", "45", None],
+            "CR": ["50", "60", "45", "40"],
+            "TPA_UNADJ": ["5", "6", "7", "10"],
+        }
+    )
+
+    actual = prepare_direct_tree_rows(
+        normalized_weights, fia_trees, {"131": "LP"}
+    )
+
+    assert actual["TREE_ID"].tolist() == ["t1", "t4"]
+    assert actual["STAND_ID"].tolist() == ["MU_1", "MU_1"]
+    assert actual["SPECIES"].tolist() == ["LP", "LP"]
+    assert actual["TREE_COUNT"].tolist() == pytest.approx([4.0, 2.0])
+    assert actual["HT"].tolist() == pytest.approx([55.0, 40.0])
+    assert actual["TREE_SOURCE"].tolist() == [
+        "FIA_WEIGHTED_DIRECT",
+        "FIA_WEIGHTED_DIRECT",
+    ]
+    assert actual["DONOR_STAND_ID"].tolist() == ["", ""]
