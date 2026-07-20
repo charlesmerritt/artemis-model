@@ -93,9 +93,7 @@ def build_plot_weights(
         }
     )
     counts = (
-        cells.groupby(["MU_CODE", "TM_VALUE"])
-        .size()
-        .reset_index(name="CELL_COUNT")
+        cells.groupby(["MU_CODE", "TM_VALUE"]).size().reset_index(name="CELL_COUNT")
     )
     counts["MU_ID"] = counts["MU_CODE"].map(mu_by_code).astype("string")
     counts["CELL_COUNT"] = counts["CELL_COUNT"].astype("int64")
@@ -107,8 +105,6 @@ def build_plot_weights(
     result = counts.merge(lookup, on="TM_VALUE", how="inner")
     return (
         result[WEIGHT_COLUMNS]
-        .sort_values(
-            ["MU_ID", "WEIGHT", "TM_VALUE"], ascending=[True, False, True]
-        )
+        .sort_values(["MU_ID", "WEIGHT", "TM_VALUE"], ascending=[True, False, True])
         .reset_index(drop=True)
     )

@@ -94,12 +94,9 @@ def build_management_unit_crosswalk(
     ranked = weights.copy()
     ranked["MU_ID"] = ranked["MU_ID"].astype("string")
     ranked["PLT_CN"] = ranked["PLT_CN"].astype("string")
-    majority = (
-        ranked.sort_values(
-            ["MU_ID", "CELL_COUNT", "PLT_CN"], ascending=[True, False, True]
-        )
-        .drop_duplicates("MU_ID")[["MU_ID", "PLT_CN"]]
-    )
+    majority = ranked.sort_values(
+        ["MU_ID", "CELL_COUNT", "PLT_CN"], ascending=[True, False, True]
+    ).drop_duplicates("MU_ID")[["MU_ID", "PLT_CN"]]
 
     crosswalk = units.merge(majority, on="MU_ID", how="left", validate="one_to_one")
     crosswalk.insert(0, "Stand_ID", crosswalk["MU_ID"])
@@ -184,9 +181,7 @@ def prepare_direct_tree_rows(
         joined["HT"] = joined["HT"].fillna(joined["ACTUALHT"])
 
     joined["TREE_COUNT"] = joined["TREE_COUNT"] * joined["WEIGHT"]
-    joined = joined.dropna(
-        subset=["STAND_ID", "SPECIES", "DIAMETER", "TREE_COUNT"]
-    )
+    joined = joined.dropna(subset=["STAND_ID", "SPECIES", "DIAMETER", "TREE_COUNT"])
     joined = joined.loc[joined["TREE_COUNT"] > 0].copy()
     joined["TREE_SOURCE"] = "FIA_WEIGHTED_DIRECT"
     joined["DONOR_STAND_ID"] = ""

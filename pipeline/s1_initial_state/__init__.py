@@ -1,2 +1,1 @@
 """ARTEMIS initial-state construction."""
-

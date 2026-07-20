@@ -90,7 +90,9 @@ def test_build_plot_weights_reports_missing_lookup_columns(treemap_inputs):
         {"MU_ID": ["1"]}, geometry=[box(0, 0, 30, 30)], crs="EPSG:5070"
     )
 
-    with pytest.raises(ValueError, match=r"TreeMap lookup missing columns: \['PLT_CN'\]"):
+    with pytest.raises(
+        ValueError, match=r"TreeMap lookup missing columns: \['PLT_CN'\]"
+    ):
         build_plot_weights(units, treemap_path, pd.DataFrame({"VALUE": [10]}))
 
 

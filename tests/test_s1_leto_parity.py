@@ -100,9 +100,7 @@ def test_tree_preparation_matches_leto_csv_pipeline():
         }
     )
 
-    actual = prepare_direct_tree_rows(
-        normalized_weights, fia_trees, {"131": "LP"}
-    )
+    actual = prepare_direct_tree_rows(normalized_weights, fia_trees, {"131": "LP"})
 
     assert actual["TREE_ID"].tolist() == ["t1", "t4"]
     assert actual["STAND_ID"].tolist() == ["MU_1", "MU_1"]

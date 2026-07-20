@@ -53,7 +53,9 @@ def plot_weights():
     )
 
 
-def test_crosswalk_uses_majority_plot_and_legacy_columns(management_units, plot_weights):
+def test_crosswalk_uses_majority_plot_and_legacy_columns(
+    management_units, plot_weights
+):
     crosswalk = build_management_unit_crosswalk(management_units, plot_weights)
 
     assert crosswalk.columns.tolist() == [
@@ -89,9 +91,9 @@ def test_weights_keep_threshold_boundary_and_renormalize(
 
 def test_load_species_lookup_normalizes_fia_codes(tmp_path):
     workbook = tmp_path / "species.xlsx"
-    pd.DataFrame(
-        {"FIA CODE": [7, 131], "SN_Mapped_To": ["OS", "LP"]}
-    ).to_excel(workbook, sheet_name="EasternSpeciesTranslator", index=False)
+    pd.DataFrame({"FIA CODE": [7, 131], "SN_Mapped_To": ["OS", "LP"]}).to_excel(
+        workbook, sheet_name="EasternSpeciesTranslator", index=False
+    )
 
     lookup = load_species_lookup(workbook, "EasternSpeciesTranslator")
 
@@ -143,13 +145,11 @@ def test_load_fia_tree_files_requires_at_least_one_path():
 
 def test_load_species_lookup_rejects_conflicting_mappings(tmp_path):
     workbook = tmp_path / "species.xlsx"
-    pd.DataFrame(
-        {"FIA CODE": [131, 131], "SN_Mapped_To": ["LP", "LL"]}
-    ).to_excel(workbook, sheet_name="EasternSpeciesTranslator", index=False)
+    pd.DataFrame({"FIA CODE": [131, 131], "SN_Mapped_To": ["LP", "LL"]}).to_excel(
+        workbook, sheet_name="EasternSpeciesTranslator", index=False
+    )
 
-    with pytest.raises(
-        ValueError, match="one FIA code to multiple FVS species"
-    ):
+    with pytest.raises(ValueError, match="one FIA code to multiple FVS species"):
         load_species_lookup(workbook, "EasternSpeciesTranslator")
 
 
