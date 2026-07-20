@@ -14,7 +14,10 @@ from shapely.geometry import box
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipeline.s1_initial_state.weights import build_plot_weights
-from pipeline.s1_initial_state.leto_initial_state import prepare_direct_tree_rows
+from pipeline.s1_initial_state.leto_initial_state import (
+    impute_missing_tree_rows,
+    prepare_direct_tree_rows,
+)
 
 
 @pytest.fixture
@@ -111,3 +114,37 @@ def test_tree_preparation_matches_leto_csv_pipeline():
         "FIA_WEIGHTED_DIRECT",
     ]
     assert actual["DONOR_STAND_ID"].tolist() == ["", ""]
+
+
+def test_nearest_imputation_matches_leto_generate_near_table():
+    """Match LETO's closest polygon donor and tree-list copy semantics."""
+    management_units = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2", "3"]},
+        geometry=[
+            box(0, 0, 10, 10),
+            box(100, 0, 110, 10),
+            box(500, 0, 510, 10),
+        ],
+        crs="EPSG:5070",
+    )
+    crosswalk = pd.DataFrame({"MU_ID": ["1", "2", "3"]})
+    direct_trees = pd.DataFrame(
+        {
+            "STAND_ID": ["MU_1", "MU_1", "MU_3"],
+            "TREE_ID": ["a", "b", "c"],
+            "MU_ID": ["1", "1", "3"],
+            "PLT_CN": ["101", "101", "301"],
+            "TREE_SOURCE": ["FIA_WEIGHTED_DIRECT"] * 3,
+            "DONOR_STAND_ID": [""] * 3,
+            "NEAR_DIST": [""] * 3,
+        }
+    )
+
+    result = impute_missing_tree_rows(management_units, crosswalk, direct_trees)
+
+    imputed = result.loc[result["STAND_ID"] == "MU_2"]
+    assert imputed["DONOR_STAND_ID"].unique().tolist() == ["MU_1"]
+    assert imputed["TREE_SOURCE"].unique().tolist() == ["IMPUTED_NEAREST"]
+    assert imputed["TREE_ID"].tolist() == [1, 2]
+    assert imputed["NEAR_DIST"].unique().tolist() == pytest.approx([90.0])
+    assert imputed["PLT_CN"].tolist() == ["101", "101"]
