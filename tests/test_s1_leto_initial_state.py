@@ -229,7 +229,7 @@ def test_build_and_write_initial_state_outputs(tmp_path):
     fia_trees = pd.DataFrame(
         {
             "CN": ["tree-1", "tree-unmapped"],
-            "PLT_CN": ["101", "101"],
+            "PLT_CN": [101, 101],
             "STATUSCD": ["1", "1"],
             "INVYR": ["2020", "2020"],
             "SPCD": ["131", "999"],

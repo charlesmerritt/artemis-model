@@ -271,6 +271,8 @@ def build_initial_state(
     min_plot_weight: float = 0.05,
 ) -> InitialStateTables:
     """Build all LETO initial-state tables from in-memory inputs."""
+    fia_trees = fia_trees.copy()
+    fia_trees["PLT_CN"] = fia_trees["PLT_CN"].astype("string")
     crosswalk = build_management_unit_crosswalk(management_units, weights)
     normalized_weights = filter_and_normalize_weights(
         weights, crosswalk, min_plot_weight
