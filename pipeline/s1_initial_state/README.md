@@ -89,7 +89,10 @@ units, weights = build_leto_management_units(
 
 The boundary-overlay baseline remains available through
 `pipeline.s1_initial_state.segmentation.boundary_overlay.process_county(...)`
-and its CLI. Both methods emit the shared `MU_ID`, `Acres`,
+and its CLI. `preflight_boundary_overlay_data(...)` validates its parcels,
+roads, boundary-streams geodatabase, waterbodies, LANDFIRE EVT raster, and BMP
+rules before a dry run or production read, with mount/R2 recovery guidance.
+Both methods emit the shared `MU_ID`, `Acres`,
 `SEGMENTATION_METHOD`, and geometry contract. Use
 `segmentation.comparison.compare_segmentations(...)` and
 `compare_attribution(...)` only on matched source vintages and AOIs.
@@ -146,6 +149,21 @@ counterpart baseline when its artifact exists, and continue through weights,
 FIA join coverage, species translation, donor imputation, and the initial-state
 map. It imports the production functions, fails closed on missing production
 inputs, and disables output writing until `WRITE_OUTPUTS = True`.
+
+To create a reproducible comparison pair for one `COUNTY_FIPS`:
+
+1. set `SEGMENTATION_METHOD = "leto"` and `WRITE_OUTPUTS = True`, then run the
+   notebook;
+2. set `SEGMENTATION_METHOD = "boundary_overlay"`, keep `WRITE_OUTPUTS = True`,
+   and run it again; and
+3. restore `WRITE_OUTPUTS = False` and rerun either selection to inspect the
+   comparison.
+
+Each write-enabled run serializes the selected in-memory result to
+`data/interim/management_units/baselines/<method>/<12COUNTY_FIPS>/ManagementUnits.gpkg`.
+If the other artifact is absent, the comparison stage reports
+`counterpart_unavailable`, its expected path, and the exact selection needed to
+create it.
 
 The proposed controlled-factor protocol for testing a future synthesis is in
 `docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md`. It

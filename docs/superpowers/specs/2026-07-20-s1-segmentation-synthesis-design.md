@@ -82,6 +82,44 @@ outputs and geometry-equivalent spatial outputs. Randomized variants must use
 the same seed in each paired comparison. Seed is a repeated condition nested
 within AOI, not an independent AOI replicate.
 
+## Independent eligible-landscape coverage reference
+
+Each AOI must have one shared independent eligible-landscape reference, denoted
+`R_aoi`, fixed before either baseline or any candidate is run. Derive it as
+follows:
+
+1. Predeclare an external validation layer that supplies a reviewed binary
+   `eligible` forest-management label across the complete AOI. Its geometry and
+   labels must come from operational inventory or field adjudication that did
+   not use TreeMap, LANDFIRE EVT, the segmentation parcels, ownership raster,
+   hydrography, roads, waterbodies, or any candidate output.
+2. Reproject that layer to EPSG:5070, repair invalid polygon topology with the
+   registered repair tool and version, clip it to the frozen county AOI, retain
+   polygonal components, and dissolve `eligible = 1` geometry into `R_aoi` and
+   `eligible = 0` geometry into the independent exclusion reference `X_aoi`.
+3. Store `R_aoi` and `X_aoi` as separate layers in
+   `references/eligible_landscape/<county_fips>/EligibleLandscape.gpkg` with the
+   source identifier, review date, repair log, CRS, AOI hash, and SHA-256 file
+   hash in the experiment manifest. The hashed file is read-only for all
+   parent/candidate comparisons in that AOI.
+
+The reference must cover the entire AOI and must not be revised after results
+are inspected. If a complete independent layer is unavailable, coverage and
+operational-realism gates for that AOI are inconclusive; neither TreeMap nor EVT
+may be substituted as the reference because each is an experimental factor.
+“Held-out forest boundary” below means `boundary(R_aoi)`, and “held-out
+validation exclusions” means `X_aoi`; neither is a construction input.
+
+For a management-unit result `M`, dissolve its polygons to `U(M)` and compute
+
+`J(M, R_aoi) = area(U(M) intersection R_aoi) / area(U(M) union R_aoi)`.
+
+Record parent and candidate Jaccard separately. The paired coverage effect is
+candidate Jaccard minus parent Jaccard,
+`delta_J = J(candidate, R_aoi) - J(parent, R_aoi)`. The non-inferiority margin
+is therefore computable and passes only when the interval rule below supports
+`delta_J >= -0.01`.
+
 ## Factors and falsifiable hypotheses
 
 Change one factor at a time from its parent baseline. A factor that passes may
@@ -188,8 +226,10 @@ converted to a zero metric.
 
 ### Spatial coverage and fragmentation
 
-- dissolved coverage acres, intersection, union, symmetric difference, and
-  coverage Jaccard;
+- dissolved coverage acres and pairwise parent/candidate intersection, union,
+  and symmetric difference as descriptive diagnostics;
+- parent and candidate Jaccard against the same frozen `R_aoi`, plus
+  `delta_J`;
 - within-method overlap acres;
 - unit count and total, median, 5th-, and 95th-percentile unit acres;
 - sliver count and acreage; oversized count and acreage;
@@ -219,6 +259,36 @@ converted to a zero metric.
 Imputation rate is reported separately because imputation can make a table
 runnable while masking weak direct FIA support.
 
+## Paired interval estimator
+
+For every metric, first orient the effect so a larger value favors the
+candidate, then calculate the candidate-minus-parent difference within each
+complete `AOI × seed` block. For a deterministic method paired with a
+stochastic method, reuse the deterministic AOI value in each corresponding
+seed block; do not rerun it and treat those copies as independent field data.
+
+Use NumPy's `PCG64` generator with bootstrap seed `20260720`. Draw `10,000`
+bootstrap samples. Each sample resamples the complete `AOI × seed` blocks with
+replacement, preserving both parent and candidate values in the selected
+block, and records the unweighted mean paired difference. The 95% percentile
+confidence interval is the 2.5th and 97.5th percentiles of those 10,000 means.
+Report the observed mean, interval bounds, number of AOIs, number of blocks,
+and the complete per-block differences.
+
+An expected block missing either side is not imputed or silently dropped. A
+hard algorithm failure invokes the reject rule; otherwise the experiment is
+inconclusive until the block is recovered. With only five AOIs and nested seed
+repetitions, the interval describes these registered AOIs and seeds, not a
+broader population.
+
+For a primary benefit with preregistered practical threshold `tau`, interval
+support passes only when the lower bound is at least `tau`; it rejects for no
+benefit when the upper bound is at most zero; otherwise it is inconclusive. For
+a non-inferiority guardrail with lower margin `g` (for coverage Jaccard,
+`g = -0.01`), it passes only when the lower bound is at least `g`, rejects when
+the upper bound is below `g`, and is otherwise inconclusive. These rules are
+applied before the overall keep/reject/inconclusive classification below.
+
 ## Paired decision rules
 
 The numerical margins below are protocol choices, not established ecological
@@ -241,12 +311,12 @@ A factor level is **kept for the next synthesis experiment** only when all of
 the following hold:
 
 1. every hard gate passes;
-2. its registered primary benefit has the hypothesized direction in at least
-   four of five AOIs and, for stochastic variants, at least 16 of 20 seeds
-   within each supporting AOI;
-3. its area-weighted coverage Jaccard is no more than `0.01` below its paired
-   parent and its added symmetric-difference area is no more than 1% of the
-   paired coverage union;
+2. its registered primary-benefit interval meets the pass rule above, and the
+   benefit has the hypothesized direction in at least four of five AOIs and,
+   for stochastic variants, at least 16 of 20 seeds within each supporting AOI;
+3. the 95% percentile interval for `delta_J` against the shared independent
+   `R_aoi` has lower bound at least `-0.01`, and added pairwise
+   symmetric-difference area is no more than 1% of the paired coverage union;
 4. the proportion of units with direct runnable FIA/FVS trees is no more than
    `0.02` below its paired parent, the missing-stand proportion does not
    increase, and fixed-horizon FVS completion does not decrease; and
@@ -254,11 +324,13 @@ the following hold:
    distribution are reported. With only five AOIs, these summaries are
    descriptive and must not be presented as broad population inference.
 
-A factor level is **rejected** when a hard gate fails, a guardrail is breached,
-the primary effect is opposite in at least three AOIs, or seed stability fails.
-It is **inconclusive** when the primary independent reference is unavailable,
-the direction criterion is unmet without a reject condition, or the interval
-crosses the practical threshold. Inconclusive factors are not promoted.
+A factor level is **rejected** when a hard gate fails, an interval meets the
+reject rule above, a non-interval guardrail is breached, the primary effect is
+opposite in at least three AOIs, or seed stability fails. It is
+**inconclusive** when the primary independent reference is unavailable, an
+expected paired block is missing without a hard failure, the direction
+criterion is unmet without a reject condition, or any required interval is
+between its pass and reject bounds. Inconclusive factors are not promoted.
 All keep, reject, and inconclusive decisions, including null and failed runs,
 remain in the experiment record.
 
@@ -310,6 +382,36 @@ must not be inferred from saved notebook outputs.
 | Seed-dependent conclusion | Apply H6 and reject or redesign the stochastic factor |
 | Invalid cross-method unit correspondence | Leave modal agreement unavailable; do not match equal `MU_ID` strings |
 | Multiple exploratory comparisons | Label them exploratory and require a new preregistered confirmation run |
+
+## Limitations and threats to validity
+
+- **Reference validity.** The eligible-landscape layer may contain labeling,
+  temporal, and geometry errors. Independence prevents direct circularity but
+  does not make the reference ecological truth; its provenance and review
+  uncertainty must accompany every result.
+- **Limited external validity.** Five Florida counties cannot support claims
+  about other ownership patterns, forest types, states, or source vintages.
+- **Nested repetition.** Seeds measure algorithmic sensitivity within AOIs;
+  they do not create new independent landscapes. The block bootstrap is
+  descriptive for the registered AOI/seed set.
+- **Source resolution and alignment.** Raster cell size, vector positional
+  error, CRS transformation, and differing acquisition dates can change
+  boundaries, slivers, and apparent overlap independently of method quality.
+- **Threshold dependence.** The 30-meter coincidence tolerance and practical
+  margins are protocol decisions. Conclusions must include sensitivity to
+  approved alternative margins and must not optimize margins after inspection.
+- **Attribution dependence.** Both methods share TreeMap/FIA sources and can
+  inherit the same donor and sampling biases. Agreement between them is not
+  independent validation.
+- **Imputation masking.** Nearest-unit imputation can improve FVS runnability
+  while weakening direct ecological support, so direct and imputed readiness
+  remain separate outcomes.
+- **Operational proxy.** Coverage, compactness, boundary coincidence, runtime,
+  and FVS completion are proxies. They do not establish treatment feasibility,
+  ecological outcomes, or management preference without external review.
+- **Implementation asymmetry.** The boundary-overlay runner is file-oriented
+  while LETO is in-memory and seeded. Runtime and I/O comparisons must report
+  stage boundaries and cached-artifact use explicitly.
 
 ## Open questions
 

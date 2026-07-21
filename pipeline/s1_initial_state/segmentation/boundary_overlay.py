@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+from dataclasses import dataclass
 import logging
 import sys
 from pathlib import Path
@@ -22,14 +23,15 @@ import numpy as np
 import pandas as pd
 import rasterio
 import yaml
-from pyogrio import list_layers
 from rasterio.features import shapes
 from rasterio.mask import mask as rio_mask
-from shapely.geometry import Point, box, mapping
+from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -43,7 +45,68 @@ HECTARES_TO_ACRES = 2.471053814671653
 SEGMENTATION_METHOD = "boundary_overlay"
 
 # Five-county pilot
-PILOT_COUNTIES = ["003", "023", "047", "089", "125"]  # Baker, Columbia, Hamilton, Nassau, Suwannee, Union
+PILOT_COUNTIES = [
+    "003",
+    "023",
+    "047",
+    "089",
+    "125",
+]  # Baker, Columbia, Hamilton, Nassau, Suwannee, Union
+
+
+@dataclass(frozen=True)
+class BoundaryOverlayDataPaths:
+    """Production inputs consumed by the boundary-overlay county runner."""
+
+    parcels: Path
+    roads: Path
+    boundary_streams: Path
+    waterbodies: Path
+    landfire_evt: Path
+    bmp_rules: Path
+
+    @classmethod
+    def from_root(
+        cls,
+        data_root: Path,
+        config_path: Path = Path("config/bmp_rules.yaml"),
+    ) -> "BoundaryOverlayDataPaths":
+        return cls(
+            parcels=data_root / "FL_5_Co_Parcels.gdb",
+            roads=data_root / "SE_rds100k" / "SE_rds100k.gdb",
+            boundary_streams=data_root
+            / "US SE Streams - FINAL"
+            / "US SE Streams - FINAL"
+            / "Streams By State"
+            / "nhdplus_epasnapshot2022_fl.gdb",
+            waterbodies=data_root
+            / "US SE Waterbodies Final"
+            / "US SE Streams 10.20.2023"
+            / "US SE Streams"
+            / "US SE Streams.gdb",
+            landfire_evt=data_root
+            / "LF2022_EVT_CONUS"
+            / "LF2022_EVT_CONUS"
+            / "Tif"
+            / "LF2022_EVT_CONUS.tif",
+            bmp_rules=config_path,
+        )
+
+
+def preflight_boundary_overlay_data(
+    data_root: Path,
+    config_path: Path = Path("config/bmp_rules.yaml"),
+) -> BoundaryOverlayDataPaths:
+    """Fail before reads when a boundary-overlay production input is absent."""
+    paths = BoundaryOverlayDataPaths.from_root(data_root, config_path)
+    missing = [name for name, path in paths.__dict__.items() if not path.exists()]
+    if missing:
+        names = ", ".join(missing)
+        raise FileNotFoundError(
+            f"Boundary-overlay production data mount is incomplete at {data_root}; "
+            f"mount D: at /mnt/d or restore missing sources from R2: {names}"
+        )
+    return paths
 
 
 def feet_to_meters(feet: float) -> float:
@@ -75,8 +138,11 @@ def classify_stream_fcode(fcode: Optional[int]) -> Optional[str]:
         return None
 
 
-def classify_unit_size(area_ha: float, min_area_ha: float = MIN_UNIT_AREA_HA,
-                       target_max_area_ha: float = TARGET_MAX_AREA_HA) -> str:
+def classify_unit_size(
+    area_ha: float,
+    min_area_ha: float = MIN_UNIT_AREA_HA,
+    target_max_area_ha: float = TARGET_MAX_AREA_HA,
+) -> str:
     """
     Classify management unit by area threshold.
 
@@ -141,8 +207,6 @@ def split_large_geometry(geometry, target_max_area_ha: float = TARGET_MAX_AREA_H
     Returns a list of polygon parts. Uses a fishnet overlay approach:
     creates a regular grid over the bounding box, then intersects with the input geometry.
     """
-    from shapely.geometry import Polygon
-
     target_area_m2 = target_max_area_ha * 10_000
 
     # If already below threshold, return as-is
@@ -218,7 +282,9 @@ def create_forest_mask_from_evt(evt_path: Path, aoi_bounds) -> gpd.GeoDataFrame:
 
         # Vectorize
         forest_shapes = []
-        for geom, value in shapes(forest_mask.astype(np.uint8), transform=out_transform):
+        for geom, value in shapes(
+            forest_mask.astype(np.uint8), transform=out_transform
+        ):
             if value == 1:  # forest pixel
                 forest_shapes.append(geom)
 
@@ -228,8 +294,7 @@ def create_forest_mask_from_evt(evt_path: Path, aoi_bounds) -> gpd.GeoDataFrame:
 
         # Convert to GeoDataFrame and dissolve
         forest_gdf = gpd.GeoDataFrame(
-            geometry=[shape(g) for g in forest_shapes],
-            crs=src.crs
+            geometry=[shape(g) for g in forest_shapes], crs=src.crs
         )
 
         # Dissolve to single multipolygon
@@ -246,6 +311,7 @@ def process_county(
     save_qa: bool = False,
     overwrite: bool = False,
     dry_run: bool = False,
+    config_path: Path = Path("config/bmp_rules.yaml"),
 ) -> Optional[dict]:
     """
     Process a single Florida county to generate candidate management units.
@@ -266,6 +332,7 @@ def process_county(
         Summary statistics dict, or None if dry_run=True
     """
     logger.info(f"Processing county FIPS {FLORIDA_FIPS}{county_fips}")
+    input_paths = preflight_boundary_overlay_data(data_root, config_path)
 
     if dry_run:
         logger.info("DRY RUN - would process county but not saving outputs")
@@ -282,15 +349,15 @@ def process_county(
         return None
 
     # Load config
-    config = load_config(Path("config/bmp_rules.yaml"))
+    config = load_config(input_paths.bmp_rules)
     fl_buffers = config["states"][FLORIDA_FIPS]["buffers"]
 
     # Data paths
-    parcels_path = data_root / "FL_5_Co_Parcels.gdb"
-    roads_path = data_root / "SE_rds100k" / "SE_rds100k.gdb"
-    streams_path = data_root / "US SE Streams - FINAL" / "US SE Streams - FINAL" / "Streams By State" / "nhdplus_epasnapshot2022_fl.gdb"
-    waterbodies_path = data_root / "US SE Waterbodies Final" / "US SE Streams 10.20.2023" / "US SE Streams" / "US SE Streams.gdb"
-    evt_path = data_root / "LF2022_EVT_CONUS" / "LF2022_EVT_CONUS" / "Tif" / "LF2022_EVT_CONUS.tif"
+    parcels_path = input_paths.parcels
+    roads_path = input_paths.roads
+    streams_path = input_paths.boundary_streams
+    waterbodies_path = input_paths.waterbodies
+    evt_path = input_paths.landfire_evt
 
     # 1. Load parcels for county
     logger.info("Loading parcels...")
@@ -334,7 +401,9 @@ def process_county(
     logger.info(f"Loaded {len(streams)} streams")
 
     logger.info("Loading waterbodies...")
-    waterbodies = gpd.read_file(waterbodies_path, layer="NHDWaterbody_DissolveBoundaries1", mask=aoi_geom)
+    waterbodies = gpd.read_file(
+        waterbodies_path, layer="NHDWaterbody_DissolveBoundaries1", mask=aoi_geom
+    )
     waterbodies = waterbodies.to_crs(PROJECT_CRS)
     logger.info(f"Loaded {len(waterbodies)} waterbodies")
 
@@ -342,27 +411,28 @@ def process_county(
     logger.info("Creating forest mask from EVT...")
     # For now, create a simple forest mask from raster
     # This is a placeholder - the real implementation would use rasterio properly
-    from shapely.geometry import shape
-
     with rasterio.open(evt_path) as src:
         # Clip to AOI
         aoi_geom_dict = [mapping(aoi_geom)]
-        out_image, out_transform = rio_mask(src, aoi_geom_dict, crop=True, all_touched=False)
+        out_image, out_transform = rio_mask(
+            src, aoi_geom_dict, crop=True, all_touched=False
+        )
 
         # Tree-dominated classes: approximate as 1000-2999
         forest_mask = (out_image[0] >= 1000) & (out_image[0] < 3000)
 
         # Vectorize
         forest_shapes_list = []
-        for geom, value in shapes(forest_mask.astype(np.uint8), transform=out_transform):
+        for geom, value in shapes(
+            forest_mask.astype(np.uint8), transform=out_transform
+        ):
             if value == 1:
                 forest_shapes_list.append(shape(geom))
 
         if forest_shapes_list:
             forest_union = unary_union(forest_shapes_list)
             forest_mask_gdf = gpd.GeoDataFrame(
-                geometry=[forest_union],
-                crs=src.crs
+                geometry=[forest_union], crs=src.crs
             ).to_crs(PROJECT_CRS)
         else:
             logger.warning("No forest pixels found")
@@ -384,7 +454,9 @@ def process_county(
 
     # Map buffer class to width in meters
     buffer_widths = {
-        "ephemeral_intermittent": feet_to_meters(fl_buffers["ephemeral_intermittent"]["width_ft"]),
+        "ephemeral_intermittent": feet_to_meters(
+            fl_buffers["ephemeral_intermittent"]["width_ft"]
+        ),
         "perennial_small": feet_to_meters(fl_buffers["perennial_small"]["width_ft"]),
         "perennial_large": feet_to_meters(fl_buffers["perennial_large"]["width_ft"]),
     }
@@ -398,7 +470,9 @@ def process_county(
 
     if stream_buffers:
         all_stream_buffers = unary_union(stream_buffers)
-        stream_buffer_gdf = gpd.GeoDataFrame(geometry=[all_stream_buffers], crs=PROJECT_CRS)
+        stream_buffer_gdf = gpd.GeoDataFrame(
+            geometry=[all_stream_buffers], crs=PROJECT_CRS
+        )
     else:
         stream_buffer_gdf = gpd.GeoDataFrame(geometry=[], crs=PROJECT_CRS)
 
@@ -442,7 +516,9 @@ def process_county(
     # 8. Calculate areas and classify
     candidate_units = clean_geometries(candidate_units)
     candidate_units["unit_area_ha"] = candidate_units.geometry.area / 10_000
-    candidate_units["size_class"] = candidate_units["unit_area_ha"].apply(classify_unit_size)
+    candidate_units["size_class"] = candidate_units["unit_area_ha"].apply(
+        classify_unit_size
+    )
 
     # 9. Optionally split large polygons
     if split_large:
@@ -454,7 +530,9 @@ def process_county(
             # Split large geometries
             split_rows = []
             for idx, row in candidate_units[large_mask].iterrows():
-                parts = split_large_geometry(row.geometry, target_max_area_ha=TARGET_MAX_AREA_HA)
+                parts = split_large_geometry(
+                    row.geometry, target_max_area_ha=TARGET_MAX_AREA_HA
+                )
                 for part in parts:
                     new_row = row.copy()
                     new_row["geometry"] = part
@@ -481,15 +559,29 @@ def process_county(
 
     # Add source parcel area if ACRES field exists
     if "ACRES" in candidate_units.columns:
-        candidate_units["source_parcel_area_ha"] = candidate_units["ACRES"] * 0.404686  # acres to ha
+        candidate_units["source_parcel_area_ha"] = (
+            candidate_units["ACRES"] * 0.404686
+        )  # acres to ha
 
     candidate_units = normalize_output_contract(candidate_units)
 
     # Reorder columns
     id_cols = ["unit_id", "county_fips", "county_name"]
-    parcel_cols = [c for c in candidate_units.columns if c in ["CNTYNAME", "PARCELID", "NPARNO", "DORUC", "PARUSEDESC", "ACRES"]]
-    area_cols = ["source_parcel_area_ha", "unit_area_ha", "size_class"] if "source_parcel_area_ha" in candidate_units.columns else ["unit_area_ha", "size_class"]
-    other_cols = [c for c in candidate_units.columns if c not in id_cols + parcel_cols + area_cols + ["geometry"]]
+    parcel_cols = [
+        c
+        for c in candidate_units.columns
+        if c in ["CNTYNAME", "PARCELID", "NPARNO", "DORUC", "PARUSEDESC", "ACRES"]
+    ]
+    area_cols = (
+        ["source_parcel_area_ha", "unit_area_ha", "size_class"]
+        if "source_parcel_area_ha" in candidate_units.columns
+        else ["unit_area_ha", "size_class"]
+    )
+    other_cols = [
+        c
+        for c in candidate_units.columns
+        if c not in id_cols + parcel_cols + area_cols + ["geometry"]
+    ]
 
     col_order = id_cols + parcel_cols + area_cols + other_cols + ["geometry"]
     col_order = [c for c in col_order if c in candidate_units.columns]
@@ -500,11 +592,15 @@ def process_county(
     candidate_units.to_file(output_gpkg, driver="GPKG")
 
     # Save summary CSV
-    summary = candidate_units.groupby("size_class").agg(
-        polygon_count=("unit_id", "count"),
-        total_area_ha=("unit_area_ha", "sum"),
-        median_area_ha=("unit_area_ha", "median"),
-    ).reset_index()
+    summary = (
+        candidate_units.groupby("size_class")
+        .agg(
+            polygon_count=("unit_id", "count"),
+            total_area_ha=("unit_area_ha", "sum"),
+            median_area_ha=("unit_area_ha", "median"),
+        )
+        .reset_index()
+    )
 
     summary_csv = county_output_dir / "summary.csv"
     summary.to_csv(summary_csv, index=False)
@@ -533,15 +629,37 @@ def main():
         description="Generate draft Florida management units via naive boundary intersection"
     )
 
-    parser.add_argument("--county-fips", type=str, help="Three-digit county FIPS code (e.g., 125 for Union)")
-    parser.add_argument("--pilot-five-county", action="store_true", help="Process all five pilot counties")
-    parser.add_argument("--all-florida", action="store_true", help="Process all Florida counties")
-    parser.add_argument("--output-dir", type=Path, default=Path("data/interim/management_units"),
-                       help="Output directory (default: data/interim/management_units)")
-    parser.add_argument("--no-split-large", action="store_true", help="Skip splitting large polygons")
-    parser.add_argument("--save-qa", action="store_true", help="Save QA layers (buffers, masks)")
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing outputs")
-    parser.add_argument("--dry-run", action="store_true", help="Log actions without saving")
+    parser.add_argument(
+        "--county-fips",
+        type=str,
+        help="Three-digit county FIPS code (e.g., 125 for Union)",
+    )
+    parser.add_argument(
+        "--pilot-five-county",
+        action="store_true",
+        help="Process all five pilot counties",
+    )
+    parser.add_argument(
+        "--all-florida", action="store_true", help="Process all Florida counties"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("data/interim/management_units"),
+        help="Output directory (default: data/interim/management_units)",
+    )
+    parser.add_argument(
+        "--no-split-large", action="store_true", help="Skip splitting large polygons"
+    )
+    parser.add_argument(
+        "--save-qa", action="store_true", help="Save QA layers (buffers, masks)"
+    )
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Overwrite existing outputs"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Log actions without saving"
+    )
 
     args = parser.parse_args()
 
@@ -554,7 +672,9 @@ def main():
         counties_to_process = PILOT_COUNTIES
     elif args.all_florida:
         # For production, you'd enumerate all FL counties
-        logger.error("--all-florida not yet implemented; use --pilot-five-county or --county-fips")
+        logger.error(
+            "--all-florida not yet implemented; use --pilot-five-county or --county-fips"
+        )
         sys.exit(1)
     else:
         parser.print_help()

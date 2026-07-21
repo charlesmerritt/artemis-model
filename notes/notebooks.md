@@ -44,9 +44,13 @@ translation, weighted trees per acre, and nearest-runnable-unit imputation.
 
 The notebook imports production functions instead of duplicating the pipeline,
 preflights the mounted production sources, and keeps `WRITE_OUTPUTS = False` by
-default. Boundary-overlay selection consumes an existing canonical county
-GeoPackage unless output writing is explicitly enabled. Its structure, Python
-syntax, clean outputs, and required workflow sections are covered by
+default. Boundary-overlay selection runs its method-specific six-source
+preflight. Write-enabled LETO and boundary-overlay runs serialize the selected
+result to the same method/county `ManagementUnits.gpkg` contract; two runs
+produce the comparison pair. A missing counterpart is reported as structured
+`counterpart_unavailable` status rather than treated as a completed comparison.
+Its structure, Python syntax, clean outputs, and required workflow sections are
+covered by
 `tests/test_s1_leto_notebook.py`. No paired production results are saved in the
 notebook; the synthesis protocol is documented separately in
 `docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md`.
