@@ -14,14 +14,14 @@ unavailable evidence, not zero values.
 
 ## Source-stage comparison
 
-| Stage | LETO | Boundary overlay | Evidence label |
-|---|---|---|---|
-| Spatial domain | Polygonizes valid TreeMap cells inside the parcel area of interest. | Intersects parcels with a vectorized LANDFIRE EVT forest mask. | Established code behavior |
-| Forest approximation | TreeMap validity defines the initial domain; the code does not apply an EVT class filter. | The current county runner treats EVT values 1000–2999 as tree dominated; its source comment identifies this as an approximation. | Established code behavior and limitation |
-| Internal partitioning | Repeated constrained-point Thiessen subdivision targets no unit above 200 acres, using one point per 100 acres and a 1,000-foot minimum separation by default. | Optional regular-grid splitting targets 40 hectares. | Established code behavior |
-| Exclusions and riparian treatment | Explodes multipart geometry, removes pieces below 5 acres before a final parcel clip, and reports area within the default 35-foot streamside management-zone buffer. | Erases configured stream buffers, waterbodies, and a 3-meter road-artifact buffer; pieces below 2 hectares are classified as slivers but are retained by the current county runner. | Established code behavior |
-| Unit identity | Assigns stable IDs after spatial sorting. | Assigns county-scoped sequential IDs after processing. | Established code behavior |
-| TreeMap/FIA attribution | Counts native TreeMap cells per management unit and emits `MU_PLT_CN_Weights.csv`; modal identity uses descending cell count with ascending TreeMap value as the tie break. | Uses the same shared attribution function once its units are passed to S1 attribution. | Established code behavior |
+| Stage | LETO | Boundary overlay | Direct source provenance | Evidence label |
+|---|---|---|---|---|
+| Spatial domain | Polygonizes valid TreeMap cells inside the parcel area of interest. | Intersects parcels with a vectorized LANDFIRE EVT forest mask. | `leto.build_treemap_domain`; `boundary_overlay.process_county` steps 3–4 | Established code behavior |
+| Forest approximation | TreeMap validity defines the initial domain; the code does not apply an EVT class filter. | The current county runner treats EVT values 1000–2999 as tree dominated; its source comment identifies this as an approximation. | `leto.build_treemap_domain`; `boundary_overlay.process_county` step 3 | Established code behavior and limitation |
+| Internal partitioning | Repeated constrained-point Thiessen subdivision targets no unit above 200 acres, using one point per 100 acres and a 1,000-foot minimum separation by default. | Optional regular-grid splitting targets 40 hectares. | `leto.subdivide_large_units`; `boundary_overlay.split_large_geometry` and `boundary_overlay.process_county` step 9 | Established code behavior |
+| Exclusions and riparian treatment | Explodes multipart geometry, removes pieces below 5 acres before a final parcel clip, and reports area within the default 35-foot streamside management-zone buffer. | Erases configured stream buffers, waterbodies, and a 3-meter road-artifact buffer; pieces below 2 hectares are classified as slivers but are retained by the current county runner. | `leto.cleanup_and_clip_units`; `leto.assign_smz_percent`; `boundary_overlay.process_county` steps 5–8 | Established code behavior |
+| Unit identity | Assigns stable IDs after spatial sorting. | Assigns county-scoped sequential IDs after processing. | `leto._assign_stable_mu_ids`; `boundary_overlay.process_county` step 10 | Established code behavior |
+| TreeMap/FIA attribution | Counts native TreeMap cells per management unit and emits `MU_PLT_CN_Weights.csv`; modal identity uses descending cell count with ascending TreeMap value as the tie break. | Uses the same shared attribution function once its units are passed to S1 attribution. | `weights.build_plot_weights`; `weights.attach_modal_plot` | Established code behavior |
 
 **Interpretation.** The methods encode different spatial hypotheses. LETO starts
 from TreeMap support and creates size-constrained Thiessen units, whereas the
@@ -55,8 +55,10 @@ with more than one donor plot, and weight-sum diagnostics. “Raw weight” mean
 column. A maximum absolute error from one is reported for both.
 
 **Established code behavior.** Cross-method modal-plot agreement is unavailable
-unless both weight tables contain a non-null `CROSSWALK_ID`. Each crosswalk value
-must identify at most one management unit per method. The comparison never
+unless both weight tables contain a non-null `CROSSWALK_ID`. Within each method,
+`CROSSWALK_ID` and `MU_ID` must map one-to-one. Modal ranking requires numeric
+`CELL_COUNT` and `TM_VALUE`, rejects ambiguous duplicate donor rows, and uses
+descending cell count followed by ascending TreeMap value. The comparison never
 assumes that equal `MU_ID` strings identify the same spatial unit across methods.
 
 **Limitation.** A one-to-one crosswalk may not be scientifically appropriate

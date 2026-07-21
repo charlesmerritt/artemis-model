@@ -1,12 +1,15 @@
 """Method-neutral diagnostics for S1 segmentation and plot attribution."""
 
+import math
 from pathlib import Path
 from typing import Any, cast
+import warnings
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 from shapely import union_all
+from shapely.geometry import MultiPolygon, Polygon
 
 SQUARE_METERS_PER_ACRE = 4_046.872609874251
 SLIVER_ACRES = 5.0
@@ -28,15 +31,28 @@ def _linear_unit_to_meters(features: gpd.GeoDataFrame) -> float:
 def _validated_segmentation(features: gpd.GeoDataFrame, label: str) -> gpd.GeoDataFrame:
     missing = {"MU_ID", "Acres"}.difference(features.columns)
     if missing:
-        raise ValueError(f"{label} segmentation missing columns: {sorted(missing)}")
+        raise ValueError(f"{label} missing columns: {sorted(missing)}")
     if features.empty:
-        raise ValueError(f"{label} segmentation must contain at least one unit")
+        raise ValueError(f"{label} must contain at least one unit")
     if features.crs is None:
-        raise ValueError(f"{label} segmentation must define a CRS")
-    if features.geometry.isna().any() or features.geometry.is_empty.any():
-        raise ValueError(f"{label} segmentation contains null or empty geometry")
-    if not features.geometry.is_valid.all():
-        raise ValueError(f"{label} segmentation contains invalid geometry")
+        raise ValueError(f"{label} must define a CRS")
+    if features["MU_ID"].isna().any() or features["MU_ID"].duplicated().any():
+        raise ValueError(f"{label} MU_ID values must be non-null and unique")
+
+    for unit_id, geometry in zip(features["MU_ID"], features.geometry, strict=True):
+        if geometry is None or geometry.is_empty:
+            raise ValueError(f"{label} unit {unit_id!r} has null or empty geometry")
+        if not isinstance(geometry, (Polygon, MultiPolygon)):
+            raise ValueError(
+                f"{label} unit {unit_id!r} must be Polygon or MultiPolygon"
+            )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            area = geometry.area
+        if not math.isfinite(area) or area <= 0:
+            raise ValueError(f"{label} unit {unit_id!r} must have finite positive area")
+        if not geometry.is_valid:
+            raise ValueError(f"{label} unit {unit_id!r} has invalid geometry")
 
     result = features.copy()
     result["Acres"] = pd.to_numeric(result["Acres"], errors="coerce")
@@ -92,10 +108,13 @@ def compare_segmentations(
     candidate_name: str,
 ) -> pd.Series:
     """Compare coverage and unit distributions without matching unit identifiers."""
-    reference_units = _validated_segmentation(reference, "Reference")
-    candidate_units = _validated_segmentation(candidate, "Candidate")
+    reference_units = _validated_segmentation(reference, "Reference segmentation")
+    candidate_units = _validated_segmentation(candidate, "Candidate segmentation")
     meters_per_unit = _linear_unit_to_meters(reference_units)
-    candidate_units = candidate_units.to_crs(reference_units.crs)
+    candidate_units = _validated_segmentation(
+        candidate_units.to_crs(reference_units.crs),
+        "Candidate segmentation after reprojection",
+    )
 
     reference_metrics, reference_coverage = _segmentation_metrics(
         reference_units, "reference", meters_per_unit
@@ -181,18 +200,29 @@ def _weight_sum_metrics(weights: pd.DataFrame, prefix: str) -> dict[str, Any]:
 
 def _modal_plots_by_crosswalk(weights: pd.DataFrame, label: str) -> pd.DataFrame:
     if weights.groupby(CROSSWALK_COLUMN)["MU_ID"].nunique().gt(1).any():
-        raise ValueError(
-            f"{label} {CROSSWALK_COLUMN} must identify at most one management unit"
-        )
-    ranked = weights.copy()
-    sort_columns = [CROSSWALK_COLUMN, "CELL_COUNT"]
-    ascending = [True, False]
-    if "TM_VALUE" in ranked.columns:
-        sort_columns.append("TM_VALUE")
-        ascending.append(True)
-    return ranked.sort_values(sort_columns, ascending=ascending).drop_duplicates(
-        CROSSWALK_COLUMN
-    )[[CROSSWALK_COLUMN, "PLT_CN"]]
+        raise ValueError(f"{label} {CROSSWALK_COLUMN} must identify exactly one MU_ID")
+    if weights.groupby("MU_ID")[CROSSWALK_COLUMN].nunique().gt(1).any():
+        raise ValueError(f"{label} MU_ID must identify exactly one {CROSSWALK_COLUMN}")
+    return weights.sort_values(
+        [CROSSWALK_COLUMN, "CELL_COUNT", "TM_VALUE"],
+        ascending=[True, False, True],
+    ).drop_duplicates(CROSSWALK_COLUMN)[[CROSSWALK_COLUMN, "PLT_CN"]]
+
+
+def _validated_modal_weights(weights: pd.DataFrame, label: str) -> pd.DataFrame:
+    if "TM_VALUE" not in weights:
+        raise ValueError(f"{label} weights missing column: TM_VALUE")
+    result = weights.copy()
+    result["TM_VALUE"] = pd.to_numeric(result["TM_VALUE"], errors="coerce")
+    tm_values = result["TM_VALUE"].to_numpy(dtype="float64")
+    if not np.isfinite(tm_values).all():
+        raise ValueError(f"{label} weights TM_VALUE must be finite and numeric")
+    if (
+        result.duplicated(["MU_ID", "PLT_CN"]).any()
+        or result.duplicated(["MU_ID", "TM_VALUE"]).any()
+    ):
+        raise ValueError(f"{label} weights contain ambiguous duplicate donor rows")
+    return result
 
 
 def _modal_agreement(
@@ -213,6 +243,9 @@ def _modal_agreement(
         or candidate[CROSSWALK_COLUMN].isna().any()
     ):
         raise ValueError(f"{CROSSWALK_COLUMN} values must be non-null")
+
+    reference = _validated_modal_weights(reference, "Reference")
+    candidate = _validated_modal_weights(candidate, "Candidate")
 
     reference_modal = _modal_plots_by_crosswalk(reference, "Reference").rename(
         columns={"PLT_CN": "reference_plot"}

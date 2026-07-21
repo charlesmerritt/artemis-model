@@ -5,7 +5,7 @@ import sys
 import geopandas as gpd
 import pandas as pd
 import pytest
-from shapely.geometry import box
+from shapely.geometry import Point, Polygon, box
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -43,7 +43,16 @@ def test_compare_segmentations_reports_coverage_overlap_and_sizes():
     assert metrics["coverage_jaccard"] == pytest.approx(1.0)
     assert metrics["coverage_symmetric_difference_acres"] == pytest.approx(0)
     assert metrics["candidate_overlap_acres"] == pytest.approx(0)
+    square_meters_per_acre = 4_046.872609874251
+    assert metrics["coverage_intersection_acres"] == pytest.approx(
+        2 / square_meters_per_acre
+    )
+    assert metrics["coverage_union_acres"] == pytest.approx(2 / square_meters_per_acre)
     assert metrics["reference_median_acres"] == pytest.approx(0.000247)
+    assert metrics["reference_p05_acres"] == pytest.approx(0.000247)
+    assert metrics["candidate_p95_acres"] == pytest.approx(0.00023465)
+    assert metrics["reference_sliver_count"] == 2
+    assert metrics["candidate_oversized_count"] == 0
     assert metrics["candidate_boundary_length_median_meters"] == pytest.approx(3.0)
 
 
@@ -72,6 +81,155 @@ def test_compare_segmentations_measures_within_method_overlap_without_unit_match
     )
     assert metrics["candidate_overlap_acres"] == pytest.approx(0)
     assert "unit_id_agreement_rate" not in metrics.index
+
+
+def test_compare_segmentations_reports_nonzero_coverage_differences():
+    reference = gpd.GeoDataFrame(
+        {"MU_ID": ["r"], "Acres": [2.0]},
+        geometry=[box(0, 0, 2, 1)],
+        crs="EPSG:5070",
+    )
+    candidate = gpd.GeoDataFrame(
+        {"MU_ID": ["c"], "Acres": [2.0]},
+        geometry=[box(1, 0, 3, 1)],
+        crs="EPSG:5070",
+    )
+
+    metrics = _comparison_module().compare_segmentations(
+        reference,
+        candidate,
+        reference_name="reference",
+        candidate_name="candidate",
+    )
+
+    square_meters_per_acre = 4_046.872609874251
+    assert metrics["coverage_intersection_acres"] == pytest.approx(
+        1 / square_meters_per_acre
+    )
+    assert metrics["coverage_union_acres"] == pytest.approx(3 / square_meters_per_acre)
+    assert metrics["coverage_symmetric_difference_acres"] == pytest.approx(
+        2 / square_meters_per_acre
+    )
+    assert metrics["coverage_jaccard"] == pytest.approx(1 / 3)
+
+
+def test_compare_segmentations_uses_strict_sliver_and_oversized_thresholds():
+    geometries = [box(index, 0, index + 1, 1) for index in range(4)]
+    reference = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2", "3", "4"], "Acres": [4.99, 5.0, 200.0, 200.01]},
+        geometry=geometries,
+        crs="EPSG:5070",
+    )
+    candidate = reference.copy()
+    candidate["MU_ID"] = ["a", "b", "c", "d"]
+
+    metrics = _comparison_module().compare_segmentations(
+        reference,
+        candidate,
+        reference_name="reference",
+        candidate_name="candidate",
+    )
+
+    assert metrics["reference_sliver_count"] == 1
+    assert metrics["reference_oversized_count"] == 1
+
+
+def test_compare_segmentations_converts_us_survey_feet_to_metric_outputs():
+    reference = gpd.GeoDataFrame(
+        {"MU_ID": ["r"], "Acres": [1.0]},
+        geometry=[box(0, 0, 1, 1)],
+        crs="EPSG:2263",
+    )
+    candidate = reference.copy()
+    candidate["MU_ID"] = ["c"]
+
+    metrics = _comparison_module().compare_segmentations(
+        reference,
+        candidate,
+        reference_name="reference",
+        candidate_name="candidate",
+    )
+
+    meters_per_us_survey_foot = 1_200 / 3_937
+    assert metrics["reference_coverage_acres"] == pytest.approx(
+        meters_per_us_survey_foot**2 / 4_046.872609874251
+    )
+    assert metrics["reference_boundary_length_median_meters"] == pytest.approx(
+        4 * meters_per_us_survey_foot
+    )
+
+
+@pytest.mark.parametrize("mu_ids", [[None, "2"], ["1", "1"]])
+def test_compare_segmentations_requires_non_null_unique_mu_ids(mu_ids):
+    reference = gpd.GeoDataFrame(
+        {"MU_ID": mu_ids, "Acres": [1.0, 1.0]},
+        geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+        crs="EPSG:5070",
+    )
+    candidate = gpd.GeoDataFrame(
+        {"MU_ID": ["c"], "Acres": [2.0]},
+        geometry=[box(0, 0, 2, 1)],
+        crs="EPSG:5070",
+    )
+
+    with pytest.raises(ValueError, match="MU_ID values must be non-null and unique"):
+        _comparison_module().compare_segmentations(
+            reference,
+            candidate,
+            reference_name="reference",
+            candidate_name="candidate",
+        )
+
+
+def test_compare_segmentations_requires_polygonal_positive_area():
+    reference = gpd.GeoDataFrame(
+        {"MU_ID": ["r"], "Acres": [1.0]},
+        geometry=[Point(0, 0)],
+        crs="EPSG:5070",
+    )
+    candidate = gpd.GeoDataFrame(
+        {"MU_ID": ["c"], "Acres": [1.0]},
+        geometry=[box(0, 0, 1, 1)],
+        crs="EPSG:5070",
+    )
+
+    with pytest.raises(ValueError, match="Polygon or MultiPolygon"):
+        _comparison_module().compare_segmentations(
+            reference,
+            candidate,
+            reference_name="reference",
+            candidate_name="candidate",
+        )
+
+    reference.geometry = [Polygon([(0, 0), (1, 0), (2, 0), (0, 0)])]
+    with pytest.raises(ValueError, match="finite positive area"):
+        _comparison_module().compare_segmentations(
+            reference,
+            candidate,
+            reference_name="reference",
+            candidate_name="candidate",
+        )
+
+
+def test_compare_segmentations_revalidates_candidate_after_reprojection():
+    reference = gpd.GeoDataFrame(
+        {"MU_ID": ["r"], "Acres": [1.0]},
+        geometry=[box(0, 0, 1, 1)],
+        crs="EPSG:5070",
+    )
+    candidate = gpd.GeoDataFrame(
+        {"MU_ID": ["c"], "Acres": [1.0]},
+        geometry=[box(0, 95, 1, 96)],
+        crs="EPSG:4326",
+    )
+
+    with pytest.raises(ValueError, match="Candidate segmentation after reprojection"):
+        _comparison_module().compare_segmentations(
+            reference,
+            candidate,
+            reference_name="reference",
+            candidate_name="candidate",
+        )
 
 
 def _weights(*, crosswalk: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -132,6 +290,82 @@ def test_compare_attribution_rejects_one_sided_crosswalk():
 
     with pytest.raises(ValueError, match="both weight tables"):
         _comparison_module().compare_attribution(reference, candidate)
+
+
+def test_compare_attribution_rejects_mu_id_mapped_to_multiple_crosswalk_ids():
+    reference, candidate = _weights(crosswalk=True)
+    reference.loc[1, "CROSSWALK_ID"] = "z"
+
+    with pytest.raises(
+        ValueError, match="MU_ID must identify exactly one CROSSWALK_ID"
+    ):
+        _comparison_module().compare_attribution(reference, candidate)
+
+
+def test_compare_attribution_rejects_crosswalk_id_mapped_to_multiple_mu_ids():
+    reference, candidate = _weights(crosswalk=True)
+    reference.loc[2, "CROSSWALK_ID"] = "x"
+
+    with pytest.raises(
+        ValueError, match="CROSSWALK_ID must identify exactly one MU_ID"
+    ):
+        _comparison_module().compare_attribution(reference, candidate)
+
+
+@pytest.mark.parametrize("column", ["PLT_CN", "TM_VALUE"])
+def test_compare_attribution_rejects_ambiguous_duplicate_donors(column):
+    reference, candidate = _weights(crosswalk=True)
+    reference.loc[1, column] = reference.loc[0, column]
+
+    with pytest.raises(ValueError, match="duplicate donor rows"):
+        _comparison_module().compare_attribution(reference, candidate)
+
+
+@pytest.mark.parametrize("tm_values", [None, ["not-numeric", 2, 3]])
+def test_compare_attribution_requires_numeric_tm_value_for_modal_agreement(tm_values):
+    reference, candidate = _weights(crosswalk=True)
+    if tm_values is None:
+        reference = reference.drop(columns="TM_VALUE")
+    else:
+        reference["TM_VALUE"] = tm_values
+
+    with pytest.raises(ValueError, match="TM_VALUE"):
+        _comparison_module().compare_attribution(reference, candidate)
+
+
+def test_compare_attribution_requires_numeric_cell_count_for_modal_agreement():
+    reference, candidate = _weights(crosswalk=True)
+    reference["CELL_COUNT"] = ["not-numeric", 4, 1]
+
+    with pytest.raises(ValueError, match="CELL_COUNT must be finite and non-negative"):
+        _comparison_module().compare_attribution(reference, candidate)
+
+
+def test_compare_attribution_modal_tie_break_is_independent_of_input_order():
+    reference, candidate = _weights(crosswalk=True)
+    reference = reference.loc[reference["MU_ID"] == "r1"].copy()
+    candidate = candidate.loc[candidate["MU_ID"] == "c1"].copy()
+    reference.loc[0:1, "CELL_COUNT"] = [5, 5]
+    reference.loc[0:1, "WEIGHT"] = [0.5, 0.5]
+    candidate.loc[0:1, "CELL_COUNT"] = [5, 5]
+    candidate.loc[0:1, "WEIGHT"] = [0.5, 0.5]
+    candidate = candidate.iloc[[1, 0]].reset_index(drop=True)
+
+    metrics = _comparison_module().compare_attribution(reference, candidate)
+
+    assert metrics["modal_plot_agreement_rate"] == pytest.approx(1.0)
+
+
+def test_research_review_cites_direct_source_functions():
+    note = (
+        Path(__file__).resolve().parents[1]
+        / "docs/research/leto-vs-boundary-overlay.md"
+    ).read_text()
+
+    assert "leto.build_treemap_domain" in note
+    assert "leto.subdivide_large_units" in note
+    assert "boundary_overlay.process_county" in note
+    assert "weights.build_plot_weights" in note
 
 
 def test_write_comparison_writes_stable_markdown(tmp_path: Path):
