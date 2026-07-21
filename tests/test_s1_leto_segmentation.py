@@ -6,7 +6,14 @@ import sys
 import geopandas as gpd
 import numpy as np
 import pytest
-from shapely.geometry import MultiPolygon, box
+from shapely.geometry import (
+    GeometryCollection,
+    LineString,
+    MultiPolygon,
+    Point,
+    Polygon,
+    box,
+)
 from shapely.ops import unary_union
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -14,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pipeline.s1_initial_state.segmentation.leto import (
     LetoSegmentationConfig,
     SegmentationError,
+    _polygon_parts,
     calculate_acres,
     sample_constrained_points,
     split_unit_thiessen,
@@ -37,6 +45,21 @@ def test_calculate_acres_uses_projected_crs_units_without_mutating_input():
     assert result.loc[0, "name"] == "one-acre"
 
 
+@pytest.mark.parametrize(
+    ("geometry", "record_id"),
+    [(None, "null-unit"), (Polygon(), "empty-unit")],
+)
+def test_calculate_acres_rejects_null_and_empty_geometry(geometry, record_id):
+    units = gpd.GeoDataFrame(
+        geometry=[geometry],
+        index=[record_id],
+        crs="EPSG:5070",
+    )
+
+    with pytest.raises(SegmentationError, match=rf"record '{record_id}'"):
+        calculate_acres(units)
+
+
 def test_sample_constrained_points_stays_inside_and_respects_separation():
     geometry = box(0, 0, 100, 100)
 
@@ -55,6 +78,17 @@ def test_sample_constrained_points_stays_inside_and_respects_separation():
         for second in points[index + 1 :]
     ]
     assert min(distances) >= 20
+
+
+def test_sample_constrained_points_returns_empty_list_for_zero_count():
+    points = sample_constrained_points(
+        box(0, 0, 1, 1),
+        count=0,
+        min_distance=10,
+        rng=np.random.default_rng(2),
+    )
+
+    assert points == []
 
 
 def test_constrained_points_fail_instead_of_looping_forever():
@@ -80,6 +114,13 @@ def test_split_unit_thiessen_returns_polygonal_coverage():
     assert len(children) >= 2
     assert all(child.geom_type == "Polygon" and child.area > 0 for child in children)
     assert unary_union(children).symmetric_difference(parent).area == pytest.approx(0)
+
+
+def test_polygon_parts_ignore_non_polygon_collection_members():
+    polygon = box(0, 0, 1, 1)
+    geometry = GeometryCollection([polygon, LineString([(0, 0), (1, 1)]), Point(0, 0)])
+
+    assert _polygon_parts(geometry) == [polygon]
 
 
 def test_subdivide_large_units_keeps_units_at_threshold():

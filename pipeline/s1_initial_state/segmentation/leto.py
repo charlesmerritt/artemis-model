@@ -7,7 +7,7 @@ import geopandas as gpd
 import numpy as np
 from shapely import union_all, voronoi_polygons
 from shapely.geometry import MultiPoint, Point, Polygon
-from shapely.geometry.base import BaseGeometry
+from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
 SQUARE_METERS_PER_ACRE = 4_046.8564224
 METERS_PER_FOOT = 0.3048
@@ -40,9 +40,18 @@ def _meters_per_coordinate_unit(units: gpd.GeoDataFrame) -> float:
     return float(axis_info[0].unit_conversion_factor)
 
 
+def _validate_geometries(units: gpd.GeoDataFrame) -> None:
+    for record_id, geometry in units.geometry.items():
+        if geometry is None:
+            raise SegmentationError(f"Geometry for record {record_id!r} is null")
+        if geometry.is_empty:
+            raise SegmentationError(f"Geometry for record {record_id!r} is empty")
+
+
 def calculate_acres(units: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Return a copy with polygon area expressed in acres."""
     result = units.copy()
+    _validate_geometries(result)
     meters_per_unit = _meters_per_coordinate_unit(result)
     result["Acres"] = result.geometry.area * meters_per_unit**2
     result["Acres"] /= SQUARE_METERS_PER_ACRE
@@ -60,6 +69,8 @@ def sample_constrained_points(
         raise ValueError("Point count must be non-negative")
     if min_distance < 0:
         raise ValueError("Minimum separation must be non-negative")
+    if count == 0:
+        return []
     if geometry.is_empty:
         raise SegmentationError("Cannot sample points from empty geometry")
 
@@ -86,6 +97,8 @@ def _polygon_parts(geometry: BaseGeometry) -> list[Polygon]:
         return []
     if isinstance(geometry, Polygon):
         return [geometry]
+    if not isinstance(geometry, BaseMultipartGeometry):
+        return []
     parts = []
     for part in geometry.geoms:
         parts.extend(_polygon_parts(part))
