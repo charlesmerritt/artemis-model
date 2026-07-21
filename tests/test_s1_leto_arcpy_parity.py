@@ -67,7 +67,7 @@ def _run_python_fixture(tmp_path):
         parcels,
         ownership_path,
         streams,
-        LetoSegmentationConfig(min_acres=5, smz_buffer_feet=20 / 0.3048),
+        LetoSegmentationConfig(min_acres=5),
     )
     return {
         "domain_count": len(domain),
@@ -107,4 +107,5 @@ def test_arcpy_reference_stages_preserve_leto_invariants(tmp_path):
     assert result["domain_count"] == python_result["domain_count"] == 1
     assert result["cleanup_count"] == python_result["cleanup_count"] == 1
     assert result["ownership_codes"] == python_result["ownership_codes"] == [3]
+    assert python_result["smz_pct"] == pytest.approx([10.668])
     assert result["smz_pct"] == pytest.approx(python_result["smz_pct"])

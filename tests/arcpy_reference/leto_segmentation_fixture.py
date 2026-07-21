@@ -124,7 +124,7 @@ def run_fixture(output_directory):
     )
 
     smz_buffer = os.path.join(gdb, "smz_buffer")
-    arcpy.analysis.Buffer(streams, smz_buffer, "20 Meters", dissolve_option="ALL")
+    arcpy.analysis.Buffer(streams, smz_buffer, "35 Feet", dissolve_option="ALL")
     smz_intersection = os.path.join(gdb, "smz_intersection")
     arcpy.analysis.Intersect([cleaned, smz_buffer], smz_intersection)
     smz_area_by_mu = {}

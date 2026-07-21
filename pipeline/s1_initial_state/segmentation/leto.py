@@ -16,7 +16,7 @@ from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
 from pipeline.s1_initial_state.weights import build_plot_weights
 
-SQUARE_METERS_PER_ACRE = 4_046.8564224
+SQUARE_METERS_PER_ACRE = 4_046.872609874251
 METERS_PER_FOOT = 0.3048
 MAX_POINT_ATTEMPTS_PER_POINT = 1_000
 MAX_SUBDIVISION_ROUNDS = 100

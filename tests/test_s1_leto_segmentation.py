@@ -36,7 +36,8 @@ from pipeline.s1_initial_state.segmentation.leto import (
     subdivide_large_units,
 )
 
-SQUARE_METERS_PER_ACRE = 4_046.8564224
+INTERNATIONAL_SQUARE_METERS_PER_ACRE = 4_046.8564224
+US_SURVEY_SQUARE_METERS_PER_ACRE = 4_046.872609874251
 
 
 def _write_raster(path, values, *, nodata=-9999, crs="EPSG:5070", cell_size=100):
@@ -56,9 +57,10 @@ def _write_raster(path, values, *, nodata=-9999, crs="EPSG:5070", cell_size=100)
 
 
 def test_calculate_acres_uses_projected_crs_units_without_mutating_input():
+    one_acre_side = np.sqrt(US_SURVEY_SQUARE_METERS_PER_ACRE)
     units = gpd.GeoDataFrame(
         {"name": ["one-acre"]},
-        geometry=[box(0, 0, 63.614907234075, 63.614907234075)],
+        geometry=[box(0, 0, one_acre_side, one_acre_side)],
         crs="EPSG:5070",
     )
 
@@ -134,6 +136,42 @@ def test_calculate_acres_accepts_multipolygon_geometry():
     assert calculate_acres(units).loc[0, "Acres"] > 0
 
 
+def test_cleanup_uses_us_survey_acres_at_exact_five_acre_threshold():
+    international_five_acres = box(
+        0, 0, 1, 5 * INTERNATIONAL_SQUARE_METERS_PER_ACRE
+    )
+    us_survey_five_acres = box(
+        10, 0, 11, 5 * US_SURVEY_SQUARE_METERS_PER_ACRE
+    )
+    parcels = gpd.GeoDataFrame(
+        geometry=[box(-1, -1, 12, 5 * US_SURVEY_SQUARE_METERS_PER_ACRE + 1)],
+        crs="EPSG:5070",
+    )
+    international_units = gpd.GeoDataFrame(
+        geometry=[international_five_acres], crs=parcels.crs
+    )
+    us_survey_units = gpd.GeoDataFrame(
+        geometry=[us_survey_five_acres], crs=parcels.crs
+    )
+
+    international_result = cleanup_and_clip_units(
+        international_units,
+        parcels,
+        min_acres=5,
+    )
+    us_survey_result = cleanup_and_clip_units(
+        us_survey_units,
+        parcels,
+        min_acres=5,
+    )
+
+    assert calculate_acres(international_units).loc[0, "Acres"] < 5
+    assert international_result.empty
+    assert calculate_acres(us_survey_units).loc[0, "Acres"] == pytest.approx(5.0)
+    assert len(us_survey_result) == 1
+    assert us_survey_result.loc[0, "Acres"] == pytest.approx(5.0)
+
+
 def test_sample_constrained_points_stays_inside_and_respects_separation():
     geometry = box(0, 0, 100, 100)
 
@@ -198,7 +236,7 @@ def test_polygon_parts_ignore_non_polygon_collection_members():
 
 
 def test_subdivide_large_units_keeps_units_at_threshold():
-    side = np.sqrt(200 * SQUARE_METERS_PER_ACRE)
+    side = np.sqrt(200 * US_SURVEY_SQUARE_METERS_PER_ACRE)
     units = gpd.GeoDataFrame(
         {"source": ["threshold"]},
         geometry=[box(0, 0, side, side)],
@@ -387,7 +425,7 @@ def test_assign_smz_percent_matches_legacy_intersection_formula():
 
     assert result.loc[0, "SMZ_Pct"] == pytest.approx(20.0)
     assert result.loc[0, "SMZ_Acres"] == pytest.approx(
-        2_000 / SQUARE_METERS_PER_ACRE
+        2_000 / US_SURVEY_SQUARE_METERS_PER_ACRE
     )
 
 
@@ -450,7 +488,6 @@ def test_build_leto_management_units_preserves_stage_order_and_modal_ties(
         LetoSegmentationConfig(
             max_acres=200,
             min_acres=5,
-            smz_buffer_feet=20 / 0.3048,
         ),
     )
 
@@ -468,5 +505,5 @@ def test_build_leto_management_units_preserves_stage_order_and_modal_ties(
     assert units.loc[0, "PLT_CN"] == "plot-10"
     assert units.loc[0, "OWN_CODE"] == 3
     assert units.loc[0, "OWN_TYPE"] == "Family Forest"
-    assert units.loc[0, "SMZ_Pct"] == pytest.approx(20.0)
+    assert units.loc[0, "SMZ_Pct"] == pytest.approx(10.668)
     assert weights["TM_VALUE"].tolist() == [10, 20]
