@@ -163,6 +163,45 @@ def test_resolve_slivers_defaults_to_leto_drop():
     assert (result.geometry.geom_type == "Polygon").all()
 
 
+def test_merge_output_always_has_area_acres_column():
+    # No-sliver input and empty input must return the same schema as the merged path.
+    big = gpd.GeoDataFrame({"unit_id": ["A"]}, geometry=[box(0, 0, 300, 300)], crs=CRS)
+    assert "area_acres" in merge_slivers_to_neighbors(big, min_acres=5.0).columns
+    empty = gpd.GeoDataFrame({"unit_id": []}, geometry=[], crs=CRS)
+    assert "area_acres" in merge_slivers_to_neighbors(empty, min_acres=5.0).columns
+
+
+def test_merge_recomputes_size_class_from_resolved_area():
+    from pipeline.s3_management.sketch_management_units import classify_unit_size
+    # Big unit (~25 ac / 10 ha, "candidate") carrying a STALE label, plus a sliver to merge.
+    big = box(0, 0, 320, 320)          # 10.24 ha -> candidate
+    sliver = box(320, 0, 340, 320)     # 0.64 ha -> sliver
+    gdf = gpd.GeoDataFrame(
+        {"unit_id": ["A", "S"], "unit_area_ha": [10.24, 0.64],
+         "size_class": ["sliver_lt_min", "sliver_lt_min"]},  # deliberately wrong on A
+        geometry=[big, sliver], crs=CRS,
+    )
+    out = resolve_slivers(gdf, policy="merge")
+    # Every emitted size_class matches its recomputed area class (no stale labels).
+    for _, r in out.iterrows():
+        assert r["size_class"] == classify_unit_size(r["unit_area_ha"])
+    assert set(out["size_class"]) == {"candidate"}
+
+
+def test_merge_resolves_sliver_cluster_through_valid_anchor():
+    # Reviewer scenario: two slivers share a LONG internal edge but only a SHORT edge with
+    # the valid stand, so each sliver's longest neighbour is the other sliver. Iteration must
+    # still land the whole cluster on the stand -> no sub-5-acre unit survives.
+    v = box(0, 0, 300, 300)        # 22 ac valid stand
+    s1 = box(300, 0, 700, 20)      # 1.98 ac; 20 m contact with v, 400 m with s2
+    s2 = box(300, 20, 700, 40)     # 1.98 ac; 20 m contact with v, 400 m with s1
+    gdf = gpd.GeoDataFrame({"unit_id": ["V", "S1", "S2"]}, geometry=[v, s1, s2], crs=CRS)
+    assert not flag_slivers(resolve_slivers(gdf, policy="merge"), min_acres=5.0).any()
+    # Even with the nearest fallback off, iterated shared-boundary passes resolve it.
+    boundary_only = merge_slivers_to_neighbors(gdf, min_acres=5.0, nearest_fallback=False)
+    assert not flag_slivers(boundary_only, min_acres=5.0).any()
+
+
 def test_resolve_slivers_rejects_unknown_policy():
     gdf = gpd.GeoDataFrame({"unit_id": ["A"]}, geometry=[box(0, 0, 300, 300)], crs=CRS)
     with pytest.raises(ValueError, match="policy"):

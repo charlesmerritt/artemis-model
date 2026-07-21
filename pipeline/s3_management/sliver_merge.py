@@ -197,10 +197,10 @@ def merge_slivers_to_neighbors(
     ``drop_orphans=True``.
     """
     gdf = gdf.reset_index(drop=True).copy()
-    if len(gdf) == 0:
-        return gdf
-    if not (area_acres(gdf) < min_acres).any():
-        return gdf
+    # Route the trivial cases through _refresh_area_columns too, so every return path
+    # yields the same schema (area_acres / refreshed size_class), not just the merged path.
+    if len(gdf) == 0 or not (area_acres(gdf) < min_acres).any():
+        return _refresh_area_columns(gdf)
 
     # Stage 1: shared-boundary passes until no further progress.
     for _ in range(max_passes):
@@ -239,13 +239,20 @@ def drop_slivers(gdf: gpd.GeoDataFrame, min_acres: float = MIN_STAND_ACRES) -> g
 
 def _refresh_area_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Recompute derived area columns so they match the resolved geometries."""
-    if len(gdf) == 0:
-        gdf["area_acres"] = pd.Series(dtype="float64")
-        return gdf
     gdf = gdf.copy()
+    if len(gdf) == 0:
+        # Preserve the schema on empty inputs too.
+        if "area_acres" not in gdf.columns:
+            gdf["area_acres"] = pd.Series(dtype="float64")
+        return gdf
     gdf["area_acres"] = area_acres(gdf)
     if "unit_area_ha" in gdf.columns:
         gdf["unit_area_ha"] = gdf.geometry.area / 10_000
+        # A merged unit inherits its largest member's size_class, which is now stale — the
+        # geometry grew. Reclassify from the refreshed area so the label matches the unit.
+        if "size_class" in gdf.columns:
+            from pipeline.s3_management.sketch_management_units import classify_unit_size
+            gdf["size_class"] = gdf["unit_area_ha"].apply(classify_unit_size)
     return gdf
 
 
