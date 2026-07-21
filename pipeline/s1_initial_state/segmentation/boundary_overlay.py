@@ -127,6 +127,7 @@ def clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 def normalize_output_contract(candidate_units: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Return boundary-overlay units with the shared S1 identity and area fields."""
     result = candidate_units.copy()
+    result = result.drop(columns=["ACRES"], errors="ignore")
     result["MU_ID"] = result["unit_id"].astype("string")
     result["Acres"] = result["unit_area_ha"] * HECTARES_TO_ACRES
     result["SEGMENTATION_METHOD"] = SEGMENTATION_METHOD
