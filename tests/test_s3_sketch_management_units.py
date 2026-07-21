@@ -19,6 +19,13 @@ from pipeline.s3_management.sketch_management_units import (
 )
 
 
+def test_s3_imports_are_compatibility_aliases():
+    from pipeline.s1_initial_state.segmentation import boundary_overlay as canonical
+    from pipeline.s3_management import sketch_management_units as legacy
+
+    assert legacy.process_county is canonical.process_county
+
+
 def test_feet_to_meters_converts_florida_bmp_width():
     assert feet_to_meters(50) == pytest.approx(15.24)
 
