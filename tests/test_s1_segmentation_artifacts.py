@@ -1,6 +1,7 @@
 """Canonical segmentation artifact and provenance regressions."""
 
 from pathlib import Path
+import subprocess
 import sys
 
 import geopandas as gpd
@@ -12,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pipeline.s1_initial_state.segmentation.artifacts import (
     load_comparable_artifacts,
     manifest_path_for,
+    resolve_code_version,
+    source_fingerprint,
     write_segmentation_artifact,
 )
 
@@ -117,6 +120,7 @@ def test_boundary_artifact_contains_complete_attributed_contract_and_manifest(
         "resolved_path",
         "byte_size",
         "mtime_ns",
+        "metadata_sha256",
     }
 
 
@@ -222,3 +226,51 @@ def test_comparison_rejects_mismatched_shared_source_fingerprint(tmp_path: Path)
 
     with pytest.raises(ValueError, match="shared-source fingerprints"):
         load_comparable_artifacts(reference, candidate)
+
+
+def test_dirty_code_version_changes_with_worktree_content(tmp_path: Path):
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q", repository], check=True)
+    tracked = repository / "model.py"
+    tracked.write_text("threshold = 100\n")
+    subprocess.run(["git", "-C", repository, "add", "model.py"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            repository,
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "initial",
+        ],
+        check=True,
+    )
+
+    clean_version = resolve_code_version(repository)
+    tracked.write_text("threshold = 200\n")
+    first_dirty_version = resolve_code_version(repository)
+    tracked.write_text("threshold = 300\n")
+    second_dirty_version = resolve_code_version(repository)
+
+    assert "+dirty." not in clean_version
+    assert first_dirty_version.startswith(f"{clean_version}+dirty.")
+    assert second_dirty_version.startswith(f"{clean_version}+dirty.")
+    assert first_dirty_version != second_dirty_version
+
+
+def test_directory_fingerprint_changes_when_existing_content_changes(tmp_path: Path):
+    source = tmp_path / "source.gdb"
+    source.mkdir()
+    table = source / "a00000001.gdbtable"
+    table.write_text("first")
+    first = source_fingerprint(source)
+
+    table.write_text("other")
+    second = source_fingerprint(source)
+
+    assert first != second

@@ -364,6 +364,19 @@ def test_build_treemap_domain_reads_aoi_window_and_clips_valid_cells(
     assert windows[0].height < 4
 
 
+def test_build_treemap_domain_matches_arcpy_cell_center_footprint(tmp_path):
+    treemap_path = tmp_path / "treemap.tif"
+    _write_raster(treemap_path, np.ones((9, 12), dtype="int16"))
+    parcels = gpd.GeoDataFrame(
+        geometry=[box(0, 0, 1_200, 900)],
+        crs="EPSG:5070",
+    )
+
+    result = build_treemap_domain(treemap_path, parcels)
+
+    assert result.geometry.iloc[0].equals(box(50, 50, 1_150, 850))
+
+
 def test_cleanup_matches_leto_singlepart_minimum_and_parcel_clip():
     large_piece = box(0, 0, 200, 200)
     small_piece = box(300, 0, 310, 310)
@@ -460,18 +473,18 @@ def test_build_leto_management_units_preserves_stage_order_and_modal_ties(
     ownership_path = tmp_path / "ownership.tif"
     _write_raster(
         treemap_path,
-        np.array([[10, 20], [10, 20]], dtype="int16"),
+        np.tile([20, 10, 20, 10, 20], (3, 1)).astype("int16"),
         cell_size=100,
     )
     _write_raster(
         ownership_path,
-        np.array([[4, 3], [3, 4]], dtype="uint8"),
+        np.tile([4, 3, 4, 3, 4], (3, 1)).astype("uint8"),
         nodata=255,
         cell_size=100,
     )
-    parcels = gpd.GeoDataFrame(geometry=[box(0, 0, 200, 200)], crs="EPSG:5070")
+    parcels = gpd.GeoDataFrame(geometry=[box(0, 0, 500, 300)], crs="EPSG:5070")
     streams = gpd.GeoDataFrame(
-        geometry=[LineString([(0, 100), (200, 100)])], crs="EPSG:5070"
+        geometry=[LineString([(0, 150), (500, 150)])], crs="EPSG:5070"
     )
     lookup = pd.DataFrame({"VALUE": [10, 20], "PLT_CN": ["plot-10", "plot-20"]})
     stages = []

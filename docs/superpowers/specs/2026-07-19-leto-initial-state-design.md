@@ -95,8 +95,10 @@ code consumes only this shared contract plus the generated plot-weight table.
 
 The pure-Python implementation follows `LETO.V1.1.txt` in this order:
 
-1. Polygonize the valid TreeMap raster domain and clip it to the five-county
-   parcel extent.
+1. Polygonize the valid TreeMap raster using ArcPy `RasterDomain` cell-center
+   boundary semantics, then clip it to the five-county parcel extent. Windowed
+   reads include a one-cell halo so the AOI window does not create a false
+   raster-domain edge.
 2. Calculate acreage and `Points = max(2, ceil(Acres / 100))`.
 3. For every polygon above 200 acres, generate constrained random points with
    a 1,000-foot minimum separation.

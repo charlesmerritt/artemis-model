@@ -10,7 +10,9 @@ import pandas as pd
 import rasterio
 from rasterio.errors import WindowError
 from rasterio.features import geometry_mask, geometry_window, shapes
+from rasterio.windows import Window
 from shapely import union_all, voronoi_polygons
+from shapely.affinity import affine_transform
 from shapely.geometry import MultiPoint, MultiPolygon, Point, Polygon, shape
 from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
@@ -292,23 +294,45 @@ def build_treemap_domain(
         if clip_area.is_empty:
             raise ValueError("Clip features contain no polygonal area")
         try:
-            window = geometry_window(source, [clip_area])
+            aoi_window = geometry_window(source, [clip_area])
         except WindowError as error:
             raise ValueError("Clip features overlap no TreeMap cells") from error
+        col_start = max(0, int(aoi_window.col_off) - 1)
+        row_start = max(0, int(aoi_window.row_off) - 1)
+        col_stop = min(source.width, int(aoi_window.col_off + aoi_window.width) + 1)
+        row_stop = min(source.height, int(aoi_window.row_off + aoi_window.height) + 1)
+        window = Window(
+            col_start,
+            row_start,
+            col_stop - col_start,
+            row_stop - row_start,
+        )
         treemap = source.read(1, window=window, masked=True)
         valid = ~np.ma.getmaskarray(treemap)
         if not valid.any():
             raise ValueError("Clip features overlap no valid TreeMap cells")
-        transform = source.window_transform(window)
-        valid_cells = [
-            shape(geometry)
-            for geometry, value in shapes(
-                valid.astype("uint8"), mask=valid, transform=transform
-            )
+        pixel_domain_parts = [
+            shape(geometry).buffer(-0.5, join_style="mitre")
+            for geometry, value in shapes(valid.astype("uint8"), mask=valid)
             if value == 1
         ]
+        pixel_domain = _polygonal_geometry(union_all(pixel_domain_parts))
+        if pixel_domain.is_empty:
+            raise ValueError("TreeMap valid-cell domain has no polygonal area")
+        transform = source.window_transform(window)
+        raster_domain = affine_transform(
+            pixel_domain,
+            [
+                transform.a,
+                transform.b,
+                transform.d,
+                transform.e,
+                transform.c,
+                transform.f,
+            ],
+        )
 
-    domain = _polygonal_geometry(union_all(valid_cells).intersection(clip_area))
+    domain = _polygonal_geometry(raster_domain.intersection(clip_area))
     if domain.is_empty:
         raise ValueError("Clip features overlap no valid TreeMap cells")
     return gpd.GeoDataFrame(geometry=[domain], crs=domain_crs)

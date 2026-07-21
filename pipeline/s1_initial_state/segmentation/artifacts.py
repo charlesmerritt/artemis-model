@@ -1,7 +1,9 @@
 """Canonical S1 segmentation artifacts and fail-closed run provenance."""
 
 from collections.abc import Mapping
+import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -21,7 +23,12 @@ CANONICAL_UNIT_COLUMNS = (
     "geometry",
 )
 RUN_IDENTITY_FIELDS = ("aoi_id", "experiment_id", "seed", "code_version")
-FINGERPRINT_FIELDS = {"resolved_path", "byte_size", "mtime_ns"}
+FINGERPRINT_FIELDS = {
+    "resolved_path",
+    "byte_size",
+    "mtime_ns",
+    "metadata_sha256",
+}
 
 
 def manifest_path_for(artifact_path: Path | str) -> Path:
@@ -31,13 +38,39 @@ def manifest_path_for(artifact_path: Path | str) -> Path:
 
 
 def source_fingerprint(path: Path | str) -> dict[str, str | int]:
-    """Fingerprint a source without reading its potentially multi-GB contents."""
+    """Fingerprint file metadata or directory metadata plus contents."""
     resolved = Path(path).resolve(strict=True)
-    stat = resolved.stat()
+    entries = [resolved]
+    if resolved.is_dir():
+        entries.extend(sorted(resolved.rglob("*")))
+    metadata = hashlib.sha256()
+    byte_size = 0
+    mtime_ns = 0
+    for entry in entries:
+        stat = entry.lstat()
+        relative_path = "." if entry == resolved else entry.relative_to(resolved)
+        metadata.update(os.fsencode(str(relative_path)))
+        metadata.update(b"\0")
+        metadata.update(str(stat.st_mode).encode())
+        metadata.update(b"\0")
+        metadata.update(str(stat.st_size).encode())
+        metadata.update(b"\0")
+        metadata.update(str(stat.st_mtime_ns).encode())
+        metadata.update(b"\0")
+        metadata.update(str(stat.st_ctime_ns).encode())
+        metadata.update(b"\0")
+        if entry.is_file():
+            byte_size += stat.st_size
+            if resolved.is_dir():
+                with entry.open("rb") as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        metadata.update(chunk)
+        mtime_ns = max(mtime_ns, stat.st_mtime_ns)
     return {
         "resolved_path": str(resolved),
-        "byte_size": stat.st_size,
-        "mtime_ns": stat.st_mtime_ns,
+        "byte_size": byte_size,
+        "mtime_ns": mtime_ns,
+        "metadata_sha256": metadata.hexdigest(),
     }
 
 
@@ -50,7 +83,7 @@ def _fingerprint_sources(
 
 
 def resolve_code_version(project_root: Path | str) -> str:
-    """Return the checked-out commit plus an explicit dirty-worktree marker."""
+    """Return the commit plus a content-addressed dirty-worktree marker."""
     root = Path(project_root).resolve()
     commit = subprocess.run(
         ["git", "-C", str(root), "rev-parse", "HEAD"],
@@ -58,13 +91,39 @@ def resolve_code_version(project_root: Path | str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    dirty = subprocess.run(
-        ["git", "-C", str(root), "status", "--porcelain"],
+    status = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain=v1", "-z"],
         check=True,
         capture_output=True,
-        text=True,
     ).stdout
-    return f"{commit}+dirty" if dirty else commit
+    if not status:
+        return commit
+
+    digest = hashlib.sha256(status)
+    tracked_diff = subprocess.run(
+        ["git", "-C", str(root), "diff", "--binary", "HEAD"],
+        check=True,
+        capture_output=True,
+    ).stdout
+    digest.update(tracked_diff)
+    untracked = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--others", "--exclude-standard", "-z"],
+        check=True,
+        capture_output=True,
+    ).stdout.split(b"\0")
+    for relative_path_bytes in sorted(path for path in untracked if path):
+        relative_path = os.fsdecode(relative_path_bytes)
+        untracked_path = root / relative_path
+        digest.update(relative_path_bytes)
+        digest.update(b"\0")
+        if untracked_path.is_symlink():
+            digest.update(os.fsencode(os.readlink(untracked_path)))
+        else:
+            with untracked_path.open("rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        digest.update(b"\0")
+    return f"{commit}+dirty.{digest.hexdigest()[:16]}"
 
 
 def _validate_canonical_units(

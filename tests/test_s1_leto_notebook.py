@@ -81,9 +81,8 @@ def test_walkthrough_begins_with_segmentation_and_offers_both_methods():
     assert "write_segmentation_artifact(" in source
     assert "load_comparable_artifacts(" in source
     assert "management_units.to_file(" not in source
-    assert source.index("management_units = attach_modal_plot(") < source.index(
-        "write_segmentation_artifact("
-    )
+    assert "attribute_management_units(" in source
+    assert "management_units = attach_modal_plot(" not in source
     assert "MANIFEST_EXPERIMENT_ID" in source
     assert "resolve_code_version" in source
     assert source.index("parcels = parcels.loc[") < source.index(

@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 import rasterio
 from rasterio.transform import from_origin
+from shapely import wkt
 from shapely.geometry import LineString, box
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -85,6 +86,7 @@ def _run_python_fixture(tmp_path):
     return {
         "domain_count": len(domain),
         "parent_acres": domain.geometry.area.iloc[0] / SQUARE_METERS_PER_ACRE,
+        "parent_wkt": domain.geometry.iloc[0].wkt,
         "pre_cleanup_coverage_ratio": coverage.area / domain.geometry.area.iloc[0],
         "pre_cleanup_overlap_acres": (subdivided.geometry.area.sum() - coverage.area)
         / SQUARE_METERS_PER_ACRE,
@@ -128,6 +130,14 @@ def test_arcpy_reference_stages_preserve_leto_invariants(tmp_path):
     assert result["domain_count"] == python_result["domain_count"] == 1
     assert result["parent_acres"] > 200
     assert python_result["parent_acres"] > 200
+    arcpy_parent = wkt.loads(result["parent_wkt"])
+    python_parent = wkt.loads(python_result["parent_wkt"])
+    assert arcpy_parent.intersection(python_parent).area / arcpy_parent.union(
+        python_parent
+    ).area == pytest.approx(1.0, abs=1e-9)
+    assert result["parent_acres"] == pytest.approx(
+        python_result["parent_acres"], rel=1e-9
+    )
     for method_result in (result, python_result):
         assert method_result["pre_cleanup_coverage_ratio"] == pytest.approx(
             1.0, abs=1e-6

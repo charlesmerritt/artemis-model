@@ -178,6 +178,7 @@ def run_fixture(output_directory):
     return {
         "domain_count": int(arcpy.management.GetCount(clipped_domain)[0]),
         "parent_acres": clipped_parent.area / 4_046.872609874251,
+        "parent_wkt": clipped_parent.WKT,
         **coverage_metrics,
         "cleanup_count": int(arcpy.management.GetCount(cleaned)[0]),
         "cleanup_acres": cleanup_acres,

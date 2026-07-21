@@ -97,7 +97,10 @@ Both canonical method artifacts contain `MU_ID`, `Acres`,
 and geometry. Persist them with
 `segmentation.artifacts.write_segmentation_artifact(...)`; it writes the
 GeoPackage plus a JSON manifest with run identity, parameters, code version,
-artifact path, and cheap path/size/mtime source fingerprints.
+artifact path, and source fingerprints. Dirty code versions include a digest of
+tracked and untracked worktree content; directory-backed sources include a
+recursive content/metadata digest so changed geodatabase contents cannot reuse
+the same provenance identity.
 
 After segmentation, run the complete file-based initial-state workflow:
 
@@ -194,6 +197,7 @@ UV_CACHE_DIR=/tmp/artemis-leto-uv-cache uv run pytest --rootdir=. \
   tests/test_s1_leto_parity.py tests/test_s1_leto_notebook.py
 ```
 
-The committed tests use synthetic data. A production-scale run still requires
-the local LETO management units, TreeMap raster/table, FIA trees, and species
-workbook.
+The committed suite includes synthetic regressions, two bounded read-only
+production parcel smokes, and an optional live ArcPy parity gate. A full-county
+or five-county production run still requires the mounted TreeMap, FIA,
+ownership, parcel, stream, and species sources described above.

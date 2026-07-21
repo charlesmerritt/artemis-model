@@ -358,7 +358,7 @@ in a preregistered interaction test. It does not establish a production winner.
 Each run must store:
 
 - experiment ID, parent baseline, factor and level, AOI, and seed;
-- Git commit and dirty-worktree state;
+- Git commit and content-addressed dirty-worktree state;
 - Python version, lockfile checksum, package versions, and FVS engine identity;
 - absolute source identifiers plus size, modification time, and content hash;
 - AOI geometry hash, CRS, all effective parameters, and environment thread
