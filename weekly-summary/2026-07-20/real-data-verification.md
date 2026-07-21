@@ -59,3 +59,27 @@ tree lists for tree-less/edge units from the nearest runnable unit (`GenerateNea
 separate FVS-input step still to be built. The area-conserving `merge` policy (with
 nearest-unit fallback) remains available via `--policy merge` for cases where a gap-free,
 area-conserving layer is wanted, at the cost of multipart units.
+
+## FVS-input build — the LETO CSV pipeline (`pipeline/s3_management/assign_plt_cn.py`, `pipeline/s4_fvs/build_fvs_inputs.py`)
+
+Ports LETO's `assign_plt_cn` + `LETO_CSV_PIPELINE` into the geopandas/pandas stack. Because
+Chaz's FVS-ready per-plot tables already exist (`FL_FVS_TREEINIT_PLOT.csv`, keyed by
+`STAND_CN` = PLT_CN), the pipeline joins those directly instead of re-reading raw FIA
+`TREE.csv` + a species crosswalk. Verified end-to-end on the real state-zero Union County
+units (2,150) using real R2 inputs:
+
+- **Weighting** (`assign_plt_cn`): rasterised the 2,150 units onto the real TreeMap 5-county
+  grid (`TreeMap2022_CONUS_5FlCntys.tif`), mapped TreeMap value → PLT_CN via
+  `FL_5county_TMID_PLT_lookup.csv`. Result: **2,147/2,150 units weighted, 24,221 rows, 272
+  PLT_CNs, weights sum to 1.0 per unit, ~11.3 donor plots/unit** (~10 s). The 3 unweighted
+  units have no TreeMap forest pixel.
+- **Build** (`build_fvs_inputs`): filtered to plots ≥ 5% weight (LETO `MIN_PLT_WEIGHT`),
+  joined the real `FL_FVS_TREEINIT_PLOT.csv` (676,981 tree rows, 30,635 plots), scaled each
+  tree's TPA by plot weight, and imputed tree lists for the 3 empty units from their nearest
+  runnable unit (LETO `GenerateNearTable`). Result: **2,150 FVS stands, 413,213 tree rows,
+  all units covered** — 2,147 direct + 3 nearest-imputed (87 imputed tree rows), ~192 tree
+  rows/stand.
+
+This produces per-unit `FVS_StandInit.csv` / `FVS_TreeInit.csv` — the initial (state-zero)
+stand condition for every management unit, ready for FVS. Remaining toward harvest
+scheduling: the regime library (Phase 3) and the constrained scheduler (Phase 4).
