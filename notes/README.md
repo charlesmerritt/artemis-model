@@ -4,6 +4,7 @@ Durable context for future agents and collaborators.
 
 ## Index
 
+- [LETO versus boundary-overlay segmentation](../docs/research/leto-vs-boundary-overlay.md) — evidence-labeled source-stage comparison, method-neutral geometry and attribution metrics, crosswalk limits, hypotheses, and production evidence still needed.
 - [LETO initial-state walkthrough](notebooks.md#leto_initial_state_walkthroughipynb) — non-ArcPy TreeMap/MU plot weights, FIA-to-FVS tree preparation, nearest-donor imputation, and initial-state mapping.
 - [Notebooks index](notebooks.md) — what every notebook + helper in `notebooks/` does, what each needs to run (GEE / `/mnt/d` drive / network), links to the per-group deep-dive notes, and the 2026-07-14 test results (incl. the broken FVS notebook and the stored-error prototype).
 - [Management unit pilot workflow](management_units.md) — decisions, inputs, missing data, and first-notebook scope for Florida timber management units.
