@@ -81,5 +81,28 @@ units (2,150) using real R2 inputs:
   rows/stand.
 
 This produces per-unit `FVS_StandInit.csv` / `FVS_TreeInit.csv` — the initial (state-zero)
-stand condition for every management unit, ready for FVS. Remaining toward harvest
-scheduling: the regime library (Phase 3) and the constrained scheduler (Phase 4).
+stand condition for every management unit, ready for FVS.
+
+## Regime library + scheduler (Phases 3–4)
+
+- **Regime library** (`pipeline/s4_fvs/regime_templates.py`, `pipeline/s3_management/regime_assignment.py`):
+  five regimes (no_management, clearcut, thin_from_below, selection_harvest,
+  plantation_rotation) rendered to FVS keyfiles using only the **verified `ThinDBH`
+  keyword** + the project's schedule/DataBase scaffold. Default assignment by ownership ×
+  forest type × riparian. 18 unit tests.
+- **Constrained scheduler** (`pipeline/s3_management/harvest_scheduler.py`): per-cycle,
+  oldest-first allocation that fills up to the TPO caps across any active constraint
+  dimension (total / county / owner group). 9 unit tests.
+
+**Integration demo (real TPO caps + real units).** Loaded the 2,150 real state-zero Union
+units, assigned regimes, and ran the scheduler against the **real Union TPO cap**
+(8,703,625 cuft/yr → 43.5M/cycle) with a **placeholder per-acre volume** (real per-unit
+volumes need the managed-FVS run, Phase 4.3):
+- Under the real cap the light-thin regime removes ~16.5M cuft/cycle across all 2,150 units
+  — well under Union's actual harvest level, so all units are schedulable.
+- With a deliberately binding cap (×0.25 = 10.88M/cycle) the scheduler stops **exactly** at
+  the limit: 584 units harvested, 10,879,530 ≤ 10,879,531 cuft.
+
+The pipeline is now wired end-to-end: units → state-zero → FVS inputs → regimes → schedule,
+all against real data and caps. The remaining external dependency is the **managed FVS run**
+(Phase 4.3) to supply real per-unit standing/removable volumes in place of the placeholder.
