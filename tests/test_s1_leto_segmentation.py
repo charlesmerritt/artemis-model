@@ -1,0 +1,126 @@
+"""Tests for LETO's pure geometry subdivision primitives."""
+
+from pathlib import Path
+import sys
+
+import geopandas as gpd
+import numpy as np
+import pytest
+from shapely.geometry import MultiPolygon, box
+from shapely.ops import unary_union
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from pipeline.s1_initial_state.segmentation.leto import (
+    LetoSegmentationConfig,
+    SegmentationError,
+    calculate_acres,
+    sample_constrained_points,
+    split_unit_thiessen,
+    subdivide_large_units,
+)
+
+SQUARE_METERS_PER_ACRE = 4_046.8564224
+
+
+def test_calculate_acres_uses_projected_crs_units_without_mutating_input():
+    units = gpd.GeoDataFrame(
+        {"name": ["one-acre"]},
+        geometry=[box(0, 0, 63.614907234075, 63.614907234075)],
+        crs="EPSG:5070",
+    )
+
+    result = calculate_acres(units)
+
+    assert "Acres" not in units.columns
+    assert result.loc[0, "Acres"] == pytest.approx(1.0)
+    assert result.loc[0, "name"] == "one-acre"
+
+
+def test_sample_constrained_points_stays_inside_and_respects_separation():
+    geometry = box(0, 0, 100, 100)
+
+    points = sample_constrained_points(
+        geometry,
+        count=4,
+        min_distance=20,
+        rng=np.random.default_rng(7),
+    )
+
+    assert len(points) == 4
+    assert all(geometry.contains(point) for point in points)
+    distances = [
+        first.distance(second)
+        for index, first in enumerate(points)
+        for second in points[index + 1 :]
+    ]
+    assert min(distances) >= 20
+
+
+def test_constrained_points_fail_instead_of_looping_forever():
+    with pytest.raises(SegmentationError, match="minimum separation"):
+        sample_constrained_points(
+            box(0, 0, 1, 1),
+            count=3,
+            min_distance=10,
+            rng=np.random.default_rng(1),
+        )
+
+
+def test_split_unit_thiessen_returns_polygonal_coverage():
+    parent = MultiPolygon([box(0, 0, 100, 100), box(200, 0, 300, 100)])
+
+    children = split_unit_thiessen(
+        parent,
+        point_count=4,
+        min_distance=10,
+        rng=np.random.default_rng(8),
+    )
+
+    assert len(children) >= 2
+    assert all(child.geom_type == "Polygon" and child.area > 0 for child in children)
+    assert unary_union(children).symmetric_difference(parent).area == pytest.approx(0)
+
+
+def test_subdivide_large_units_keeps_units_at_threshold():
+    side = np.sqrt(200 * SQUARE_METERS_PER_ACRE)
+    units = gpd.GeoDataFrame(
+        {"source": ["threshold"]},
+        geometry=[box(0, 0, side, side)],
+        crs="EPSG:5070",
+    )
+
+    result = subdivide_large_units(
+        units,
+        LetoSegmentationConfig(max_acres=200, min_distance_feet=100),
+    )
+
+    assert len(result) == 1
+    assert result.loc[0, "source"] == "threshold"
+    assert result.geometry.iloc[0].equals_exact(units.geometry.iloc[0], tolerance=0)
+    assert result.loc[0, "Acres"] == pytest.approx(200)
+    assert result.loc[0, "Acres"] <= 200
+
+
+def test_subdivide_large_units_is_repeatable_and_preserves_coverage():
+    units = gpd.GeoDataFrame(
+        {"source": ["large"]},
+        geometry=[box(0, 0, 1_200, 1_200)],
+        crs="EPSG:5070",
+    )
+    config = LetoSegmentationConfig(
+        max_acres=200,
+        acres_per_point=100,
+        min_distance_feet=100,
+        seed=42,
+    )
+
+    first = subdivide_large_units(units, config)
+    second = subdivide_large_units(units, config)
+
+    assert first.geometry.to_wkb().tolist() == second.geometry.to_wkb().tolist()
+    assert first.geometry.union_all().symmetric_difference(
+        units.geometry.iloc[0]
+    ).area == pytest.approx(0)
+    assert first["Acres"].max() <= 200
+    assert set(first["source"]) == {"large"}
