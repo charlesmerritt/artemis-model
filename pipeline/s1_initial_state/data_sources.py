@@ -5,6 +5,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 import sqlite3
 
+import numpy as np
 import pandas as pd
 from pyogrio import read_dataframe
 
@@ -79,6 +80,19 @@ def preflight_production_data(paths: ProductionDataPaths) -> None:
     load_species_lookup(paths.species_crosswalk, SPECIES_CROSSWALK_SHEET)
 
 
+def _normalize_plot_ids(values: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(values, errors="coerce")
+    valid = numeric.notna() & np.isfinite(numeric) & numeric.mod(1).eq(0)
+    if not valid.all():
+        raise ValueError("TreeMap PLT_CN values must be finite whole numbers")
+    try:
+        return numeric.astype("Int64").astype("string")
+    except (OverflowError, TypeError) as error:
+        raise ValueError(
+            "TreeMap PLT_CN values must be finite whole numbers within Int64 range"
+        ) from error
+
+
 def load_treemap_lookup(path: Path) -> pd.DataFrame:
     """Read a TreeMap raster attribute table and preserve FIA plot identifiers."""
     lookup = read_dataframe(path, read_geometry=False)
@@ -90,7 +104,7 @@ def load_treemap_lookup(path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"TreeMap lookup missing columns: {sorted(missing)}")
     result = lookup[["VALUE", "PLT_CN"]].copy()
-    result["PLT_CN"] = result["PLT_CN"].astype("string")
+    result["PLT_CN"] = _normalize_plot_ids(result["PLT_CN"])
     return result
 
 

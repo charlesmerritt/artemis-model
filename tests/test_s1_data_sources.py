@@ -31,11 +31,29 @@ def test_load_treemap_lookup_preserves_large_plot_ids(tmp_path, monkeypatch):
         data_sources,
         "read_dataframe",
         lambda path, read_geometry: pd.DataFrame(
-            {"Value": [7], "PLT_CN": [223267700000001]}
+            {"Value": [7], "PLT_CN": [223267700000001.0]}
         ),
     )
     result = load_treemap_lookup(dbf_path)
     assert result.to_dict("records") == [{"VALUE": 7, "PLT_CN": "223267700000001"}]
+
+
+@pytest.mark.parametrize("bad_plot_id", [7.5, float("inf"), float("nan")])
+def test_load_treemap_lookup_rejects_invalid_numeric_plot_ids(
+    tmp_path, monkeypatch, bad_plot_id
+):
+    dbf_path = tmp_path / "lookup.dbf"
+    dbf_path.touch()
+    monkeypatch.setattr(
+        data_sources,
+        "read_dataframe",
+        lambda path, read_geometry: pd.DataFrame(
+            {"Value": [7], "PLT_CN": [bad_plot_id]}
+        ),
+    )
+
+    with pytest.raises(ValueError, match="finite whole numbers"):
+        load_treemap_lookup(dbf_path)
 
 
 def test_load_fia_trees_sqlite_filters_plots_and_states(tmp_path):
