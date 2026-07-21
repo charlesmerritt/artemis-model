@@ -23,7 +23,30 @@ def test_s3_imports_are_compatibility_aliases():
     from pipeline.s1_initial_state.segmentation import boundary_overlay as canonical
     from pipeline.s3_management import sketch_management_units as legacy
 
-    assert legacy.process_county is canonical.process_county
+    exported_names = (
+        "classify_stream_fcode",
+        "classify_unit_size",
+        "clean_geometries",
+        "create_forest_mask_from_evt",
+        "feet_to_meters",
+        "load_config",
+        "load_florida_counties",
+        "normalize_output_contract",
+        "process_county",
+        "split_large_geometry",
+        "target_grid_cell_size_m",
+    )
+    for name in exported_names:
+        assert getattr(legacy, name) is getattr(canonical, name)
+
+
+def test_s3_cli_delegates_to_canonical_main(monkeypatch):
+    from pipeline.s3_management import sketch_management_units as legacy
+
+    sentinel = object()
+    monkeypatch.setattr(legacy._canonical, "main", lambda: sentinel)
+
+    assert legacy.main() is sentinel
 
 
 def test_feet_to_meters_converts_florida_bmp_width():
@@ -47,10 +70,18 @@ def test_classify_stream_fcode_uses_documented_florida_mapping(fcode, expected):
 
 @pytest.mark.parametrize(
     ("area_ha", "expected"),
-    [(1.99, "sliver_lt_min"), (2.0, "candidate"), (40.0, "candidate"), (40.01, "large_gt_target")],
+    [
+        (1.99, "sliver_lt_min"),
+        (2.0, "candidate"),
+        (40.0, "candidate"),
+        (40.01, "large_gt_target"),
+    ],
 )
 def test_classify_unit_size_uses_min_and_target_thresholds(area_ha, expected):
-    assert classify_unit_size(area_ha, min_area_ha=2.0, target_max_area_ha=40.0) == expected
+    assert (
+        classify_unit_size(area_ha, min_area_ha=2.0, target_max_area_ha=40.0)
+        == expected
+    )
 
 
 def test_target_grid_cell_size_matches_target_area():
@@ -59,13 +90,14 @@ def test_target_grid_cell_size_matches_target_area():
 
 
 def test_clean_geometries_preserves_line_features_for_buffer_inputs():
-    gdf = gpd.GeoDataFrame({"name": ["road"]}, geometry=[LineString([(0, 0), (1, 1)])], crs="EPSG:5070")
+    gdf = gpd.GeoDataFrame(
+        {"name": ["road"]}, geometry=[LineString([(0, 0), (1, 1)])], crs="EPSG:5070"
+    )
 
     cleaned = clean_geometries(gdf)
 
     assert len(cleaned) == 1
     assert cleaned.geom_type.iloc[0] == "LineString"
-
 
 
 def test_split_large_geometry_keeps_parts_at_or_below_target_area():

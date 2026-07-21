@@ -30,4 +30,5 @@ dependencies = [
 [tool.pytest.ini_options]
 markers = [
     "arcpy: optional parity tests requiring an ArcGIS Pro Python environment",
+    "production_data: integration tests requiring the mounted production sources",
 ]

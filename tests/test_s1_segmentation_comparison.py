@@ -48,9 +48,13 @@ def test_compare_segmentations_reports_coverage_overlap_and_sizes():
         2 / square_meters_per_acre
     )
     assert metrics["coverage_union_acres"] == pytest.approx(2 / square_meters_per_acre)
-    assert metrics["reference_median_acres"] == pytest.approx(0.000247)
-    assert metrics["reference_p05_acres"] == pytest.approx(0.000247)
-    assert metrics["candidate_p95_acres"] == pytest.approx(0.00023465)
+    assert metrics["reference_median_acres"] == pytest.approx(
+        1 / square_meters_per_acre
+    )
+    assert metrics["reference_p05_acres"] == pytest.approx(1 / square_meters_per_acre)
+    assert metrics["candidate_p95_acres"] == pytest.approx(
+        0.95 / square_meters_per_acre
+    )
     assert metrics["reference_sliver_count"] == 2
     assert metrics["candidate_oversized_count"] == 0
     assert metrics["candidate_boundary_length_median_meters"] == pytest.approx(3.0)
@@ -113,10 +117,43 @@ def test_compare_segmentations_reports_nonzero_coverage_differences():
     assert metrics["coverage_jaccard"] == pytest.approx(1 / 3)
 
 
-def test_compare_segmentations_uses_strict_sliver_and_oversized_thresholds():
-    geometries = [box(index, 0, index + 1, 1) for index in range(4)]
+def test_compare_segmentations_measures_unit_acres_from_geometry():
+    geometry = box(0, 0, 100, 100)
     reference = gpd.GeoDataFrame(
-        {"MU_ID": ["1", "2", "3", "4"], "Acres": [4.99, 5.0, 200.0, 200.01]},
+        {"MU_ID": ["r"], "Acres": [999.0]},
+        geometry=[geometry],
+        crs="EPSG:5070",
+    )
+    candidate = gpd.GeoDataFrame(
+        {"MU_ID": ["c"], "Acres": [0.001]},
+        geometry=[geometry],
+        crs="EPSG:5070",
+    )
+
+    metrics = _comparison_module().compare_segmentations(
+        reference,
+        candidate,
+        reference_name="reference",
+        candidate_name="candidate",
+    )
+
+    measured_acres = 10_000 / 4_046.872609874251
+    assert metrics["coverage_jaccard"] == pytest.approx(1.0)
+    assert metrics["reference_median_acres"] == pytest.approx(measured_acres)
+    assert metrics["candidate_median_acres"] == pytest.approx(measured_acres)
+    assert metrics["reference_oversized_count"] == 0
+    assert metrics["candidate_sliver_count"] == 1
+
+
+def test_compare_segmentations_uses_strict_sliver_and_oversized_thresholds():
+    square_meters_per_acre = 4_046.872609874251
+    acre_values = [4.99, 5.0, 200.0, 200.01]
+    geometries = [
+        box(0, index * 10, acres * square_meters_per_acre, index * 10 + 1)
+        for index, acres in enumerate(acre_values)
+    ]
+    reference = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2", "3", "4"], "Acres": acre_values},
         geometry=geometries,
         crs="EPSG:5070",
     )

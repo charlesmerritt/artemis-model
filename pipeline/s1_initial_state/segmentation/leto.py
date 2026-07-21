@@ -347,8 +347,7 @@ def assign_majority_ownership(
             raise ValueError("Ownership raster must define a CRS")
         raster_units = units.to_crs(source.crs)
         codes = [
-            _unit_majority_code(source, geometry)
-            for geometry in raster_units.geometry
+            _unit_majority_code(source, geometry) for geometry in raster_units.geometry
         ]
     result["OWN_CODE"] = pd.array(codes, dtype="Int64")
     result["OWN_TYPE"] = [

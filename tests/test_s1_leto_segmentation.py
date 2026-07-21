@@ -137,12 +137,8 @@ def test_calculate_acres_accepts_multipolygon_geometry():
 
 
 def test_cleanup_uses_us_survey_acres_at_exact_five_acre_threshold():
-    international_five_acres = box(
-        0, 0, 1, 5 * INTERNATIONAL_SQUARE_METERS_PER_ACRE
-    )
-    us_survey_five_acres = box(
-        10, 0, 11, 5 * US_SURVEY_SQUARE_METERS_PER_ACRE
-    )
+    international_five_acres = box(0, 0, 1, 5 * INTERNATIONAL_SQUARE_METERS_PER_ACRE)
+    us_survey_five_acres = box(10, 0, 11, 5 * US_SURVEY_SQUARE_METERS_PER_ACRE)
     parcels = gpd.GeoDataFrame(
         geometry=[box(-1, -1, 12, 5 * US_SURVEY_SQUARE_METERS_PER_ACRE + 1)],
         crs="EPSG:5070",
@@ -150,9 +146,7 @@ def test_cleanup_uses_us_survey_acres_at_exact_five_acre_threshold():
     international_units = gpd.GeoDataFrame(
         geometry=[international_five_acres], crs=parcels.crs
     )
-    us_survey_units = gpd.GeoDataFrame(
-        geometry=[us_survey_five_acres], crs=parcels.crs
-    )
+    us_survey_units = gpd.GeoDataFrame(geometry=[us_survey_five_acres], crs=parcels.crs)
 
     international_result = cleanup_and_clip_units(
         international_units,
@@ -341,9 +335,7 @@ def test_build_treemap_domain_reads_aoi_window_and_clips_valid_cells(
 def test_cleanup_matches_leto_singlepart_minimum_and_parcel_clip():
     large_piece = box(0, 0, 200, 200)
     small_piece = box(300, 0, 310, 310)
-    parcels = gpd.GeoDataFrame(
-        geometry=[box(0, 0, 500, 500)], crs="EPSG:5070"
-    )
+    parcels = gpd.GeoDataFrame(geometry=[box(0, 0, 500, 500)], crs="EPSG:5070")
     units = gpd.GeoDataFrame(
         geometry=[MultiPolygon([large_piece, small_piece])], crs="EPSG:5070"
     )
@@ -445,15 +437,11 @@ def test_build_leto_management_units_preserves_stage_order_and_modal_ties(
         nodata=255,
         cell_size=100,
     )
-    parcels = gpd.GeoDataFrame(
-        geometry=[box(0, 0, 200, 200)], crs="EPSG:5070"
-    )
+    parcels = gpd.GeoDataFrame(geometry=[box(0, 0, 200, 200)], crs="EPSG:5070")
     streams = gpd.GeoDataFrame(
         geometry=[LineString([(0, 100), (200, 100)])], crs="EPSG:5070"
     )
-    lookup = pd.DataFrame(
-        {"VALUE": [10, 20], "PLT_CN": ["plot-10", "plot-20"]}
-    )
+    lookup = pd.DataFrame({"VALUE": [10, 20], "PLT_CN": ["plot-10", "plot-20"]})
     stages = []
 
     def record_stage(name):

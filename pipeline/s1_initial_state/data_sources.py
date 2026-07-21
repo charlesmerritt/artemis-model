@@ -67,9 +67,7 @@ def preflight_production_data(paths: ProductionDataPaths) -> None:
     """Fail before processing when a production source or workbook is invalid."""
     source_fields = fields(paths)[1:]
     missing = [
-        field.name
-        for field in source_fields
-        if not getattr(paths, field.name).exists()
+        field.name for field in source_fields if not getattr(paths, field.name).exists()
     ]
     if missing:
         names = ", ".join(missing)

@@ -4,7 +4,10 @@ from pathlib import Path
 import sys
 
 import geopandas as gpd
+import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_origin
 from shapely.geometry import box
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -120,3 +123,28 @@ def test_process_county_preflights_before_dry_run(monkeypatch, tmp_path):
 
     assert result is None
     assert calls == [(tmp_path / "production", config_path)]
+
+
+def test_create_forest_mask_vectorizes_tree_dominated_evt(tmp_path):
+    evt_path = tmp_path / "evt.tif"
+    with rasterio.open(
+        evt_path,
+        "w",
+        driver="GTiff",
+        height=2,
+        width=2,
+        count=1,
+        dtype="int16",
+        crs="EPSG:5070",
+        transform=from_origin(0, 60, 30, 30),
+    ) as destination:
+        destination.write(np.array([[1500, 4000], [4000, 4000]], dtype="int16"), 1)
+
+    result = boundary_overlay.create_forest_mask_from_evt(
+        evt_path,
+        aoi_bounds=(0, 0, 60, 60),
+    )
+
+    assert len(result) == 1
+    assert result.crs == "EPSG:5070"
+    assert result.geometry.area.iloc[0] == pytest.approx(900.0)

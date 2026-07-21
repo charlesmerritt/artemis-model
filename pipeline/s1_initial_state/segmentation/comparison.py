@@ -81,7 +81,7 @@ def _segmentation_metrics(
     overlap_square_meters = (
         float(geometry_areas.sum()) - float(coverage.area)
     ) * meters_per_unit**2
-    acres = features["Acres"]
+    acres = geometry_areas * meters_per_unit**2 / SQUARE_METERS_PER_ACRE
     boundaries_meters = features.geometry.length * meters_per_unit
 
     metrics: dict[str, Any] = {

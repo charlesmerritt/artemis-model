@@ -54,9 +54,7 @@ def _run_python_fixture(tmp_path):
         ownership_path,
         np.array([[4, 3], [3, 4]], dtype="int16"),
     )
-    parcels = gpd.GeoDataFrame(
-        geometry=[box(0, 0, 200, 200)], crs="EPSG:5070"
-    )
+    parcels = gpd.GeoDataFrame(geometry=[box(0, 0, 200, 200)], crs="EPSG:5070")
     streams = gpd.GeoDataFrame(
         geometry=[LineString([(0, 100), (200, 100)])], crs="EPSG:5070"
     )
