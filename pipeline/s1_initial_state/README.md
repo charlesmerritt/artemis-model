@@ -8,14 +8,18 @@ with reproducible Python. It covers two legacy operations:
 2. `LETO_CSV_PIPELINE.txt` — plot weights + multistate FIA trees → FVS stand
    and tree initialization tables.
 
-Management-unit delineation remains in `pipeline/s3_management`. Creating the
-FVS SQLite database, running FVS, and painting outputs back to the map are not
-part of this package.
+Management-unit delineation is the first S1 stage. The package preserves both
+the faithful LETO strategy in `segmentation/leto.py` and the parcel/LANDFIRE
+boundary-overlay strategy in `segmentation/boundary_overlay.py`; the former S3
+module is only a compatibility wrapper. Creating the FVS SQLite database,
+running FVS, and painting outputs back to the map are not part of this package.
 
 ## Inputs
 
-- A GeoPandas-readable management-unit layer with unique `MU_ID`, `Acres`,
-  `OWN_CODE`, `OWN_TYPE`, `SMZ_Pct`, geometry, and a projected CRS.
+- For LETO segmentation: the production parcel layer, ownership raster, and
+  stream layer.
+- For boundary-overlay segmentation: the parcel, LANDFIRE EVT, stream,
+  waterbody, and road sources consumed by the canonical county runner.
 - TreeMap 2022 plot-ID GeoTIFF.
 - TreeMap lookup containing raster `VALUE` and `PLT_CN` (the production VAT
   DBF, or a caller-supplied CSV).
@@ -54,7 +58,43 @@ a polygon boundary crosses a cell away from its center.
 
 ## Python interface
 
-Run the complete file-based workflow:
+Create faithful LETO management units and raw plot weights in memory:
+
+```python
+from pathlib import Path
+
+import geopandas as gpd
+
+from pipeline.s1_initial_state.data_sources import (
+    ProductionDataPaths,
+    load_treemap_lookup,
+    preflight_production_data,
+)
+from pipeline.s1_initial_state.segmentation.leto import (
+    LetoSegmentationConfig,
+    build_leto_management_units,
+)
+
+sources = ProductionDataPaths.from_root(Path("/mnt/d"))
+preflight_production_data(sources)
+units, weights = build_leto_management_units(
+    sources.treemap,
+    load_treemap_lookup(sources.treemap_vat),
+    gpd.read_file(sources.parcels, layer="FL_5_Co_Parcels"),
+    sources.ownership,
+    gpd.read_file(f"zip://{sources.streams}"),
+    LetoSegmentationConfig(seed=0),
+)
+```
+
+The boundary-overlay baseline remains available through
+`pipeline.s1_initial_state.segmentation.boundary_overlay.process_county(...)`
+and its CLI. Both methods emit the shared `MU_ID`, `Acres`,
+`SEGMENTATION_METHOD`, and geometry contract. Use
+`segmentation.comparison.compare_segmentations(...)` and
+`compare_attribution(...)` only on matched source vintages and AOIs.
+
+After segmentation, run the complete file-based initial-state workflow:
 
 ```python
 from pipeline.s1_initial_state.leto_initial_state import run_leto_initial_state
@@ -100,9 +140,16 @@ semantics.
 
 ## Walkthrough and verification
 
-Open `notebooks/LETO_Initial_State_Walkthrough.ipynb` to inspect alignment,
-weights, FIA join coverage, species translation, donor imputation, and the
-initial-state map. Output writing is disabled until `WRITE_OUTPUTS = True`.
+Open `notebooks/LETO_Initial_State_Walkthrough.ipynb` to select either
+segmentation method, inspect method parameters and diagnostics, compare a
+counterpart baseline when its artifact exists, and continue through weights,
+FIA join coverage, species translation, donor imputation, and the initial-state
+map. It imports the production functions, fails closed on missing production
+inputs, and disables output writing until `WRITE_OUTPUTS = True`.
+
+The proposed controlled-factor protocol for testing a future synthesis is in
+`docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md`. It
+preserves both baselines and does not implement or select a hybrid.
 
 The parity test names the legacy operation beside the new operation and checks
 both against shared, deterministic fixtures:

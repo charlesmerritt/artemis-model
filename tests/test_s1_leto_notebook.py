@@ -53,3 +53,23 @@ def test_walkthrough_notebook_code_parses_and_has_no_saved_outputs():
         assert cell.outputs == []
         assert cell.execution_count is None
     assert "widgets" not in notebook.metadata
+
+
+def test_walkthrough_begins_with_segmentation_and_offers_both_methods():
+    notebook = nbformat.read(NOTEBOOK, as_version=4)
+    source = "\n".join(cell.source for cell in notebook.cells)
+
+    assert source.index("Management-unit segmentation") < source.index(
+        "MU x PLT_CN weights"
+    )
+    assert "build_leto_management_units" in source
+    assert "boundary_overlay" in source
+    assert "compare_segmentations" in source
+    assert "compare_attribution" in source
+    assert source.index("parcels = parcels.loc[") < source.index(
+        "management_units, plot_weights = build_leto_management_units("
+    )
+    assert source.index("weighted_plots = set(") < source.index(
+        "load_fia_trees_sqlite(sources.fiadb, weighted_plots)"
+    )
+    assert "WRITE_OUTPUTS = False" in source
