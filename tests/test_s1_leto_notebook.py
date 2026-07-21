@@ -19,6 +19,7 @@ SYNTHESIS_SPEC = (
     / "specs"
     / "2026-07-20-s1-segmentation-synthesis-design.md"
 )
+S1_README = NOTEBOOK.parents[1] / "pipeline" / "s1_initial_state" / "README.md"
 REQUIRED_SECTIONS = [
     "Inputs and preflight",
     "Management units and TreeMap alignment",
@@ -73,11 +74,18 @@ def test_walkthrough_begins_with_segmentation_and_offers_both_methods():
     assert "boundary_overlay" in source
     assert "compare_segmentations" in source
     assert "compare_attribution" in source
+    assert "compare_initial_states" in source
+    assert "write_comparison" in source
     assert "boundary_overlay.preflight_boundary_overlay_data(" in source
     assert "canonical_units_path = BASELINE_UNITS_PATHS[SEGMENTATION_METHOD]" in source
-    assert "management_units.to_file(" in source
-    assert "canonical_units_path," in source
-    assert "counterpart_unavailable" in source
+    assert "write_segmentation_artifact(" in source
+    assert "load_comparable_artifacts(" in source
+    assert "management_units.to_file(" not in source
+    assert source.index("management_units = attach_modal_plot(") < source.index(
+        "write_segmentation_artifact("
+    )
+    assert "MANIFEST_EXPERIMENT_ID" in source
+    assert "resolve_code_version" in source
     assert source.index("parcels = parcels.loc[") < source.index(
         "management_units, plot_weights = build_leto_management_units("
     )
@@ -96,4 +104,15 @@ def test_synthesis_spec_defines_computable_paired_gates_and_limitations():
     assert "10,000" in source
     assert "20260720" in source
     assert "95% percentile" in source
+    assert "resample AOIs with replacement" in source
+    assert "resample seeds with replacement within" in source
     assert "## Limitations and threats to validity" in source
+
+
+def test_s1_readme_documents_manifest_gated_artifacts_and_json_comparison():
+    source = S1_README.read_text()
+
+    assert "write_segmentation_artifact" in source
+    assert "load_comparable_artifacts" in source
+    assert "manifest" in source.lower()
+    assert "comparison.json" in source

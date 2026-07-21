@@ -682,6 +682,7 @@ def main():
 
     # Process each county
     results = []
+    failures = []
     for county_fips in counties_to_process:
         try:
             result = process_county(
@@ -695,12 +696,16 @@ def main():
             if result:
                 results.append({"county_fips": county_fips, "summary": result})
         except Exception as e:
+            failures.append((county_fips, e))
             logger.error(f"Failed processing county {county_fips}: {e}", exc_info=True)
 
     logger.info("Processing complete")
 
     if results and not args.dry_run:
         logger.info(f"Processed {len(results)} counties successfully")
+    if failures:
+        logger.error("Failed counties: %s", ", ".join(code for code, _ in failures))
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

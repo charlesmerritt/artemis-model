@@ -268,12 +268,15 @@ stochastic method, reuse the deterministic AOI value in each corresponding
 seed block; do not rerun it and treat those copies as independent field data.
 
 Use NumPy's `PCG64` generator with bootstrap seed `20260720`. Draw `10,000`
-bootstrap samples. Each sample resamples the complete `AOI × seed` blocks with
-replacement, preserving both parent and candidate values in the selected
-block, and records the unweighted mean paired difference. The 95% percentile
-confidence interval is the 2.5th and 97.5th percentiles of those 10,000 means.
-Report the observed mean, interval bounds, number of AOIs, number of blocks,
-and the complete per-block differences.
+bootstrap samples. For each sample, first resample AOIs with replacement; then
+resample seeds with replacement within each selected AOI, keeping parent and
+candidate paired within every selected seed. Average the resampled seed effects
+within each selected AOI, then take the unweighted mean of those AOI means. This
+AOI-first hierarchical bootstrap prevents nested seeds from being treated as
+independent landscapes. The 95% percentile confidence interval is the 2.5th and
+97.5th percentiles of those 10,000 means. Report the observed mean of AOI means,
+interval bounds, number of AOIs, number of blocks, and the complete per-block
+differences.
 
 An expected block missing either side is not imputed or silently dropped. A
 hard algorithm failure invokes the reject rule; otherwise the experiment is
@@ -392,8 +395,8 @@ must not be inferred from saved notebook outputs.
 - **Limited external validity.** Five Florida counties cannot support claims
   about other ownership patterns, forest types, states, or source vintages.
 - **Nested repetition.** Seeds measure algorithmic sensitivity within AOIs;
-  they do not create new independent landscapes. The block bootstrap is
-  descriptive for the registered AOI/seed set.
+  they do not create new independent landscapes. The AOI-first hierarchical
+  bootstrap is descriptive for the registered AOI/seed set.
 - **Source resolution and alignment.** Raster cell size, vector positional
   error, CRS transformation, and differing acquisition dates can change
   boundaries, slivers, and apparent overlap independently of method quality.

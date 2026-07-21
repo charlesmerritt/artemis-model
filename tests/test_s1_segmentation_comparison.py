@@ -1,8 +1,12 @@
 from importlib import import_module
 from pathlib import Path
 import sys
+from types import SimpleNamespace
+
+import json
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pytest
 from shapely.geometry import Point, Polygon, box
@@ -269,6 +273,71 @@ def test_compare_segmentations_revalidates_candidate_after_reprojection():
         )
 
 
+def test_compare_segmentations_reports_crosswalk_ownership_and_smz_agreement():
+    reference = gpd.GeoDataFrame(
+        {
+            "MU_ID": ["r1", "r2"],
+            "Acres": [1.0, 1.0],
+            "CROSSWALK_ID": ["x", "y"],
+            "OWN_CODE": [3, 4],
+            "SMZ_Pct": [10.0, 40.0],
+        },
+        geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+        crs="EPSG:5070",
+    )
+    candidate = gpd.GeoDataFrame(
+        {
+            "MU_ID": ["c1", "c2"],
+            "Acres": [1.0, 1.0],
+            "CROSSWALK_ID": ["x", "y"],
+            "OWN_CODE": [3, 8],
+            "SMZ_Pct": [16.0, 30.0],
+        },
+        geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+        crs="EPSG:5070",
+    )
+
+    metrics = _comparison_module().compare_segmentations(
+        reference,
+        candidate,
+        reference_name="reference",
+        candidate_name="candidate",
+    )
+
+    assert metrics["explicit_unit_crosswalk_available"] is True
+    assert metrics["ownership_comparable_units"] == 2
+    assert metrics["ownership_agreement_rate"] == pytest.approx(0.5)
+    assert metrics["smz_comparable_units"] == 2
+    assert metrics["smz_abs_difference_mean_pct_points"] == pytest.approx(8.0)
+    assert metrics["smz_abs_difference_median_pct_points"] == pytest.approx(8.0)
+    assert metrics["smz_abs_difference_p95_pct_points"] == pytest.approx(9.8)
+    assert metrics["smz_abs_difference_max_pct_points"] == pytest.approx(10.0)
+
+
+def test_compare_segmentations_rejects_non_bijective_unit_crosswalk():
+    reference = gpd.GeoDataFrame(
+        {
+            "MU_ID": ["r1", "r2"],
+            "Acres": [1.0, 1.0],
+            "CROSSWALK_ID": ["x", "x"],
+            "OWN_CODE": [3, 3],
+            "SMZ_Pct": [1.0, 2.0],
+        },
+        geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+        crs="EPSG:5070",
+    )
+    candidate = reference.copy()
+    candidate["MU_ID"] = ["c1", "c2"]
+
+    with pytest.raises(ValueError, match="exactly one MU_ID"):
+        _comparison_module().compare_segmentations(
+            reference,
+            candidate,
+            reference_name="reference",
+            candidate_name="candidate",
+        )
+
+
 def _weights(*, crosswalk: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
     reference = pd.DataFrame(
         {
@@ -403,6 +472,11 @@ def test_research_review_cites_direct_source_functions():
     assert "leto.subdivide_large_units" in note
     assert "boundary_overlay.process_county" in note
     assert "weights.build_plot_weights" in note
+    assert "geometry-derived acreage" in note
+    assert "ownership agreement" in note
+    assert "SMZ absolute-difference" in note
+    assert "FVS workload proxy" in note
+    assert "JSON" in note
 
 
 def test_write_comparison_writes_stable_markdown(tmp_path: Path):
@@ -425,3 +499,95 @@ def test_write_comparison_writes_stable_markdown(tmp_path: Path):
         "| coverage_jaccard | 1 |\n"
         "| modal_plot_agreement_rate | unavailable |\n"
     )
+
+
+def test_compare_initial_states_reports_readiness_and_workload_proxy():
+    reference = SimpleNamespace(
+        crosswalk=pd.DataFrame({"MU_ID": ["1", "2", "3", "4"]}),
+        weights=pd.DataFrame(
+            {
+                "MU_ID": ["1", "1", "2", "3", "3", "3", "4"],
+                "PLT_CN": ["a", "b", "a", "a", "b", "c", "d"],
+            }
+        ),
+        trees=pd.DataFrame(
+            {
+                "MU_ID": ["1", "1", "2"],
+                "TREE_SOURCE": [
+                    "FIA_WEIGHTED_DIRECT",
+                    "FIA_WEIGHTED_DIRECT",
+                    "IMPUTED_NEAREST",
+                ],
+            }
+        ),
+        stands=pd.DataFrame({"STAND_ID": ["MU_1", "MU_2"]}),
+        missing_stands=pd.DataFrame({"MU_ID": ["3", "4"]}),
+    )
+    candidate = SimpleNamespace(
+        crosswalk=pd.DataFrame({"MU_ID": ["a", "b"]}),
+        weights=pd.DataFrame({"MU_ID": ["a", "b"], "PLT_CN": ["a", "b"]}),
+        trees=pd.DataFrame(
+            {
+                "MU_ID": ["a", "b", "b"],
+                "TREE_SOURCE": [
+                    "FIA_WEIGHTED_DIRECT",
+                    "FIA_WEIGHTED_DIRECT",
+                    "FIA_WEIGHTED_DIRECT",
+                ],
+            }
+        ),
+        stands=pd.DataFrame({"STAND_ID": ["MU_a", "MU_b"]}),
+        missing_stands=pd.DataFrame({"MU_ID": []}),
+    )
+
+    metrics = _comparison_module().compare_initial_states(reference, candidate)
+
+    assert metrics["reference_direct_stand_count"] == 1
+    assert metrics["reference_direct_stand_rate"] == pytest.approx(0.25)
+    assert metrics["reference_imputed_stand_count"] == 1
+    assert metrics["reference_missing_stand_count"] == 2
+    assert metrics["reference_tree_row_count"] == 3
+    assert metrics["reference_donor_plots_per_mu_mean"] == pytest.approx(1.75)
+    assert metrics["reference_fvs_workload_proxy_stand_runs"] == 2
+    assert metrics["candidate_direct_stand_rate"] == pytest.approx(1.0)
+
+
+def test_hierarchical_bootstrap_resamples_aois_before_nested_seeds():
+    records = pd.DataFrame(
+        {
+            "AOI_ID": ["small", "large", "large", "large"],
+            "seed": [0, 0, 1, 2],
+            "reference": [0.0, 0.0, 0.0, 0.0],
+            "candidate": [0.0, 10.0, 10.0, 10.0],
+        }
+    )
+
+    result = _comparison_module().hierarchical_paired_bootstrap(
+        records, samples=200, bootstrap_seed=20260720
+    )
+
+    assert result["bootstrap_method"] == "aoi_first_hierarchical"
+    assert result["observed_mean"] == pytest.approx(5.0)
+    assert result["aoi_count"] == 2
+    assert result["block_count"] == 4
+    assert result["per_block_differences"] == [0.0, 10.0, 10.0, 10.0]
+
+
+def test_write_comparison_writes_stable_json(tmp_path: Path):
+    metrics = pd.Series(
+        {
+            "reference_name": "leto",
+            "coverage_jaccard": np.float64(1.0),
+            "modal_plot_agreement_rate": pd.NA,
+        }
+    )
+    output = tmp_path / "comparison.json"
+
+    _comparison_module().write_comparison(metrics, output)
+
+    assert json.loads(output.read_text()) == {
+        "coverage_jaccard": 1.0,
+        "modal_plot_agreement_rate": None,
+        "reference_name": "leto",
+    }
+    assert output.read_text().endswith("\n")

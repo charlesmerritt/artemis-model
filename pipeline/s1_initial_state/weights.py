@@ -32,7 +32,7 @@ def attach_modal_plot(
     if missing:
         raise ValueError(f"Plot weights missing columns: {sorted(missing)}")
 
-    attributed = units.drop(columns="PLT_CN", errors="ignore").copy()
+    attributed = units.drop(columns=["PLT_CN", "TM_VALUE"], errors="ignore").copy()
     attributed["MU_ID"] = attributed["MU_ID"].astype("string")
     if attributed["MU_ID"].isna().any() or attributed["MU_ID"].duplicated().any():
         raise ValueError("MU_ID values must be non-null and unique")
@@ -42,7 +42,7 @@ def attach_modal_plot(
     ranked["PLT_CN"] = ranked["PLT_CN"].astype("string")
     modal = ranked.sort_values(
         ["MU_ID", "CELL_COUNT", "TM_VALUE"], ascending=[True, False, True]
-    ).drop_duplicates("MU_ID")[["MU_ID", "PLT_CN"]]
+    ).drop_duplicates("MU_ID")[["MU_ID", "PLT_CN", "TM_VALUE"]]
     merged = attributed.merge(modal, on="MU_ID", how="left", validate="one_to_one")
     return cast(gpd.GeoDataFrame, merged)
 

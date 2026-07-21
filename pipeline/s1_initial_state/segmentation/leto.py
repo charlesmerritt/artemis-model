@@ -14,7 +14,7 @@ from shapely import union_all, voronoi_polygons
 from shapely.geometry import MultiPoint, MultiPolygon, Point, Polygon, shape
 from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
-from pipeline.s1_initial_state.weights import build_plot_weights
+from pipeline.s1_initial_state.weights import attach_modal_plot, build_plot_weights
 
 SQUARE_METERS_PER_ACRE = 4_046.872609874251
 METERS_PER_FOOT = 0.3048
@@ -106,16 +106,44 @@ def sample_constrained_points(
     if geometry.is_empty:
         raise SegmentationError("Cannot sample points from empty geometry")
 
-    min_x, min_y, max_x, max_y = geometry.bounds
+    parts = _polygon_parts(geometry)
+    if not parts:
+        raise SegmentationError("Point sampling requires polygonal geometry")
+    areas = np.asarray([part.area for part in parts], dtype="float64")
+    if not np.isfinite(areas).all() or (areas <= 0).any():
+        raise SegmentationError("Point sampling requires finite positive polygon areas")
+    probabilities = areas / areas.sum()
+    bounds = [part.bounds for part in parts]
     points: list[Point] = []
+    buckets: dict[tuple[int, int], list[Point]] = {}
+
+    def bucket_key(point: Point) -> tuple[int, int]:
+        return (math.floor(point.x / min_distance), math.floor(point.y / min_distance))
+
+    def is_separated(candidate: Point) -> bool:
+        if min_distance == 0:
+            return True
+        x_bucket, y_bucket = bucket_key(candidate)
+        return all(
+            candidate.distance(point) >= min_distance
+            for x_offset in (-1, 0, 1)
+            for y_offset in (-1, 0, 1)
+            for point in buckets.get((x_bucket + x_offset, y_bucket + y_offset), ())
+        )
+
     max_attempts = max(1, count * MAX_POINT_ATTEMPTS_PER_POINT)
     for _ in range(max_attempts):
+        part_index = int(rng.choice(len(parts), p=probabilities))
+        part = parts[part_index]
+        min_x, min_y, max_x, max_y = bounds[part_index]
         candidate = Point(rng.uniform(min_x, max_x), rng.uniform(min_y, max_y))
-        if not geometry.contains(candidate):
+        if not part.contains(candidate):
             continue
-        if any(candidate.distance(point) < min_distance for point in points):
+        if not is_separated(candidate):
             continue
         points.append(candidate)
+        if min_distance > 0:
+            buckets.setdefault(bucket_key(candidate), []).append(candidate)
         if len(points) == count:
             return points
 
@@ -409,6 +437,28 @@ def _assign_stable_mu_ids(units: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return result
 
 
+def attribute_management_units(
+    units: gpd.GeoDataFrame,
+    treemap_path: Path,
+    treemap_lookup: pd.DataFrame,
+    ownership_path: Path,
+    streams: gpd.GeoDataFrame,
+    *,
+    smz_buffer_feet: float,
+) -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
+    """Apply the shared complete post-segmentation attribution contract."""
+    weights = build_plot_weights(units, treemap_path, treemap_lookup)
+    unit_ids = set(units["MU_ID"].astype("string"))
+    weighted_ids = set(weights["MU_ID"].astype("string"))
+    if unit_ids != weighted_ids:
+        missing = sorted(unit_ids - weighted_ids)
+        raise ValueError(f"Management units missing TreeMap weight rows: {missing}")
+    attributed = attach_modal_plot(units, weights)
+    attributed = assign_majority_ownership(attributed, ownership_path)
+    attributed = assign_smz_percent(attributed, streams, smz_buffer_feet)
+    return attributed, weights
+
+
 def build_leto_management_units(
     treemap_path: Path,
     treemap_lookup: pd.DataFrame,
@@ -423,16 +473,11 @@ def build_leto_management_units(
     cleaned = cleanup_and_clip_units(subdivided, parcels, config.min_acres)
     units = _assign_stable_mu_ids(cleaned)
 
-    weights = build_plot_weights(units, treemap_path, treemap_lookup)
-    majority = (
-        weights.sort_values(
-            ["MU_ID", "CELL_COUNT", "TM_VALUE"],
-            ascending=[True, False, True],
-        )
-        .drop_duplicates("MU_ID")[["MU_ID", "PLT_CN", "TM_VALUE"]]
-        .copy()
+    return attribute_management_units(
+        units,
+        treemap_path,
+        treemap_lookup,
+        ownership_path,
+        streams,
+        smz_buffer_feet=config.smz_buffer_feet,
     )
-    units = units.merge(majority, on="MU_ID", how="left", validate="one_to_one")
-    units = assign_majority_ownership(units, ownership_path)
-    units = assign_smz_percent(units, streams, config.smz_buffer_feet)
-    return units, weights

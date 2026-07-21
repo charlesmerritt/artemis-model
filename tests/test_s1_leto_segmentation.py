@@ -207,6 +207,38 @@ def test_constrained_points_fail_instead_of_looping_forever():
         )
 
 
+def test_constrained_points_scale_across_sparse_multipart_with_seeded_separation():
+    small = box(0, 0, 1_000, 1_000)
+    large = box(1_000_000_000, 0, 1_000_003_000, 1_000)
+    geometry = MultiPolygon([small, large])
+
+    first = sample_constrained_points(
+        geometry,
+        count=120,
+        min_distance=30,
+        rng=np.random.default_rng(2026),
+    )
+    second = sample_constrained_points(
+        geometry,
+        count=120,
+        min_distance=30,
+        rng=np.random.default_rng(2026),
+    )
+
+    assert [(point.x, point.y) for point in first] == [
+        (point.x, point.y) for point in second
+    ]
+    assert all(geometry.contains(point) for point in first)
+    small_count = sum(small.contains(point) for point in first)
+    assert 10 <= small_count <= 50
+    distances = [
+        first_point.distance(second_point)
+        for index, first_point in enumerate(first)
+        for second_point in first[index + 1 :]
+    ]
+    assert min(distances) >= 30
+
+
 def test_split_unit_thiessen_returns_polygonal_coverage():
     parent = MultiPolygon([box(0, 0, 100, 100), box(200, 0, 300, 100)])
 

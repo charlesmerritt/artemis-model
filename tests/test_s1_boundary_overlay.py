@@ -5,6 +5,7 @@ import sys
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import pytest
 import rasterio
 from rasterio.transform import from_origin
@@ -13,10 +14,15 @@ from shapely.geometry import box
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipeline.s1_initial_state.segmentation import boundary_overlay
+from pipeline.s1_initial_state.segmentation.artifacts import (
+    load_comparable_artifacts,
+    write_segmentation_artifact,
+)
 from pipeline.s1_initial_state.segmentation.boundary_overlay import (
     SEGMENTATION_METHOD,
     normalize_output_contract,
 )
+from pipeline.s1_initial_state.segmentation.leto import attribute_management_units
 
 
 @pytest.fixture
@@ -57,6 +63,77 @@ def test_boundary_output_with_source_acres_writes_to_geopackage(
     assert "ACRES" not in written.columns
     assert written["Acres"].tolist() == pytest.approx(result["Acres"])
     assert written["PARCELID"].tolist() == candidate_units["PARCELID"].tolist()
+
+
+def test_boundary_output_is_fully_attributed_before_canonical_artifact_write(
+    candidate_units, tmp_path
+):
+    treemap_path = tmp_path / "treemap.tif"
+    ownership_path = tmp_path / "ownership.tif"
+    for path, values, nodata in (
+        (treemap_path, np.array([[10, 20, 20], [10, 20, 20]], dtype="int16"), -9999),
+        (ownership_path, np.array([[3, 4, 4], [3, 4, 4]], dtype="uint8"), 255),
+    ):
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=2,
+            width=3,
+            count=1,
+            dtype=values.dtype,
+            crs="EPSG:5070",
+            transform=from_origin(0, 200, 100, 100),
+            nodata=nodata,
+        ) as destination:
+            destination.write(values, 1)
+    streams = gpd.GeoDataFrame(geometry=[], crs="EPSG:5070")
+    units, weights = attribute_management_units(
+        normalize_output_contract(candidate_units),
+        treemap_path,
+        pd.DataFrame({"VALUE": [10, 20], "PLT_CN": ["plot-10", "plot-20"]}),
+        ownership_path,
+        streams,
+        smz_buffer_feet=35,
+    )
+    shared_sources = {
+        "treemap": treemap_path,
+        "fiadb": treemap_path,
+        "ownership": ownership_path,
+        "species": treemap_path,
+    }
+    artifact = tmp_path / "boundary" / "ManagementUnits.gpkg"
+
+    write_segmentation_artifact(
+        units,
+        artifact,
+        strategy="boundary_overlay",
+        aoi_id="fixture",
+        experiment_id="integration",
+        seed=0,
+        strategy_parameters={"split_large": True},
+        code_version="test",
+        shared_sources=shared_sources,
+        strategy_sources={"parcels": treemap_path},
+    )
+    written, _ = load_comparable_artifacts(artifact, artifact, allow_same=True)[0]
+
+    assert set(units["MU_ID"]) == set(weights["MU_ID"])
+    assert units["PLT_CN"].tolist() == ["plot-10", "plot-20"]
+    assert units["TM_VALUE"].tolist() == [10, 20]
+    assert units["OWN_CODE"].tolist() == [3, 4]
+    assert units["SMZ_Pct"].tolist() == [0.0, 0.0]
+    assert set(written.columns) >= {
+        "MU_ID",
+        "Acres",
+        "SEGMENTATION_METHOD",
+        "PLT_CN",
+        "TM_VALUE",
+        "OWN_CODE",
+        "OWN_TYPE",
+        "SMZ_Pct",
+        "geometry",
+    }
 
 
 def test_boundary_preflight_reports_every_missing_source_with_recovery_guidance(
@@ -123,6 +200,36 @@ def test_process_county_preflights_before_dry_run(monkeypatch, tmp_path):
 
     assert result is None
     assert calls == [(tmp_path / "production", config_path)]
+
+
+def test_cli_processes_remaining_counties_but_exits_nonzero_after_failure(
+    monkeypatch, tmp_path
+):
+    calls = []
+
+    def fail_one_county(*, county_fips, **kwargs):
+        calls.append(county_fips)
+        if county_fips == "023":
+            raise FileNotFoundError("production preflight failed")
+        return [{"size_class": "candidate"}]
+
+    monkeypatch.setattr(boundary_overlay, "process_county", fail_one_county)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "boundary-overlay",
+            "--pilot-five-county",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as error:
+        boundary_overlay.main()
+
+    assert error.value.code == 1
+    assert calls == boundary_overlay.PILOT_COUNTIES
 
 
 def test_create_forest_mask_vectorizes_tree_dominated_evt(tmp_path):

@@ -39,15 +39,14 @@ unit IDs:
   overlap;
 - within-method duplicate coverage, calculated as the summed unit area minus
   dissolved coverage area;
-- total, median, 5th-percentile, and 95th-percentile reported acreage;
+- total, median, 5th-percentile, and 95th-percentile geometry-derived acreage;
 - counts below 5 acres and above 200 acres; and
 - total, median, 5th-percentile, and 95th-percentile per-unit boundary length.
 
 The reference projected CRS supplies the area and distance units. Candidate
-geometry is reprojected to that CRS. Coverage and overlap acreage come from
-geometry; unit-size summaries come from each method's `Acres` field. This
-separation can expose disagreements between stored acreage and geometry-derived
-coverage.
+geometry is reprojected to that CRS. Coverage, overlap, thresholds, and every
+unit-size summary use geometry-derived acreage; the stored `Acres` column is
+validated but is not trusted as comparison evidence.
 
 `compare_attribution` reports donor-count distributions, the fraction of units
 with more than one donor plot, and weight-sum diagnostics. “Raw weight” means
@@ -60,6 +59,23 @@ unless both weight tables contain a non-null `CROSSWALK_ID`. Within each method,
 `CELL_COUNT` and `TM_VALUE`, rejects ambiguous duplicate donor rows, and uses
 descending cell count followed by ascending TreeMap value. The comparison never
 assumes that equal `MU_ID` strings identify the same spatial unit across methods.
+
+When both unit artifacts carry a defensible one-to-one `CROSSWALK_ID`, the same
+bidirectional safeguards support ownership agreement and SMZ absolute-difference
+summaries (mean, median, 95th percentile, and maximum percentage-point
+difference). Without that explicit crosswalk these measures remain unavailable.
+
+`compare_initial_states` reports direct, imputed, and missing stand counts and
+rates, tree-row count, donor plots per MU, and an explicitly labeled FVS workload proxy:
+the number of stand runs represented by the input tables. It does not
+claim measured FVS runtime.
+
+Canonical GeoPackages are accompanied by JSON manifests recording the schema,
+strategy, AOI, experiment, seed, parameters, code version, artifact path, and
+cheap source fingerprints. `load_comparable_artifacts` fails closed before
+comparison when run identity or shared TreeMap/FIADB/ownership/species provenance
+does not match. `write_comparison` writes stable JSON for machine review;
+Markdown remains an optional human-readable rendering.
 
 **Limitation.** A one-to-one crosswalk may not be scientifically appropriate
 when one method splits a region that the other keeps intact. In that case,
@@ -86,7 +102,7 @@ both methods inherit TreeMap imputation and FIA sampling limitations.
 
 The next smoke run should use identical counties, source vintages, projected
 CRS, and TreeMap lookup for both methods. It should retain the returned metric
-series as the machine-readable record and serialize the same series with
+series as the machine-readable record and serialize the same series as JSON with
 `write_comparison` for review.
 
 Open questions:

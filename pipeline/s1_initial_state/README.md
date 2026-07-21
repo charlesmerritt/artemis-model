@@ -92,10 +92,12 @@ The boundary-overlay baseline remains available through
 and its CLI. `preflight_boundary_overlay_data(...)` validates its parcels,
 roads, boundary-streams geodatabase, waterbodies, LANDFIRE EVT raster, and BMP
 rules before a dry run or production read, with mount/R2 recovery guidance.
-Both methods emit the shared `MU_ID`, `Acres`,
-`SEGMENTATION_METHOD`, and geometry contract. Use
-`segmentation.comparison.compare_segmentations(...)` and
-`compare_attribution(...)` only on matched source vintages and AOIs.
+Both canonical method artifacts contain `MU_ID`, `Acres`,
+`SEGMENTATION_METHOD`, `PLT_CN`, `TM_VALUE`, `OWN_CODE`, `OWN_TYPE`, `SMZ_Pct`,
+and geometry. Persist them with
+`segmentation.artifacts.write_segmentation_artifact(...)`; it writes the
+GeoPackage plus a JSON manifest with run identity, parameters, code version,
+artifact path, and cheap path/size/mtime source fingerprints.
 
 After segmentation, run the complete file-based initial-state workflow:
 
@@ -156,14 +158,19 @@ To create a reproducible comparison pair for one `COUNTY_FIPS`:
    notebook;
 2. set `SEGMENTATION_METHOD = "boundary_overlay"`, keep `WRITE_OUTPUTS = True`,
    and run it again; and
-3. restore `WRITE_OUTPUTS = False` and rerun either selection to inspect the
-   comparison.
+3. restore `WRITE_OUTPUTS = False`, set `COMPARE_BASELINES = True`, and rerun to
+   inspect the comparison.
 
-Each write-enabled run serializes the selected in-memory result to
-`data/interim/management_units/baselines/<method>/<12COUNTY_FIPS>/ManagementUnits.gpkg`.
-If the other artifact is absent, the comparison stage reports
-`counterpart_unavailable`, its expected path, and the exact selection needed to
-create it.
+Each write-enabled run uses `write_segmentation_artifact` to serialize the
+selected in-memory result to
+`data/interim/management_units/baselines/<method>/<12COUNTY_FIPS>/ManagementUnits.gpkg`
+and a neighboring `ManagementUnits.manifest.json`. Paired comparison uses
+`load_comparable_artifacts` and rejects a missing manifest or mismatched AOI,
+experiment ID, seed, code version, or shared TreeMap/FIADB/ownership/species
+fingerprint. Strategy names and strategy-specific sources are expected to
+differ. With `WRITE_OUTPUTS = True`, the combined spatial, attribution, and
+initial-state metrics are written as stable `comparison.json` via
+`write_comparison`.
 
 The proposed controlled-factor protocol for testing a future synthesis is in
 `docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md`. It
