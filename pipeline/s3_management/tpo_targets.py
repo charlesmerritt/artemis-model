@@ -6,21 +6,26 @@ Turns the Timber Product Output (TPO) guidance spreadsheet
 analysis-ready structure the harvest scheduler can consume as annual volume caps.
 See ``notes/management-pipeline-plan.md`` Phase 1, Step 1.1.
 
-The workbook has two sheets, each giving average annual harvest (cubic feet per year):
-  - ``ByOwnerGroup`` — Federal NF, Other public, Private, All
-  - ``ByCounty``     — Baker, Columbia, Hamilton, Suwannee, Union
+**Real workbook layout (verified against the file on R2 `artemis-r2`):** this is a
+hand-formatted sheet, not a tidy table. A title row and a URL sit at the top; the
+"harvest targets per year" summary lives in a small block whose column headers are
+split across two merged rows and whose two data rows are tagged by a free-text note:
 
-Each sheet carries one row per group/county and one *value column per averaging period*
-(e.g. all years 1999–2024, and the recent 2013–2024 window).
+    ... (title / url) ...
+    <blank>                Baker    Columbia  Hamilton  Suwanee   Union    All five
+    targets                Baker    Columbia  Hamilton  Suwanee   Union    counties
+    per year            11755875  17798687.5 ...                            "Assuming all TPO years are averaged"
+    by county           11451200  19725500   ...                            "Assuming 2013-2024 TPO years are averaged"
 
-**Schema assumptions (flag for review — the real workbook is on the data drive, not in
-this repo, so these are inferred from the plan and must be confirmed against the file):**
-  - The first non-numeric column of each sheet is the dimension label (owner group / county).
-  - Every remaining numeric column is an averaging period; its header names the period.
-  - Values are cubic feet per year.
-The parser is deliberately tolerant of the exact period-column headers so a header rename
-in the source file does not break it — only the sheet names and the "first text column is
-the label" convention are assumed.
+So we anchor on the ``"Assuming … averaged"`` note cells to find the data rows, read the
+numeric cells to their left as the values, and build names from the one-or-two header rows
+directly above the first data row. Two averaging periods are emitted: ``all_years`` and
+``2013_2024``. Values are cubic feet per year.
+
+The two sheets are ``ByOwnerGroup`` (Federal (NF), Other public, Private, All owners) and
+``ByCounty`` (Baker, Columbia, Hamilton, Suwanee, Union, All five counties). Note the
+source spells the county **"Suwanee"** (one n); downstream joins to parcels (CNTYNAME
+"SUWANNEE") must account for that — left as-is here to stay faithful to the source.
 
 Usage:
     uv run python -m pipeline.s3_management.tpo_targets \\
@@ -30,6 +35,7 @@ Usage:
 
 import argparse
 import logging
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -41,64 +47,71 @@ OWNER_SHEET = "ByOwnerGroup"
 COUNTY_SHEET = "ByCounty"
 VALUE_UNITS = "cubic_feet_per_year"
 
-
-def _pick_label_column(df: pd.DataFrame) -> str:
-    """The dimension label is the first column that is not purely numeric."""
-    for col in df.columns:
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            return col
-    # Fallback: the first column, if everything parsed as numeric.
-    return df.columns[0]
+_NOTE_RE = re.compile(r"assuming.*averaged", re.IGNORECASE)
 
 
-def tidy_tpo_sheet(
-    df: pd.DataFrame,
-    dimension: str,
-    label_col: str | None = None,
-    value_cols: list[str] | None = None,
-) -> pd.DataFrame:
+def _normalize_period(note: str) -> str:
+    """Map a summary note cell to a stable period key."""
+    text = note.lower()
+    if "2013" in text:
+        return "2013_2024"
+    if "all" in text:
+        return "all_years"
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+
+
+def _clean_name(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and pd.notna(value)
+
+
+def extract_summary_block(raw: pd.DataFrame) -> dict[str, dict[str, float]]:
     """
-    Reshape one TPO sheet into long form:
-        [dimension, name, period, cuft_per_year].
+    Extract ``{name: {period: cuft_per_year}}`` from a raw (header=None) TPO sheet.
 
-    ``dimension`` is a constant tag ("owner_group" or "county"). ``label_col`` defaults to
-    the first non-numeric column; ``value_cols`` defaults to every numeric column.
+    Anchors on the ``"Assuming … averaged"`` note cells to locate the two summary data
+    rows, reads the numeric cells to the left of each note as values, and names the value
+    columns from the one-or-two header rows immediately above the first data row.
     """
-    df = df.copy()
-    df.columns = [str(c).strip() for c in df.columns]
+    grid = raw.values
+    nrows, ncols = raw.shape
 
-    if label_col is None:
-        label_col = _pick_label_column(df)
-    if value_cols is None:
-        value_cols = [c for c in df.columns if c != label_col and pd.api.types.is_numeric_dtype(df[c])]
+    # 1. Find data rows: any cell whose text matches the "Assuming … averaged" note.
+    data_rows: dict[int, tuple[int, str]] = {}
+    for r in range(nrows):
+        for c in range(ncols):
+            v = grid[r][c]
+            if isinstance(v, str) and _NOTE_RE.search(v):
+                data_rows[r] = (c, _normalize_period(v))
+                break
+    if not data_rows:
+        raise ValueError("No 'Assuming … averaged' summary rows found — workbook layout may have changed.")
+
+    first = min(data_rows)
+    note_col = data_rows[first][0]
+
+    # 2. Value columns: numeric cells to the left of the note in the first data row.
+    value_cols = [c for c in range(1, note_col) if _is_number(grid[first][c])]
     if not value_cols:
-        raise ValueError(f"No numeric value columns found in the {dimension} sheet (columns: {list(df.columns)})")
+        raise ValueError("Found summary note rows but no numeric value columns beside them.")
 
-    df = df.dropna(subset=[label_col])
-    df[label_col] = df[label_col].astype(str).str.strip()
+    # 3. Names: concatenate the (up to two) header rows directly above the first data row.
+    header_rows = [r for r in (first - 2, first - 1) if r >= 0]
+    names = {
+        c: _clean_name(" ".join(str(grid[hr][c]) for hr in header_rows if pd.notna(grid[hr][c])))
+        for c in value_cols
+    }
 
-    long = df.melt(
-        id_vars=[label_col],
-        value_vars=value_cols,
-        var_name="period",
-        value_name="cuft_per_year",
-    )
-    long = long.rename(columns={label_col: "name"})
-    long.insert(0, "dimension", dimension)
-    long["period"] = long["period"].astype(str).str.strip()
-    long["cuft_per_year"] = pd.to_numeric(long["cuft_per_year"], errors="coerce")
-    long = long.dropna(subset=["cuft_per_year"]).reset_index(drop=True)
-    return long
-
-
-def nested_from_tidy(tidy: pd.DataFrame) -> dict:
-    """Convert a tidy TPO table into ``{name: {period: cuft_per_year}}``."""
+    # 4. Read each data row's values under the matching period.
     out: dict[str, dict[str, float]] = {}
-    for name, sub in tidy.groupby("name"):
-        out[str(name)] = {
-            str(period): float(value)
-            for period, value in zip(sub["period"], sub["cuft_per_year"])
-        }
+    for r, (_, period) in sorted(data_rows.items()):
+        for c in value_cols:
+            name = names[c]
+            if name and _is_number(grid[r][c]):
+                out.setdefault(name, {})[period] = float(grid[r][c])
     return out
 
 
@@ -118,23 +131,19 @@ def parse_tpo_workbook(
         }
     """
     path = Path(path)
-    owner_df = pd.read_excel(path, sheet_name=owner_sheet)
-    county_df = pd.read_excel(path, sheet_name=county_sheet)
-
-    owner_tidy = tidy_tpo_sheet(owner_df, "owner_group")
-    county_tidy = tidy_tpo_sheet(county_df, "county")
+    owner_raw = pd.read_excel(path, sheet_name=owner_sheet, header=None)
+    county_raw = pd.read_excel(path, sheet_name=county_sheet, header=None)
 
     targets = {
         "units": VALUE_UNITS,
         "source": path.name,
-        "by_owner_group": nested_from_tidy(owner_tidy),
-        "by_county": nested_from_tidy(county_tidy),
+        "by_owner_group": extract_summary_block(owner_raw),
+        "by_county": extract_summary_block(county_raw),
     }
+    periods = sorted({p for d in targets["by_county"].values() for p in d})
     logger.info(
         "Parsed TPO targets: %d owner groups, %d counties, periods=%s",
-        len(targets["by_owner_group"]),
-        len(targets["by_county"]),
-        sorted({p for d in targets["by_county"].values() for p in d}),
+        len(targets["by_owner_group"]), len(targets["by_county"]), periods,
     )
     return targets
 

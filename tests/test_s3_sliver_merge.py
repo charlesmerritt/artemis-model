@@ -103,7 +103,26 @@ def test_merge_chains_sliver_cluster_onto_anchor():
     assert not flag_slivers(result, min_acres=5.0).any()
 
 
+def test_nearest_fallback_absorbs_isolated_sliver_across_gap():
+    # A sliver separated from the only real unit by a gap shares no boundary, so the
+    # shared-boundary stage can't touch it; the nearest-unit fallback must absorb it.
+    big = box(0, 0, 300, 300)                # ~22 ac non-sliver
+    isolated = box(0, 320, 100, 340)         # 100 x 20 = 0.49 ac, 20 m gap above `big`
+    gdf = gpd.GeoDataFrame({"unit_id": ["A", "S"]}, geometry=[big, isolated], crs=CRS)
+
+    # With the fallback (default) the sliver is absorbed into A -> one complete unit.
+    merged = merge_slivers_to_neighbors(gdf, min_acres=5.0)
+    assert len(merged) == 1
+    assert merged["unit_id"].iloc[0] == "A"
+    assert not flag_slivers(merged, min_acres=5.0).any()
+
+    # Without the fallback the isolated sliver survives (nothing shares its boundary).
+    no_fb = merge_slivers_to_neighbors(gdf, min_acres=5.0, nearest_fallback=False)
+    assert len(no_fb) == 2
+
+
 def test_orphan_sliver_kept_by_default_dropped_when_requested():
+    # No non-sliver anywhere, so even the nearest fallback has nothing to attach to.
     lonely = box(0, 0, 50, 50)  # 0.62 ac sliver, touches nothing
     gdf = gpd.GeoDataFrame({"unit_id": ["S"]}, geometry=[lonely], crs=CRS)
     kept = merge_slivers_to_neighbors(gdf, min_acres=5.0, drop_orphans=False)

@@ -99,57 +99,18 @@ class _UnionFind:
             self.parent[ra] = rb
 
 
-def merge_slivers_to_neighbors(
-    gdf: gpd.GeoDataFrame,
-    min_acres: float = MIN_STAND_ACRES,
-    drop_orphans: bool = False,
-) -> gpd.GeoDataFrame:
-    """
-    Dissolve each sub-threshold sliver into the neighbour with which it shares the
-    longest boundary (ArcGIS "Eliminate" semantics).
-
-    A sliver whose longest neighbour is itself a sliver is chained via union-find, so
-    connected sliver clusters and their best non-sliver anchor dissolve together in a
-    single pass. Each resulting unit inherits the attributes of its largest member.
-
-    Orphan slivers (no touching neighbour) stay put unless ``drop_orphans=True``.
-    """
-    gdf = gdf.reset_index(drop=True).copy()
-    if len(gdf) == 0:
-        return gdf
-
-    acres = area_acres(gdf)
-    is_sliver = (acres < min_acres).to_numpy()
-    if not is_sliver.any():
-        return gdf
-
-    sindex = gdf.sindex
-    geoms = gdf.geometry.to_numpy()
-
+def _dissolve_by_edges(gdf: gpd.GeoDataFrame, edges: list[tuple[int, int]]) -> gpd.GeoDataFrame:
+    """Union-find over the given (i, j) edges, then dissolve each component into one
+    polygon that keeps the attributes of its largest-area member."""
     uf = _UnionFind(range(len(gdf)))
-    orphans: list[int] = []
+    for i, j in edges:
+        uf.union(i, j)
 
-    for i in range(len(gdf)):
-        if not is_sliver[i]:
-            continue
-        geom = geoms[i]
-        best_j, best_len = None, 0.0
-        for j in sindex.query(geom, predicate="intersects"):
-            if j == i:
-                continue
-            shared = _shared_boundary_length(geom, geoms[j])
-            if shared > best_len:
-                best_len, best_j = shared, int(j)
-        if best_j is None:
-            orphans.append(i)
-        else:
-            uf.union(i, best_j)
-
-    # Dissolve each connected component; attributes come from its largest member.
     components: dict[int, list[int]] = {}
     for i in range(len(gdf)):
         components.setdefault(uf.find(i), []).append(i)
 
+    geoms = gdf.geometry.to_numpy()
     rows = []
     for members in components.values():
         rep = max(members, key=lambda m: geoms[m].area)
@@ -157,17 +118,111 @@ def merge_slivers_to_neighbors(
         if len(members) > 1:
             row["geometry"] = unary_union([geoms[m] for m in members]).buffer(0)
         rows.append(row)
+    return gpd.GeoDataFrame(rows, columns=gdf.columns, crs=gdf.crs).reset_index(drop=True)
 
-    result = gpd.GeoDataFrame(rows, columns=gdf.columns, crs=gdf.crs).reset_index(drop=True)
 
-    if drop_orphans and orphans:
-        keep = area_acres(result) >= min_acres
+def _shared_boundary_edges(gdf: gpd.GeoDataFrame, min_acres: float):
+    """For each sliver, an edge to the polygon it shares the longest boundary with.
+    Returns (edges, orphan_positions) where orphans share no boundary with anything."""
+    is_sliver = (area_acres(gdf) < min_acres).to_numpy()
+    edges: list[tuple[int, int]] = []
+    orphans: list[int] = []
+    if not is_sliver.any():
+        return edges, orphans
+
+    sindex = gdf.sindex
+    geoms = gdf.geometry.to_numpy()
+    for i in range(len(gdf)):
+        if not is_sliver[i]:
+            continue
+        best_j, best_len = None, 0.0
+        for j in sindex.query(geoms[i], predicate="intersects"):
+            if j == i:
+                continue
+            shared = _shared_boundary_length(geoms[i], geoms[j])
+            if shared > best_len:
+                best_len, best_j = shared, int(j)
+        if best_j is None:
+            orphans.append(i)
+        else:
+            edges.append((i, best_j))
+    return edges, orphans
+
+
+def _nearest_edges(gdf: gpd.GeoDataFrame, min_acres: float) -> list[tuple[int, int]]:
+    """For each remaining sliver, an edge to the nearest *non-sliver* unit (by distance).
+    Mirrors LETO's ``GenerateNearTable`` nearest-runnable assignment for isolated pieces."""
+    import numpy as np
+    import shapely
+
+    is_sliver = (area_acres(gdf) < min_acres).to_numpy()
+    sliver_pos = np.where(is_sliver)[0]
+    non_pos = np.where(~is_sliver)[0]
+    if len(sliver_pos) == 0 or len(non_pos) == 0:
+        return []
+
+    geoms = gdf.geometry.to_numpy()
+    tree = shapely.STRtree(geoms[non_pos])
+    nearest_local = tree.nearest(geoms[sliver_pos])
+    return [(int(sliver_pos[k]), int(non_pos[nearest_local[k]])) for k in range(len(sliver_pos))]
+
+
+def merge_slivers_to_neighbors(
+    gdf: gpd.GeoDataFrame,
+    min_acres: float = MIN_STAND_ACRES,
+    drop_orphans: bool = False,
+    nearest_fallback: bool = True,
+    max_passes: int = 4,
+) -> gpd.GeoDataFrame:
+    """
+    Dissolve every sub-threshold sliver into a real neighbouring unit, producing a
+    complete (gap-free), area-conserving state-zero map.
+
+    Two stages:
+      1. **Shared-boundary merge** (ArcGIS "Eliminate" semantics) — each sliver joins the
+         unit it shares the longest boundary with; sliver chains/clusters are resolved
+         together via union-find, repeated until stable. This alone leaves *isolated*
+         slivers (fragments separated from every unit by an erased buffer) unresolved.
+      2. **Nearest-unit fallback** (``nearest_fallback=True``, default) — each remaining
+         sliver is absorbed into its nearest non-sliver unit, mirroring LETO's
+         ``GenerateNearTable`` nearest-runnable assignment. This can create spatially
+         multipart units (a main body plus a detached piece), which FVS treats as one
+         stand. Set ``nearest_fallback=False`` to keep only boundary merges.
+
+    Each resulting unit inherits the attributes of its largest member. Slivers that still
+    cannot be resolved (e.g. no non-sliver unit exists at all) stay put unless
+    ``drop_orphans=True``.
+    """
+    gdf = gdf.reset_index(drop=True).copy()
+    if len(gdf) == 0:
+        return gdf
+    if not (area_acres(gdf) < min_acres).any():
+        return gdf
+
+    # Stage 1: shared-boundary passes until no further progress.
+    for _ in range(max_passes):
+        edges, _ = _shared_boundary_edges(gdf, min_acres)
+        if not edges:
+            break
+        n_before = len(gdf)
+        gdf = _dissolve_by_edges(gdf, edges)
+        if len(gdf) >= n_before:  # nothing collapsed this pass
+            break
+
+    # Stage 2: nearest-unit fallback for isolated residual slivers.
+    if nearest_fallback:
+        edges = _nearest_edges(gdf, min_acres)
+        if edges:
+            gdf = _dissolve_by_edges(gdf, edges)
+
+    if drop_orphans:
+        keep = area_acres(gdf) >= min_acres
         n_drop = int((~keep).sum())
         if n_drop:
-            logger.info("Dropping %d orphan sliver(s) with no mergeable neighbour", n_drop)
-        result = result[keep].reset_index(drop=True)
+            logger.info("Dropping %d residual sliver(s) with no mergeable unit", n_drop)
+        gdf = gdf[keep].reset_index(drop=True)
 
-    return _refresh_area_columns(result)
+    return _refresh_area_columns(gdf)
 
 
 def drop_slivers(gdf: gpd.GeoDataFrame, min_acres: float = MIN_STAND_ACRES) -> gpd.GeoDataFrame:
@@ -197,12 +252,14 @@ def resolve_slivers(
     min_acres: float = MIN_STAND_ACRES,
     explode: bool = True,
     drop_orphans: bool = False,
+    nearest_fallback: bool = True,
 ) -> gpd.GeoDataFrame:
     """
     Full sliver-resolution procedure: explode multipart → apply policy.
 
     policy:
-        "merge" — dissolve slivers into their longest-shared-boundary neighbour (default).
+        "merge" — dissolve slivers into a neighbouring unit (longest shared boundary, then
+                  nearest-unit fallback for isolated pieces). Default; conserves area.
         "drop"  — delete sub-threshold polygons (LETO prototype behaviour).
     """
     if policy not in {"merge", "drop"}:
@@ -215,7 +272,8 @@ def resolve_slivers(
                 n_before, n_slivers, min_acres, policy)
 
     if policy == "merge":
-        result = merge_slivers_to_neighbors(work, min_acres, drop_orphans=drop_orphans)
+        result = merge_slivers_to_neighbors(work, min_acres, drop_orphans=drop_orphans,
+                                            nearest_fallback=nearest_fallback)
     else:
         result = drop_slivers(work, min_acres)
 
@@ -232,7 +290,9 @@ def main() -> None:
     parser.add_argument("--policy", choices=["merge", "drop"], default="merge")
     parser.add_argument("--min-acres", type=float, default=MIN_STAND_ACRES)
     parser.add_argument("--drop-orphans", action="store_true",
-                        help="Drop slivers with no mergeable neighbour (merge policy only)")
+                        help="Drop any slivers that still cannot be merged (merge policy only)")
+    parser.add_argument("--no-nearest-fallback", action="store_true",
+                        help="Skip the nearest-unit fallback; keep only shared-boundary merges")
     parser.add_argument("--target-crs", type=str, default="EPSG:5070",
                         help="Reproject to this CRS before resolving (default EPSG:5070)")
     args = parser.parse_args()
@@ -242,7 +302,8 @@ def main() -> None:
         gdf = gdf.to_crs(args.target_crs)
 
     result = resolve_slivers(gdf, policy=args.policy, min_acres=args.min_acres,
-                             drop_orphans=args.drop_orphans)
+                             drop_orphans=args.drop_orphans,
+                             nearest_fallback=not args.no_nearest_fallback)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     result.to_file(args.output, driver="GPKG")

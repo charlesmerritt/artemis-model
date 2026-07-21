@@ -1,0 +1,34 @@
+by_county:
+  All five counties:
+    '2013_2024': 77505800.0
+    all_years: 72054562.5
+  Baker:
+    '2013_2024': 11451200.0
+    all_years: 11755875.0
+  Columbia:
+    '2013_2024': 19725500.0
+    all_years: 17798687.5
+  Hamilton:
+    '2013_2024': 16211500.0
+    all_years: 15329437.5
+  Suwanee:
+    '2013_2024': 22474700.0
+    all_years: 18466937.5
+  Union:
+    '2013_2024': 7642900.0
+    all_years: 8703625.0
+by_owner_group:
+  All owners:
+    '2013_2024': 77505200.0
+    all_years: 72054250.0
+  Federal (NF):
+    '2013_2024': 2023500.0
+    all_years: 1770000.0
+  Other public:
+    '2013_2024': 4486900.0
+    all_years: 3969937.5
+  Private:
+    '2013_2024': 70994800.0
+    all_years: 66314312.5
+source: Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx
+units: cubic_feet_per_year
