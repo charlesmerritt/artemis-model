@@ -17,10 +17,34 @@ part of this package.
 - A GeoPandas-readable management-unit layer with unique `MU_ID`, `Acres`,
   `OWN_CODE`, `OWN_TYPE`, `SMZ_Pct`, geometry, and a projected CRS.
 - TreeMap 2022 plot-ID GeoTIFF.
-- TreeMap lookup CSV containing raster `VALUE` (or a caller-selected equivalent)
-  and `PLT_CN`.
-- One or more state FIA `TREE.csv` files.
+- TreeMap lookup containing raster `VALUE` and `PLT_CN` (the production VAT
+  DBF, or a caller-supplied CSV).
+- The production FIADB SQLite database, or one or more state FIA `TREE.csv`
+  files.
 - USFS FVS species-crosswalk workbook and the `EasternSpeciesTranslator` sheet.
+
+The verified production source root is `/mnt/d`. Validate the mount and
+R2-restored source files before processing, then load only the TreeMap VAT and
+FIA plots required by the current management units:
+
+```python
+from pathlib import Path
+
+from pipeline.s1_initial_state.data_sources import (
+    ProductionDataPaths,
+    load_fia_trees_sqlite,
+    load_treemap_lookup,
+    preflight_production_data,
+)
+
+sources = ProductionDataPaths.from_root(Path("/mnt/d"))
+preflight_production_data(sources)
+treemap_lookup = load_treemap_lookup(sources.treemap_vat)
+fia_trees = load_fia_trees_sqlite(sources.fiadb, plot_ids={"223267700000001"})
+```
+
+The SQLite reader opens FIADB in read-only mode and filters by plot and state;
+it does not scan or copy the full production database.
 
 FIA control numbers are read and retained as strings. TreeMap rasterization
 uses the native TreeMap transform and Rasterio's pixel-center rule. This is the
