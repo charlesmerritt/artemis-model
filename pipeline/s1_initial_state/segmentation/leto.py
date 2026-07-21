@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import geopandas as gpd
 import numpy as np
 from shapely import union_all, voronoi_polygons
-from shapely.geometry import MultiPoint, Point, Polygon
+from shapely.geometry import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
 SQUARE_METERS_PER_ACRE = 4_046.8564224
@@ -46,6 +46,20 @@ def _validate_geometries(units: gpd.GeoDataFrame) -> None:
             raise SegmentationError(f"Geometry for record {record_id!r} is null")
         if geometry.is_empty:
             raise SegmentationError(f"Geometry for record {record_id!r} is empty")
+        if not isinstance(geometry, (Polygon, MultiPolygon)):
+            raise SegmentationError(
+                f"Geometry for record {record_id!r} must be Polygon or MultiPolygon"
+            )
+        if not geometry.is_valid:
+            raise SegmentationError(
+                f"Geometry for record {record_id!r} has invalid topology"
+            )
+        with np.errstate(over="ignore", invalid="ignore"):
+            area = geometry.area
+        if not math.isfinite(area) or area <= 0:
+            raise SegmentationError(
+                f"Geometry for record {record_id!r} must have finite positive area"
+            )
 
 
 def calculate_acres(units: gpd.GeoDataFrame) -> gpd.GeoDataFrame:

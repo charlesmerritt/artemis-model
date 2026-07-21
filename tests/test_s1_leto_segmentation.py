@@ -60,6 +60,56 @@ def test_calculate_acres_rejects_null_and_empty_geometry(geometry, record_id):
         calculate_acres(units)
 
 
+def test_calculate_acres_rejects_non_polygon_geometry():
+    units = gpd.GeoDataFrame(
+        geometry=[Point(0, 0)],
+        index=["point-unit"],
+        crs="EPSG:5070",
+    )
+
+    with pytest.raises(SegmentationError, match="record 'point-unit'"):
+        calculate_acres(units)
+
+
+def test_calculate_acres_rejects_invalid_polygon_topology():
+    bowtie = Polygon([(0, 0), (1, 1), (1, 0), (0, 1), (0, 0)])
+    units = gpd.GeoDataFrame(
+        geometry=[bowtie],
+        index=["invalid-unit"],
+        crs="EPSG:5070",
+    )
+
+    with pytest.raises(SegmentationError, match="record 'invalid-unit'"):
+        calculate_acres(units)
+
+
+@pytest.mark.parametrize(
+    ("geometry", "record_id"),
+    [
+        (box(0, 0, 1e-200, 1e-200), "zero-area-unit"),
+        (box(0, 0, 1e200, 1e200), "infinite-area-unit"),
+    ],
+)
+def test_calculate_acres_rejects_non_positive_and_non_finite_area(geometry, record_id):
+    units = gpd.GeoDataFrame(
+        geometry=[geometry],
+        index=[record_id],
+        crs="EPSG:5070",
+    )
+
+    with pytest.raises(SegmentationError, match=rf"record '{record_id}'"):
+        calculate_acres(units)
+
+
+def test_calculate_acres_accepts_multipolygon_geometry():
+    units = gpd.GeoDataFrame(
+        geometry=[MultiPolygon([box(0, 0, 10, 10), box(20, 0, 30, 10)])],
+        crs="EPSG:5070",
+    )
+
+    assert calculate_acres(units).loc[0, "Acres"] > 0
+
+
 def test_sample_constrained_points_stays_inside_and_respects_separation():
     geometry = box(0, 0, 100, 100)
 
