@@ -6,23 +6,26 @@ map where every polygon is a single, operationally runnable stand. This is the s
 the harvest scheduler blocks on: FVS simulates *stands*, so every management unit fed
 to it must be one contiguous polygon at or above a minimum operational size.
 
-Procedure (adapted from the LETO ArcGIS prototype, `scripts/LETO.V1.1.txt`):
+Procedure (following the LETO ArcGIS prototype, `scripts/LETO.V1.1.txt`, function
+``multipart_to_singlepart_and_delete_small``):
 
     1. Explode multipart polygons to singlepart
        (LETO: ``MultipartToSinglepart``).
     2. Resolve polygons below the minimum stand size
        (LETO threshold: **5 acres**), via one of two policies:
-         - ``"merge"``  — dissolve each sliver into the adjacent unit with which it
-                          shares the longest boundary (ArcGIS "Eliminate" semantics).
-                          Preserves forest area and leaves no gaps → the default.
-         - ``"drop"``   — delete sub-threshold polygons, matching the LETO prototype
-                          exactly. Faster, but discards forest area and can leave gaps.
+         - ``"drop"``   — delete sub-threshold polygons, exactly as the LETO delineation
+                          script does. Clean single-part geometry. **This is the default:**
+                          it is LETO's own sliver-elimination step for the state-zero map.
+         - ``"merge"``  — dissolve each sliver into a neighbouring unit (longest shared
+                          boundary, then nearest-unit fallback). Conserves forest area and
+                          leaves no gaps, but produces spatially multipart units. Available
+                          as an area-conserving alternative.
 
-**Why merge is the default (decision for review):** LETO's prototype *deletes* sub-5-acre
-pieces. For a complete, gap-free state-zero unit map that conserves the modelled forest
-area, merging slivers into their best neighbour is preferred; ``drop`` reproduces the
-prototype's behaviour when that is wanted. The 5-acre threshold is carried over from LETO
-unchanged.
+**Default is ``drop`` (LETO delineation style).** LETO eliminates sub-5-acre pieces at
+delineation time; the forest they cover is picked up downstream by LETO's *second* script,
+which imputes tree lists for tree-less/edge units from the nearest runnable unit
+(``GenerateNearTable``) — a separate FVS-input step, not this module. The 5-acre threshold
+is carried over from LETO unchanged.
 
 All geometry work assumes a **projected CRS in metres** (ARTEMIS uses EPSG:5070); a
 geographic CRS raises, because area/length in degrees is meaningless here.
@@ -248,7 +251,7 @@ def _refresh_area_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 def resolve_slivers(
     gdf: gpd.GeoDataFrame,
-    policy: str = "merge",
+    policy: str = "drop",
     min_acres: float = MIN_STAND_ACRES,
     explode: bool = True,
     drop_orphans: bool = False,
@@ -258,9 +261,9 @@ def resolve_slivers(
     Full sliver-resolution procedure: explode multipart → apply policy.
 
     policy:
+        "drop"  — delete sub-threshold polygons (LETO delineation behaviour). Default.
         "merge" — dissolve slivers into a neighbouring unit (longest shared boundary, then
-                  nearest-unit fallback for isolated pieces). Default; conserves area.
-        "drop"  — delete sub-threshold polygons (LETO prototype behaviour).
+                  nearest-unit fallback for isolated pieces). Area-conserving alternative.
     """
     if policy not in {"merge", "drop"}:
         raise ValueError(f"policy must be 'merge' or 'drop', got {policy!r}")
@@ -287,7 +290,8 @@ def main() -> None:
     parser.add_argument("--input", type=Path, required=True, help="Candidate-unit GeoPackage/GPKG")
     parser.add_argument("--output", type=Path, required=True, help="Output GeoPackage")
     parser.add_argument("--layer", type=str, default=None, help="Input layer name (optional)")
-    parser.add_argument("--policy", choices=["merge", "drop"], default="merge")
+    parser.add_argument("--policy", choices=["merge", "drop"], default="drop",
+                        help="drop = LETO sliver elimination (default); merge = area-conserving")
     parser.add_argument("--min-acres", type=float, default=MIN_STAND_ACRES)
     parser.add_argument("--drop-orphans", action="store_true",
                         help="Drop any slivers that still cannot be merged (merge policy only)")

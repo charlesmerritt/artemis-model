@@ -151,6 +151,18 @@ def test_resolve_slivers_explodes_then_applies_policy():
     assert "area_acres" in result.columns
 
 
+def test_resolve_slivers_defaults_to_leto_drop():
+    # Default policy is LETO-style drop: sub-5-acre polygons are eliminated, geometry stays
+    # single-part (no multipart merge artefacts).
+    big = box(0, 0, 300, 300)        # ~22 ac
+    sliver = box(400, 400, 450, 450)  # 0.62 ac, isolated
+    gdf = gpd.GeoDataFrame({"unit_id": ["A", "S"]}, geometry=[big, sliver], crs=CRS)
+    result = resolve_slivers(gdf)  # no policy -> drop
+    assert list(result["unit_id"]) == ["A"]
+    assert not flag_slivers(result, min_acres=5.0).any()
+    assert (result.geometry.geom_type == "Polygon").all()
+
+
 def test_resolve_slivers_rejects_unknown_policy():
     gdf = gpd.GeoDataFrame({"unit_id": ["A"]}, geometry=[box(0, 0, 300, 300)], crs=CRS)
     with pytest.raises(ValueError, match="policy"):

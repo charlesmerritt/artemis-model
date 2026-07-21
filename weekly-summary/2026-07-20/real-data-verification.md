@@ -39,22 +39,23 @@ the real Union County layer: **17,020 polygons, 14,870 slivers < 5 ac, 68,240 ac
 
 **Real data exposed a defect the synthetic tests could not:** shared-boundary merge alone
 left **6,716 residual slivers**, because the naive layer's stream/road/water erase separates
-thousands of fragments from every unit by a thin gap — they share no boundary. Fixed by
-adding a **nearest-unit fallback** (mirroring LETO's `GenerateNearTable` nearest-runnable
-assignment). Results on the real layer:
+thousands of fragments from every unit by a thin gap — they share no boundary. Results on
+the real layer for each candidate policy:
 
 | Policy | Units | Slivers left | Area retained | Notes |
 |---|--:|--:|--:|---|
+| **drop — LETO delineation (chosen default)** | **2,150** | **0** | **86.24%** | clean single-part; median 15.2 ac |
+| merge + nearest fallback | 2,442 | 0 | 99.995% | area-conserving but **64.6% multipart** |
 | shared-boundary merge only | 9,124 | 6,716 | 99.995% | incomplete |
-| **merge + nearest fallback** | **2,442** | **0** | **99.995%** | median 16.7 ac, min 5.02 ac; **64.6% multipart** |
-| drop (LETO prototype) | 2,150 | 0 | 86.24% | loses 9,390 ac; clean single-part geometry |
 
-Runtime: ~13 s for the full county. Figure: `sliver_resolution_union.png`.
+Figure: `sliver_resolution_union.png`.
 
-### Open question for review
-The nearest fallback makes the map **complete and area-conserving**, but **64.6% of units
-become multipart** (a main body plus detached pieces attached to the nearest unit). FVS
-treats a multipart unit as one stand, but it is spatially messy. Options to weigh:
-(a) accept multipart; (b) cap the nearest-attachment distance and drop the rest; (c) keep
-isolated pieces as their own units with borrowed attributes (LETO script-2 style);
-(d) drop (loses ~14% of area). Needs a call before this becomes the state-zero standard.
+### Decision (2026-07-21): follow the LETO style
+Per Chaz — **default policy is `drop`**, matching LETO's own delineation step
+(`multipart_to_singlepart_and_delete_small`): explode multipart, then eliminate sub-5-acre
+slivers, leaving clean single-part stands. The ~14% of area under those slivers is **not
+lost to the model** — it is recovered downstream by LETO's *second* script, which imputes
+tree lists for tree-less/edge units from the nearest runnable unit (`GenerateNearTable`), a
+separate FVS-input step still to be built. The area-conserving `merge` policy (with
+nearest-unit fallback) remains available via `--policy merge` for cases where a gap-free,
+area-conserving layer is wanted, at the cost of multipart units.
