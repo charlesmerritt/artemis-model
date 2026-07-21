@@ -1,6 +1,7 @@
 """Build management-unit to FIA plot weights on the native TreeMap grid."""
 
 from pathlib import Path
+from typing import cast
 
 import geopandas as gpd
 import numpy as np
@@ -17,6 +18,33 @@ WEIGHT_COLUMNS = [
     "WEIGHT",
     "PLT_CN",
 ]
+MODAL_WEIGHT_COLUMNS = {"MU_ID", "TM_VALUE", "CELL_COUNT", "PLT_CN"}
+
+
+def attach_modal_plot(
+    units: gpd.GeoDataFrame,
+    weights: pd.DataFrame,
+) -> gpd.GeoDataFrame:
+    """Attach each unit's modal plot using LETO's stable ranking."""
+    if "MU_ID" not in units.columns:
+        raise ValueError("Management units missing column: MU_ID")
+    missing = MODAL_WEIGHT_COLUMNS.difference(weights.columns)
+    if missing:
+        raise ValueError(f"Plot weights missing columns: {sorted(missing)}")
+
+    attributed = units.drop(columns="PLT_CN", errors="ignore").copy()
+    attributed["MU_ID"] = attributed["MU_ID"].astype("string")
+    if attributed["MU_ID"].isna().any() or attributed["MU_ID"].duplicated().any():
+        raise ValueError("MU_ID values must be non-null and unique")
+
+    ranked = weights.copy()
+    ranked["MU_ID"] = ranked["MU_ID"].astype("string")
+    ranked["PLT_CN"] = ranked["PLT_CN"].astype("string")
+    modal = ranked.sort_values(
+        ["MU_ID", "CELL_COUNT", "TM_VALUE"], ascending=[True, False, True]
+    ).drop_duplicates("MU_ID")[["MU_ID", "PLT_CN"]]
+    merged = attributed.merge(modal, on="MU_ID", how="left", validate="one_to_one")
+    return cast(gpd.GeoDataFrame, merged)
 
 
 def _normalized_lookup(lookup: pd.DataFrame, value_column: str) -> pd.DataFrame:

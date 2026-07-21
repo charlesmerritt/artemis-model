@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+import sqlite3
 import sys
 
 import geopandas as gpd
@@ -14,6 +15,7 @@ from shapely.geometry import box
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pipeline.s1_initial_state import leto_initial_state, weights as weight_tools
 from pipeline.s1_initial_state.leto_initial_state import (
     build_management_unit_crosswalk,
     build_initial_state,
@@ -263,6 +265,150 @@ def test_build_and_write_initial_state_outputs(tmp_path):
         "MU_FVS_Stands_No_Live_Trees.csv",
     }
     assert all(path.exists() for path in paths.values())
+
+
+def test_modal_plot_is_identity_but_all_retained_plots_build_trees():
+    units = gpd.GeoDataFrame(
+        {
+            "MU_ID": ["1"],
+            "Acres": [10.0],
+            "OWN_CODE": [4],
+            "OWN_TYPE": ["Corporate/Other Private Forest"],
+            "SMZ_Pct": [0.0],
+        },
+        geometry=[box(0, 0, 100, 100)],
+        crs="EPSG:5070",
+    )
+    weights = pd.DataFrame(
+        {
+            "MU_ID": ["1", "1"],
+            "TM_VALUE": [1, 2],
+            "CELL_COUNT": [6, 4],
+            "TOTAL_CELLS": [10, 10],
+            "WEIGHT": [0.6, 0.4],
+            "PLT_CN": ["101", "202"],
+        }
+    )
+    fia = pd.DataFrame(
+        {
+            "CN": ["t1", "t2"],
+            "PLT_CN": ["101", "202"],
+            "STATUSCD": ["1", "1"],
+            "INVYR": ["2022", "2022"],
+            "SPCD": ["131", "131"],
+            "DIA": ["10", "10"],
+            "HT": ["50", "50"],
+            "ACTUALHT": ["50", "50"],
+            "CR": ["40", "40"],
+            "TPA_UNADJ": ["10", "10"],
+        }
+    )
+
+    attributed = weight_tools.attach_modal_plot(units, weights)
+    tables = build_initial_state(attributed, weights, fia, {"131": "LP"})
+
+    assert attributed.loc[0, "PLT_CN"] == "101"
+    assert set(tables.trees["PLT_CN"]) == {"101", "202"}
+    assert tables.trees.groupby("PLT_CN")["TREE_COUNT"].sum().to_dict() == {
+        "101": 6.0,
+        "202": 4.0,
+    }
+
+
+def test_run_initial_state_from_sqlite_reads_all_weighted_plot_ids(tmp_path):
+    units = gpd.GeoDataFrame(
+        {
+            "MU_ID": ["1"],
+            "Acres": [10.0],
+            "OWN_CODE": [4],
+            "OWN_TYPE": ["family"],
+            "SMZ_Pct": [0.0],
+        },
+        geometry=[box(0, 0, 100, 100)],
+        crs="EPSG:5070",
+    )
+    plot_ids = ["9007199254740993", "9007199254740995"]
+    weights = pd.DataFrame(
+        {
+            "MU_ID": ["1", "1"],
+            "TM_VALUE": [1, 2],
+            "CELL_COUNT": [3, 2],
+            "TOTAL_CELLS": [5, 5],
+            "WEIGHT": [0.6, 0.4],
+            "PLT_CN": plot_ids,
+        }
+    )
+    fiadb_path = tmp_path / "fiadb.db"
+    with sqlite3.connect(fiadb_path) as connection:
+        connection.execute(
+            "create table TREE (CN text, PLT_CN text, STATUSCD text, "
+            "INVYR text, STATECD integer, SPCD text, DIA text, HT text, "
+            "ACTUALHT text, CR text, TPA_UNADJ text)"
+        )
+        connection.executemany(
+            "insert into TREE values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "t1",
+                    plot_ids[0],
+                    "1",
+                    "2022",
+                    12,
+                    "131",
+                    "10",
+                    "50",
+                    "50",
+                    "40",
+                    "10",
+                ),
+                (
+                    "t2",
+                    plot_ids[1],
+                    "1",
+                    "2022",
+                    12,
+                    "131",
+                    "10",
+                    "50",
+                    "50",
+                    "40",
+                    "10",
+                ),
+                (
+                    "unused",
+                    "9007199254740997",
+                    "1",
+                    "2022",
+                    12,
+                    "131",
+                    "10",
+                    "50",
+                    "50",
+                    "40",
+                    "10",
+                ),
+            ],
+        )
+    species_path = tmp_path / "species.xlsx"
+    pd.DataFrame({"FIA CODE": [131], "SN_Mapped_To": ["LP"]}).to_excel(
+        species_path, sheet_name="EasternSpeciesTranslator", index=False
+    )
+
+    tables = leto_initial_state.run_initial_state_from_sqlite(
+        units,
+        weights,
+        fiadb_path,
+        species_path,
+        output_dir=tmp_path / "outputs",
+    )
+
+    assert tables.crosswalk.loc[0, "PLT_CN"] == plot_ids[0]
+    assert set(tables.trees["PLT_CN"]) == set(plot_ids)
+    assert tables.trees.groupby("PLT_CN")["TREE_COUNT"].sum().to_dict() == {
+        plot_ids[0]: 6.0,
+        plot_ids[1]: 4.0,
+    }
+    assert (tmp_path / "outputs" / "MU_PLT_CN_Weights.csv").exists()
 
 
 def test_run_leto_initial_state_reads_inputs_and_writes_outputs(tmp_path):

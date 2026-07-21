@@ -13,6 +13,7 @@ from shapely.geometry import box
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pipeline.s1_initial_state import weights as weight_tools
 from pipeline.s1_initial_state.weights import build_plot_weights
 from pipeline.s1_initial_state.leto_initial_state import (
     build_management_unit_crosswalk,
@@ -196,8 +197,10 @@ def test_majority_plot_tie_preserves_leto_tm_value_order():
         }
     )
 
-    crosswalk = build_management_unit_crosswalk(units, weights)
+    attributed = weight_tools.attach_modal_plot(units, weights)
+    crosswalk = build_management_unit_crosswalk(attributed, weights)
 
+    assert attributed.loc[0, "PLT_CN"] == "900"
     assert crosswalk.loc[0, "PLT_CN"] == "900"
 
 

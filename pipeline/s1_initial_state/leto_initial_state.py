@@ -8,7 +8,7 @@ import geopandas as gpd
 import pandas as pd
 from shapely import STRtree
 
-from pipeline.s1_initial_state.weights import build_plot_weights
+from pipeline.s1_initial_state.weights import attach_modal_plot, build_plot_weights
 
 MU_COLUMNS = ["MU_ID", "Acres", "OWN_CODE", "OWN_TYPE", "SMZ_Pct"]
 CROSSWALK_COLUMNS = [
@@ -87,19 +87,7 @@ def build_management_unit_crosswalk(
     if missing:
         raise ValueError(f"Management units missing columns: {sorted(missing)}")
 
-    units = management_units[MU_COLUMNS].copy()
-    units["MU_ID"] = units["MU_ID"].astype("string")
-    if units["MU_ID"].isna().any() or units["MU_ID"].duplicated().any():
-        raise ValueError("MU_ID values must be non-null and unique")
-
-    ranked = weights.copy()
-    ranked["MU_ID"] = ranked["MU_ID"].astype("string")
-    ranked["PLT_CN"] = ranked["PLT_CN"].astype("string")
-    majority = ranked.sort_values(
-        ["MU_ID", "CELL_COUNT", "TM_VALUE"], ascending=[True, False, True]
-    ).drop_duplicates("MU_ID")[["MU_ID", "PLT_CN"]]
-
-    crosswalk = units.merge(majority, on="MU_ID", how="left", validate="one_to_one")
+    crosswalk = attach_modal_plot(management_units[MU_COLUMNS], weights)
     crosswalk.insert(0, "Stand_ID", crosswalk["MU_ID"])
     return crosswalk[CROSSWALK_COLUMNS]
 
@@ -343,6 +331,37 @@ def write_initial_state(
     for name, path in paths.items():
         getattr(tables, name).to_csv(path, index=False)
     return paths
+
+
+def run_initial_state_from_sqlite(
+    management_units: gpd.GeoDataFrame,
+    weights: pd.DataFrame,
+    fiadb_path: Path,
+    species_crosswalk_path: Path,
+    output_dir: Path | None = None,
+) -> InitialStateTables:
+    """Build initial-state tables from segmented units and read-only FIADB data."""
+    from pipeline.s1_initial_state.data_sources import (
+        SPECIES_CROSSWALK_SHEET,
+        load_fia_trees_sqlite,
+    )
+
+    attributed_units = attach_modal_plot(management_units, weights)
+    plot_ids = weights["PLT_CN"].dropna().astype("string").tolist()
+    fia_trees = load_fia_trees_sqlite(fiadb_path, plot_ids)
+    species_lookup = load_species_lookup(
+        species_crosswalk_path,
+        SPECIES_CROSSWALK_SHEET,
+    )
+    tables = build_initial_state(
+        attributed_units,
+        weights,
+        fia_trees,
+        species_lookup,
+    )
+    if output_dir is not None:
+        write_initial_state(tables, output_dir)
+    return tables
 
 
 def run_leto_initial_state(
