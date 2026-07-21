@@ -26,3 +26,8 @@ dependencies = [
     "shapely>=2.1.2",
     "xlrd>=2.0.2",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "arcpy: optional parity tests requiring an ArcGIS Pro Python environment",
+]

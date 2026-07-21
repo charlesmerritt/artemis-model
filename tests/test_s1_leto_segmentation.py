@@ -5,7 +5,10 @@ import sys
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import pytest
+import rasterio
+from rasterio.transform import from_origin
 from shapely.geometry import (
     GeometryCollection,
     LineString,
@@ -22,13 +25,34 @@ from pipeline.s1_initial_state.segmentation.leto import (
     LetoSegmentationConfig,
     SegmentationError,
     _polygon_parts,
+    assign_majority_ownership,
+    assign_smz_percent,
+    build_leto_management_units,
+    build_treemap_domain,
     calculate_acres,
+    cleanup_and_clip_units,
     sample_constrained_points,
     split_unit_thiessen,
     subdivide_large_units,
 )
 
 SQUARE_METERS_PER_ACRE = 4_046.8564224
+
+
+def _write_raster(path, values, *, nodata=-9999, crs="EPSG:5070", cell_size=100):
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=values.shape[0],
+        width=values.shape[1],
+        count=1,
+        dtype=values.dtype,
+        crs=crs,
+        transform=from_origin(0, values.shape[0] * cell_size, cell_size, cell_size),
+        nodata=nodata,
+    ) as destination:
+        destination.write(values, 1)
 
 
 def test_calculate_acres_uses_projected_crs_units_without_mutating_input():
@@ -215,3 +239,234 @@ def test_subdivide_large_units_is_repeatable_and_preserves_coverage():
     ).area == pytest.approx(0)
     assert first["Acres"].max() <= 200
     assert set(first["source"]) == {"large"}
+
+
+def test_build_treemap_domain_reads_aoi_window_and_clips_valid_cells(
+    tmp_path, monkeypatch
+):
+    treemap_path = tmp_path / "treemap.tif"
+    _write_raster(
+        treemap_path,
+        np.array(
+            [
+                [10, 10, -9999, -9999],
+                [10, 10, -9999, -9999],
+                [-9999, -9999, -9999, -9999],
+                [-9999, -9999, -9999, -9999],
+            ],
+            dtype="int16",
+        ),
+    )
+    parcels = gpd.GeoDataFrame(
+        geometry=[box(50, 250, 150, 350)],
+        crs="EPSG:5070",
+    )
+    original_open = rasterio.open
+    windows = []
+
+    class TrackedDataset:
+        def __init__(self, dataset):
+            self._dataset = dataset
+
+        def __enter__(self):
+            self._dataset.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._dataset.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self._dataset, name)
+
+        def read(self, *args, **kwargs):
+            windows.append(kwargs.get("window"))
+            return self._dataset.read(*args, **kwargs)
+
+    def tracked_open(*args, **kwargs):
+        return TrackedDataset(original_open(*args, **kwargs))
+
+    monkeypatch.setattr(
+        "pipeline.s1_initial_state.segmentation.leto.rasterio.open", tracked_open
+    )
+
+    result = build_treemap_domain(treemap_path, parcels)
+
+    assert len(result) == 1
+    assert result.crs == parcels.crs
+    assert result.geometry.iloc[0].equals(box(50, 250, 150, 350))
+    assert len(windows) == 1
+    assert windows[0] is not None
+    assert windows[0].width < 4
+    assert windows[0].height < 4
+
+
+def test_cleanup_matches_leto_singlepart_minimum_and_parcel_clip():
+    large_piece = box(0, 0, 200, 200)
+    small_piece = box(300, 0, 310, 310)
+    parcels = gpd.GeoDataFrame(
+        geometry=[box(0, 0, 500, 500)], crs="EPSG:5070"
+    )
+    units = gpd.GeoDataFrame(
+        geometry=[MultiPolygon([large_piece, small_piece])], crs="EPSG:5070"
+    )
+
+    result = cleanup_and_clip_units(units, parcels, min_acres=5)
+
+    assert len(result) == 1
+    assert result.iloc[0].geometry.within(parcels.geometry.union_all())
+    assert result.iloc[0].geometry.equals(large_piece)
+
+
+def test_cleanup_applies_minimum_before_final_parcel_clip():
+    units = gpd.GeoDataFrame(
+        geometry=[box(0, 0, 200, 200)],
+        crs="EPSG:5070",
+    )
+    parcels = gpd.GeoDataFrame(
+        geometry=[box(0, 0, 10, 10)],
+        crs="EPSG:5070",
+    )
+
+    result = cleanup_and_clip_units(units, parcels, min_acres=5)
+
+    assert len(result) == 1
+    assert result.loc[0, "Acres"] < 5
+
+
+def test_assign_majority_ownership_uses_pixel_centers_and_low_code_tie_break(
+    tmp_path,
+):
+    ownership_path = tmp_path / "ownership.tif"
+    _write_raster(
+        ownership_path,
+        np.array([[4, 3], [3, 4]], dtype="uint8"),
+        nodata=255,
+        cell_size=50,
+    )
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2"]},
+        geometry=[box(0, 0, 100, 100), box(0, 0, 49, 49)],
+        crs="EPSG:5070",
+    )
+
+    result = assign_majority_ownership(units, ownership_path)
+
+    assert result["OWN_CODE"].tolist() == [3, 3]
+    assert result["OWN_TYPE"].tolist() == ["Family Forest", "Family Forest"]
+
+
+def test_assign_majority_ownership_leaves_units_without_valid_cells_null(tmp_path):
+    ownership_path = tmp_path / "ownership.tif"
+    _write_raster(
+        ownership_path,
+        np.array([[255]], dtype="uint8"),
+        nodata=255,
+        cell_size=50,
+    )
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2"]},
+        geometry=[box(0, 0, 50, 50), box(100, 100, 150, 150)],
+        crs="EPSG:5070",
+    )
+
+    result = assign_majority_ownership(units, ownership_path)
+
+    assert result["OWN_CODE"].isna().all()
+    assert result["OWN_TYPE"].isna().all()
+
+
+def test_assign_smz_percent_matches_legacy_intersection_formula():
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1"]}, geometry=[box(0, 0, 100, 100)], crs="EPSG:5070"
+    )
+    streams = gpd.GeoDataFrame(
+        geometry=[LineString([(0, 50), (100, 50)])], crs=units.crs
+    )
+
+    result = assign_smz_percent(units, streams, buffer_feet=10 / 0.3048)
+
+    assert result.loc[0, "SMZ_Pct"] == pytest.approx(20.0)
+    assert result.loc[0, "SMZ_Acres"] == pytest.approx(
+        2_000 / SQUARE_METERS_PER_ACRE
+    )
+
+
+def test_build_leto_management_units_preserves_stage_order_and_modal_ties(
+    tmp_path, monkeypatch
+):
+    treemap_path = tmp_path / "treemap.tif"
+    ownership_path = tmp_path / "ownership.tif"
+    _write_raster(
+        treemap_path,
+        np.array([[10, 20], [10, 20]], dtype="int16"),
+        cell_size=100,
+    )
+    _write_raster(
+        ownership_path,
+        np.array([[4, 3], [3, 4]], dtype="uint8"),
+        nodata=255,
+        cell_size=100,
+    )
+    parcels = gpd.GeoDataFrame(
+        geometry=[box(0, 0, 200, 200)], crs="EPSG:5070"
+    )
+    streams = gpd.GeoDataFrame(
+        geometry=[LineString([(0, 100), (200, 100)])], crs="EPSG:5070"
+    )
+    lookup = pd.DataFrame(
+        {"VALUE": [10, 20], "PLT_CN": ["plot-10", "plot-20"]}
+    )
+    stages = []
+
+    def record_stage(name):
+        original = getattr(
+            sys.modules["pipeline.s1_initial_state.segmentation.leto"], name
+        )
+
+        def wrapped(*args, **kwargs):
+            stages.append(name)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(
+            f"pipeline.s1_initial_state.segmentation.leto.{name}", wrapped
+        )
+
+    for name in (
+        "build_treemap_domain",
+        "subdivide_large_units",
+        "cleanup_and_clip_units",
+        "build_plot_weights",
+        "assign_majority_ownership",
+        "assign_smz_percent",
+    ):
+        record_stage(name)
+
+    units, weights = build_leto_management_units(
+        treemap_path,
+        lookup,
+        parcels,
+        ownership_path,
+        streams,
+        LetoSegmentationConfig(
+            max_acres=200,
+            min_acres=5,
+            smz_buffer_feet=20 / 0.3048,
+        ),
+    )
+
+    assert stages == [
+        "build_treemap_domain",
+        "subdivide_large_units",
+        "cleanup_and_clip_units",
+        "build_plot_weights",
+        "assign_majority_ownership",
+        "assign_smz_percent",
+    ]
+    assert units.loc[0, "MU_ID"] == "1"
+    assert units.loc[0, "SEGMENTATION_METHOD"] == "leto"
+    assert units.loc[0, "TM_VALUE"] == 10
+    assert units.loc[0, "PLT_CN"] == "plot-10"
+    assert units.loc[0, "OWN_CODE"] == 3
+    assert units.loc[0, "OWN_TYPE"] == "Family Forest"
+    assert units.loc[0, "SMZ_Pct"] == pytest.approx(20.0)
+    assert weights["TM_VALUE"].tolist() == [10, 20]

@@ -1,18 +1,36 @@
-"""Pure-Python geometry primitives for LETO management-unit subdivision."""
+"""Pure-Python LETO management-unit segmentation and attribution."""
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
+import rasterio
+from rasterio.errors import WindowError
+from rasterio.features import geometry_mask, geometry_window, shapes
 from shapely import union_all, voronoi_polygons
-from shapely.geometry import MultiPoint, MultiPolygon, Point, Polygon
+from shapely.geometry import MultiPoint, MultiPolygon, Point, Polygon, shape
 from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
+
+from pipeline.s1_initial_state.weights import build_plot_weights
 
 SQUARE_METERS_PER_ACRE = 4_046.8564224
 METERS_PER_FOOT = 0.3048
 MAX_POINT_ATTEMPTS_PER_POINT = 1_000
 MAX_SUBDIVISION_ROUNDS = 100
+OWNERSHIP_LOOKUP = {
+    0: "Unknown Forest",
+    1: "Non-Forest",
+    2: "Water",
+    3: "Family Forest",
+    4: "Corporate/Other Private Forest",
+    5: "Tribal Forest",
+    6: "Federal Forest",
+    7: "State Forest",
+    8: "Local Forest",
+}
 
 
 class SegmentationError(RuntimeError):
@@ -212,3 +230,210 @@ def subdivide_large_units(
         f"Subdivision did not reach {config.max_acres} acres within "
         f"{MAX_SUBDIVISION_ROUNDS} rounds"
     )
+
+
+def _require_crs(features: gpd.GeoDataFrame, label: str) -> None:
+    if features.crs is None:
+        raise ValueError(f"{label} must define a CRS")
+
+
+def _polygonal_geometry(geometry: BaseGeometry) -> BaseGeometry:
+    parts = _polygon_parts(geometry)
+    if not parts:
+        return Polygon()
+    if len(parts) == 1:
+        return parts[0]
+    return MultiPolygon(parts)
+
+
+def build_treemap_domain(
+    treemap_path: Path,
+    clip_features: gpd.GeoDataFrame,
+) -> gpd.GeoDataFrame:
+    """Polygonize valid TreeMap cells inside the parcel area of interest."""
+    _require_crs(clip_features, "Clip features")
+    if clip_features.empty:
+        raise ValueError("Clip features must contain at least one geometry")
+
+    with rasterio.open(treemap_path) as source:
+        if source.crs is None:
+            raise ValueError("TreeMap raster must define a CRS")
+        domain_crs = source.crs
+        clips = clip_features.to_crs(source.crs)
+        clip_area = clips.geometry.union_all()
+        if clip_area.is_empty:
+            raise ValueError("Clip features contain no polygonal area")
+        try:
+            window = geometry_window(source, [clip_area])
+        except WindowError as error:
+            raise ValueError("Clip features overlap no TreeMap cells") from error
+        treemap = source.read(1, window=window, masked=True)
+        valid = ~np.ma.getmaskarray(treemap)
+        if not valid.any():
+            raise ValueError("Clip features overlap no valid TreeMap cells")
+        transform = source.window_transform(window)
+        valid_cells = [
+            shape(geometry)
+            for geometry, value in shapes(
+                valid.astype("uint8"), mask=valid, transform=transform
+            )
+            if value == 1
+        ]
+
+    domain = _polygonal_geometry(union_all(valid_cells).intersection(clip_area))
+    if domain.is_empty:
+        raise ValueError("Clip features overlap no valid TreeMap cells")
+    return gpd.GeoDataFrame(geometry=[domain], crs=domain_crs)
+
+
+def cleanup_and_clip_units(
+    units: gpd.GeoDataFrame,
+    parcels: gpd.GeoDataFrame,
+    min_acres: float,
+) -> gpd.GeoDataFrame:
+    """Apply LETO's singlepart/minimum cleanup, then its final parcel clip."""
+    if min_acres < 0:
+        raise ValueError("Minimum acreage must be non-negative")
+    _require_crs(units, "Management units")
+    _require_crs(parcels, "Parcels")
+    if parcels.empty:
+        raise ValueError("Parcels must contain at least one geometry")
+
+    singlepart = units.explode(index_parts=False).reset_index(drop=True)
+    singlepart = calculate_acres(singlepart)
+    retained = singlepart.loc[singlepart["Acres"] >= min_acres].copy()
+    if retained.empty:
+        return retained.reset_index(drop=True)
+
+    parcel_area = parcels.to_crs(units.crs).geometry.union_all()
+    retained[retained.geometry.name] = retained.geometry.intersection(parcel_area)
+    retained[retained.geometry.name] = retained.geometry.map(_polygonal_geometry)
+    retained = retained.loc[~retained.geometry.is_empty].reset_index(drop=True)
+    if retained.empty:
+        return retained
+    return calculate_acres(retained)
+
+
+def _unit_majority_code(source, geometry: BaseGeometry) -> int | None:
+    try:
+        window = geometry_window(source, [geometry])
+    except WindowError:
+        return None
+    values = source.read(1, window=window, masked=True)
+    inside = geometry_mask(
+        [geometry],
+        out_shape=values.shape,
+        transform=source.window_transform(window),
+        all_touched=False,
+        invert=True,
+    )
+    valid = inside & ~np.ma.getmaskarray(values)
+    if not valid.any():
+        return None
+    codes, counts = np.unique(values.data[valid], return_counts=True)
+    largest_count = counts.max()
+    return int(codes[counts == largest_count].min())
+
+
+def assign_majority_ownership(
+    units: gpd.GeoDataFrame,
+    ownership_path: Path,
+) -> gpd.GeoDataFrame:
+    """Assign each unit's pixel-center majority ownership with stable ties."""
+    _require_crs(units, "Management units")
+    result = units.copy()
+    with rasterio.open(ownership_path) as source:
+        if source.crs is None:
+            raise ValueError("Ownership raster must define a CRS")
+        raster_units = units.to_crs(source.crs)
+        codes = [
+            _unit_majority_code(source, geometry)
+            for geometry in raster_units.geometry
+        ]
+    result["OWN_CODE"] = pd.array(codes, dtype="Int64")
+    result["OWN_TYPE"] = [
+        None if code is None else OWNERSHIP_LOOKUP.get(code, "Unknown")
+        for code in codes
+    ]
+    return result
+
+
+def assign_smz_percent(
+    units: gpd.GeoDataFrame,
+    streams: gpd.GeoDataFrame,
+    buffer_feet: float,
+) -> gpd.GeoDataFrame:
+    """Calculate unit acreage and percent area inside the dissolved SMZ buffer."""
+    if buffer_feet < 0:
+        raise ValueError("SMZ buffer must be non-negative")
+    _require_crs(units, "Management units")
+    _require_crs(streams, "Streams")
+    result = calculate_acres(units)
+    meters_per_unit = _meters_per_coordinate_unit(result)
+    buffer_distance = buffer_feet * METERS_PER_FOOT / meters_per_unit
+    stream_geometry = streams.to_crs(result.crs).geometry
+    stream_geometry = stream_geometry.loc[
+        stream_geometry.notna() & ~stream_geometry.is_empty
+    ]
+    if stream_geometry.empty:
+        intersection_area = np.zeros(len(result), dtype="float64")
+    else:
+        smz = union_all(stream_geometry.buffer(buffer_distance))
+        intersection_area = result.geometry.intersection(smz).area.to_numpy()
+    square_meters = intersection_area * meters_per_unit**2
+    result["SMZ_Acres"] = square_meters / SQUARE_METERS_PER_ACRE
+    result["SMZ_Pct"] = np.divide(
+        intersection_area,
+        result.geometry.area.to_numpy(),
+        out=np.zeros(len(result), dtype="float64"),
+        where=result.geometry.area.to_numpy() != 0,
+    )
+    result["SMZ_Pct"] *= 100
+    return result
+
+
+def _assign_stable_mu_ids(units: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    result = units.copy()
+    bounds = result.geometry.bounds
+    sort_columns = []
+    for name in ("minx", "miny", "maxx", "maxy"):
+        column = f"__leto_{name}"
+        result[column] = bounds[name]
+        sort_columns.append(column)
+    result["__leto_wkb"] = result.geometry.to_wkb(hex=True)
+    result = result.sort_values([*sort_columns, "__leto_wkb"]).reset_index(drop=True)
+    result = result.drop(columns=[*sort_columns, "__leto_wkb"])
+    result["MU_ID"] = pd.array(
+        [str(index) for index in range(1, len(result) + 1)], dtype="string"
+    )
+    result["SEGMENTATION_METHOD"] = "leto"
+    return result
+
+
+def build_leto_management_units(
+    treemap_path: Path,
+    treemap_lookup: pd.DataFrame,
+    parcels: gpd.GeoDataFrame,
+    ownership_path: Path,
+    streams: gpd.GeoDataFrame,
+    config: LetoSegmentationConfig,
+) -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
+    """Run LETO stages in their legacy order and return units plus plot weights."""
+    domain = build_treemap_domain(treemap_path, parcels)
+    subdivided = subdivide_large_units(domain, config)
+    cleaned = cleanup_and_clip_units(subdivided, parcels, config.min_acres)
+    units = _assign_stable_mu_ids(cleaned)
+
+    weights = build_plot_weights(units, treemap_path, treemap_lookup)
+    majority = (
+        weights.sort_values(
+            ["MU_ID", "CELL_COUNT", "TM_VALUE"],
+            ascending=[True, False, True],
+        )
+        .drop_duplicates("MU_ID")[["MU_ID", "PLT_CN", "TM_VALUE"]]
+        .copy()
+    )
+    units = units.merge(majority, on="MU_ID", how="left", validate="one_to_one")
+    units = assign_majority_ownership(units, ownership_path)
+    units = assign_smz_percent(units, streams, config.smz_buffer_feet)
+    return units, weights
