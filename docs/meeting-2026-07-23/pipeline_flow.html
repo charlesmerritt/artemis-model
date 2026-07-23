@@ -1,0 +1,309 @@
+<title>ARTEMIS pipeline — from baseline to management units</title>
+<style>
+  :root {
+    --paper: #f7f6f1;
+    --card: #ffffff;
+    --ink: #1c231d;
+    --ink-soft: #4b564c;
+    --ink-faint: #78837a;
+    --line: #e2e2d8;
+    --line-strong: #cfcfc2;
+    --accent: #2f6b3f;
+    --accent-soft: #e6f0e5;
+    --done: #2f6b3f;
+    --done-bg: #e6f0e5;
+    --prog: #b06a11;
+    --prog-bg: #f6ebd8;
+    --plan: #5a6472;
+    --plan-bg: #e9ebee;
+    --band-baseline: #edf3ea;
+    --band-mgmt: #f6efe2;
+    --band-next: #eceef1;
+    --shadow: 0 1px 2px rgba(28,35,29,.06), 0 3px 10px rgba(28,35,29,.05);
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #131612;
+      --card: #1c211c;
+      --ink: #eef0ea;
+      --ink-soft: #b6bdb4;
+      --ink-faint: #838d82;
+      --line: #2b312b;
+      --line-strong: #3a423a;
+      --accent: #7bbd84;
+      --accent-soft: #22301f;
+      --done: #7bbd84; --done-bg: #1e2c1d;
+      --prog: #e2a24e; --prog-bg: #2e2413;
+      --plan: #9aa6b4; --plan-bg: #20262d;
+      --band-baseline: #182117;
+      --band-mgmt: #221d13;
+      --band-next: #191d22;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#f7f6f1; --card:#fff; --ink:#1c231d; --ink-soft:#4b564c; --ink-faint:#78837a;
+    --line:#e2e2d8; --line-strong:#cfcfc2; --accent:#2f6b3f; --accent-soft:#e6f0e5;
+    --done:#2f6b3f; --done-bg:#e6f0e5; --prog:#b06a11; --prog-bg:#f6ebd8; --plan:#5a6472; --plan-bg:#e9ebee;
+    --band-baseline:#edf3ea; --band-mgmt:#f6efe2; --band-next:#eceef1;
+    --shadow:0 1px 2px rgba(28,35,29,.06),0 3px 10px rgba(28,35,29,.05);
+  }
+  :root[data-theme="dark"] {
+    --paper:#131612; --card:#1c211c; --ink:#eef0ea; --ink-soft:#b6bdb4; --ink-faint:#838d82;
+    --line:#2b312b; --line-strong:#3a423a; --accent:#7bbd84; --accent-soft:#22301f;
+    --done:#7bbd84; --done-bg:#1e2c1d; --prog:#e2a24e; --prog-bg:#2e2413; --plan:#9aa6b4; --plan-bg:#20262d;
+    --band-baseline:#182117; --band-mgmt:#221d13; --band-next:#191d22;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 40px 24px 64px; }
+
+  header { margin-bottom: 8px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(26px, 4vw, 38px); line-height: 1.1; margin: 0 0 12px;
+    letter-spacing: -.01em; text-wrap: balance; font-weight: 800;
+  }
+  .lede { font-size: 17px; color: var(--ink-soft); max-width: 62ch; margin: 0; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 26px 0 6px;
+    padding: 14px 16px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: var(--shadow);
+  }
+  .legend .item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .03em;
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .pill.done { color: var(--done); background: var(--done-bg); }
+  .pill.prog { color: var(--prog); background: var(--prog-bg); }
+  .pill.plan { color: var(--plan); background: var(--plan-bg); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.done { background: var(--done); }
+  .dot.prog { background: var(--prog); }
+  .dot.plan { background: var(--plan); }
+
+  .band { margin-top: 30px; }
+  .band-head {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 0 4px 12px;
+  }
+  .band-head h2 { font-size: 15px; margin: 0; letter-spacing: .02em; font-weight: 800; }
+  .band-head .sub { font-size: 13px; color: var(--ink-faint); }
+
+  .stages {
+    border-radius: 16px; padding: 8px; display: flex; flex-direction: column; gap: 0;
+  }
+  .band.baseline .stages { background: var(--band-baseline); }
+  .band.mgmt .stages { background: var(--band-mgmt); }
+  .band.next .stages { background: var(--band-next); }
+
+  .stage {
+    display: grid; grid-template-columns: 40px 1fr auto; gap: 16px;
+    align-items: start; background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px; margin: 8px; box-shadow: var(--shadow);
+  }
+  .num {
+    font-family: var(--mono); font-size: 14px; font-weight: 700;
+    color: var(--accent); background: var(--accent-soft);
+    width: 34px; height: 34px; border-radius: 9px;
+    display: grid; place-items: center; margin-top: 2px;
+  }
+  .stage h3 { margin: 1px 0 4px; font-size: 16.5px; letter-spacing: -.005em; }
+  .stage p { margin: 0 0 8px; font-size: 14px; color: var(--ink-soft); }
+  .artifact {
+    font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint);
+    display: flex; flex-wrap: wrap; gap: 4px 14px;
+  }
+  .artifact b { color: var(--ink-soft); font-weight: 600; }
+  .stage .status { justify-self: end; margin-top: 3px; }
+
+  .connector { display: grid; place-items: center; height: 14px; }
+  .connector::before {
+    content: ""; width: 2px; height: 14px;
+    background: linear-gradient(var(--line-strong), var(--line-strong));
+  }
+
+  .callout {
+    margin: 12px 8px 8px; border: 1px solid var(--accent);
+    background: var(--accent-soft); border-radius: 12px; padding: 15px 18px;
+    display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start;
+  }
+  .callout .mark {
+    font-size: 20px; line-height: 1; margin-top: 2px;
+  }
+  .callout h4 { margin: 0 0 4px; font-size: 14.5px; color: var(--ink); }
+  .callout p { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+  .callout .metrics {
+    margin-top: 9px; display: flex; flex-wrap: wrap; gap: 6px 8px;
+  }
+  .chip {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    padding: 3px 9px; border-radius: 7px; background: var(--card);
+    border: 1px solid var(--line); color: var(--ink-soft);
+  }
+  .chip b { color: var(--accent); }
+
+  footer {
+    margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--ink-faint); display: flex;
+    flex-wrap: wrap; gap: 4px 16px; justify-content: space-between;
+  }
+  footer .k { font-family: var(--mono); }
+
+  @media (max-width: 560px) {
+    .stage { grid-template-columns: 34px 1fr; }
+    .stage .status { grid-column: 1 / -1; justify-self: start; margin-top: 2px; }
+    .callout { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">ARTEMIS · forest projection pipeline</p>
+    <h1>From a validated baseline to management-unit harvest scheduling</h1>
+    <p class="lede">One spatially-explicit pipeline for the five-county north-Florida pilot.
+      The growth baseline runs end-to-end today; the current build extends it into
+      constrained, per-unit harvest simulation.</p>
+  </header>
+
+  <div class="legend" role="list">
+    <span class="item" role="listitem"><span class="dot done"></span> Working today</span>
+    <span class="item" role="listitem"><span class="dot prog"></span> In progress this cycle</span>
+    <span class="item" role="listitem"><span class="dot plan"></span> Designed / next</span>
+    <span class="item" role="listitem" style="margin-left:auto; color:var(--ink-faint)">SN variant · 30&nbsp;m · EPSG:5070 · ~50&nbsp;yr horizon</span>
+  </div>
+
+  <!-- BAND 1 -->
+  <section class="band baseline">
+    <div class="band-head">
+      <h2>Baseline projection</h2>
+      <span class="sub">the no-management trajectory, running end-to-end</span>
+    </div>
+    <div class="stages">
+      <div class="stage">
+        <div class="num">1</div>
+        <div>
+          <h3>Initial forest state</h3>
+          <p>TreeMap&nbsp;2022 plot IDs joined to FIA tree lists, assembled into FVS-ready stands.</p>
+          <div class="artifact"><span><b>input:</b> TreeMap 2022 + FIA SQLite</span><span><b>out:</b> 693 stands</span></div>
+        </div>
+        <span class="status pill done">Working</span>
+      </div>
+      <div class="connector"></div>
+      <div class="stage">
+        <div class="num">2</div>
+        <div>
+          <h3>FVS growth baseline</h3>
+          <p>Forest Vegetation Simulator (Southern variant) projected forward in 5-year cycles, no management.</p>
+          <div class="artifact"><span><b>out:</b> fvs_trajectory.csv</span><span>9,259 rows · 1997–2076</span></div>
+        </div>
+        <span class="status pill done">Working</span>
+      </div>
+      <div class="connector"></div>
+      <div class="stage">
+        <div class="num">3</div>
+        <div>
+          <h3>Paint trajectories to pixels</h3>
+          <p>Stand metrics mapped back onto every TreeMap pixel through the crosswalk — the headline raster product.</p>
+          <div class="artifact"><span><b>out:</b> basal-area GeoTIFFs</span><span>5.41M px · 100% stand coverage</span><span>mean BA 83→189 sq ft/ac</span></div>
+        </div>
+        <span class="status pill done">Working</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 2 -->
+  <section class="band mgmt">
+    <div class="band-head">
+      <h2>Toward management units</h2>
+      <span class="sub">turning the baseline into a landscape the scheduler can act on</span>
+    </div>
+    <div class="stages">
+      <div class="stage">
+        <div class="num">4</div>
+        <div>
+          <h3>Management-unit map</h3>
+          <p>Draft units from parcels ∩ forest cover, minus road / water / BMP exclusions — then slivers dissolved into
+             their best neighbor to make a clean, gap-free state-zero map.</p>
+          <div class="artifact"><span><b>Union Co.:</b> 17,020 draft polygons</span><span>87% slivers → resolved</span></div>
+        </div>
+        <span class="status pill prog">In progress</span>
+      </div>
+      <div class="connector"></div>
+      <div class="stage">
+        <div class="num">5</div>
+        <div>
+          <h3>Harvest constraints (TPO)</h3>
+          <p>Timber-Product-Output reports parsed into annual volume caps by county and ownership — the ceilings the schedule must stay under.</p>
+          <div class="artifact"><span><b>caps:</b> all owners ≈ 72.05M cuft/yr</span><span>5 counties · 7 ownership classes</span></div>
+        </div>
+        <span class="status pill prog">In progress</span>
+      </div>
+      <div class="connector"></div>
+      <div class="stage">
+        <div class="num">6</div>
+        <div>
+          <h3>Constrained harvest scheduler</h3>
+          <p>At each 5-year barrier: read standing volume per unit, select stands oldest-first, cut them, and hold the
+             county / ownership totals under their TPO caps.</p>
+          <div class="artifact"><span><b>engine:</b> global barriers + selective per-stand cut</span><span>scaffolded</span></div>
+        </div>
+        <span class="status pill prog">In progress</span>
+      </div>
+
+      <div class="callout">
+        <div class="mark">✓</div>
+        <div>
+          <h4>The FVS engine for stage&nbsp;6 is already measured and proven</h4>
+          <p>Before building the scheduler, we verified the hard part: FVS can be paused at a barrier, cut selectively,
+             and resumed with <b>zero</b> divergence from a native run — single stand, multi-stand bundle, and across a
+             stop/restart. See the companion fidelity table.</p>
+          <div class="metrics">
+            <span class="chip">stand values restart Δ = <b>0.0</b></span>
+            <span class="chip">30% thin = <b>exactly 30%</b> removed</span>
+            <span class="chip">inject vs native Δ = <b>0.0</b></span>
+            <span class="chip">non-target stands <b>untouched</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAND 3 -->
+  <section class="band next">
+    <div class="band-head">
+      <h2>Managed scenarios</h2>
+      <span class="sub">the payoff the direction is aimed at</span>
+    </div>
+    <div class="stages">
+      <div class="stage">
+        <div class="num">7</div>
+        <div>
+          <h3>Managed re-projection &amp; comparison</h3>
+          <p>Run FVS again under the scheduled harvests, then compare managed vs. baseline: volume removed, residual
+             inventory, and growth response — summarized by county, owner, and forest type.</p>
+          <div class="artifact"><span><b>out:</b> managed vs. baseline maps &amp; tables</span></div>
+        </div>
+        <span class="status pill plan">Next</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>ARTEMIS · five-county north-Florida pilot · meeting brief <span class="k">2026-07-23</span></span>
+    <span>Baseline: merged to <span class="k">main</span> · Management stack: <span class="k">PR #6</span> (open)</span>
+  </footer>
+</div>
