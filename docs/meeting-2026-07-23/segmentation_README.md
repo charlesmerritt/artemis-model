@@ -67,11 +67,41 @@ of how units are first drawn.
   merge on each segmentation output and compare the *resolved* maps, plus a
   parameter sweep.
 
+## Follow-up: delineation + sliver-merge (the fair comparison)
+
+The raw comparison above isn't the fair one — no strategy is usable at ~87–90%
+slivers. The fair question is whether the delineation method still matters *after*
+the task-C sliver-merge cleanup is applied to each. It was, applying
+`sliver_merge.resolve_slivers(policy="merge", min_acres=5)` to all three raw
+outputs (`segmentation_merge_comparison.csv`):
+
+| strategy | raw units | merged units | sliver % after | median ha after | median compactness after |
+|---|---:|---:|---:|---:|---:|
+| Naive | 17,020 | 2,442 | 0.0% | 6.8 | 0.20 |
+| Felzenszwalb | 21,210 | 2,137 | 0.0% | 7.4 | 0.16 |
+| SLIC | 11,721 | 1,554 | 0.0% | 8.7 | 0.13 |
+
+Forest area is conserved in every case. **After the merge, all three converge to
+a usable state-zero map** — 0 slivers, a 6.8–8.7 ha median, ~1,500–2,400 units.
+The delineation method is a second-order effect: SLIC yields the fewest, largest
+units; naive yields the most.
+
+**One real trade-off surfaces here:** the merge *lowers* compactness (naive
+0.46→0.20, and lower still for the segmentation strategies), because the
+nearest-unit fallback dissolves isolated slivers into multipart units. Naive+merge
+stays the most compact. If compact single-part units matter, the next lever is a
+boundary-only merge or a better fallback, not the choice of segmenter.
+
+Takeaway for the pipeline: **the sliver-merge is the load-bearing step; delineation
+choice is a tuning knob on top of it.** Figure: `segmentation_merge_strategies_map.png`.
+
 ## Files
 
 | File | What |
 |---|---|
-| `segmentation_strategy_comparison.csv` | the summary table above |
-| `segmentation_strategies_map.png` | three-panel Union County map (naive / Felzenszwalb / SLIC) |
+| `segmentation_strategy_comparison.csv` | raw-strategy summary table |
+| `segmentation_strategies_map.png` | three-panel raw map (naive / Felzenszwalb / SLIC) |
+| `segmentation_merge_comparison.csv` | raw-vs-merged table for all three strategies |
+| `segmentation_merge_strategies_map.png` | three-panel map of the merged (state-zero) result |
 | `../../research/mgmt_units/run_segmentation_aoi.py` | the AOI-scoped runner |
 | `../../research/mgmt_units/outputs/strategy_comparison.{csv,png}` | the committed script's own comparison outputs |
