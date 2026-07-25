@@ -68,8 +68,8 @@ pixels are equal-area in EPSG:5070). Example: a 40-ac unit = plot A (15 ac) + pl
 
 - Weights: `assign_plt_cn.py` → `WEIGHT = CELL_COUNT / TOTAL_CELLS` (LETO `assign_plt_cn`).
 - Applied: `build_fvs_inputs.py::build_tree_init` scales each donor tree's TPA by its plot
-  weight (with a LETO 5% floor + renormalize). This is the LETO procedure; see the
-  validation trace in this file's companion discussion and the two modules' docstrings.
+  weight (with a LETO 5% floor + renormalize). This is the LETO procedure; see the two
+  modules' docstrings and the area-weighting unit test in `tests/test_s3_assign_plt_cn.py`.
 - **Per-acre vs totals:** per-acre densities (BA, TPA) carry to any pixel unchanged;
   **totals** require `× pixel acres` (30 m pixel = 900 m² = 0.2224 ac). Never sum raw pixel
   values for a total. Pixel-count means *are* already area-weighted. See
