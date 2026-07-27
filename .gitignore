@@ -51,3 +51,4 @@ Thumbs.db
 .claude/*
 !.claude/settings.json
 !.claude/hooks/
+!.claude/environment-setup.sh
