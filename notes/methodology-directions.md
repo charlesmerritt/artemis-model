@@ -7,6 +7,45 @@ to change.
 
 ---
 
+## Pipeline sketch from the meeting
+
+Transcribed from the whiteboard-style sketch on the 7/27/26 notepad page. Some
+handwriting is ambiguous; uncertain readings are marked.
+
+```text
+  [Get Veg data (FIA)] ──┐
+                         ├──> [Decide Sim Units] ──┐
+  [Repair TreeMap] ──┐   │                         │
+                     ├──────> (Repaired TreeMap  <─┘
+  [Repair NWOS       │           + Repaired LO)
+   LO db] ───────────┘            │        │
+        │                         v        │
+        │                  (Simulate Mgt) ──> CC
+        └──────────────────> (Riparian) ────> outputs / summaries
+```
+
+Readings and expansions:
+
+- **"Get Veg data"** — the box is circled, i.e. the starting/blocking step. The
+  subscript reads `FIA` (possibly `RIA`); FIA is the sensible expansion.
+- **"Decide Sim Units"** — deciding the simulation unit is drawn as its own upstream
+  gate, which is exactly item 1 below. It feeds the repaired-data stage rather than
+  the other way around, so the tree-list aggregation question blocks work downstream
+  of it.
+- **"Repair NWOS LO db"** — NWOS = National Woodland Owner Survey; LO = landowner.
+  Distinct from the Harris et al. ownership raster already in `config/data_paths.yaml`,
+  which is a pixel-level ownership *class* product, not a landowner database.
+- **"Riparian"** — drawn as a branch off the repaired-data stage that runs **parallel
+  to `Simulate Mgt`, never through it**, and still lands in the outputs. That is the
+  same-shape statement as item 2: grown, never managed, separately reported.
+- **"CC"** — trailing off `Simulate Mgt`, most likely clearcut as the first regime to
+  simulate. Not certain.
+
+The upper half of the page is an unrelated personal to-do list; not transcribed. The
+photo itself is not committed — say the word if you want it in `notes/assets/`.
+
+---
+
 ## 1. Tree-list aggregation: one averaged list per unit, or weighted per-plot lists?
 
 **Question.** When a management unit spans many TreeMap pixels imputed to different
@@ -64,10 +103,30 @@ abstraction rather than a *biophysical* one.
 
 ## 2. Riparian buffers must be their own stands — excluded from management, still grown
 
-**Decision.** Riparian/BMP buffers are never managed. But they are forested, they
-accumulate volume and carbon, and they must not silently vanish from the landscape
-accounting. They should be carried as **their own stands/units with a no-management
-regime**, grown through the same FVS projection as everything else.
+**The regime, as stated:**
+
+> These lands grow freely and are never harvested, but should be included in our
+> growth outputs and summaries as unique buffer polygons.
+
+Three requirements fall out of that sentence, and all three have to hold together:
+
+1. **Grow freely** — buffers are projected through FVS on the same cycles as
+   everything else. They are not frozen, not held at year-0 condition, and not
+   approximated by a growth curve outside FVS.
+2. **Never harvested** — no entry of any kind. Not a light thin, not a salvage
+   entry, no buffer class exempted. The regime is unconditional, so it is assigned
+   by geometry (does this land fall in a buffer?) rather than by any
+   ownership/forest-type rule that could override it.
+3. **Reported as unique buffer polygons** — they appear in growth outputs and
+   summaries with their **own polygon identity**: their own unit IDs, their own rows
+   in summary tables, their own painted pixels. They are not dissolved into
+   neighboring managed units, not merged into a single landscape-wide "buffer"
+   aggregate, and not reported only as a residual.
+
+Requirement 3 is the one that is easy to half-satisfy. Buffers that are grown but
+folded into unit-level totals technically appear in the outputs, yet you can no
+longer answer "how much volume/carbon is sitting in riparian buffers, and where?" —
+which is the question the buffers exist to support. Keep them addressable.
 
 **Gap in current code.** `pipeline/s3_management/sketch_management_units.py`
 currently *erases* buffers: stream BMP buffers, NHD waterbodies, and the small road
@@ -89,18 +148,28 @@ choice.
 - Attribute riparian units from the TreeMap pixels they overlap, using the same
   crosswalk as item 1, and assign the `no_management` regime from the regime library
   ([[management-pipeline-plan]] Step 3.1).
+- Carry `buffer_class` (`ephemeral_intermittent`, `perennial_small`, `perennial_large`
+  from `config/bmp_rules.yaml`) as an attribute on each buffer polygon, so summaries
+  can be cut by class without the polygons themselves being merged by class.
 - Waterbodies and the road buffer are **not** stands. Water is non-forest; the road
   buffer exists only to absorb road/parcel alignment artifacts. Both stay erase-only.
 
-**Note on `PLAN.md` §4b.** The plan lists a riparian regime as "thin only or no entry,
-depends on buffer class." The adviser's direction is stricter — no management in the
-buffers. Reconcile: default to no entry, and treat any thinning-in-buffer variant as
-an explicit scenario, not the default.
+**Polygon identity — resolved.** Buffer polygons stay unique. Do not dissolve adjacent
+buffer segments into one stand per stream reach, and do not merge them into the
+managed units they abut. Where a buffer is split by parcel boundaries it inherited
+from the input parcels, that split is acceptable — but each resulting polygon keeps
+its own `unit_id` and its own row in the summaries. Simulation may still dedupe to
+unique `(plot, no_management)` trajectory keys behind the scenes (item 4); that is a
+run-count optimization and must not collapse the reporting geometry.
 
-**Open.** Whether buffer classes (`ephemeral_intermittent`, `perennial_small`,
-`perennial_large` in `config/bmp_rules.yaml`) stay distinct unit classes for reporting,
-and whether adjacent buffer segments dissolve into one stand per stream reach or stay
-split by the parcel boundaries they came from.
+**`PLAN.md` §4b — updated.** The plan previously listed the riparian regime as "thin
+only or no entry, depends on buffer class," which was looser than the decision above.
+§4b now reads no entry, ever, with the reporting requirement attached.
+
+**Still open.** Whether the buffer polygon set is generated once against the full
+hydrography and clipped per county, or rebuilt per county — the current per-county
+processing loop means a buffer straddling a county line could otherwise be split into
+two polygons with unrelated IDs.
 
 ---
 
@@ -168,7 +237,7 @@ statewide.
 
 | Item | Status |
 |---|---|
-| Riparian buffers as separate unmanaged-but-growing stands | **Decided.** Needs implementation in `sketch_management_units.py` |
+| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Decided.** Needs implementation in `sketch_management_units.py`; `PLAN.md` §4b updated |
 | Keep per-plot tree lists, area-weight to units | **Leaning B.** Needs the unit×stand crosswalk + a partial-harvest distribution rule |
 | Pixel-first growth with per-pixel regime + `(plot, regime, SI)` trajectory keys | **Compatible with the above.** Adopt as the scaling design |
 | Hex-bin overlay | **Cartographic post-process only.** Size and denominator undecided |

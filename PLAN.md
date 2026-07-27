@@ -142,7 +142,7 @@
   - Industrial pine plantation (site prep, plant, thin, clearcut on rotation)
   - Industrial hardwood / mixed
   - Public conservative management
-  - Riparian (thin only or no entry, depends on buffer class)
+  - Riparian (**no entry, ever** — buffer lands grow freely and are never harvested, but are still projected and reported as their own buffer polygons in growth outputs and summaries; decided 2026-07-27, see `notes/methodology-directions.md`)
 - Each regime gets selected per pixel by a deterministic function of `(ownership, forest type, riparian buffer class, stand age)`.
 - Output: `regimes/*.key` templates + `regime_assignment.py` (the function).
 
