@@ -46,5 +46,8 @@ Thumbs.db
 .idea/
 *.swp
 
-# Agents
-.claude/
+# Agents — local agent state stays untracked, but the shared session-start hook
+# and its settings must be committed or Claude Code on the web cannot run it.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
