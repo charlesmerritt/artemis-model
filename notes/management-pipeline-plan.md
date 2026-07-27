@@ -162,3 +162,5 @@ Steps 1-8 can be implemented and verified without running FVS again. Steps 9-12 
 4. **FVS runtime**: Continue with Windows GUI handoff (proven path). Investigate Docker-based fvs2py as a stretch goal for automation.
 5. **Management unit granularity**: Keep parcel-based units from `sketch_management_units.py` for the prototype. Raster-based segmentation is a future improvement.
 6. **Time step**: Use FVS 5-year cycles as the scheduling time step. This matches the natural FVS output unit and the projection config.
+
+See [`methodology-directions.md`](methodology-directions.md) for the 2026-07-27 advisor-meeting follow-ups that touch this plan: keeping per-plot tree lists and area-weighting them into units rather than averaging (affects Steps 2.3 and 4.2), and carrying riparian buffers as separate unmanaged-but-growing units (affects Steps 2.1 and 3.2).

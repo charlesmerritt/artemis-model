@@ -4,6 +4,7 @@ Durable context for future agents and collaborators.
 
 ## Index
 
+- [Methodology directions (2026-07-27 advisor meeting)](methodology-directions.md) — **direction, not measured**: keep per-plot tree lists and area-weight them into management units rather than averaging one list per unit; carry riparian/BMP buffers as their own unmanaged-but-still-growing stands (today `sketch_management_units.py` erases them entirely, so those acres are neither managed nor grown); hex-bin overlay as a cartographic post-process only; and how pixel-first growth reconciles with unit-based management via per-pixel regimes + `(plot, regime, SI bin)` trajectory keys.
 - [FVS restart fidelity findings](restart-fidelity-findings.md) — **measured**: in-process pause reproduces a continuous run exactly (0.0 delta incl. carbon), but `--restart` silently collapses `Forest_Shrub_Herb` to 0.02 and understates total stand carbon ~8% per barrier while BA/Tpa/SDI stay bit-identical. `putstd` omits the FFE commons; `COVTYP` is the likely culprit. Also: a negative FVS restart code is a *signal* — `fvsRun()` must be called again or the store file is empty.
 - [Notebooks index](notebooks.md) — what every notebook + helper in `notebooks/` does, what each needs to run (GEE / `/mnt/d` drive / network), links to the per-group deep-dive notes, and the 2026-07-14 test results (incl. the broken FVS notebook and the stored-error prototype).
 - [Management unit pilot workflow](management_units.md) — decisions, inputs, missing data, and first-notebook scope for Florida timber management units.
