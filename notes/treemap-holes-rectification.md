@@ -289,16 +289,34 @@ Auth restored, all six steps executed. 4,500 points × 3 embedding years, 0 miss
 bands, L2 norm 1.0001 ± 0.002, no duplicate coordinates.
 
 **Stage A** (6 exemplars, k-means over anchor years 2018+2022): threshold 0.9046
-at 90 % anchor recall; clearcut anchors median similarity 0.9541, stable
-non-forest 0.8241 and only **11.6 %** of it passes.
+at the 90 % training-anchor recall target; clearcut anchors median similarity
+0.9541, stable non-forest 0.8241 and only **11.6 %** of it passes in the full fit.
+Under fold-local evaluation, held-out clearcut recall is 86.6 % and held-out
+non-forest passage is 11.27 %.
 
-**Stage B**: the operational block-CV result, conditional on surviving Stage A,
-is **AUC 0.8834, accuracy 0.9265** (n = 3,048; 2,700 positive / 348 negative).
-Over all anchors it is AUC 0.9818 / accuracy 0.9433, with label-shuffle AUC
-0.4829, but that larger AUC credits Stage B for easy negatives the mask already
-removed. A conditional refit was tested and not adopted: it moved S3 0.266 →
-0.251 and S4 0.765 → 0.754 while reducing the negative training population from
-3,000 to 348. The evaluation changed; the fitted model did not.
+**Stage B**: the deployment-matched operational result fits Stage A and Stage B
+inside each spatial training fold, then scores each held-out anchor once at 2022.
+The final gated decision across the 3,000-anchor proxy population has **balanced
+accuracy 0.9033, sensitivity 0.8573, specificity 0.9493, precision 0.9442, and F1
+0.8987** (1,286 TP / 214 FN / 76 FP / 1,424 TN). Among 1,468 fold-local Stage-A
+survivors (1,299 positive / 169 negative), Stage B has the separate conditional
+diagnostic **AUC 0.9118, accuracy 0.9394**. Over all age-referenced anchor rows it
+is AUC 0.9818 / accuracy 0.9433, with paired-anchor label-shuffle AUC 0.4968.
+
+The previous 0.8834 metric was not deployment-matched: Stage A was fitted
+globally, the classifier was refitted only on survivors, and validation duplicated
+2018+2022 rows. The audit in
+`experiments/2026-07-28_16-33-pr9-validation-audit/` reproduces 0.8834, gives
+0.8887 for the legacy conditional design with fold-local Stage A, and 0.9118 for
+deployment-matched Stage B among survivors. A conditional production refit
+remains rejected: it moved S3 0.266 → 0.251 and S4 0.765 → 0.754 while reducing
+negative training from 1,500 to 174 unique anchors (3,000 to 348 duplicated
+rows). The evaluation changed; the fitted model did not.
+
+These are **post-selection** spatial-CV estimates. k = 6 and the age-referenced
+design were chosen during the full-data exploratory sweep, not by a formal rule
+nested inside the outer folds. Fit leakage is removed, but an independent test
+set or nested selection design is still required for an unbiased estimate.
 
 **Final add-back: 75,831 ac of 730,003 ac of holes (10.4 %)**, in 2,974 patches,
 median 13.6 ac, mean 25.5 ac, max 377 ac — realistic harvest-unit sizes. The
@@ -307,9 +325,9 @@ MMU removed 25,732 ac of speckle.
 | stratum | hole acres | accepted | after MMU | % of stratum |
 |---|---|---|---|---|
 | S1 cut_pre2016_regrown | 41,549 | 41,549 | **38,779** | 93.3 % |
-| S2 cut_2016_2022_regrown | 11,430 | 11,430 | **2,099** | 18.3 % |
-| S3 cut_2016_2022_open | 80,742 | 13,112 | **8,088** | 10.0 % |
-| S4 regrown_only | 70,495 | 35,374 | **26,866** | 38.1 % |
+| S2 cut_2016_2022_regrown | 11,430 | 11,430 | **2,099** | 18.4 % |
+| S3 cut_2016_2022_open | 80,742 | 13,143 | **8,088** | 10.0 % |
+| S4 regrown_only | 70,495 | 35,441 | **26,866** | 38.1 % |
 | S5 no_evidence | 525,787 | 0 | **0** | 0 % |
 
 ### The age-referencing fix, and the evidence it was needed
@@ -360,17 +378,22 @@ aggregate statement the data supports.
 
 **Two corrections to the first version.** "47 % of the shortfall closed" and the
 84,907 ac residual were quoted as if exact. With SE at 6 % the residual is 1.12 SE,
-so this comparison *cannot* show that more forest remains to be recovered — LCMS
-does that independently (below). Also, summing per-county SEs in quadrature
+so this comparison *cannot* show that more forest remains to be recovered. LCMS
+identifies false negatives within a restricted sampling frame but does not
+estimate the full residual (below). Also, summing per-county SEs in quadrature
 (± 80,718 ac) assumes an independence that does not hold across shared strata;
 the domain query gives the correct ± 75,903 ac.
 
-### External validation of S3 against LCMS — precise, but under-recalls
+### External validation of S3 against LCMS — restricted to eligible interiors
 
 USFS LCMS is a different producer and algorithm, and its `Land_Use` band encodes
 exactly what TreeMap loses: a stand cut in 2021 is still *Forest land use* in
-2022 even when its cover is grass. 600 interior points per group, S1 and S5 as
-reference bookends.
+2022 even when its cover is grass. 600 points per group were sampled only from
+one-pixel-eroded interiors of components at least 5 ac, with S1 and S5 as
+reference bookends. For S3, that frame covers 1,285 accepted ac (15.9 % of
+accepted acreage) and 7,176 rejected ac (9.9 % of rejected acreage). All rates
+and acreage expansions are point estimates; no design-valid interval was
+calculated for the spatially correlated pixel sample.
 
 | group | LU = Forest 2022 | LC Trees by 2024 |
 |---|---|---|
@@ -379,13 +402,16 @@ reference bookends.
 | **S3 rejected** | **0.358** | **0.107** |
 | S5 (reference −) | 0.078 | 0.137 |
 
-- **The accepts are right** — precision proxy **0.98**, level with proven positives.
+- **Sampled accepted interiors are strongly corroborated** — frame-specific
+  precision proxy **0.98**, close to proven positives.
 - **LCMS independently confirms the LANDFIRE lag.** 88 % of accepted S3 is LCMS
   Trees by 2024 despite S3 being *defined* as not-tree in LANDFIRE 2024. Two
   products disagree in the predicted direction; nothing engineered this.
-- **Recall is poor: ~0.23.** 36 % of *rejected* S3 is still LCMS forest against a
-  7.8 % S5 floor, implying ~26,000 ac wrongly omitted. Raising S3 recall is now
-  the top improvement; Stage A is the binding constraint at 36 % admission.
+- **False negatives exist within the sampled rejected interiors.** Their LCMS
+  forest rate is 35.8 % against a 7.8 % S5 floor. Applying the rate only within
+  the eligible frame estimates 2,571 LCMS-forest acres and a frame-specific
+  recall proxy of 0.329. The prior ~26,000 ac / 0.23 extrapolation to all rejected
+  S3 was unsupported; representative labels are the next step.
 - **LCMS Tree Removal is unusable here** — higher on rejected S3 (0.408) than
   accepted (0.302). Confirms the prior in [[clearcut-vs-agriculture-embeddings]].
 
@@ -401,9 +427,12 @@ reference bookends.
   after the export scale changed, producing 0–100 / 120–199 plots even though
   the final acreage mask decoded correctly. `test_make_report_figures.py` pins
   the report path to the shared codec.
-- **0.98 / 0.23 are proxies, not measured.** LCMS has its own unquantified error
-  rate, and it shares optical sensors with AlphaEarth — independent in producer
-  and algorithm, not in underlying imagery. Hand-labelled NAIP is still needed.
+- **0.98 / 0.329 are sampling-frame proxies, not population measurements.** LCMS
+  has its own unquantified error rate, and it shares optical sensors with
+  AlphaEarth — independent in producer and algorithm, not in underlying imagery.
+  Sampling uncertainty is also unquantified because a simple binomial interval
+  would ignore spatial correlation. Representative hand-labelled NAIP is still
+  needed.
 - **Roads are not being added back**: 405 ac of `Developed-Roads` = 0.53 % of the
   add-back, and 4 of 2,974 patches are linear by shape.
 - **Earth Engine notebook-mode credentials expire in 7 days.** Re-run

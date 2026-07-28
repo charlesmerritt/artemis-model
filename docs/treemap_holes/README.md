@@ -22,25 +22,27 @@ We identify the mechanism, stratify the holes by forest evidence at the 2016 and
 that decides which holes should be returned to TreeMap. We find that LANDFIRE
 ceased populating its three `Recently Logged` classes after the 2016 vintage
 (57,798 ac → 0 ac), removing the only explicit harvest marker; that 204,216 ac
-(28 % of holes) carry forest evidence; and that a spatially-blocked classifier
-separates managed-forest clearcut from stable non-forest at **AUC 0.883**
-restricted to the pixels it actually decides (0.982 over all anchors), against a
-label-shuffle baseline of 0.483. The method returns **75,831 ac** to TreeMap in
-2,974 patches of realistic harvest-unit size.
+(28 % of holes) carry forest evidence; and that the post-selection, fold-local
+final two-stage decision has **balanced accuracy 0.903** (sensitivity 0.857,
+specificity 0.949) over the held-out anchor proxy population. Among the anchors
+that pass Stage A, Stage B has conditional AUC 0.912 (0.982 over all anchor-year
+rows), against an all-anchor label-shuffle baseline of 0.497.
+The method returns **75,831 ac** to TreeMap in 2,974 patches of realistic
+harvest-unit size.
 
 Two independent checks constrain the result. Against the FIA design-based
 estimate for the same counties (1,255,424 ac, 95 % CI 1,106,653–1,404,195,
 verified two ways to 0.04 ac), published TreeMap at 1,094,686 ac falls **below**
 the interval while the corrected value falls **inside** it without overshooting
 the point estimate. Against USFS LCMS — a different producer and algorithm —
-98 % of accepted S3 pixels are LCMS *forest land use*, indistinguishable from
-proven positives, giving a precision proxy of 0.98.
-
-The method is therefore precise but under-recalls: 36 % of *rejected* S3 is also
-LCMS forest, implying ~26,000 ac wrongly omitted and an S3 recall of roughly
-**0.23**. Raising S3 recall, not further guarding against false positives, is the
-highest-value next step. Direct precision and recall measurement still requires
-hand-labelled imagery.
+98 % of sampled interiors of accepted S3 patches are LCMS *forest land use*,
+versus 35.8 % of sampled rejected interiors. These samples cover only the eroded
+interiors of patches at least 5 ac: 15.9 % of accepted S3 acreage and 9.9 % of
+rejected S3 acreage. Within that frame the recall proxy is 0.329 and an estimated
+2,571 ac of the 7,176 rejected-frame acres is LCMS forest. The rates cannot
+support a population-wide S3 precision, recall, or omitted-acre estimate.
+Representative hand-labelled imagery remains the highest-value next validation
+step.
 
 ---
 
@@ -110,6 +112,12 @@ is harmless. To avoid depending on the property at all, the pipeline recomputes
 transitions directly from the LANDFIRE tifs via windowed reads with asserted grid
 alignment. The exported rasters are used only to define the hole footprint
 (3,282,389 px = 730,003 ac), which all three agree on exactly.
+
+For mapping and area reconciliation, the analysis-domain mask is the union of
+the 4,922,148 pixels where `TreeMap_Holes_CopyRaster` records TreeMap coverage
+through its NoData footprint and the 3,282,389 masked in-AOI holes. This yields
+the documented 8,204,537-pixel domain and keeps the surrounding bounding-box
+cells visually and numerically outside the AOI.
 
 ---
 
@@ -255,34 +263,59 @@ clearcut anchors 0.954, stable non-forest 0.824, apply set 0.916; threshold 0.90
 admitted falls from **30.3 % (k=1) to 11.6 % (k=6)** while anchor recall is held
 constant, with diminishing returns beyond k≈8. A single centroid averaged over
 ages 2–8 represents neither end of the range; multiple exemplars keep the modes
-apart. k = 6 was adopted.
+apart. k = 6 was adopted during this full-data exploratory sweep. The 90 % recall
+is the training-fold quantile target; fold-local evaluation retains **86.6 %**
+of held-out clearcut anchors. Because k and the age-referenced design were chosen
+before this evaluation but using the same full anchor set, all fold-local metrics
+below are post-selection estimates, not an untouched test-set result.
 
 ### 5.2 Stage B
 
 ![Stage B](figures/fig6_stage_b.png)
 
 **Figure 6.** (a) ROC under GroupKFold on 0.25° spatial blocks: **AUC 0.9818,
-accuracy 0.9433** over all anchors, against a label-shuffle baseline of
-**0.4829**. (b) Acceptance rate on the apply set under three configurations.
+accuracy 0.9433** over all age-referenced anchor rows, against a label-shuffle
+baseline of **0.4968**. The second ROC is a conditional Stage-B diagnostic:
+**AUC 0.9118** among held-out 2022 anchors that pass fold-fitted Stage A. It is
+not an end-to-end metric. (b) Acceptance rate on the apply set under three
+configurations.
 
-**The operational number is lower, and it is the one to quote.** Stage B only
-ever decides pixels that already cleared Stage A, and only 11.6 % of non-forest
-anchors get that far. Scoring the classifier over *all* anchors therefore credits
-it for separating easy negatives the mask has already removed. Restricted to
-Stage-A survivors (n = 3,048; 2,700 positive / 348 negative) the block-CV figure
-is **AUC 0.8834, accuracy 0.9265**. Both are printed by `classify_holes.py`;
-0.8834 is the honest measure of discrimination among the confusers that actually
-reach the classifier.
+**The end-to-end classifier result is the final gated decision over all held-out
+anchors.** This is a labelled proxy for the rule used on ambiguous S3/S4; S1/S2
+themselves are added unconditionally in the delivered mask (§4.5).
+Both stages are fitted inside each spatial training fold. Stage A's exemplars and
+90 %-recall threshold never see the held-out blocks; Stage B is fitted on all
+training anchors, matching deployment; and each held-out anchor is scored once at
+the operational 2022 feature year. The final rule — pass Stage A *and* Stage B ≥
+0.5 — gives **balanced accuracy 0.9033, sensitivity 0.8573, specificity 0.9493,
+precision 0.9442, and F1 0.8987** over all 3,000 anchors (1,286 TP, 214 FN, 76 FP,
+1,424 TN).
 
-Refitting on that conditional population was tested and **not adopted**: it moves
-the deliverable by less than two points (S3 0.266 → 0.251, S4 0.765 → 0.754)
-while estimating the boundary from 348 negatives instead of 3,000. The reported
-metric was the problem, not the fitted model.
+Of those anchors, 1,468 reach Stage B (1,299 positive / 169 negative); within
+that survivor population, Stage B has **conditional AUC 0.9118 and accuracy
+0.9394**. Fold-local Stage A passes 86.6 % of clearcut and 11.27 % of non-forest
+anchors. These are post-selection spatial-CV estimates because the exploratory
+full-data sweep selected k = 6 and the age-referenced design; an independent test
+set or a formal selection rule nested inside the folds would be needed for an
+unbiased generalisation estimate.
 
-**Finding 5.** The shuffle baseline sitting at chance is what makes the headline
-figure interpretable: the classifier is learning land cover, not geography.
-Spatial-block CV specifically guards against a model that memorises location and
-still reports high random-fold accuracy.
+The prior 0.8834 figure was not deployment-matched: Stage A was fitted globally,
+then Stage B was refitted only on the globally selected survivors and evaluated
+over duplicated 2018+2022 rows. A reproducible audit in
+`experiments/2026-07-28_16-33-pr9-validation-audit/` gives 0.8834 for that old
+path, 0.8887 for the legacy conditional design with fold-local Stage A, and
+0.9118 for deployment-matched Stage B among fold-local survivors. The fitted
+production model and acreage do not change. A separate conditional refit was
+still rejected: it moved S3 0.266 → 0.251 and S4 0.765 → 0.754 while reducing
+training from 1,500 to 174 unique negative anchors (3,000 to 348 duplicated
+anchor-year rows).
+
+**Finding 5.** The paired-anchor shuffle baseline sitting at chance confirms
+that Stage B carries signal; both year copies of an anchor retain the same
+shuffled label. The operational point estimate additionally requires fold-local
+Stage A; otherwise the validation blocks influence its exemplars, threshold, and
+survivor population. Spatial-block CV guards against a model that memorises
+location and still reports high random-fold accuracy.
 
 **Finding 6 — the generalisation gap was real, and exemplar count did not fix
 it.** The initial configuration (2022 anchors, single centroid) returned S3 0.183
@@ -305,13 +338,13 @@ holes form the road and riparian network and irregular pasture.
 | stratum | hole acres | accepted | after MMU | % of stratum |
 |---|---|---|---|---|
 | S1 cut pre-2016, regrown | 41,549 | 41,549 | **38,779** | 93.3 % |
-| S2 cut 2016–22, regrown | 11,430 | 11,430 | **2,099** | 18.3 % |
-| S3 cut 2016–22, still open | 80,742 | 13,112 | **8,088** | 10.0 % |
-| S4 regrown only | 70,495 | 35,374 | **26,866** | 38.1 % |
+| S2 cut 2016–22, regrown | 11,430 | 11,430 | **2,099** | 18.4 % |
+| S3 cut 2016–22, still open | 80,742 | 13,143 | **8,088** | 10.0 % |
+| S4 regrown only | 70,495 | 35,441 | **26,866** | 38.1 % |
 | S5 no evidence | 525,787 | 0 | **0** | 0 % |
 | **total** | **730,003** | — | **75,831** | **10.4 %** |
 
-S2's collapse under the MMU (11,430 → 2,097 ac) is the expected consequence of
+S2's collapse under the MMU (11,430 → 2,099 ac) is the expected consequence of
 Finding 3: most of S2 is edge sliver and cannot form a 5 ac patch.
 
 ---
@@ -325,19 +358,22 @@ Every claim above rests on one of the following checks.
 | V1 | Grid alignment of all windowed EVT reads asserted against the AOI transform | passes, else raises |
 | V2 | Hole footprint agreement across the three independent change rasters | 3,282,389 px, exact |
 | V3 | AlphaEarth integrity: L2 norm, zero-variance bands, duplicate coordinates | 1.0001 ± 0.002; 0 zero-variance; 0 duplicates; 0 missing bands in 4,500 × 3 samples |
-| V4 | Label-shuffle baseline | AUC 0.483 (chance) vs 0.982 real |
+| V4 | Paired-anchor label-shuffle baseline | AUC 0.497 (chance) vs 0.982 real |
 | V5 | Spatial-block CV rather than random folds | GroupKFold, 19 blocks at 0.25° |
 | V6 | Feature-year leakage guard | raises on any year > 2022 |
 | V7 | sklearn → Earth Engine model transfer (scaler folded into one dot product) | reproduces to 1 × 10⁻⁹ (unit test) |
 | V8 | Exported raster vs local model at sample points | r = 0.988 (probability), 0.991 (similarity); 97.7 % decision agreement |
 | V9 | Tile reassembly onto TreeMap's grid | output 3527 × 4418, exact match to strata raster |
 | V10 | Independent area reconciliation against FIA | see §6.2 |
-| V11 | Unit tests | 98 passed, 10 skipped; `ruff check` clean |
+| V11 | Unit tests | 140 passed, 10 skipped; `ruff check` clean |
 | V12 | External validation of S3 against USFS LCMS | see §6.3 |
 | V14 | Local FIADB SQL vs the public EVALIDator API, five counties as one domain | 1,255,424 ac both ways, differ by 0.04 ac |
 | V13 | Roads / developed classes in the add-back | 405 ac Developed-Roads (0.53 %); 4 of 2,974 patches linear |
-| V15 | Stage-B evaluation conditional on Stage-A survival | AUC 0.8834 (vs 0.9818 unconditional) |
-| V16 | Export quantisation bounded to half a step | scores exported at 1/10000 (5e-5 band); 1/100 shifted 39 ac |
+| V15 | Final two-stage decision over every held-out anchor (proxy population) | balanced accuracy 0.9033; sensitivity 0.8573; specificity 0.9493; precision 0.9442 (n = 3,000) |
+| V16 | Stage B conditional on fold-local Stage-A survival | AUC 0.9118, accuracy 0.9394 (n = 1,468 unique 2022 anchors) |
+| V17 | Export quantisation bounded to half a step | scores exported at 1/10000 (5e-5 band); 1/100 shifted 39 ac |
+| V18 | LCMS extrapolation restricted to its eligible-interior sampling frame | 1,285 accepted ac; 7,176 rejected ac; frame recall proxy 0.329 |
+| V19 | Analysis-domain mask separates TreeMap coverage, in-AOI holes, and outside-bbox cells | 4,922,148 + 3,282,389 = 8,204,537 px |
 
 **V8 note.** The residual disagreement is scale, not error: the model was trained
 on AlphaEarth at its native 10 m, while the exported product is 30 m to match
@@ -402,9 +438,10 @@ plots, which is why the interval is ± 6 % wide.
 
 **Where the residual plausibly sits** (hypotheses, and note it is not
 statistically distinguishable from zero): the 72,654 ac of S3 rejected by the
-classifier — of which §6.3 estimates ~26,000 ac really is forest — the 9,333 ac
-of S2 lost to the MMU, and part of the 65,553 ac of holes that LF2022 calls urban
-or developed forest, excluded here by design though FIA would count some of it.
+classifier (LCMS finds false negatives within its eligible-interior subset but
+does not estimate the full rejected population), the 9,333 ac of S2 lost to the
+MMU, and part of the 65,553 ac of holes that LF2022 calls urban or developed
+forest, excluded here by design though FIA would count some of it.
 
 ### 6.3 External validation of the S3 decision against LCMS
 
@@ -416,13 +453,19 @@ Its **`Land_Use`** band is the pointed one: a stand clearcut in 2021 is still
 *Forest land use* in 2022 even though its *land cover* is grass — precisely the
 distinction TreeMap loses.
 
-600 interior points were drawn from each of four groups, two being reference
-bookends whose answer is already known (S1 = LANDFIRE-proven cut-and-regrown;
-S5 = stable non-forest).
+600 points were drawn from each of four groups, two being reference bookends
+whose answer is already known (S1 = LANDFIRE-proven cut-and-regrown; S5 = stable
+non-forest). The sampling frame deliberately excludes edges and small patches:
+only one-pixel-eroded interiors of connected components at least 5 ac are
+eligible. For S3 this frame contains **1,285 accepted ac (15.9 % of accepted
+acreage)** and **7,176 rejected ac (9.9 % of rejected acreage)**. The rates and
+acreage expansions below are point estimates; no design-valid uncertainty
+interval was calculated for these spatially correlated pixel samples.
 
 ![S3 validation](figures/fig9_s3_validation.png)
 
-**Figure 9.** LCMS indicators by group.
+**Figure 9.** LCMS indicators by group (n = 600 eligible-interior points each;
+point estimates without a spatially valid uncertainty interval).
 
 | group | LU = Forest (2022) | LC Trees pre-cut | LC Trees by 2024 | Tree Removal 2016–22 |
 |---|---|---|---|---|
@@ -431,25 +474,26 @@ S5 = stable non-forest).
 | **S3 rejected** | **0.358** | 0.630 | **0.107** | 0.408 |
 | S5 reference **negative** | 0.078 | 0.078 | 0.137 | 0.002 |
 
-**Finding 8 — the S3 accepts are correct.** 98.0 % of accepted S3 is LCMS Forest
-land use, statistically indistinguishable from the S1 reference positives
-(99.3 %) and far from the S5 negatives (7.8 %). Treating LCMS land use as truth
-gives a **precision proxy of 0.98**.
+**Finding 8 — sampled accepted interiors are strongly corroborated.** 98.0 % of
+sampled accepted S3 interiors are LCMS Forest land use, close to the S1 reference
+positives (99.3 %) and far from the S5 negatives (7.8 %). Treating LCMS land use
+as truth gives a **0.98 precision proxy within this sampling frame**, not for all
+accepted S3 pixels.
 
-**Finding 9 — LCMS independently confirms the LANDFIRE lag (Finding 2).** 87.8 %
-of accepted S3 is LCMS *Trees by 2024* — even though S3 is *defined* as **not**
-tree in LANDFIRE 2024. Two independent products disagree about the same pixels
-in the direction predicted: LCMS sees the regrowth, LANDFIRE has not caught up.
-This was not built into the method and is the strongest corroboration obtained.
+**Finding 9 — LCMS independently confirms the LANDFIRE lag (Finding 2) within
+the sampled interiors.** 87.8 % of accepted samples are LCMS *Trees by 2024* —
+even though S3 is *defined* as **not** tree in LANDFIRE 2024. Two independently
+produced maps disagree about the same sampled pixels in the predicted direction:
+LCMS sees the regrowth, LANDFIRE has not caught up.
 
-**Finding 10 — but recall is poor, and the method is too conservative.** 35.8 %
-of *rejected* S3 is still LCMS Forest land use — well above the S5 floor of
-7.8 %. Applying that rate to the 72,663 ac rejected implies roughly **26,000 ac
-of managed forest were wrongly left out**, giving an estimated **S3 recall of
-only 0.23**. That is consistent in sign and magnitude with the 84,907 ac residual
-in §6.2 — though since that residual is only 1.12 SE, the agreement is
-directional support rather than confirmation, and LCMS is the load-bearing
-evidence for under-recall.
+**Finding 10 — false negatives exist in the sampled rejected interiors, but
+population recall is unknown.** 35.8 % of sampled rejected S3 interiors are LCMS
+Forest land use, above the S5 floor of 7.8 %. Applying that rate only to the
+7,176 eligible rejected-interior acres estimates **2,571 ac** of LCMS forest in
+that frame. Combining it with the accepted frame gives a frame-specific recall
+point estimate of **0.329**. The earlier extrapolation to all 72,654 rejected acres
+(~26,000 ac and recall 0.23) was unsupported because boundaries and components
+under 5 ac were never sampled.
 
 **Finding 11 — LCMS Tree Removal is not a usable detector here**, confirming the
 prior from `notes/clearcut-vs-agriculture-embeddings.md`. Its rate is *higher* on
@@ -457,10 +501,12 @@ rejected S3 (0.408) than accepted (0.302) — a negative lift. Do not use it as 
 primary signal; it is reported for completeness.
 
 *Caveats.* LCMS land use has its own error rate, unquantified here, so 0.98 and
-0.23 are proxies, not measured precision and recall. LCMS and AlphaEarth both
-derive from Landsat/Sentinel optical imagery, so they are independent in
-algorithm and producer but not in underlying sensor. Neither substitutes for
-NAIP or field labelling.
+0.329 are frame-specific proxies, not measured population precision and recall.
+The sampling uncertainty is also unquantified because spatial correlation makes
+a simple binomial interval inappropriate. LCMS and AlphaEarth both derive from
+Landsat/Sentinel optical imagery, so they are independent in algorithm and
+producer but not in underlying sensor. Neither
+substitutes for representative NAIP or field labelling.
 
 ---
 
@@ -488,36 +534,46 @@ otherwise look attractive.
 
 ## 8. Limitations and threats to validity
 
-1. **S3 recall is poor: an estimated 0.23** (§6.3). Precision is high (0.98 proxy),
-   so what is added back can be trusted, but roughly 26,000 ac of managed forest
-   is being left out. **Raising S3 recall is now the highest-value improvement**,
-   and the obvious lever is Stage A, which admits only 36 % of S3 — see
-   Figure 5b, where the exemplar count trades S3 admission against non-forest
-   leakage. Both proxies come from LCMS, whose own error rate is unquantified.
+1. **Population-wide S3 precision and recall are unknown** (§6.3). The LCMS
+   samples cover 15.9 % of accepted acreage and 9.9 % of rejected acreage after
+   excluding boundaries and components under 5 ac. Within that frame the
+   precision proxy is 0.98, the recall proxy is 0.329, and 2,571 rejected-frame
+   acres are estimated as LCMS forest. None can be extended to the unsampled S3
+   population without a representative design, and no spatially valid uncertainty
+   interval was calculated for the frame-specific point estimates.
 2. **The positive anchors are not a random sample of clearcuts.** They are
    clearcuts *that LANDFIRE later re-recognised as forest*. If re-recognition
    correlates with site quality or species, the anchors are biased toward
    fast-regenerating stands, and the classifier inherits that bias.
 3. **Circularity risk in the anchor definition.** Anchors are defined by LANDFIRE
-   and validated against LANDFIRE-derived strata. The FIA reconciliation is the
-   only genuinely independent check performed, and it is an aggregate one — it
-   constrains total area, not per-pixel correctness.
+   and validated against LANDFIRE-derived strata. FIA is an independent aggregate
+   check, while LCMS is independently produced but shares optical sensors with
+   AlphaEarth and covers a restricted sampling frame. Neither directly measures
+   population-wide per-pixel correctness.
 4. **Scale mismatch.** Model at 10 m, product at 30 m (V8).
 5. **Export quantisation is bounded, not eliminated.** Scores are exported as
    fixed-point at 1/10000, so a pixel within 5 × 10⁻⁵ of a threshold can still
    cross it. At 1/100 the band was 100× wider and moved 39 ac of the deliverable.
    Thresholding server-side before quantisation would remove the band entirely,
    at the cost of the continuous scores needed to retune thresholds without
-   re-exporting (V16).
-6. **The Stage-A mask is evaluated on the anchors that define it.** Its threshold
-   is a quantile of anchor similarity, so 90 % anchor recall is true by
-   construction, not measured. Only the S3/S4 admission rates are informative.
-7. **Single AOI, single ecoregion.** Five north-Florida counties dominated by
+   re-exporting (V17).
+6. **Stage A targets 90 % training recall; held-out recall is lower.** Its
+   threshold is a training-fold quantile, so 90 % in-training recall is true by
+   construction. Fold-local spatial evaluation retains 86.6 % of held-out
+   clearcut anchors, which is a post-selection pass-rate estimate.
+7. **Model configuration was selected on the full exploratory dataset.** k = 6
+   and the age-referenced design were chosen from the same anchors later used in
+   spatial CV. The fold-local results prevent fit leakage but remain post-selection
+   estimates; a formal nested selection rule or independent test set is required
+   for an unbiased generalisation estimate.
+8. **Single AOI, single ecoregion.** Five north-Florida counties dominated by
    slash and loblolly pine plantation. Transfer to other regions is untested.
-8. **A linear classifier** was chosen for exact Earth Engine transfer (V7). A
+9. **A linear classifier** was chosen for exact Earth Engine transfer (V7). A
    non-linear model might separate better; this was not tested.
-9. **FIA county-level sampling error is large** (± 6.0 %, 262 plots), so the reconciliation supports direction and interval membership only; the 84,907 ac residual is within noise (§6.2).
-10. **The 6–9 year LANDFIRE lag is inferred, not documented** (§3).
+10. **FIA county-level sampling error is large** (± 6.0 %, 262 plots), so the
+    reconciliation supports direction and interval membership only; the 84,907
+    ac residual is within noise (§6.2).
+11. **The 6–9 year LANDFIRE lag is inferred, not documented** (§3).
 
 ---
 
@@ -532,6 +588,8 @@ uv run python -m pipeline.s1_initial_state.sample_hole_points
 uv run python -m pipeline.s1_initial_state.embed_holes sample
 # 4. similarity mask + classifier + evaluation          (local)
 uv run python -m pipeline.s1_initial_state.classify_holes
+# fold-local metric audit and prior-metric reproduction  (local)
+uv run python experiments/2026-07-28_16-33-pr9-validation-audit/experiment.py
 # 5. score the AOI server-side, download 30 m raster    (Earth Engine)
 uv run python -m pipeline.s1_initial_state.embed_holes apply --tiles 6
 # 6. final add-back mask + acreage report               (local)
@@ -576,26 +634,26 @@ region outward, returning tiles a row or column larger than requested; naive
 concatenation drifts the grid off TreeMap's, so each tile is placed by its own
 geotransform onto a canvas sized from the AOI bounds.
 
-Every number quoted in this report is emitted to
-`docs/treemap_holes/figures/report_values.json` by the figure script; none is
-transcribed by hand.
+Figure-derived scalar values are emitted to
+`docs/treemap_holes/figures/report_values.json`; fold-local evaluation details
+and their input hash are preserved under
+`experiments/2026-07-28_16-33-pr9-validation-audit/`.
 
 ---
 
 ## 10. Next steps
 
-**Immediate — raise S3 recall.** §6.3 shows the method is precise (0.98 proxy)
-but recalls only ~0.23 of S3, leaving ~26,000 ac out. Stage A is the binding
-constraint, admitting just 36 % of S3. Options, in order of expected value:
-(i) sweep the anchor-recall parameter above 0.90 and the exemplar count below 6,
-using LCMS Land Use as the scoring target; (ii) add anchors from even younger
-post-harvest ages; (iii) drop Stage A for S3 and let the classifier decide alone.
-Any change must be re-checked against both the FIA ceiling and the LCMS
-bookends, since loosening trades directly against the 11.6 % non-forest leak.
+**Immediate — obtain representative S3 labels.** The LCMS check establishes
+strong accepted-patch evidence and false negatives within eligible large-patch
+interiors, but it leaves boundaries and small components unsampled. A stratified
+NAIP or field-labelled sample across accepted/rejected, patch-size, and edge
+classes is needed before claiming population precision/recall or tuning Stage A.
 
-**Still outstanding — NAIP or field labelling.** LCMS is an independent product
-but its own error rate is unquantified, so 0.98/0.23 remain proxies. Hand-labelled
-imagery is the only way to measure precision and recall directly.
+**Then, if under-recall persists, tune Stage A.** Candidate tests are: (i) sweep
+anchor recall above 0.90 and exemplar count below 6; (ii) add younger
+post-harvest anchors; (iii) let Stage B decide S3 without Stage A. Any change must
+be re-checked against the FIA interval, LCMS bookends, and representative labels,
+since loosening trades directly against the 11.27 % held-out non-forest leak.
 
 **Data acquisition.** **LANDFIRE Annual Disturbance (1999–2023)** carries
 disturbance type and year per pixel and is not currently held locally. It would

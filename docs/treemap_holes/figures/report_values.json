@@ -1,5 +1,5 @@
 {
-  "aoi_acres": 3465500.4063999997,
+  "aoi_acres": 1824689.0288,
   "hole_acres": 730003.3136,
   "hole_lifeform_acres": {
     "Sparse": 3.7807999999999997,
@@ -81,7 +81,7 @@
       "k": 4,
       "nonforest_leak": 0.176,
       "s3_pass": 0.4055766793409379,
-      "threshold": 0.8859806663455749
+      "threshold": 0.8859806663455748
     },
     {
       "k": 6,
@@ -104,13 +104,36 @@
   ],
   "stage_a_threshold_k6": 0.9045695612737514,
   "stage_a_median_sim": {
-    "anchor_clearcut": 0.9540578950802371,
+    "anchor_clearcut": 0.9540578950802372,
     "anchor_nonforest": 0.8240538846166063,
-    "apply": 0.916099521652293
+    "apply": 0.9160995216522929
   },
   "stage_b_auc": 0.981821,
-  "stage_b_auc_shuffled": 0.4828652222222222,
+  "stage_b_auc_shuffled": 0.49680877777777777,
   "stage_b_accuracy": 0.9433333333333334,
+  "stage_b_survivor_conditional": {
+    "auc": 0.9117801130592035,
+    "accuracy": 0.9393732970027248,
+    "n": 1468,
+    "positive": 1299,
+    "negative": 169
+  },
+  "pipeline_end_to_end": {
+    "accuracy": 0.9033333333333333,
+    "balanced_accuracy": 0.9033333333333333,
+    "sensitivity": 0.8573333333333333,
+    "specificity": 0.9493333333333334,
+    "precision": 0.9441997063142438,
+    "f1": 0.8986722571628232,
+    "true_positive": 1286,
+    "false_negative": 214,
+    "false_positive": 76,
+    "true_negative": 1424
+  },
+  "stage_a_fold_local_pass_rate": {
+    "clearcut": 0.866,
+    "nonforest": 0.11266666666666666
+  },
   "apply_variants": {
     "2022 anchors, 1 centroid": {
       "3": 0.18250950570342206,
@@ -165,8 +188,11 @@
   "s3_validation": {
     "precision_proxy_LU_forest": 0.98,
     "rejected_still_forest_frac": 0.3583333333333333,
-    "recall_proxy": 0.23338566949631223,
-    "estimated_missed_acres": 26034.377519999995,
+    "sampling_frame_accepted_acres": 1284.8048,
+    "sampling_frame_rejected_acres": 7176.180799999999,
+    "recall_proxy_within_sampling_frame": 0.32869979053211346,
+    "estimated_missed_acres_within_sampling_frame": 2571.464786666666,
+    "sampling_uncertainty": "not estimated for spatially correlated pixels",
     "s1_reference": 0.9933333333333332,
     "s5_reference": 0.0783333333333333
   }
