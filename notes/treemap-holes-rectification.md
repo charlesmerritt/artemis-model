@@ -292,9 +292,13 @@ bands, L2 norm 1.0001 ± 0.002, no duplicate coordinates.
 at 90 % anchor recall; clearcut anchors median similarity 0.9541, stable
 non-forest 0.8241 and only **11.6 %** of it passes.
 
-**Stage B**: block-CV **AUC 0.9818, accuracy 0.9433**, label-shuffle AUC 0.4829.
-The shuffle baseline sitting on 0.5 is what makes the headline number
-believable — the model is learning land cover, not geography.
+**Stage B**: the operational block-CV result, conditional on surviving Stage A,
+is **AUC 0.8834, accuracy 0.9265** (n = 3,048; 2,700 positive / 348 negative).
+Over all anchors it is AUC 0.9818 / accuracy 0.9433, with label-shuffle AUC
+0.4829, but that larger AUC credits Stage B for easy negatives the mask already
+removed. A conditional refit was tested and not adopted: it moved S3 0.266 →
+0.251 and S4 0.765 → 0.754 while reducing the negative training population from
+3,000 to 348. The evaluation changed; the fitted model did not.
 
 **Final add-back: 75,831 ac of 730,003 ac of holes (10.4 %)**, in 2,974 patches,
 median 13.6 ac, mean 25.5 ac, max 377 ac — realistic harvest-unit sizes. The
@@ -391,6 +395,12 @@ reference bookends.
   AlphaEarth's native 10 m; the exported raster is 30 m to match TreeMap's grid.
   Agreement between the two is r = 0.988 (probability) / 0.991 (similarity), with
   97.7 % decision agreement at 0.5 — the residual is aggregation, not a bug.
+- **The uint16 score raster has one codec.** `embed_holes.decode_score_bands`
+  owns the 1/10000 fixed-point decoding used by both `finalize_add_back` and
+  Figure 10. A review found that Figure 10 had retained the old 1/100 divisor
+  after the export scale changed, producing 0–100 / 120–199 plots even though
+  the final acreage mask decoded correctly. `test_make_report_figures.py` pins
+  the report path to the shared codec.
 - **0.98 / 0.23 are proxies, not measured.** LCMS has its own unquantified error
   rate, and it shares optical sensors with AlphaEarth — independent in producer
   and algorithm, not in underlying imagery. Hand-labelled NAIP is still needed.

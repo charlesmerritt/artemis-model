@@ -50,8 +50,8 @@ CHUNK = 500  # points per getInfo call; keeps requests under EE payload limits
 AOI_BOUNDS_5070 = (1210125.0, 831795.0, 1342665.0, 937605.0)
 OUTPUT_SCALE_M = 30
 
-# Fixed-point scale for the exported score bands. This must be fine enough that
-# quantisation cannot flip a decision: ``finalize_add_back`` compares decoded
+# Fixed-point scale for the exported score bands. This must be fine enough to
+# bound quantisation flips to a negligible band: downstream code compares decoded
 # values against the model's full-precision thresholds, so a coarse scale moves
 # pixels across the boundary in both directions. At 1/100 a true similarity of
 # 0.9046 encoded to 0.90 was wrongly rejected against a 0.90457 threshold, and a
@@ -59,6 +59,13 @@ OUTPUT_SCALE_M = 30
 # 1/10000 the worst-case shift is 5e-5. Bands stay inside uint16: probability
 # reaches 10000 and (cosine + 1) reaches 20000, against a 65535 ceiling.
 SCORE_SCALE = 10_000
+
+
+def decode_score_bands(scored: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Decode exported probability and cosine-similarity score bands."""
+    probability = scored[0].astype(float) / SCORE_SCALE
+    similarity = scored[1].astype(float) / SCORE_SCALE - 1.0
+    return probability, similarity
 
 
 def check_feature_years(years) -> None:

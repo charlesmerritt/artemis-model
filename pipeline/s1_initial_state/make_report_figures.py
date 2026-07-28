@@ -34,6 +34,7 @@ from pipeline.s1_initial_state.classify_holes import (
     stage_a_similarity,
     training_matrix,
 )
+from pipeline.s1_initial_state.embed_holes import decode_score_bands
 from pipeline.s1_initial_state.stratify_treemap_holes import read_evt_window
 
 REPO = Path(__file__).resolve().parents[2]
@@ -522,8 +523,7 @@ def fig10_gee_surfaces():
         scored = src.read()
     with rasterio.open(DATA / "treemap_hole_strata.tif") as src:
         strata = src.read(1)
-    prob = scored[0].astype(float) / 100.0
-    sim = scored[1].astype(float) / 100.0 - 1.0
+    prob, sim = decode_score_bands(scored)
     holes = strata > 0
 
     model = json.loads((DATA / "hole_model.json").read_text())

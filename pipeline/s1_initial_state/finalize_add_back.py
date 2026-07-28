@@ -34,7 +34,7 @@ import pandas as pd
 import rasterio
 from scipy import ndimage
 
-from pipeline.s1_initial_state.embed_holes import SCORE_SCALE
+from pipeline.s1_initial_state.embed_holes import decode_score_bands
 
 REPO = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO / "data/interim/treemap_holes"
@@ -104,8 +104,7 @@ def main() -> None:
 
     # Decoded with the same fixed-point scale used on export; see
     # embed_holes.SCORE_SCALE for why 1/100 was not fine enough.
-    prob = scored[0].astype(float) / SCORE_SCALE
-    similarity = scored[1].astype(float) / SCORE_SCALE - 1.0
+    prob, similarity = decode_score_bands(scored)
 
     raw = decide(strata, prob, similarity, model["similarity_threshold"], model["decision_threshold"])
     raw &= strata > 0
