@@ -427,18 +427,32 @@ def fig8_fia(strata, add_back):
                     arrowprops=dict(arrowstyle="-", lw=0.9,
                                     color=colour if colour != "#d9d9d9" else "#999999"))
 
-    ax.axvline(fia_forest, color="#2166ac", lw=1.8, ymin=0.05, ymax=0.62)
-    ax.annotate(f"FIA design-based forest,\ncirca 2022: {fia_forest:,.0f} ac",
-                xy=(fia_forest, -0.30), ha="center", va="top", fontsize=8.5, color="#2166ac")
+    # EVALIDator domain estimate for the 5 counties; SE is large enough that the
+    # interval, not the point estimate, is what the comparison can rest on.
+    check_path = DATA / "fia_evalidator_check.json"
+    ci_lo = ci_hi = None
+    if check_path.exists():
+        check = json.loads(check_path.read_text())
+        ci_lo, ci_hi = check["ci95_low"], check["ci95_high"]
+        ax.axvspan(ci_lo, ci_hi, ymin=0.30, ymax=0.62, color="#2166ac", alpha=0.13, lw=0)
+        ax.annotate("FIA 95% CI", xy=((ci_lo + ci_hi) / 2, 0.40), ha="center",
+                    fontsize=8, color="#2166ac")
 
-    ax.set_ylim(-0.75, 0.95)
-    ax.set_xlim(0, fia_forest * 1.06)
+    ax.axvline(fia_forest, color="#2166ac", lw=1.8, ymin=0.05, ymax=0.62)
+    label = f"FIA design-based forest, circa 2022: {fia_forest:,.0f} ac"
+    if ci_lo is not None:
+        label += f"\n95% CI {ci_lo:,.0f} – {ci_hi:,.0f} (SE {check['se_percent']:.1f}%, {check['plots']} plots)"
+    ax.annotate(label, xy=(fia_forest, -0.30), ha="center", va="top",
+                fontsize=8.5, color="#2166ac")
+
+    ax.set_ylim(-0.85, 0.95)
+    ax.set_xlim(0, (ci_hi if ci_hi else fia_forest) * 1.04)
     ax.set_yticks([])
     ax.set_xlabel("forest area (acres)")
     ax.xaxis.set_major_formatter(lambda v, _: f"{v:,.0f}")
     ax.spines["left"].set_visible(False)
-    ax.set_title("Correction moves TreeMap toward the independent FIA estimate without "
-                 f"overshooting it\n({added / (fia_forest - treemap):.0%} of the shortfall closed)")
+    ax.set_title("Uncorrected TreeMap falls below the FIA 95% CI; the corrected value "
+                 "falls inside it\nwithout overshooting the point estimate")
 
     VALUES["fia"] = {
         "fia_total_acres": fia_total, "fia_forest_acres": fia_forest,

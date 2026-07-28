@@ -25,14 +25,21 @@ ceased populating its three `Recently Logged` classes after the 2016 vintage
 (28 % of holes) carry forest evidence; and that a spatially-blocked classifier
 separates managed-forest clearcut from stable non-forest at **AUC 0.982** against
 a label-shuffle baseline of 0.483. The method returns **75,792 ac** to TreeMap in
-2,975 patches of realistic harvest-unit size. Reconciliation against the FIA
-design-based estimate for the same counties shows TreeMap under-maps forest by
-160,738 ac; the correction closes **47 %** of that shortfall **without
-overshooting**, indicating a conservative result.
+2,975 patches of realistic harvest-unit size.
 
-The principal unvalidated quantity is the true positive rate within stratum S3
-(recent cuts with no regrowth confirmation), where only 10 % of acreage was
-accepted. Field or NAIP validation remains outstanding.
+Two independent checks constrain the result. Against the FIA design-based
+estimate for the same counties (1,255,424 ac, 95 % CI 1,106,653–1,404,195,
+verified two ways to 0.04 ac), published TreeMap at 1,094,686 ac falls **below**
+the interval while the corrected value falls **inside** it without overshooting
+the point estimate. Against USFS LCMS — a different producer and algorithm —
+98 % of accepted S3 pixels are LCMS *forest land use*, indistinguishable from
+proven positives, giving a precision proxy of 0.98.
+
+The method is therefore precise but under-recalls: 36 % of *rejected* S3 is also
+LCMS forest, implying ~26,000 ac wrongly omitted and an S3 recall of roughly
+**0.23**. Raising S3 recall, not further guarding against false positives, is the
+highest-value next step. Direct precision and recall measurement still requires
+hand-labelled imagery.
 
 ---
 
@@ -312,6 +319,7 @@ Every claim above rests on one of the following checks.
 | V10 | Independent area reconciliation against FIA | see §6.2 |
 | V11 | Unit tests | 98 passed, 10 skipped; `ruff check` clean |
 | V12 | External validation of S3 against USFS LCMS | see §6.3 |
+| V14 | Local FIADB SQL vs the public EVALIDator API, five counties as one domain | 1,255,424 ac both ways, differ by 0.04 ac |
 | V13 | Roads / developed classes in the add-back | 405 ac Developed-Roads (0.53 %); 4 of 2,975 patches linear |
 
 **V8 note.** The residual disagreement is scale, not error: the model was trained
@@ -320,42 +328,66 @@ TreeMap's grid. Mixed pixels at patch edges account for the tail.
 
 ### 6.2 Reconciliation against FIA
 
-FIA design-based forest area was computed from FIADB for EVALID 122201
-(`EXPCURR`, Florida, end inventory year 2022, 333 plots in the five counties) as
-Σ (`CONDPROP_UNADJ` × `ADJ_FACTOR` × `EXPNS`) over conditions with
-`COND_STATUS_CD` = 1, with `ADJ_FACTOR` selected by `PROP_BASIS`.
+FIA design-based forest area for the five counties was computed two independent
+ways, and they agree exactly.
+
+1. **Local FIADB SQLite**, EVALID 122201 (`EXPCURR`, Florida, end inventory year
+   2022): Σ (`CONDPROP_UNADJ` × `ADJ_FACTOR` × `EXPNS`) over conditions with
+   `COND_STATUS_CD` = 1, `ADJ_FACTOR` selected by `PROP_BASIS`.
+2. **The public EVALIDator API** (`pipeline/s1_initial_state/verify_fia_evalidator.py`),
+   attribute 2 "Area of forest land, in acres", evaluation group 122022, with the
+   five counties requested as a **single domain** —
+   `wf=PLOT.COUNTYCD IN (3,23,47,121,125)` — not as summed per-county rows.
+
+Both return **1,255,424 ac**, differing by 0.04 ac. The domain query also returns
+the sampling error the local SQL does not: **SE 6.046 % (± 75,903 ac), 262
+contributing plots**, giving a 95 % CI of **1,106,653 – 1,404,195 ac**.
+
+Requesting a domain rather than summing counties matters. County estimates within
+one evaluation share strata, so combining their variances in quadrature assumes
+an independence that does not hold; that approximation gives ± 80,718 ac against
+the correct ± 75,903 ac.
 
 ![FIA reconciliation](figures/fig8_fia.png)
 
-**Figure 8.** Reconciliation.
+**Figure 8.** Reconciliation, with the FIA 95 % confidence interval shaded.
 
 | quantity | acres | note |
 |---|---|---|
 | AOI extent (raster) | 1,824,689 | FIA total 1,803,585 — agrees to **1.2 %** |
 | TreeMap 2022 forest | 1,094,686 | 60.0 % of AOI |
-| **FIA design-based forest, circa 2022** | **1,255,424** | 69.6 % |
-| TreeMap shortfall | 160,738 | |
-| returned by this method | 75,792 | **47 % of the shortfall** |
-| corrected TreeMap forest | 1,170,478 | 64.1 % of AOI |
-| still unexplained | 84,946 | |
+| **FIA design-based forest, circa 2022** | **1,255,424** | 69.6 %; 95 % CI 1,106,653 – 1,404,195 |
+| TreeMap shortfall | 160,738 | **2.12 SE — significant at 95 %** |
+| returned by this method | 75,792 | 47 % of the shortfall |
+| corrected TreeMap forest | 1,170,478 | 64.1 % of AOI; **inside** the CI |
+| still unexplained | 84,946 | **1.12 SE — not distinguishable from zero** |
 
-**Finding 7.** The correction moves TreeMap toward an independently-derived,
-design-based estimate and does **not** overshoot it. Had detection been too
-permissive, the corrected figure would have exceeded 1,255,424 ac. The result is
-conservative.
+**Finding 7, stated at the precision the sampling error permits.** Three claims
+survive; one does not.
 
-The 1.2 % agreement between the raster AOI extent and FIA's total area is an
-independent confirmation that the county selection matches.
+- **TreeMap significantly under-maps forest.** At 1,094,686 ac it falls *below*
+  the FIA 95 % lower bound of 1,106,653 ac. The 160,738 ac shortfall is 2.12 SE.
+- **The corrected value lands inside the interval** (1,170,478 ac) and below the
+  point estimate, so the method does not overshoot. Had detection been too
+  permissive it could have exceeded 1,255,424 ac; it did not.
+- **The AOI extent is right.** The raster AOI (1,824,689 ac) agrees with FIA's
+  total area to 1.2 %, confirming the county selection.
+- **"47 % of the shortfall closed" and the 84,946 ac residual are weak claims.**
+  The residual is 1.12 SE — statistically indistinguishable from zero. This
+  reconciliation therefore cannot establish that more forest remains to be
+  recovered. The LCMS validation in §6.3 does that independently, and does not
+  depend on this.
 
-*Caveat:* this is a comparison of a pixel-count area against a design-based
-estimate with sampling variance, which we did not propagate. TreeMap pixel counts
-are not the FIA population estimator (see `notes/treemap-methodology.md`).
-The test is therefore one of direction and order of magnitude, not of equality.
+*Caveats.* A pixel-count area is not the FIA population estimator (see
+`notes/treemap-methodology.md`), so equality was never expected; the test is one
+of direction and interval membership. County-level FIA has only 262 contributing
+plots, which is why the interval is ± 6 % wide.
 
-**Where the remaining 84,946 ac plausibly sits** (hypotheses, untested): the
-72,663 ac of S3 rejected by the classifier; the 9,333 ac of S2 lost to the MMU;
-and part of the 65,553 ac of holes that LF2022 calls urban or developed forest,
-excluded here by design though FIA's forest definition would count some of it.
+**Where the residual plausibly sits** (hypotheses, and note it is not
+statistically distinguishable from zero): the 72,663 ac of S3 rejected by the
+classifier — of which §6.3 estimates ~26,000 ac really is forest — the 9,333 ac
+of S2 lost to the MMU, and part of the 65,553 ac of holes that LF2022 calls urban
+or developed forest, excluded here by design though FIA would count some of it.
 
 ### 6.3 External validation of the S3 decision against LCMS
 
@@ -397,9 +429,10 @@ This was not built into the method and is the strongest corroboration obtained.
 of *rejected* S3 is still LCMS Forest land use — well above the S5 floor of
 7.8 %. Applying that rate to the 72,663 ac rejected implies roughly **26,000 ac
 of managed forest were wrongly left out**, giving an estimated **S3 recall of
-only 0.23**. That figure sits comfortably inside the 84,946 ac still unexplained
-in the FIA reconciliation (§6.2), and the two independent lines of evidence
-therefore agree: the correction is precise but under-recalls.
+only 0.23**. That is consistent in sign and magnitude with the 84,946 ac residual
+in §6.2 — though since that residual is only 1.12 SE, the agreement is
+directional support rather than confirmation, and LCMS is the load-bearing
+evidence for under-recall.
 
 **Finding 11 — LCMS Tree Removal is not a usable detector here**, confirming the
 prior from `notes/clearcut-vs-agriculture-embeddings.md`. Its rate is *higher* on
@@ -457,7 +490,7 @@ otherwise look attractive.
    slash and loblolly pine plantation. Transfer to other regions is untested.
 6. **A linear classifier** was chosen for exact Earth Engine transfer (V7). A
    non-linear model might separate better; this was not tested.
-7. **No sampling-variance propagation** in the FIA comparison (§6.2).
+7. **FIA county-level sampling error is large** (± 6.0 %, 262 plots), so the reconciliation supports direction and interval membership only; the 84,946 ac residual is within noise (§6.2).
 8. **The 6–9 year LANDFIRE lag is inferred, not documented** (§3).
 
 ---
@@ -479,6 +512,8 @@ uv run python -m pipeline.s1_initial_state.embed_holes apply --tiles 6
 uv run python -m pipeline.s1_initial_state.finalize_add_back
 # 7. external validation of S3 against LCMS             (Earth Engine)
 uv run python -m pipeline.s1_initial_state.validate_s3_lcms
+# 8. verify the FIA figure against the public EVALIDator API   (network)
+uv run python -m pipeline.s1_initial_state.verify_fia_evalidator
 # figures + report_values.json
 uv run python -m pipeline.s1_initial_state.make_report_figures
 uv run pytest tests/ -q
