@@ -15,6 +15,13 @@ Pipeline (all under `pipeline/s1_initial_state/`, tests alongside in `tests/`):
 | 4. similarity mask + binary classifier + evaluation | `classify_holes.py` | no |
 | 5. score the whole AOI server-side, download raster | `embed_holes.py apply` | **yes** |
 | 6. final add-back mask + acreage report | `finalize_add_back.py` | no |
+| 7. validate S3 against USFS LCMS | `validate_s3_lcms.py` | **yes** |
+| 8. verify the FIA figure against EVALIDator | `verify_fia_evalidator.py` | network |
+| figures + `report_values.json` | `make_report_figures.py` | no |
+| inspect the mask interactively | `embed_holes.py snippet` | no |
+
+**The written-up result is `docs/treemap_holes/README.md`** — read that first;
+this note is the working record behind it and defers to it where they differ.
 
 ## The inputs that were exported
 
@@ -321,29 +328,62 @@ changes, both using data already sampled:
 
 Net effect on the target stratum: S3 add-back 0.183 → 0.266.
 
-### Validation against FIA — the correction is conservative
+### Validation against FIA — brings TreeMap into parity
 
-FIA design-based forest area for the five counties (EVALID 122201, `EXPCURR`,
-333 plots, `CONDPROP_UNADJ × ADJ_FACTOR × EXPNS`):
+> Superseded in part. Two claims in the first version of this section did not
+> survive the sampling error and are corrected below. The report
+> (`docs/treemap_holes/README.md` §6.2) is authoritative.
 
-| quantity | acres | % of AOI |
+FIA design-based forest area for the five counties, computed two independent
+ways that agree to **0.04 ac**: local FIADB SQLite (EVALID 122201, `EXPCURR`,
+Σ `CONDPROP_UNADJ` × `ADJ_FACTOR` × `EXPNS`) and the public EVALIDator API with
+the counties requested as a single domain
+(`wf=PLOT.COUNTYCD IN (3,23,47,121,125)`).
+
+| quantity | acres | note |
 |---|---|---|
-| AOI extent | 1,824,689 | — (FIA total 1,803,585, agrees to 1.2 %) |
-| TreeMap 2022 forest | 1,094,686 | 60.0 % |
-| **FIA forest, circa 2022** | **1,255,424** | **69.6 %** |
-| TreeMap shortfall | 160,738 | — |
-| our add-back | 75,792 | **47 % of the shortfall** |
-| corrected TreeMap forest | 1,170,478 | 64.1 % |
-| still unexplained | 84,946 | — |
+| AOI extent | 1,824,689 | FIA total 1,803,585, agrees to 1.2 % |
+| TreeMap 2022 forest | 1,094,686 | **below** the FIA 95 % lower bound |
+| **FIA forest, circa 2022** | **1,255,424** | 95 % CI 1,106,653 – 1,404,195 (SE 6.05 %, 262 plots) |
+| shortfall | 160,738 | 2.12 SE — significant |
+| our add-back | 75,792 | |
+| corrected TreeMap forest | 1,170,478 | **inside** the CI, below the point estimate |
+| residual | 84,946 | 1.12 SE — **not distinguishable from zero** |
 
-This is the strongest evidence available without field data: the correction moves
-TreeMap **toward** the independent design-based estimate and **does not
-overshoot**. If detection were too loose it would have blown past 1,255,424 ac.
+**Parity is the headline.** Published TreeMap sits outside the FIA interval; the
+corrected raster sits inside it without overshooting. That is the strongest
+aggregate statement the data supports.
 
-Plausible homes for the remaining 84,946 ac: the 72,663 ac of S3 we rejected, the
-9,333 ac of S2 lost to the MMU, and the ~40,487 ac of holes where LF2022 says
-*Urban/Developed Evergreen Forest* — excluded from the strata by design as
-non-FIA tree classes, though FIA's forest definition would count part of it.
+**Two corrections to the first version.** "47 % of the shortfall closed" and the
+84,946 ac residual were quoted as if exact. With SE at 6 % the residual is 1.12 SE,
+so this comparison *cannot* show that more forest remains to be recovered — LCMS
+does that independently (below). Also, summing per-county SEs in quadrature
+(± 80,718 ac) assumes an independence that does not hold across shared strata;
+the domain query gives the correct ± 75,903 ac.
+
+### External validation of S3 against LCMS — precise, but under-recalls
+
+USFS LCMS is a different producer and algorithm, and its `Land_Use` band encodes
+exactly what TreeMap loses: a stand cut in 2021 is still *Forest land use* in
+2022 even when its cover is grass. 600 interior points per group, S1 and S5 as
+reference bookends.
+
+| group | LU = Forest 2022 | LC Trees by 2024 |
+|---|---|---|
+| S1 (reference +) | 0.993 | 0.998 |
+| **S3 accepted** | **0.980** | **0.878** |
+| **S3 rejected** | **0.358** | **0.107** |
+| S5 (reference −) | 0.078 | 0.137 |
+
+- **The accepts are right** — precision proxy **0.98**, level with proven positives.
+- **LCMS independently confirms the LANDFIRE lag.** 88 % of accepted S3 is LCMS
+  Trees by 2024 despite S3 being *defined* as not-tree in LANDFIRE 2024. Two
+  products disagree in the predicted direction; nothing engineered this.
+- **Recall is poor: ~0.23.** 36 % of *rejected* S3 is still LCMS forest against a
+  7.8 % S5 floor, implying ~26,000 ac wrongly omitted. Raising S3 recall is now
+  the top improvement; Stage A is the binding constraint at 36 % admission.
+- **LCMS Tree Removal is unusable here** — higher on rejected S3 (0.408) than
+  accepted (0.302). Confirms the prior in [[clearcut-vs-agriculture-embeddings]].
 
 ### Known caveats on these numbers
 
@@ -351,9 +391,11 @@ non-FIA tree classes, though FIA's forest definition would count part of it.
   AlphaEarth's native 10 m; the exported raster is 30 m to match TreeMap's grid.
   Agreement between the two is r = 0.988 (probability) / 0.991 (similarity), with
   97.7 % decision agreement at 0.5 — the residual is aggregation, not a bug.
-- **S3's true positive rate is still unknown.** 10 % accepted is defensible and
-  conservative, but nothing here proves it is *right*. NAIP hand-labelling of S3
-  patches remains the missing validation.
+- **0.98 / 0.23 are proxies, not measured.** LCMS has its own unquantified error
+  rate, and it shares optical sensors with AlphaEarth — independent in producer
+  and algorithm, not in underlying imagery. Hand-labelled NAIP is still needed.
+- **Roads are not being added back**: 405 ac of `Developed-Roads` = 0.53 % of the
+  add-back, and 4 of 2,975 patches are linear by shape.
 - **Earth Engine notebook-mode credentials expire in 7 days.** Re-run
   `uv run earthengine authenticate` (localhost mode) for durable access.
 
