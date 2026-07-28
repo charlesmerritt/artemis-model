@@ -503,12 +503,21 @@ otherwise look attractive.
    only genuinely independent check performed, and it is an aggregate one — it
    constrains total area, not per-pixel correctness.
 4. **Scale mismatch.** Model at 10 m, product at 30 m (V8).
-5. **Single AOI, single ecoregion.** Five north-Florida counties dominated by
+5. **Export quantisation is bounded, not eliminated.** Scores are exported as
+   fixed-point at 1/10000, so a pixel within 5 × 10⁻⁵ of a threshold can still
+   cross it. At 1/100 the band was 100× wider and moved 39 ac of the deliverable.
+   Thresholding server-side before quantisation would remove the band entirely,
+   at the cost of the continuous scores needed to retune thresholds without
+   re-exporting (V16).
+6. **The Stage-A mask is evaluated on the anchors that define it.** Its threshold
+   is a quantile of anchor similarity, so 90 % anchor recall is true by
+   construction, not measured. Only the S3/S4 admission rates are informative.
+7. **Single AOI, single ecoregion.** Five north-Florida counties dominated by
    slash and loblolly pine plantation. Transfer to other regions is untested.
-6. **A linear classifier** was chosen for exact Earth Engine transfer (V7). A
+8. **A linear classifier** was chosen for exact Earth Engine transfer (V7). A
    non-linear model might separate better; this was not tested.
-7. **FIA county-level sampling error is large** (± 6.0 %, 262 plots), so the reconciliation supports direction and interval membership only; the 84,907 ac residual is within noise (§6.2).
-8. **The 6–9 year LANDFIRE lag is inferred, not documented** (§3).
+9. **FIA county-level sampling error is large** (± 6.0 %, 262 plots), so the reconciliation supports direction and interval membership only; the 84,907 ac residual is within noise (§6.2).
+10. **The 6–9 year LANDFIRE lag is inferred, not documented** (§3).
 
 ---
 
