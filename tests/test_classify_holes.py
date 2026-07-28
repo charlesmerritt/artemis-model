@@ -139,6 +139,106 @@ def test_age_referenced_training_stacks_one_row_per_anchor_year():
     assert sorted(set(g2)) == sorted(set(g1))
 
 
+def test_pipeline_fold_fits_stage_a_without_held_out_rows():
+    """Changing held-out embeddings must not change the fold's Stage-A threshold."""
+    table = _synthetic_table(n=50)
+    table["block"] = np.resize(np.array([str(i) for i in range(5)]), len(table))
+    anchors = table[table.role.isin(["anchor_clearcut", "anchor_nonforest"])]
+    train = anchors[anchors.block != "0"]
+    held_out = anchors[anchors.block == "0"]
+
+    first = classify.pipeline_fold_predictions(
+        train,
+        held_out,
+        feature_year=2022,
+        anchor_years=[2018, 2022],
+        recall=0.90,
+        n_clusters=4,
+        seed=1,
+    )
+    changed = held_out.copy()
+    changed.loc[:, classify.band_columns(changed, 2022)] *= -1
+    second = classify.pipeline_fold_predictions(
+        train,
+        changed,
+        feature_year=2022,
+        anchor_years=[2018, 2022],
+        recall=0.90,
+        n_clusters=4,
+        seed=1,
+    )
+
+    assert first.stage_a_threshold.nunique() == 1
+    assert second.stage_a_threshold.nunique() == 1
+    assert first.stage_a_threshold.iloc[0] == pytest.approx(second.stage_a_threshold.iloc[0])
+
+
+def test_pipeline_block_cv_scores_each_held_out_anchor_once_at_feature_year():
+    """Operational CV validates unique 2022 anchors, not duplicated anchor-year rows."""
+    table = _synthetic_table(n=50)
+    table["block"] = np.resize(np.array([str(i) for i in range(5)]), len(table))
+    anchors = table[table.role.isin(["anchor_clearcut", "anchor_nonforest"])]
+
+    predictions = classify.pipeline_block_cv_predictions(
+        table,
+        feature_year=2022,
+        anchor_years=[2018, 2022],
+        recall=0.90,
+        n_clusters=4,
+        seed=1,
+    )
+
+    assert len(predictions) == len(anchors)
+    assert predictions.source_index.is_unique
+    assert set(predictions.role) == {"anchor_clearcut", "anchor_nonforest"}
+    assert predictions.passed_stage_a.dtype == bool
+
+
+def test_pipeline_metrics_count_stage_a_rejections_in_final_decisions():
+    predictions = pd.DataFrame({
+        "truth": [1, 1, 0, 0],
+        "probability": [0.9, 0.9, 0.8, 0.1],
+        "passed_stage_a": [True, False, True, False],
+    })
+
+    metrics = classify.pipeline_cv_metrics(predictions, decision=0.5)
+
+    assert metrics["pipeline_true_positive"] == 1
+    assert metrics["pipeline_false_negative"] == 1
+    assert metrics["pipeline_false_positive"] == 1
+    assert metrics["pipeline_true_negative"] == 1
+    assert metrics["pipeline_balanced_accuracy"] == pytest.approx(0.5)
+    assert metrics["stage_b_survivor_auc"] == pytest.approx(1.0)
+
+
+def test_pipeline_metrics_report_undefined_values_without_aborting():
+    predictions = pd.DataFrame({
+        "truth": [1, 1, 0, 0],
+        "probability": [0.9, 0.8, 0.7, 0.1],
+        "passed_stage_a": [True, True, False, False],
+    })
+
+    metrics = classify.pipeline_cv_metrics(predictions, decision=1.0)
+
+    assert metrics["pipeline_true_positive"] == 0
+    assert metrics["pipeline_false_negative"] == 2
+    assert metrics["pipeline_false_positive"] == 0
+    assert metrics["pipeline_true_negative"] == 2
+    assert np.isnan(metrics["pipeline_precision"])
+    assert np.isnan(metrics["pipeline_f1"])
+    assert np.isnan(metrics["stage_b_survivor_auc"])
+    assert metrics["stage_b_survivor_accuracy"] == pytest.approx(0.0)
+
+
+def test_label_shuffle_keeps_anchor_year_copies_paired():
+    labels = np.array([1, 0, 1, 1, 0, 1])
+
+    shuffled = classify.shuffle_anchor_labels(labels, seed=7, repeats=2)
+
+    np.testing.assert_array_equal(shuffled[:3], shuffled[3:])
+    assert sorted(shuffled[:3]) == [0, 1, 1]
+
+
 def test_band_columns_rejects_a_year_with_no_embeddings():
     with pytest.raises(ValueError, match="no embedding columns for year 2019"):
         classify.band_columns(_synthetic_table(), 2019)

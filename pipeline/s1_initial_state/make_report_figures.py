@@ -31,16 +31,23 @@ from sklearn.model_selection import GroupKFold, cross_val_predict
 from pipeline.s1_initial_state.classify_holes import (
     anchor_exemplars,
     band_columns,
+    pipeline_block_cv_predictions,
+    pipeline_cv_metrics,
+    shuffle_anchor_labels,
     stage_a_similarity,
     training_matrix,
 )
 from pipeline.s1_initial_state.embed_holes import decode_score_bands
 from pipeline.s1_initial_state.stratify_treemap_holes import read_evt_window
+from pipeline.s1_initial_state.validate_s3_lcms import build_groups, eligible_patch_interiors
 
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data/interim/treemap_holes"
 FIGS = REPO / "docs/treemap_holes/figures"
 ACRES_PER_PIXEL = 0.2224
+TREE_MAP_HOLES = Path("/mnt/d/TreeMap_Holes_CopyRaster")
+EXPECTED_COVERAGE_PIXELS = 4_922_148
+EXPECTED_DOMAIN_PIXELS = 8_204_537
 
 STRATA_LABELS = {
     1: "S1 cut pre-2016,\nregrown by 2024",
@@ -67,23 +74,51 @@ def save(fig, name: str) -> None:
     print(f"  wrote {name}.png")
 
 
+def analysis_domain_mask(strata: np.ndarray, raw_holes: np.ndarray,
+                         nodata: float | int) -> np.ndarray:
+    """Five-county analysis domain: TreeMap coverage plus masked in-AOI holes."""
+    if nodata is None or not np.isfinite(nodata):
+        raise ValueError("TreeMap hole source must declare a finite NoData value")
+    coverage = raw_holes == nodata
+    holes = strata > 0
+    if np.any(coverage & holes):
+        raise ValueError("TreeMap coverage overlaps the masked hole universe")
+    return coverage | holes
+
+
 def load_rasters():
     with rasterio.open(DATA / "treemap_hole_strata.tif") as src:
         strata = src.read(1)
-        bounds, transform = src.bounds, src.transform
+        bounds, transform, crs = src.bounds, src.transform, src.crs
     with rasterio.open(DATA / "treemap_add_back_mask.tif") as src:
         add_back = src.read(1) == 1
-    return strata, add_back, bounds, transform
+    with rasterio.open(TREE_MAP_HOLES) as src:
+        aligned = np.allclose(tuple(src.transform), tuple(transform), rtol=0, atol=1e-6)
+        if src.shape != strata.shape or not aligned or src.crs != crs:
+            raise ValueError("TreeMap hole source is not aligned to the strata raster")
+        raw_holes = src.read(1)
+        domain = analysis_domain_mask(strata, raw_holes, src.nodata)
+        coverage_pixels = int((raw_holes == src.nodata).sum())
+        if coverage_pixels != EXPECTED_COVERAGE_PIXELS:
+            raise ValueError(
+                f"TreeMap coverage is {coverage_pixels:,} px; expected "
+                f"{EXPECTED_COVERAGE_PIXELS:,}"
+            )
+        if int(domain.sum()) != EXPECTED_DOMAIN_PIXELS:
+            raise ValueError(
+                f"analysis domain is {domain.sum():,} px; expected {EXPECTED_DOMAIN_PIXELS:,}"
+            )
+    return strata, add_back, domain, bounds, transform
 
 
 # --------------------------------------------------------------------------- #
-def fig1_study_area(strata, bounds, transform):
+def fig1_study_area(strata, domain, bounds, transform):
     """AOI extent, TreeMap coverage, and where the holes are."""
     names22, lf22 = read_evt_window(2022, bounds, strata.shape, transform)
     holes = strata > 0
 
     img = np.zeros(strata.shape, np.uint8)
-    img[~holes] = 1
+    img[domain & ~holes] = 1
     img[holes] = 2
     cmap = ListedColormap([[1, 1, 1], [0.72, 0.84, 0.72], [0.80, 0.36, 0.24]])
 
@@ -91,9 +126,12 @@ def fig1_study_area(strata, bounds, transform):
     axes[0].imshow(img, cmap=cmap, vmin=0, vmax=2, interpolation="nearest")
     axes[0].set_title("(a) Five-county AOI: TreeMap 2022 coverage")
     axes[0].axis("off")
+    coverage_fraction = float((domain & ~holes).sum() / domain.sum())
     axes[0].legend(handles=[
-        plt.Rectangle((0, 0), 1, 1, fc=[0.72, 0.84, 0.72], label="TreeMap has TM_ID (60.0%)"),
-        plt.Rectangle((0, 0), 1, 1, fc=[0.80, 0.36, 0.24], label="hole, no TM_ID (40.0%)"),
+        plt.Rectangle((0, 0), 1, 1, fc=[0.72, 0.84, 0.72],
+                      label=f"TreeMap has TM_ID ({coverage_fraction:.1%})"),
+        plt.Rectangle((0, 0), 1, 1, fc=[0.80, 0.36, 0.24],
+                      label=f"hole, no TM_ID ({1 - coverage_fraction:.1%})"),
     ], loc="lower left", frameon=False, fontsize=8)
 
     comp = pd.Series(lf22[holes]).value_counts() * ACRES_PER_PIXEL
@@ -105,7 +143,7 @@ def fig1_study_area(strata, bounds, transform):
         axes[1].text(v + 6000, y, f"{v:,.0f}", va="center", fontsize=7.5)
     axes[1].set_xlim(0, comp.max() * 1.25)
 
-    VALUES["aoi_acres"] = float(strata.size * ACRES_PER_PIXEL)  # bbox, not AOI
+    VALUES["aoi_acres"] = float(domain.sum() * ACRES_PER_PIXEL)
     VALUES["hole_acres"] = float(holes.sum() * ACRES_PER_PIXEL)
     VALUES["hole_lifeform_acres"] = {k: float(v) for k, v in comp.items()}
     save(fig, "fig1_study_area")
@@ -291,13 +329,26 @@ def fig6_stage_b(points: pd.DataFrame):
     x, y, groups = training_matrix(points, [2018, 2022])
     cv = GroupKFold(n_splits=5)
     prob = cross_val_predict(model, x, y, groups=groups, cv=cv, method="predict_proba")[:, 1]
-    rng = np.random.default_rng(42)
-    y_shuf = rng.permutation(y)
+    y_shuf = shuffle_anchor_labels(y, seed=42, repeats=2)
     prob_shuf = cross_val_predict(model, x, y_shuf, groups=groups, cv=cv,
                                   method="predict_proba")[:, 1]
 
+    pipeline_predictions = pipeline_block_cv_predictions(
+        points,
+        feature_year=2022,
+        anchor_years=[2018, 2022],
+        recall=0.90,
+        n_clusters=6,
+        seed=42,
+    )
+    conditional = pipeline_predictions[pipeline_predictions.passed_stage_a]
+    pipeline_metrics = pipeline_cv_metrics(pipeline_predictions, decision=0.5)
     for probs, truth, colour, label in [
-        (prob, y, "#b2182b", f"real labels (AUC {roc_auc_score(y, prob):.3f})"),
+        (prob, y, "#b2182b",
+         f"all anchor-year rows (AUC {roc_auc_score(y, prob):.3f})"),
+        (conditional.probability, conditional.truth, "#ef8a62",
+         f"held-out Stage-A survivors, 2022 (conditional) "
+         f"(AUC {roc_auc_score(conditional.truth, conditional.probability):.3f})"),
         (prob_shuf, y_shuf, "#999999", f"shuffled labels (AUC {roc_auc_score(y_shuf, prob_shuf):.3f})"),
     ]:
         fpr, tpr, _ = roc_curve(truth, probs)
@@ -305,8 +356,8 @@ def fig6_stage_b(points: pd.DataFrame):
     axes[0].plot([0, 1], [0, 1], ":", color="k", lw=0.8)
     axes[0].set_xlabel("false positive rate")
     axes[0].set_ylabel("true positive rate")
-    axes[0].set_title("(a) Stage B, spatial-block cross-validation\n"
-                      "(GroupKFold on 0.25° blocks)")
+    axes[0].set_title("(a) Stage B ROC diagnostics, spatial-block CV\n"
+                      "(all anchors vs conditional survivor population)")
     axes[0].legend(frameon=False, fontsize=8, loc="lower right")
 
     variants = {}
@@ -340,18 +391,34 @@ def fig6_stage_b(points: pd.DataFrame):
     VALUES["stage_b_auc"] = float(roc_auc_score(y, prob))
     VALUES["stage_b_auc_shuffled"] = float(roc_auc_score(y_shuf, prob_shuf))
     VALUES["stage_b_accuracy"] = float(((prob >= 0.5).astype(int) == y).mean())
+    VALUES["stage_b_survivor_conditional"] = {
+        "auc": pipeline_metrics["stage_b_survivor_auc"],
+        "accuracy": pipeline_metrics["stage_b_survivor_accuracy"],
+        "n": pipeline_metrics["n_stage_b_survivors"],
+        "positive": pipeline_metrics["n_stage_b_survivor_positive"],
+        "negative": pipeline_metrics["n_stage_b_survivor_negative"],
+    }
+    VALUES["pipeline_end_to_end"] = {
+        key.removeprefix("pipeline_"): value
+        for key, value in pipeline_metrics.items()
+        if key.startswith("pipeline_")
+    }
+    VALUES["stage_a_fold_local_pass_rate"] = {
+        "clearcut": pipeline_metrics["stage_a_clearcut_pass_rate"],
+        "nonforest": pipeline_metrics["stage_a_nonforest_pass_rate"],
+    }
     VALUES["apply_variants"] = {k_.replace("\n", " "): v for k_, v in variants.items()}
     save(fig, "fig6_stage_b")
 
 
 # --------------------------------------------------------------------------- #
-def fig7_add_back(strata, add_back):
+def fig7_add_back(strata, add_back, domain):
     """The deliverable: what gets returned to TreeMap, and at what patch sizes."""
     fig = plt.figure(figsize=(12, 4.8))
     gs = fig.add_gridspec(1, 3, width_ratios=[1.25, 1.25, 0.85])
 
     img = np.zeros(strata.shape, np.uint8)
-    img[strata == 0] = 1
+    img[domain & (strata == 0)] = 1
     img[strata > 0] = 2
     img[add_back] = 3
     cmap = ListedColormap([[1, 1, 1], [0.82, 0.88, 0.82], [0.76, 0.76, 0.74], [0.70, 0.07, 0.11]])
@@ -398,11 +465,11 @@ def fig7_add_back(strata, add_back):
 
 
 # --------------------------------------------------------------------------- #
-def fig8_fia(strata, add_back):
+def fig8_fia(strata, add_back, domain):
     """Reconciliation against the FIA design-based estimate."""
     # Computed by scripts documented in the report; FIA EVALID 122201 EXPCURR.
     fia_total, fia_forest = 1_803_585.0, 1_255_424.0
-    aoi_px = 8_204_537
+    aoi_px = int(domain.sum())
     aoi = aoi_px * ACRES_PER_PIXEL
     holes = float((strata > 0).sum() * ACRES_PER_PIXEL)
     treemap = aoi - holes
@@ -466,7 +533,7 @@ def fig8_fia(strata, add_back):
     save(fig, "fig8_fia")
 
 
-def fig9_s3_validation():
+def fig9_s3_validation(strata, add_back):
     """External check of the S3 decision against LCMS (skipped if not yet run)."""
     path = DATA / "s3_validation_summary.csv"
     if not path.exists():
@@ -475,6 +542,15 @@ def fig9_s3_validation():
     summary = pd.read_csv(path, index_col=0)
     order = ["S1_reference_positive", "S3_accepted", "S3_rejected", "S5_reference_negative"]
     summary = summary.reindex([o for o in order if o in summary.index])
+    if "n" not in summary or summary["n"].isna().any():
+        raise ValueError("LCMS summary must include a non-missing sample count per group")
+    sample_counts = summary["n"].round().astype(int)
+    if sample_counts.nunique() == 1:
+        sample_label = f"{sample_counts.iloc[0]:,} eligible-interior points per group"
+    else:
+        sample_label = (
+            f"{sample_counts.min():,}–{sample_counts.max():,} eligible-interior points per group"
+        )
     pretty = {"S1_reference_positive": "S1\nref +", "S3_accepted": "S3\naccept",
               "S3_rejected": "S3\nreject", "S5_reference_negative": "S5\nref −"}
     colours = ["#67000d", "#b2182b", "#f4a582", "#bdbdbd"]
@@ -492,21 +568,32 @@ def fig9_s3_validation():
         ax.set_title(title, fontsize=9)
         ax.set_ylim(0, 1.12)
         ax.tick_params(axis="x", labelsize=7.5)
-    axes[0].set_ylabel("fraction of sampled points")
-    fig.suptitle("Independent validation of the S3 decision against USFS LCMS "
-                 "(different producer, different algorithm)", fontsize=10.5, y=1.04)
+    axes[0].set_ylabel("fraction of sampled eligible-interior points")
+    fig.suptitle(
+        f"Independent validation of the S3 decision against USFS LCMS ({sample_label})\n"
+        "Point estimates; no spatially valid uncertainty interval estimated",
+        fontsize=10.5,
+        y=1.08,
+    )
 
     acc, rej = summary.loc["S3_accepted"], summary.loc["S3_rejected"]
-    s3_hole = VALUES.get("add_back_by_stratum", {}).get("S3", {}).get("hole_acres", 80741.65)
-    s3_added = VALUES.get("add_back_by_stratum", {}).get("S3", {}).get("added_acres", 8087.58)
-    s3_rejected_ac = s3_hole - s3_added
-    true_pos = s3_added * acc["LU_forest_2022"]
-    missed = s3_rejected_ac * rej["LU_forest_2022"]
+    groups = build_groups(strata, add_back)
+    accepted_frame_acres = (
+        eligible_patch_interiors(groups["S3_accepted"]).sum() * ACRES_PER_PIXEL
+    )
+    rejected_frame_acres = (
+        eligible_patch_interiors(groups["S3_rejected"]).sum() * ACRES_PER_PIXEL
+    )
+    true_pos = accepted_frame_acres * acc["LU_forest_2022"]
+    missed = rejected_frame_acres * rej["LU_forest_2022"]
     VALUES["s3_validation"] = {
         "precision_proxy_LU_forest": float(acc["LU_forest_2022"]),
         "rejected_still_forest_frac": float(rej["LU_forest_2022"]),
-        "recall_proxy": float(true_pos / (true_pos + missed)),
-        "estimated_missed_acres": float(missed),
+        "sampling_frame_accepted_acres": float(accepted_frame_acres),
+        "sampling_frame_rejected_acres": float(rejected_frame_acres),
+        "recall_proxy_within_sampling_frame": float(true_pos / (true_pos + missed)),
+        "estimated_missed_acres_within_sampling_frame": float(missed),
+        "sampling_uncertainty": "not estimated for spatially correlated pixels",
         "s1_reference": float(summary.loc["S1_reference_positive", "LU_forest_2022"]),
         "s5_reference": float(summary.loc["S5_reference_negative", "LU_forest_2022"]),
     }
@@ -556,18 +643,18 @@ def fig10_gee_surfaces():
 
 
 def main() -> None:
-    strata, add_back, bounds, transform = load_rasters()
+    strata, add_back, domain, bounds, transform = load_rasters()
     points = pd.read_csv(DATA / "hole_embeddings.csv")
     print("generating figures...")
-    fig1_study_area(strata, bounds, transform)
+    fig1_study_area(strata, domain, bounds, transform)
     fig2_mechanism(strata, bounds, transform)
     fig3_strata(strata)
     fig4_shape(strata)
     fig5_stage_a(points)
     fig6_stage_b(points)
-    fig7_add_back(strata, add_back)
-    fig8_fia(strata, add_back)
-    fig9_s3_validation()
+    fig7_add_back(strata, add_back, domain)
+    fig8_fia(strata, add_back, domain)
+    fig9_s3_validation(strata, add_back)
     fig10_gee_surfaces()
 
     FIGS.mkdir(parents=True, exist_ok=True)

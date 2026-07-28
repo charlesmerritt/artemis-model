@@ -21,7 +21,9 @@ add-back to TreeMap 2022; the rest stay holes.
 Honest evaluation, because the failure mode here is silent
 ------------------------------------------------------------
 - **GroupKFold on 0.25-degree blocks**, not random CV. Random folds let a model
-  memorise geography and still look excellent.
+  memorise geography and still look excellent. For the operational metric,
+  Stage A and Stage B are both fitted inside each training fold before the
+  held-out block is filtered and scored.
 - **A label-shuffle baseline** is reported alongside. If real and shuffled scores
   are close, the features carry no signal and the headline number is an artifact.
 - **Feature years are capped at 2022** (enforced in ``embed_holes``). The anchor
@@ -30,6 +32,10 @@ Honest evaluation, because the failure mode here is silent
   around 2014-2016, so by 2022 they are ~6-8 year old pine. A *fresh* cut looks
   different, and much of S3 is fresh. Watch the S3 rate for evidence of that
   generalisation gap rather than assuming it away.
+- **The reported spatial-CV metrics are post-selection.** The exploratory
+  full-data sweep chose six exemplars and the age-referenced design. Fold-local
+  fitting removes direct validation-fold fit leakage, but an independent test
+  set or nested selection rule is still needed for an unbiased estimate.
 """
 
 from __future__ import annotations
@@ -94,10 +100,16 @@ def anchor_exemplars(table: pd.DataFrame, anchor_years: list[int], n_clusters: i
 def stage_a_similarity(table: pd.DataFrame, cols: list[str], recall: float,
                        exemplars: np.ndarray) -> tuple[pd.Series, float]:
     """Max cosine similarity to any anchor exemplar + the recall-based threshold."""
-    sim_all = unit_rows(table[cols].to_numpy(float)) @ exemplars.T
-    sim = pd.Series(sim_all.max(axis=1), index=table.index)
+    sim = max_exemplar_similarity(table, cols, exemplars)
     threshold = float(np.quantile(sim[table.role == "anchor_clearcut"], 1.0 - recall))
     return sim, threshold
+
+
+def max_exemplar_similarity(table: pd.DataFrame, cols: list[str],
+                            exemplars: np.ndarray) -> pd.Series:
+    """Max cosine similarity to any fitted Stage-A exemplar."""
+    sim_all = unit_rows(table[cols].to_numpy(float)) @ exemplars.T
+    return pd.Series(sim_all.max(axis=1), index=table.index)
 
 
 def training_matrix(table: pd.DataFrame, anchor_years: list[int]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -125,29 +137,173 @@ def training_matrix(table: pd.DataFrame, anchor_years: list[int]) -> tuple[np.nd
     return np.vstack(xs), np.concatenate(ys), np.concatenate(groups)
 
 
-def block_cv_scores(x: np.ndarray, y: np.ndarray, groups: np.ndarray, seed: int):
+def shuffle_anchor_labels(y: np.ndarray, seed: int, repeats: int = 1) -> np.ndarray:
+    """Permute unique-anchor labels while keeping repeated anchor-year rows paired."""
+    if repeats < 1 or len(y) % repeats:
+        raise ValueError("label rows must divide evenly across anchor-year repeats")
+    rows = len(y) // repeats
+    base = y[:rows]
+    for repeat in range(1, repeats):
+        if not np.array_equal(y[repeat * rows:(repeat + 1) * rows], base):
+            raise ValueError("anchor-year label copies are not paired")
+    return np.tile(np.random.default_rng(seed).permutation(base), repeats)
+
+
+def block_cv_scores(x: np.ndarray, y: np.ndarray, groups: np.ndarray, seed: int,
+                    label_repeats: int = 1):
     """Block-CV AUC and accuracy, plus the label-shuffle baseline for the same split."""
     model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
     cv = GroupKFold(n_splits=min(5, len(np.unique(groups))))
     prob = cross_val_predict(model, x, y, groups=groups, cv=cv, method="predict_proba")[:, 1]
-    shuffled = np.random.default_rng(seed).permutation(y)
+    shuffled = shuffle_anchor_labels(y, seed, label_repeats)
     prob_shuffled = cross_val_predict(model, x, shuffled, groups=groups, cv=cv,
                                       method="predict_proba")[:, 1]
     return (roc_auc_score(y, prob), ((prob >= 0.5).astype(int) == y).mean(),
             roc_auc_score(shuffled, prob_shuffled))
 
 
+def pipeline_fold_predictions(
+    training: pd.DataFrame,
+    held_out: pd.DataFrame,
+    *,
+    feature_year: int,
+    anchor_years: list[int],
+    recall: float,
+    n_clusters: int,
+    seed: int,
+) -> pd.DataFrame:
+    """Fit both stages on one training fold and score its held-out anchors once.
+
+    Stage A's exemplars and recall threshold are learned only from ``training``.
+    Stage B matches the deployed fit: all training anchors, stacked over
+    ``anchor_years``. Held-out anchors are scored only at ``feature_year`` because
+    that is the surface the operational pipeline applies.
+    """
+    training = training[training.role.isin(["anchor_clearcut", "anchor_nonforest"])]
+    held_out = held_out[held_out.role.isin(["anchor_clearcut", "anchor_nonforest"])]
+    cols = band_columns(training, feature_year)
+
+    exemplars = anchor_exemplars(training, anchor_years, n_clusters, seed)
+    train_sim = max_exemplar_similarity(training, cols, exemplars)
+    threshold = float(
+        np.quantile(train_sim[training.role == "anchor_clearcut"], 1.0 - recall)
+    )
+    held_out_sim = max_exemplar_similarity(held_out, cols, exemplars)
+
+    x_train, y_train, _ = training_matrix(training, anchor_years)
+    model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
+    model.fit(x_train, y_train)
+    probability = model.predict_proba(held_out[cols].to_numpy(float))[:, 1]
+
+    return pd.DataFrame({
+        "source_index": held_out.index.to_numpy(),
+        "role": held_out.role.to_numpy(),
+        "block": held_out.block.to_numpy(),
+        "truth": (held_out.role == "anchor_clearcut").astype(int).to_numpy(),
+        "probability": probability,
+        "similarity": held_out_sim.to_numpy(),
+        "stage_a_threshold": threshold,
+        "passed_stage_a": (held_out_sim >= threshold).to_numpy(),
+    })
+
+
+def pipeline_block_cv_predictions(
+    table: pd.DataFrame,
+    *,
+    feature_year: int,
+    anchor_years: list[int],
+    recall: float,
+    n_clusters: int,
+    seed: int,
+) -> pd.DataFrame:
+    """Out-of-fold predictions for the complete two-stage operational pipeline."""
+    anchors = table[table.role.isin(["anchor_clearcut", "anchor_nonforest"])]
+    groups = anchors.block.to_numpy()
+    cv = GroupKFold(n_splits=min(5, len(np.unique(groups))))
+    folds = []
+    for fold, (train_idx, test_idx) in enumerate(cv.split(anchors, groups=groups)):
+        predictions = pipeline_fold_predictions(
+            anchors.iloc[train_idx],
+            anchors.iloc[test_idx],
+            feature_year=feature_year,
+            anchor_years=anchor_years,
+            recall=recall,
+            n_clusters=n_clusters,
+            seed=seed,
+        )
+        folds.append(predictions.assign(fold=fold))
+    return pd.concat(folds, ignore_index=True)
+
+
+def pipeline_cv_metrics(predictions: pd.DataFrame, decision: float) -> dict[str, float | int]:
+    """Conditional Stage-B diagnostics and end-to-end two-stage decision metrics."""
+    truth = predictions.truth.to_numpy(dtype=int)
+    passed = predictions.passed_stage_a.to_numpy(dtype=bool)
+    probability = predictions.probability.to_numpy(float)
+    survivors = predictions[passed]
+
+    predicted = passed & (probability >= decision)
+    positive = truth == 1
+    negative = ~positive
+    tp = int((predicted & positive).sum())
+    fn = int((~predicted & positive).sum())
+    fp = int((predicted & negative).sum())
+    tn = int((~predicted & negative).sum())
+    sensitivity = tp / (tp + fn) if tp + fn else float("nan")
+    specificity = tn / (tn + fp) if tn + fp else float("nan")
+    precision = tp / (tp + fp) if tp + fp else float("nan")
+    f1 = (
+        2 * precision * sensitivity / (precision + sensitivity)
+        if np.isfinite(precision) and np.isfinite(sensitivity) and precision + sensitivity
+        else float("nan")
+    )
+
+    survivor_truth = survivors.truth.to_numpy(dtype=int)
+    survivor_probability = survivors.probability.to_numpy(float)
+    survivor_auc = (
+        roc_auc_score(survivor_truth, survivor_probability)
+        if len(np.unique(survivor_truth)) == 2
+        else float("nan")
+    )
+    survivor_accuracy = (
+        ((survivor_probability >= decision).astype(int) == survivor_truth).mean()
+        if len(survivors)
+        else float("nan")
+    )
+    return {
+        "pipeline_accuracy": float((predicted == positive).mean()),
+        "pipeline_balanced_accuracy": float((sensitivity + specificity) / 2),
+        "pipeline_sensitivity": float(sensitivity),
+        "pipeline_specificity": float(specificity),
+        "pipeline_precision": float(precision),
+        "pipeline_f1": float(f1),
+        "pipeline_true_positive": tp,
+        "pipeline_false_negative": fn,
+        "pipeline_false_positive": fp,
+        "pipeline_true_negative": tn,
+        "stage_b_survivor_auc": float(survivor_auc),
+        "stage_b_survivor_accuracy": float(survivor_accuracy),
+        "n_stage_b_survivors": int(len(survivors)),
+        "n_stage_b_survivor_positive": int(survivor_truth.sum()),
+        "n_stage_b_survivor_negative": int((1 - survivor_truth).sum()),
+        "stage_a_clearcut_pass_rate": float(predictions.loc[positive, "passed_stage_a"].mean()),
+        "stage_a_nonforest_pass_rate": float(predictions.loc[negative, "passed_stage_a"].mean()),
+    }
+
+
 def fit_and_evaluate(table: pd.DataFrame, cols: list[str], seed: int,
                      anchor_years: list[int] | None = None,
-                     in_mask: pd.Series | None = None):
+                     stage_a_recall: float | None = None,
+                     stage_a_clusters: int = 6,
+                     decision_threshold: float = 0.5):
     """Fit the anchor classifier and report block-CV scores against a shuffle baseline.
 
-    Two AUCs are reported and the *conditional* one is the operational number.
-    Stage B only ever decides pixels that already cleared Stage A, so scoring it
-    over all anchors credits it for separating easy negatives the mask has
-    already removed — in the committed run only 11.6 % of non-forest anchors
-    reach Stage B at all. The unconditional figure is kept for comparability with
-    the Stage-A sweep, but it flatters the classifier.
+    Final gated-decision metrics over every held-out anchor evaluate the complete
+    rule used on ambiguous strata, using anchors as the labelled proxy population.
+    Stage-B AUC among Stage-A survivors is reported separately as a conditional
+    diagnostic; the all-anchor AUC is kept for comparability with the exploratory
+    sweep. Both stages are refit inside each spatial training fold, and each
+    held-out anchor is scored once at the operational feature year.
     """
     if anchor_years:
         x, y, groups = training_matrix(table, anchor_years)
@@ -159,7 +315,8 @@ def fit_and_evaluate(table: pd.DataFrame, cols: list[str], seed: int,
 
     model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
     n_splits = min(5, len(np.unique(groups)))
-    auc, acc, auc_shuffled = block_cv_scores(x, y, groups, seed)
+    label_repeats = len(anchor_years) if anchor_years else 1
+    auc, acc, auc_shuffled = block_cv_scores(x, y, groups, seed, label_repeats)
 
     print(f"\nStage B — GroupKFold({n_splits}) on 0.25 deg blocks, n={len(y):,} "
           f"({y.sum():,} clearcut / {(1 - y).sum():,} non-forest)"
@@ -171,23 +328,29 @@ def fit_and_evaluate(table: pd.DataFrame, cols: list[str], seed: int,
 
     metrics = {"auc_block_cv": auc, "accuracy_block_cv": acc, "auc_label_shuffle": auc_shuffled}
 
-    # Conditional evaluation: Stage B only ever decides Stage-A survivors, so this
-    # is the operational number. The unconditional AUC above is inflated by easy
-    # negatives the mask already removed.
-    if in_mask is not None:
-        conditional = table[table.role.isin(["anchor_clearcut", "anchor_nonforest"]) & in_mask]
-        if conditional.role.nunique() == 2:
-            xc, yc, gc = (training_matrix(conditional.reset_index(drop=True), anchor_years)
-                          if anchor_years
-                          else (conditional[cols].to_numpy(float),
-                                (conditional.role == "anchor_clearcut").astype(int).to_numpy(),
-                                conditional.block.to_numpy()))
-            auc_c, acc_c, _ = block_cv_scores(xc, yc, gc, seed)
-            print(f"  conditional on Stage A: AUC {auc_c:.4f}   accuracy {acc_c:.4f}   "
-                  f"n={len(yc):,} ({yc.sum():,} pos / {(1 - yc).sum():,} neg)  <- OPERATIONAL")
-            metrics |= {"auc_block_cv_conditional": auc_c,
-                        "accuracy_block_cv_conditional": acc_c,
-                        "n_conditional": int(len(yc))}
+    if stage_a_recall is not None:
+        feature_year = int(cols[0].rsplit("_", 1)[1])
+        predictions = pipeline_block_cv_predictions(
+            table,
+            feature_year=feature_year,
+            anchor_years=anchor_years or [feature_year],
+            recall=stage_a_recall,
+            n_clusters=stage_a_clusters,
+            seed=seed,
+        )
+        pipeline_metrics = pipeline_cv_metrics(predictions, decision=decision_threshold)
+        print(f"  end-to-end two-stage anchor proxy: balanced accuracy "
+              f"{pipeline_metrics['pipeline_balanced_accuracy']:.4f}   "
+              f"sensitivity {pipeline_metrics['pipeline_sensitivity']:.4f}   "
+              f"specificity {pipeline_metrics['pipeline_specificity']:.4f}   "
+              f"precision {pipeline_metrics['pipeline_precision']:.4f}  <- FINAL RULE")
+        print(f"  Stage B among fold-local Stage-A survivors: AUC "
+              f"{pipeline_metrics['stage_b_survivor_auc']:.4f}   accuracy "
+              f"{pipeline_metrics['stage_b_survivor_accuracy']:.4f}   "
+              f"n={pipeline_metrics['n_stage_b_survivors']:,} "
+              f"({pipeline_metrics['n_stage_b_survivor_positive']:,} pos / "
+              f"{pipeline_metrics['n_stage_b_survivor_negative']:,} neg)  <- CONDITIONAL")
+        metrics |= pipeline_metrics
 
     model.fit(x, y)
     return model, metrics
@@ -245,7 +408,15 @@ def main() -> None:
         print(f"  {role:<17} median sim {sim[rows].median():.4f}   "
               f"passes mask {in_mask[rows].mean():.1%}")
 
-    model, metrics = fit_and_evaluate(table, cols, args.seed, args.anchor_years, in_mask)
+    model, metrics = fit_and_evaluate(
+        table,
+        cols,
+        args.seed,
+        args.anchor_years,
+        stage_a_recall=args.recall,
+        stage_a_clusters=args.anchor_clusters,
+        decision_threshold=args.decision,
+    )
     prob = pd.Series(model.predict_proba(table[cols].to_numpy(float))[:, 1], index=table.index)
     summary = report_apply(table, prob, in_mask, args.decision)
 

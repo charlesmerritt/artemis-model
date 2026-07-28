@@ -26,6 +26,10 @@ S3_rejected like S5 on metrics LCMS derives independently. If S3_accepted and
 S3_rejected are indistinguishable, the S3 decision is noise and should be
 reported as such.
 
+All rates describe a restricted sampling frame: one-pixel-eroded interiors of
+connected patches at least 5 acres. They must not be extrapolated to patch
+boundaries, smaller components, or the full accepted/rejected S3 populations.
+
 Note the prior: earlier project work found LCMS tree-removal almost never fires
 on statewide confused-class points (``notes/clearcut-vs-agriculture-embeddings.md``).
 Land-use and land-cover metrics are therefore reported alongside the removal
@@ -67,13 +71,18 @@ def build_groups(strata: np.ndarray, add_back: np.ndarray) -> dict[str, np.ndarr
     }
 
 
-def sample_points(mask: np.ndarray, n: int, transform, crs, rng, min_acres=5.0) -> pd.DataFrame:
-    """Interior pixels of patches above the MMU, so labels are not edge-contaminated."""
+def eligible_patch_interiors(mask: np.ndarray, min_acres: float = 5.0) -> np.ndarray:
+    """Sampling frame: eroded interiors of connected patches above ``min_acres``."""
     labels, _ = ndimage.label(mask, structure=np.ones((3, 3)))
     sizes = np.bincount(labels.ravel())
     keep = np.nonzero(sizes * ACRES_PER_PIXEL >= min_acres)[0]
     big = np.isin(labels, keep[keep != 0])
-    interior = ndimage.binary_erosion(big, np.ones((3, 3)))
+    return ndimage.binary_erosion(big, np.ones((3, 3)))
+
+
+def sample_points(mask: np.ndarray, n: int, transform, crs, rng, min_acres=5.0) -> pd.DataFrame:
+    """Interior pixels of patches above the MMU, so labels are not edge-contaminated."""
+    interior = eligible_patch_interiors(mask, min_acres)
     rows, cols = np.nonzero(interior)
     if rows.size == 0:
         return pd.DataFrame()
