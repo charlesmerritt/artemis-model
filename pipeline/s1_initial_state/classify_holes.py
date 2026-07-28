@@ -52,6 +52,8 @@ from sklearn.model_selection import GroupKFold, cross_val_predict
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 
+from pipeline.s1_initial_state.embed_holes import check_feature_years
+
 REPO = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO / "data/interim/treemap_holes"
 ACRES_PER_PIXEL = 0.2224
@@ -392,6 +394,7 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, default=DATA_DIR)
     args = parser.parse_args()
 
+    check_feature_years([args.feature_year, *args.anchor_years])
     table = pd.read_csv(args.embeddings)
     cols = band_columns(table, args.feature_year)
     print(f"{len(table):,} points, {len(cols)} embedding bands for {args.feature_year}")

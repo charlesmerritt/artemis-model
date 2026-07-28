@@ -97,10 +97,18 @@ def main() -> None:
     with rasterio.open(args.strata_tif) as src:
         strata = src.read(1)
         profile = src.profile
+        transform, crs = src.transform, src.crs
     with rasterio.open(args.scored_tif) as src:
+        if src.shape != strata.shape:
+            raise ValueError(f"scored raster {src.shape} != strata {strata.shape}")
+        if src.crs != crs:
+            raise ValueError(f"scored raster CRS {src.crs} != strata CRS {crs}")
+        aligned = np.allclose(tuple(src.transform), tuple(transform), rtol=0, atol=1e-6)
+        if not aligned:
+            raise ValueError(
+                f"scored raster transform {src.transform} != strata transform {transform}"
+            )
         scored = src.read()
-    if scored.shape[1:] != strata.shape:
-        raise ValueError(f"scored raster {scored.shape[1:]} != strata {strata.shape}")
 
     # Decoded with the same fixed-point scale used on export; see
     # embed_holes.SCORE_SCALE for why 1/100 was not fine enough.

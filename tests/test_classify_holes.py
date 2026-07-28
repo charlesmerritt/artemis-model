@@ -9,6 +9,7 @@
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -252,6 +253,22 @@ def test_post_2022_feature_years_are_refused(years):
 
 def test_feature_years_through_2022_are_allowed():
     embed.check_feature_years([2017, 2020, 2022])
+
+
+def test_cli_rejects_post_2022_anchor_year_before_loading_embeddings(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["classify_holes", "--anchor-years", "2018", "2024"],
+    )
+    monkeypatch.setattr(
+        pd,
+        "read_csv",
+        lambda *_args, **_kwargs: pytest.fail("embeddings loaded before year validation"),
+    )
+
+    with pytest.raises(ValueError, match="2024.*leak"):
+        classify.main()
 
 
 def test_unit_rows_normalises_and_survives_a_zero_vector():

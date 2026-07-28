@@ -7,10 +7,14 @@ thousands of acres of pasture back into TreeMap.
 """
 
 import importlib.util
+import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_origin
 
 _ROOT = Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location(
@@ -57,6 +61,67 @@ def test_mmu_drops_speckle_and_keeps_blocks():
     assert not out[2, 2]
     assert out[10:16, 10:16].all()
     assert out.sum() == 36
+
+
+def _write_raster(path, data, transform, crs):
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=data.shape[-2],
+        width=data.shape[-1],
+        count=1 if data.ndim == 2 else data.shape[0],
+        dtype=data.dtype,
+        transform=transform,
+        crs=crs,
+    ) as dst:
+        dst.write(data, 1) if data.ndim == 2 else dst.write(data)
+
+
+@pytest.mark.parametrize(
+    ("scored_transform", "scored_crs", "message"),
+    [
+        (from_origin(1, 2, 1, 1), "EPSG:5070", "transform"),
+        (from_origin(0, 2, 1, 1), "EPSG:4326", "CRS"),
+    ],
+)
+def test_main_rejects_same_shape_misaligned_score_grid(
+    tmp_path, monkeypatch, scored_transform, scored_crs, message
+):
+    strata_path = tmp_path / "strata.tif"
+    scored_path = tmp_path / "scores.tif"
+    model_path = tmp_path / "model.json"
+    transform = from_origin(0, 2, 1, 1)
+    _write_raster(
+        strata_path,
+        np.ones((2, 2), dtype=np.uint8),
+        transform,
+        "EPSG:5070",
+    )
+    _write_raster(
+        scored_path,
+        np.zeros((2, 2, 2), dtype=np.uint16),
+        scored_transform,
+        scored_crs,
+    )
+    model_path.write_text(json.dumps({
+        "similarity_threshold": 0.9,
+        "decision_threshold": 0.5,
+    }))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "finalize_add_back",
+            "--strata-tif", str(strata_path),
+            "--scored-tif", str(scored_path),
+            "--model-json", str(model_path),
+            "--out-dir", str(tmp_path),
+        ],
+    )
+
+    with pytest.raises(ValueError, match=message):
+        finalize.main()
 
 
 def test_export_precision_bounds_decision_flips_to_half_a_step():
