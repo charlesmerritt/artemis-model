@@ -205,6 +205,48 @@ def row_tiles(n_tiles: int) -> list[tuple[float, float, float, float]]:
     ]
 
 
+def tile_download_params(bounds: tuple[float, float, float, float]) -> dict:
+    """Bound one Earth Engine download to an exact TreeMap-aligned tile."""
+    left, bottom, right, top = bounds
+    width_pixels = (right - left) / OUTPUT_SCALE_M
+    height_pixels = (top - bottom) / OUTPUT_SCALE_M
+    width, height = round(width_pixels), round(height_pixels)
+    if not np.allclose(
+        (width_pixels, height_pixels), (width, height), rtol=0, atol=1e-6
+    ):
+        raise ValueError(f"tile bounds {bounds} do not span whole TreeMap pixels")
+
+    return {
+        "crs": "EPSG:5070",
+        "crs_transform": [
+            OUTPUT_SCALE_M, 0, left, 0, -OUTPUT_SCALE_M, top,
+        ],
+        "dimensions": [width, height],
+        "format": "GEO_TIFF",
+    }
+
+
+def tile_canvas_offsets(transform) -> tuple[int, int]:
+    """Return integer canvas offsets, rejecting any tile not on the TreeMap grid."""
+    linear = (transform.a, transform.b, transform.d, transform.e)
+    expected = (OUTPUT_SCALE_M, 0, 0, -OUTPUT_SCALE_M)
+    if not np.allclose(linear, expected, rtol=0, atol=1e-6):
+        raise ValueError(f"Earth Engine tile pixel grid {linear} != expected {expected}")
+
+    left, _, _, top = AOI_BOUNDS_5070
+    row_offset = (top - transform.f) / OUTPUT_SCALE_M
+    col_offset = (transform.c - left) / OUTPUT_SCALE_M
+    row0, col0 = round(row_offset), round(col_offset)
+    if not np.allclose(
+        (row_offset, col_offset), (row0, col0), rtol=0, atol=1e-6
+    ):
+        raise ValueError(
+            "Earth Engine tile origin is not aligned to the TreeMap grid: "
+            f"row offset {row_offset}, column offset {col_offset}"
+        )
+    return row0, col0
+
+
 def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
     import urllib.request
 
@@ -220,10 +262,9 @@ def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
         .toUint16()
     )
 
-    # Earth Engine rounds each requested region outward, so tiles come back a row
-    # or column larger than asked and overlap their neighbours. Concatenating them
-    # would drift the grid; instead every tile is placed by its own geotransform
-    # into a canvas sized from AOI_BOUNDS_5070. Overlaps rewrite identical values.
+    # Earth Engine ignores ``region`` when a CRS and transform are supplied. Each
+    # request therefore needs a tile-specific affine plus exact pixel dimensions;
+    # the returned affine is still checked before the tile is placed on the canvas.
     left, bottom, right, top = AOI_BOUNDS_5070
     height = round((top - bottom) / OUTPUT_SCALE_M)
     width = round((right - left) / OUTPUT_SCALE_M)
@@ -231,25 +272,26 @@ def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
 
     out_tif.parent.mkdir(parents=True, exist_ok=True)
     for i, bounds in enumerate(row_tiles(n_tiles), start=1):
-        region = ee.Geometry.Rectangle(list(bounds), proj="EPSG:5070", geodesic=False)
-        url = stacked.getDownloadURL({
-            "region": region,
-            "scale": OUTPUT_SCALE_M,
-            "crs": "EPSG:5070",
-            "format": "GEO_TIFF",
-        })
+        params = tile_download_params(bounds)
+        url = stacked.getDownloadURL(params)
         tmp = out_tif.parent / f".tile_{i}.tif"
         urllib.request.urlretrieve(url, tmp)
         with rasterio.open(tmp) as src:
+            if src.crs != rasterio.crs.CRS.from_epsg(5070):
+                raise ValueError(f"Earth Engine tile CRS {src.crs} != EPSG:5070")
+            expected_width, expected_height = params["dimensions"]
+            if (src.width, src.height) != (expected_width, expected_height):
+                raise ValueError(
+                    f"Earth Engine tile size {(src.width, src.height)} != expected "
+                    f"{(expected_width, expected_height)}"
+                )
+            row0, col0 = tile_canvas_offsets(src.transform)
             data = src.read()
-            tf = src.transform
             profile = profile or src.profile
         tmp.unlink()
 
         if canvas is None:
             canvas = np.zeros((data.shape[0], height, width), dtype=data.dtype)
-        row0 = round((top - tf.f) / OUTPUT_SCALE_M)
-        col0 = round((tf.c - left) / OUTPUT_SCALE_M)
         # Clip the paste to the canvas; the outward rounding can overhang an edge.
         src_r0, dst_r0 = (0, row0) if row0 >= 0 else (-row0, 0)
         src_c0, dst_c0 = (0, col0) if col0 >= 0 else (-col0, 0)

@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from rasterio.transform import from_origin
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -253,6 +254,35 @@ def test_post_2022_feature_years_are_refused(years):
 
 def test_feature_years_through_2022_are_allowed():
     embed.check_feature_years([2017, 2020, 2022])
+
+
+def test_tile_download_bounds_a_later_strip_on_the_treemap_grid():
+    first = embed.tile_download_params(embed.row_tiles(6)[0])
+    bounds = embed.row_tiles(6)[2]
+    params = embed.tile_download_params(bounds)
+
+    width = round((bounds[2] - bounds[0]) / embed.OUTPUT_SCALE_M)
+    height = round((bounds[3] - bounds[1]) / embed.OUTPUT_SCALE_M)
+    assert params["crs_transform"] == [30, 0, bounds[0], 0, -30, bounds[3]]
+    assert params["dimensions"] == [width, height]
+    assert params["crs_transform"] != first["crs_transform"]
+    assert "scale" not in params
+    assert "region" not in params
+
+
+def test_tile_canvas_offsets_reject_fractional_grid_origin():
+    left, _, _, top = embed.AOI_BOUNDS_5070
+    half_pixel_shift = from_origin(left - 15, top, 30, 30)
+
+    with pytest.raises(ValueError, match="not aligned"):
+        embed.tile_canvas_offsets(half_pixel_shift)
+
+
+def test_tile_canvas_offsets_allow_aligned_edge_overhang():
+    left, _, _, top = embed.AOI_BOUNDS_5070
+    aligned_overhang = from_origin(left - 30, top + 30, 30, 30)
+
+    assert embed.tile_canvas_offsets(aligned_overhang) == (-1, -1)
 
 
 def test_cli_rejects_post_2022_anchor_year_before_loading_embeddings(monkeypatch):
