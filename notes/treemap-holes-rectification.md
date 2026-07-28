@@ -427,6 +427,10 @@ calculated for the spatially correlated pixel sample.
   after the export scale changed, producing 0–100 / 120–199 plots even though
   the final acreage mask decoded correctly. `test_make_report_figures.py` pins
   the report path to the shared codec.
+- **The two leakage/alignment boundaries fail closed.** `classify_holes` rejects
+  both an operational feature year and any anchor year after 2022 before loading
+  embeddings. `finalize_add_back` checks score-raster shape, CRS, and affine
+  transform against the strata grid before combining arrays by index.
 - **0.98 / 0.329 are sampling-frame proxies, not population measurements.** LCMS
   has its own unquantified error rate, and it shares optical sensors with
   AlphaEarth — independent in producer and algorithm, not in underlying imagery.

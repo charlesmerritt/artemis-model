@@ -360,12 +360,12 @@ Every claim above rests on one of the following checks.
 | V3 | AlphaEarth integrity: L2 norm, zero-variance bands, duplicate coordinates | 1.0001 ± 0.002; 0 zero-variance; 0 duplicates; 0 missing bands in 4,500 × 3 samples |
 | V4 | Paired-anchor label-shuffle baseline | AUC 0.497 (chance) vs 0.982 real |
 | V5 | Spatial-block CV rather than random folds | GroupKFold, 19 blocks at 0.25° |
-| V6 | Feature-year leakage guard | raises on any year > 2022 |
+| V6 | Feature- and anchor-year leakage guard | rejects any year > 2022 before loading embeddings or fitting |
 | V7 | sklearn → Earth Engine model transfer (scaler folded into one dot product) | reproduces to 1 × 10⁻⁹ (unit test) |
 | V8 | Exported raster vs local model at sample points | r = 0.988 (probability), 0.991 (similarity); 97.7 % decision agreement |
 | V9 | Tile reassembly onto TreeMap's grid | output 3527 × 4418, exact match to strata raster |
 | V10 | Independent area reconciliation against FIA | see §6.2 |
-| V11 | Unit tests | 140 passed, 10 skipped; `ruff check` clean |
+| V11 | Unit tests | 143 passed, 10 skipped; `ruff check` clean |
 | V12 | External validation of S3 against USFS LCMS | see §6.3 |
 | V14 | Local FIADB SQL vs the public EVALIDator API, five counties as one domain | 1,255,424 ac both ways, differ by 0.04 ac |
 | V13 | Roads / developed classes in the add-back | 405 ac Developed-Roads (0.53 %); 4 of 2,974 patches linear |
@@ -374,6 +374,7 @@ Every claim above rests on one of the following checks.
 | V17 | Export quantisation bounded to half a step | scores exported at 1/10000 (5e-5 band); 1/100 shifted 39 ac |
 | V18 | LCMS extrapolation restricted to its eligible-interior sampling frame | 1,285 accepted ac; 7,176 rejected ac; frame recall proxy 0.329 |
 | V19 | Analysis-domain mask separates TreeMap coverage, in-AOI holes, and outside-bbox cells | 4,922,148 + 3,282,389 = 8,204,537 px |
+| V20 | Final score raster is aligned before array-wise combination | shape, CRS, and affine transform must match the strata raster |
 
 **V8 note.** The residual disagreement is scale, not error: the model was trained
 on AlphaEarth at its native 10 m, while the exported product is 30 m to match

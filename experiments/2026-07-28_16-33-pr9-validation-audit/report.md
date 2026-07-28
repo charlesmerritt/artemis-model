@@ -2,7 +2,7 @@
 
 - Date: 2026-07-28 16:33 EDT
 - Prompt: Resolve the PR review finding that Stage A was fitted before spatial cross-validation.
-- Repo commit before run: `bc99e1021857ba6f3fc0ed02ad929cd18cec7162`
+- Repo commit before run: `3744026395e25e442abafd4d25265ef0b3a3ebc3`
 - Status: completed
 - Primary metric: balanced accuracy of the final two-stage decision over the held-out anchor proxy population
 - Baseline: global Stage-A prefilter followed by conditional GroupKFold
