@@ -1,0 +1,165 @@
+{
+  "aoi_acres": 3465500.4063999997,
+  "hole_acres": 730003.3136,
+  "hole_lifeform_acres": {
+    "Sparse": 3.7807999999999997,
+    "Barren": 1133.7952,
+    "Water": 19668.3888,
+    "Shrub": 36413.9968,
+    "Tree": 65552.6224,
+    "Agriculture": 83731.59839999999,
+    "Developed": 121599.8688,
+    "Herb": 401899.26239999995
+  },
+  "recently_logged_acres": {
+    "2016": 57798.424,
+    "2022": 0.0,
+    "2024": 0.0
+  },
+  "hole_lifeform_acres_by_vintage": {
+    "2016": {
+      "Herb": 381388.4224,
+      "Tree": 113138.6608,
+      "Developed": 93244.3136,
+      "Agriculture": 69411.04,
+      "Shrub": 52014.912,
+      "Water": 19668.3888,
+      "Barren": 1133.7952,
+      "Sparse": 3.7807999999999997
+    },
+    "2022": {
+      "Herb": 401899.26239999995,
+      "Developed": 121599.8688,
+      "Agriculture": 83731.59839999999,
+      "Tree": 65552.6224,
+      "Shrub": 36413.9968,
+      "Water": 19668.3888,
+      "Barren": 1133.7952,
+      "Sparse": 3.7807999999999997
+    },
+    "2024": {
+      "Herb": 385863.1104,
+      "Tree": 151186.8528,
+      "Developed": 120660.896,
+      "Agriculture": 40436.768,
+      "Water": 19668.3888,
+      "Shrub": 11049.721599999999,
+      "Barren": 1133.7952,
+      "Sparse": 3.7807999999999997
+    }
+  },
+  "strata_acres": {
+    "1": 41548.768,
+    "2": 11430.4704,
+    "3": 80741.6528,
+    "4": 70495.23999999999,
+    "5": 525787.1823999999
+  },
+  "recoverable_acres": 204216.13119999997,
+  "interior_fraction": {
+    "S1": 0.2758591157263676,
+    "S2": 0.023231379873920148,
+    "S3": 0.11312584871931182,
+    "S4": 0.11808186765517785
+  },
+  "s1s2_patches": 31101,
+  "s1s2_frac_acres_ge5ac": 0.6977197165597607,
+  "stage_a": [
+    {
+      "k": 1,
+      "nonforest_leak": 0.30266666666666664,
+      "s3_pass": 0.5158428390367554,
+      "threshold": 0.7744493163283855
+    },
+    {
+      "k": 2,
+      "nonforest_leak": 0.248,
+      "s3_pass": 0.4816223067173637,
+      "threshold": 0.8369920460948237
+    },
+    {
+      "k": 4,
+      "nonforest_leak": 0.176,
+      "s3_pass": 0.4055766793409379,
+      "threshold": 0.8859806663455748
+    },
+    {
+      "k": 6,
+      "nonforest_leak": 0.116,
+      "s3_pass": 0.3637515842839037,
+      "threshold": 0.9045695612737514
+    },
+    {
+      "k": 8,
+      "nonforest_leak": 0.08666666666666667,
+      "s3_pass": 0.33460076045627374,
+      "threshold": 0.917156847035679
+    },
+    {
+      "k": 12,
+      "nonforest_leak": 0.07666666666666666,
+      "s3_pass": 0.31432192648922685,
+      "threshold": 0.9258061999456999
+    }
+  ],
+  "stage_a_threshold_k6": 0.9045695612737514,
+  "stage_a_median_sim": {
+    "anchor_clearcut": 0.9540578950802372,
+    "anchor_nonforest": 0.8240538846166063,
+    "apply": 0.916099521652293
+  },
+  "stage_b_auc": 0.981821,
+  "stage_b_auc_shuffled": 0.4828652222222222,
+  "stage_b_accuracy": 0.9433333333333334,
+  "apply_variants": {
+    "2022 anchors, 1 centroid": {
+      "3": 0.18250950570342206,
+      "4": 0.829817158931083
+    },
+    "2022 anchors, 6 exemplars": {
+      "3": 0.16476552598225602,
+      "4": 0.7693389592123769
+    },
+    "2018+2022 anchors, 6 exemplars": {
+      "3": 0.2661596958174905,
+      "4": 0.7651195499296765
+    }
+  },
+  "add_back_acres": 75792.36319999999,
+  "add_back_patches": 2975,
+  "add_back_patch_median_ac": 13.5664,
+  "add_back_patch_max_ac": 376.74559999999997,
+  "add_back_by_stratum": {
+    "S1": {
+      "hole_acres": 41548.768,
+      "added_acres": 38785.670399999995
+    },
+    "S2": {
+      "hole_acres": 11430.4704,
+      "added_acres": 2097.4544
+    },
+    "S3": {
+      "hole_acres": 80741.6528,
+      "added_acres": 8078.9024
+    },
+    "S4": {
+      "hole_acres": 70495.23999999999,
+      "added_acres": 26830.336
+    },
+    "S5": {
+      "hole_acres": 525787.1823999999,
+      "added_acres": 0.0
+    }
+  },
+  "fia": {
+    "fia_total_acres": 1803585.0,
+    "fia_forest_acres": 1255424.0,
+    "aoi_acres": 1824689.0288,
+    "treemap_forest_acres": 1094685.7152,
+    "added_acres": 75792.36319999999,
+    "corrected_forest_acres": 1170478.0784,
+    "shortfall_acres": 160738.28480000002,
+    "shortfall_closed_frac": 0.47152651463405426,
+    "remaining_acres": 84945.92160000003
+  }
+}
