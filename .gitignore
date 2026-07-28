@@ -48,3 +48,7 @@ Thumbs.db
 
 # Agents
 .claude/
+
+# Git worktrees
+worktrees/
+.worktrees/
