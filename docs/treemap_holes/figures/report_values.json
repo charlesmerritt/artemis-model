@@ -104,9 +104,9 @@
   ],
   "stage_a_threshold_k6": 0.9045695612737514,
   "stage_a_median_sim": {
-    "anchor_clearcut": 0.9540578950802372,
+    "anchor_clearcut": 0.9540578950802371,
     "anchor_nonforest": 0.8240538846166063,
-    "apply": 0.916099521652293
+    "apply": 0.9160995216522929
   },
   "stage_b_auc": 0.981821,
   "stage_b_auc_shuffled": 0.4828652222222222,
@@ -161,5 +161,13 @@
     "shortfall_acres": 160738.28480000002,
     "shortfall_closed_frac": 0.47152651463405426,
     "remaining_acres": 84945.92160000003
+  },
+  "s3_validation": {
+    "precision_proxy_LU_forest": 0.98,
+    "rejected_still_forest_frac": 0.3583333333333333,
+    "recall_proxy": 0.23317239508980234,
+    "estimated_missed_acres": 26037.485559999994,
+    "s1_reference": 0.9933333333333332,
+    "s5_reference": 0.0783333333333333
   }
 }

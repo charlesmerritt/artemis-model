@@ -451,6 +451,96 @@ def fig8_fia(strata, add_back):
     save(fig, "fig8_fia")
 
 
+def fig9_s3_validation():
+    """External check of the S3 decision against LCMS (skipped if not yet run)."""
+    path = DATA / "s3_validation_summary.csv"
+    if not path.exists():
+        print("  skipping fig9 (run validate_s3_lcms first)")
+        return
+    summary = pd.read_csv(path, index_col=0)
+    order = ["S1_reference_positive", "S3_accepted", "S3_rejected", "S5_reference_negative"]
+    summary = summary.reindex([o for o in order if o in summary.index])
+    pretty = {"S1_reference_positive": "S1\nref +", "S3_accepted": "S3\naccept",
+              "S3_rejected": "S3\nreject", "S5_reference_negative": "S5\nref −"}
+    colours = ["#67000d", "#b2182b", "#f4a582", "#bdbdbd"]
+
+    metrics = [("LU_forest_2022", "LCMS Land Use = Forest (2022)"),
+               ("LC_trees_pre_cut", "LCMS Trees before the cut"),
+               ("LC_trees_2024", "LCMS Trees by 2024"),
+               ("tree_removal_2016_2022", "LCMS Tree Removal 2016–22")]
+    fig, axes = plt.subplots(1, 4, figsize=(13, 3.5), sharey=True)
+    for ax, (col, title) in zip(axes, metrics):
+        vals = summary[col].values
+        ax.bar([pretty[i] for i in summary.index], vals, color=colours, width=0.68)
+        for i, v in enumerate(vals):
+            ax.text(i, v + 0.02, f"{v:.2f}", ha="center", fontsize=8)
+        ax.set_title(title, fontsize=9)
+        ax.set_ylim(0, 1.12)
+        ax.tick_params(axis="x", labelsize=7.5)
+    axes[0].set_ylabel("fraction of sampled points")
+    fig.suptitle("Independent validation of the S3 decision against USFS LCMS "
+                 "(different producer, different algorithm)", fontsize=10.5, y=1.04)
+
+    acc, rej = summary.loc["S3_accepted"], summary.loc["S3_rejected"]
+    s3_hole = VALUES.get("add_back_by_stratum", {}).get("S3", {}).get("hole_acres", 80741.65)
+    s3_added = VALUES.get("add_back_by_stratum", {}).get("S3", {}).get("added_acres", 8078.90)
+    s3_rejected_ac = s3_hole - s3_added
+    true_pos = s3_added * acc["LU_forest_2022"]
+    missed = s3_rejected_ac * rej["LU_forest_2022"]
+    VALUES["s3_validation"] = {
+        "precision_proxy_LU_forest": float(acc["LU_forest_2022"]),
+        "rejected_still_forest_frac": float(rej["LU_forest_2022"]),
+        "recall_proxy": float(true_pos / (true_pos + missed)),
+        "estimated_missed_acres": float(missed),
+        "s1_reference": float(summary.loc["S1_reference_positive", "LU_forest_2022"]),
+        "s5_reference": float(summary.loc["S5_reference_negative", "LU_forest_2022"]),
+    }
+    save(fig, "fig9_s3_validation")
+
+
+def fig10_gee_surfaces():
+    """The two Earth Engine surfaces, so the mask can be inspected visually."""
+    path = DATA / "hole_prob_similarity.tif"
+    if not path.exists():
+        print("  skipping fig10 (run embed_holes apply first)")
+        return
+    with rasterio.open(path) as src:
+        scored = src.read()
+    with rasterio.open(DATA / "treemap_hole_strata.tif") as src:
+        strata = src.read(1)
+    prob = scored[0].astype(float) / 100.0
+    sim = scored[1].astype(float) / 100.0 - 1.0
+    holes = strata > 0
+
+    model = json.loads((DATA / "hole_model.json").read_text())
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.4))
+
+    for ax, surface, title, thr, cmap in [
+        (axes[0], sim, "(a) Stage A: max cosine similarity\nto clearcut exemplars",
+         model["similarity_threshold"], "magma"),
+        (axes[1], prob, "(b) Stage B: classifier probability\nof managed-forest clearcut",
+         model["decision_threshold"], "viridis"),
+    ]:
+        shown = np.where(holes, surface, np.nan)
+        im = ax.imshow(shown, cmap=cmap, vmin=np.nanpercentile(shown, 2),
+                       vmax=np.nanpercentile(shown, 98), interpolation="nearest")
+        ax.set_title(title)
+        ax.axis("off")
+        cb = fig.colorbar(im, ax=ax, fraction=0.036, pad=0.02)
+        cb.ax.axhline(thr, color="red", lw=1.6)
+        cb.set_label(f"red line = threshold {thr:.2f}", fontsize=7.5)
+
+    axes[2].hist(sim[holes], bins=80, alpha=0.7, color="#b2182b", label="similarity", density=True)
+    axes[2].axvline(model["similarity_threshold"], color="#b2182b", ls="--", lw=1.2)
+    axes[2].hist(prob[holes], bins=80, alpha=0.55, color="#2166ac", label="probability", density=True)
+    axes[2].axvline(model["decision_threshold"], color="#2166ac", ls="--", lw=1.2)
+    axes[2].set_xlabel("score over all hole pixels")
+    axes[2].set_ylabel("density")
+    axes[2].set_title("(c) Score distributions with thresholds")
+    axes[2].legend(frameon=False, fontsize=8)
+    save(fig, "fig10_gee_surfaces")
+
+
 def main() -> None:
     strata, add_back, bounds, transform = load_rasters()
     points = pd.read_csv(DATA / "hole_embeddings.csv")
@@ -463,6 +553,8 @@ def main() -> None:
     fig6_stage_b(points)
     fig7_add_back(strata, add_back)
     fig8_fia(strata, add_back)
+    fig9_s3_validation()
+    fig10_gee_surfaces()
 
     FIGS.mkdir(parents=True, exist_ok=True)
     (FIGS / "report_values.json").write_text(json.dumps(VALUES, indent=2))

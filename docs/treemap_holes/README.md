@@ -311,6 +311,8 @@ Every claim above rests on one of the following checks.
 | V9 | Tile reassembly onto TreeMap's grid | output 3527 × 4418, exact match to strata raster |
 | V10 | Independent area reconciliation against FIA | see §6.2 |
 | V11 | Unit tests | 98 passed, 10 skipped; `ruff check` clean |
+| V12 | External validation of S3 against USFS LCMS | see §6.3 |
+| V13 | Roads / developed classes in the add-back | 405 ac Developed-Roads (0.53 %); 4 of 2,975 patches linear |
 
 **V8 note.** The residual disagreement is scale, not error: the model was trained
 on AlphaEarth at its native 10 m, while the exported product is 30 m to match
@@ -355,6 +357,61 @@ The test is therefore one of direction and order of magnitude, not of equality.
 and part of the 65,553 ac of holes that LF2022 calls urban or developed forest,
 excluded here by design though FIA's forest definition would count some of it.
 
+### 6.3 External validation of the S3 decision against LCMS
+
+S3 is the weakest link: it has no regrowth confirmation, and everything else in
+the pipeline derives from LANDFIRE, which cannot validate itself. USFS LCMS
+(Geospatial Technology and Applications Center; Landsat/Sentinel time series,
+annual 1985–2025) is produced by a different group with a different algorithm.
+Its **`Land_Use`** band is the pointed one: a stand clearcut in 2021 is still
+*Forest land use* in 2022 even though its *land cover* is grass — precisely the
+distinction TreeMap loses.
+
+600 interior points were drawn from each of four groups, two being reference
+bookends whose answer is already known (S1 = LANDFIRE-proven cut-and-regrown;
+S5 = stable non-forest).
+
+![S3 validation](figures/fig9_s3_validation.png)
+
+**Figure 9.** LCMS indicators by group.
+
+| group | LU = Forest (2022) | LC Trees pre-cut | LC Trees by 2024 | Tree Removal 2016–22 |
+|---|---|---|---|---|
+| S1 reference **positive** | 0.993 | 0.463 | 0.998 | 0.335 |
+| **S3 accepted** | **0.980** | 0.898 | **0.878** | 0.302 |
+| **S3 rejected** | **0.358** | 0.630 | **0.107** | 0.408 |
+| S5 reference **negative** | 0.078 | 0.078 | 0.137 | 0.002 |
+
+**Finding 8 — the S3 accepts are correct.** 98.0 % of accepted S3 is LCMS Forest
+land use, statistically indistinguishable from the S1 reference positives
+(99.3 %) and far from the S5 negatives (7.8 %). Treating LCMS land use as truth
+gives a **precision proxy of 0.98**.
+
+**Finding 9 — LCMS independently confirms the LANDFIRE lag (Finding 2).** 87.8 %
+of accepted S3 is LCMS *Trees by 2024* — even though S3 is *defined* as **not**
+tree in LANDFIRE 2024. Two independent products disagree about the same pixels
+in the direction predicted: LCMS sees the regrowth, LANDFIRE has not caught up.
+This was not built into the method and is the strongest corroboration obtained.
+
+**Finding 10 — but recall is poor, and the method is too conservative.** 35.8 %
+of *rejected* S3 is still LCMS Forest land use — well above the S5 floor of
+7.8 %. Applying that rate to the 72,663 ac rejected implies roughly **26,000 ac
+of managed forest were wrongly left out**, giving an estimated **S3 recall of
+only 0.23**. That figure sits comfortably inside the 84,946 ac still unexplained
+in the FIA reconciliation (§6.2), and the two independent lines of evidence
+therefore agree: the correction is precise but under-recalls.
+
+**Finding 11 — LCMS Tree Removal is not a usable detector here**, confirming the
+prior from `notes/clearcut-vs-agriculture-embeddings.md`. Its rate is *higher* on
+rejected S3 (0.408) than accepted (0.302) — a negative lift. Do not use it as a
+primary signal; it is reported for completeness.
+
+*Caveats.* LCMS land use has its own error rate, unquantified here, so 0.98 and
+0.23 are proxies, not measured precision and recall. LCMS and AlphaEarth both
+derive from Landsat/Sentinel optical imagery, so they are independent in
+algorithm and producer but not in underlying sensor. Neither substitutes for
+NAIP or field labelling.
+
 ---
 
 ## 7. What did not work
@@ -381,10 +438,12 @@ otherwise look attractive.
 
 ## 8. Limitations and threats to validity
 
-1. **S3's true positive rate is unmeasured.** 10 % acceptance is conservative and
-   consistent with the FIA reconciliation, but no independent evidence confirms
-   it is correct. **This is the single most important open item.** NAIP or field
-   hand-labelling of a stratified S3 sample would resolve it.
+1. **S3 recall is poor: an estimated 0.23** (§6.3). Precision is high (0.98 proxy),
+   so what is added back can be trusted, but roughly 26,000 ac of managed forest
+   is being left out. **Raising S3 recall is now the highest-value improvement**,
+   and the obvious lever is Stage A, which admits only 36 % of S3 — see
+   Figure 5b, where the exemplar count trades S3 admission against non-forest
+   leakage. Both proxies come from LCMS, whose own error rate is unquantified.
 2. **The positive anchors are not a random sample of clearcuts.** They are
    clearcuts *that LANDFIRE later re-recognised as forest*. If re-recognition
    correlates with site quality or species, the anchors are biased toward
@@ -418,10 +477,35 @@ uv run python -m pipeline.s1_initial_state.classify_holes
 uv run python -m pipeline.s1_initial_state.embed_holes apply --tiles 6
 # 6. final add-back mask + acreage report               (local)
 uv run python -m pipeline.s1_initial_state.finalize_add_back
+# 7. external validation of S3 against LCMS             (Earth Engine)
+uv run python -m pipeline.s1_initial_state.validate_s3_lcms
 # figures + report_values.json
 uv run python -m pipeline.s1_initial_state.make_report_figures
 uv run pytest tests/ -q
 ```
+
+**Inspecting the mask interactively.** Figure 10 shows both Earth Engine surfaces
+statically. To pan them over high-resolution imagery — which is how you actually
+judge whether an accepted patch is a clearcut or a pasture — generate a Code
+Editor script carrying the fitted coefficients and paste it into
+[code.earthengine.google.com](https://code.earthengine.google.com):
+
+```bash
+uv run python -m pipeline.s1_initial_state.embed_holes snippet
+# -> docs/treemap_holes/inspect_mask_gee.js
+```
+
+It renders Stage A, Stage B and the accepted mask as toggleable layers on a
+satellite basemap, and clicking any pixel prints both scores with their
+thresholds.
+
+![GEE surfaces](figures/fig10_gee_surfaces.png)
+
+**Figure 10.** (a) Stage A similarity and (b) Stage B probability over the hole
+pixels, with each threshold marked on its colour bar. (c) Score distributions:
+the probability surface is strongly bimodal — most holes are confidently
+non-forest — while similarity is unimodal, which is why the classifier and not
+the mask does the discriminating.
 
 **Earth Engine operational notes.** A whole-AOI download is ~62 MB against a
 50 MB request ceiling; even after tiling, the six-exemplar similarity plus the
@@ -439,9 +523,18 @@ transcribed by hand.
 
 ## 10. Next steps
 
-**Immediate — validation.** Hand-label a stratified NAIP sample across S3 and S4
-to estimate the true positive rate. Until this exists, the 75,792 ac figure has
-aggregate support (FIA) but no per-patch support.
+**Immediate — raise S3 recall.** §6.3 shows the method is precise (0.98 proxy)
+but recalls only ~0.23 of S3, leaving ~26,000 ac out. Stage A is the binding
+constraint, admitting just 36 % of S3. Options, in order of expected value:
+(i) sweep the anchor-recall parameter above 0.90 and the exemplar count below 6,
+using LCMS Land Use as the scoring target; (ii) add anchors from even younger
+post-harvest ages; (iii) drop Stage A for S3 and let the classifier decide alone.
+Any change must be re-checked against both the FIA ceiling and the LCMS
+bookends, since loosening trades directly against the 11.6 % non-forest leak.
+
+**Still outstanding — NAIP or field labelling.** LCMS is an independent product
+but its own error rate is unquantified, so 0.98/0.23 remain proxies. Hand-labelled
+imagery is the only way to measure precision and recall directly.
 
 **Data acquisition.** **LANDFIRE Annual Disturbance (1999–2023)** carries
 disturbance type and year per pixel and is not currently held locally. It would
