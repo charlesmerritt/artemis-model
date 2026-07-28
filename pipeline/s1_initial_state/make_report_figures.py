@@ -497,7 +497,7 @@ def fig9_s3_validation():
 
     acc, rej = summary.loc["S3_accepted"], summary.loc["S3_rejected"]
     s3_hole = VALUES.get("add_back_by_stratum", {}).get("S3", {}).get("hole_acres", 80741.65)
-    s3_added = VALUES.get("add_back_by_stratum", {}).get("S3", {}).get("added_acres", 8078.90)
+    s3_added = VALUES.get("add_back_by_stratum", {}).get("S3", {}).get("added_acres", 8087.58)
     s3_rejected_ac = s3_hole - s3_added
     true_pos = s3_added * acc["LU_forest_2022"]
     missed = s3_rejected_ac * rej["LU_forest_2022"]

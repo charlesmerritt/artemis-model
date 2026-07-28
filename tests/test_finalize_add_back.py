@@ -59,6 +59,53 @@ def test_mmu_drops_speckle_and_keeps_blocks():
     assert out.sum() == 36
 
 
+def test_export_precision_bounds_decision_flips_to_half_a_step():
+    """Regression: at 1/100 the exported scores disagreed with the local model.
+
+    ``finalize_add_back`` compares decoded raster values against the model's
+    full-precision thresholds. Encoding at hundredths pushed a true similarity of
+    0.9046 down to 0.90 (wrongly rejected at a 0.90457 threshold) and a true
+    probability of 0.499 up to 0.50 (wrongly accepted at 0.5).
+
+    No fixed-point scale can preserve a comparison against an arbitrary real
+    threshold exactly — a value within half a step of the boundary will always be
+    able to cross it. What the scale controls is *how wide* that band is. This
+    asserts the bound rather than exactness, and pins the specific values that
+    used to flip at 1/100 but no longer do.
+    """
+    scale = finalize_scale()
+    half_step = 0.5 / scale
+    sim_threshold, dec_threshold = 0.9045695612737514, 0.5
+
+    def round_trip(value, offset=0.0):
+        return round((value + offset) * scale) / scale - offset
+
+    for value, threshold, offset in (
+        [(v, sim_threshold, 1.0) for v in np.linspace(0.895, 0.915, 2001)]
+        + [(v, dec_threshold, 0.0) for v in np.linspace(0.490, 0.510, 2001)]
+    ):
+        if (round_trip(value, offset) >= threshold) != (value >= threshold):
+            assert abs(value - threshold) <= half_step, (
+                f"{value} flipped but is {abs(value - threshold):.2e} from the "
+                f"threshold, beyond the {half_step:.2e} half-step bound"
+            )
+
+    # The concrete values that broke at 1/100 must now agree with the model.
+    assert round_trip(0.9046, 1.0) >= sim_threshold
+    assert round_trip(0.9049, 1.0) >= sim_threshold
+    assert round_trip(0.499) < dec_threshold
+    assert round_trip(0.495) < dec_threshold
+
+
+def finalize_scale() -> int:
+    """The fixed-point scale the export and the decoder must agree on."""
+    spec = importlib.util.spec_from_file_location(
+        "embed_holes", _ROOT / "pipeline/s1_initial_state/embed_holes.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.SCORE_SCALE
+
+
 def test_summary_accounts_for_every_stratum_and_the_mmu_loss():
     strata = np.array([[1, 3, 5], [3, 4, 0]], dtype=np.uint8)
     raw = np.array([[True, True, False], [False, True, False]])

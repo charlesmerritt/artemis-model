@@ -50,6 +50,16 @@ CHUNK = 500  # points per getInfo call; keeps requests under EE payload limits
 AOI_BOUNDS_5070 = (1210125.0, 831795.0, 1342665.0, 937605.0)
 OUTPUT_SCALE_M = 30
 
+# Fixed-point scale for the exported score bands. This must be fine enough that
+# quantisation cannot flip a decision: ``finalize_add_back`` compares decoded
+# values against the model's full-precision thresholds, so a coarse scale moves
+# pixels across the boundary in both directions. At 1/100 a true similarity of
+# 0.9046 encoded to 0.90 was wrongly rejected against a 0.90457 threshold, and a
+# true probability of 0.499 encoded to 0.50 was wrongly accepted at 0.5. At
+# 1/10000 the worst-case shift is 5e-5. Bands stay inside uint16: probability
+# reaches 10000 and (cosine + 1) reaches 20000, against a 65535 ceiling.
+SCORE_SCALE = 10_000
+
 
 def check_feature_years(years) -> None:
     bad = [y for y in years if y > MAX_FEATURE_YEAR]
@@ -198,9 +208,9 @@ def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
     check_feature_years([model["feature_year"]])
 
     stacked = (
-        probability_image(ee, model).multiply(100).round()
-        .addBands(similarity_image(ee, model).add(1).multiply(100).round())
-        .toUint8()
+        probability_image(ee, model).multiply(SCORE_SCALE).round()
+        .addBands(similarity_image(ee, model).add(1).multiply(SCORE_SCALE).round())
+        .toUint16()
     )
 
     # Earth Engine rounds each requested region outward, so tiles come back a row
@@ -245,7 +255,8 @@ def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
                    transform=rasterio.transform.from_origin(left, top, OUTPUT_SCALE_M, OUTPUT_SCALE_M))
     with rasterio.open(out_tif, "w", **profile) as dst:
         dst.write(canvas)
-    print(f"wrote {out_tif} {canvas.shape} (band 1 = prob*100, band 2 = (cosine+1)*100)")
+    print(f"wrote {out_tif} {canvas.shape} "
+          f"(band 1 = prob*{SCORE_SCALE}, band 2 = (cosine+1)*{SCORE_SCALE})")
 
 
 def run_snippet(model_json: Path, out_js: Path) -> None:

@@ -3,8 +3,8 @@
 Last stage. Combines three local rasters into one decision per hole pixel:
 
 - ``treemap_hole_strata.tif``    which stratum the hole belongs to (S1-S5)
-- ``hole_prob_similarity.tif``   band 1 = classifier probability x100,
-                                 band 2 = (cosine similarity + 1) x100,
+- ``hole_prob_similarity.tif``   band 1 = probability x SCORE_SCALE,
+                                 band 2 = (cosine similarity + 1) x SCORE_SCALE,
                                  downloaded by ``embed_holes.py apply``
 - the thresholds recorded in ``hole_model.json``
 
@@ -33,6 +33,8 @@ import numpy as np
 import pandas as pd
 import rasterio
 from scipy import ndimage
+
+from pipeline.s1_initial_state.embed_holes import SCORE_SCALE
 
 REPO = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO / "data/interim/treemap_holes"
@@ -100,8 +102,10 @@ def main() -> None:
     if scored.shape[1:] != strata.shape:
         raise ValueError(f"scored raster {scored.shape[1:]} != strata {strata.shape}")
 
-    prob = scored[0].astype(float) / 100.0
-    similarity = scored[1].astype(float) / 100.0 - 1.0
+    # Decoded with the same fixed-point scale used on export; see
+    # embed_holes.SCORE_SCALE for why 1/100 was not fine enough.
+    prob = scored[0].astype(float) / SCORE_SCALE
+    similarity = scored[1].astype(float) / SCORE_SCALE - 1.0
 
     raw = decide(strata, prob, similarity, model["similarity_threshold"], model["decision_threshold"])
     raw &= strata > 0

@@ -2,11 +2,19 @@
 pytest configuration and shared fixtures.
 """
 
+import sys
+
 import pytest
 from pathlib import Path
 
 # Project root — all tests resolve paths relative to this
 PROJECT_ROOT = Path(__file__).parent.parent
+
+# Make `pipeline.*` importable. Modules loaded by file path (importlib) still
+# execute their own absolute imports, which fail without the repo root on the
+# path even though `python -m pipeline...` works fine.
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 @pytest.fixture

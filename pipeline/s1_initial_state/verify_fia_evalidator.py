@@ -33,7 +33,7 @@ COUNTIES = (3, 23, 47, 121, 125)  # Baker, Columbia, Hamilton, Suwannee, Union
 
 # From the pipeline; see docs/treemap_holes/README.md section 6.2.
 TREEMAP_FOREST_ACRES = 1_094_685.7152
-ADD_BACK_ACRES = 75_792.3632
+ADD_BACK_ACRES = 75_831.0608
 LOCAL_SQL_ESTIMATE = 1_255_424.0  # what the local FIADB SQLite query returned
 
 

@@ -23,9 +23,10 @@ that decides which holes should be returned to TreeMap. We find that LANDFIRE
 ceased populating its three `Recently Logged` classes after the 2016 vintage
 (57,798 ac → 0 ac), removing the only explicit harvest marker; that 204,216 ac
 (28 % of holes) carry forest evidence; and that a spatially-blocked classifier
-separates managed-forest clearcut from stable non-forest at **AUC 0.982** against
-a label-shuffle baseline of 0.483. The method returns **75,792 ac** to TreeMap in
-2,975 patches of realistic harvest-unit size.
+separates managed-forest clearcut from stable non-forest at **AUC 0.883**
+restricted to the pixels it actually decides (0.982 over all anchors), against a
+label-shuffle baseline of 0.483. The method returns **75,831 ac** to TreeMap in
+2,974 patches of realistic harvest-unit size.
 
 Two independent checks constrain the result. Against the FIA design-based
 estimate for the same counties (1,255,424 ac, 95 % CI 1,106,653–1,404,195,
@@ -261,8 +262,22 @@ apart. k = 6 was adopted.
 ![Stage B](figures/fig6_stage_b.png)
 
 **Figure 6.** (a) ROC under GroupKFold on 0.25° spatial blocks: **AUC 0.9818,
-accuracy 0.9433**, against a label-shuffle baseline of **0.4829**. (b) Acceptance
-rate on the apply set under three configurations.
+accuracy 0.9433** over all anchors, against a label-shuffle baseline of
+**0.4829**. (b) Acceptance rate on the apply set under three configurations.
+
+**The operational number is lower, and it is the one to quote.** Stage B only
+ever decides pixels that already cleared Stage A, and only 11.6 % of non-forest
+anchors get that far. Scoring the classifier over *all* anchors therefore credits
+it for separating easy negatives the mask has already removed. Restricted to
+Stage-A survivors (n = 3,048; 2,700 positive / 348 negative) the block-CV figure
+is **AUC 0.8834, accuracy 0.9265**. Both are printed by `classify_holes.py`;
+0.8834 is the honest measure of discrimination among the confusers that actually
+reach the classifier.
+
+Refitting on that conditional population was tested and **not adopted**: it moves
+the deliverable by less than two points (S3 0.266 → 0.251, S4 0.765 → 0.754)
+while estimating the boundary from 348 negatives instead of 3,000. The reported
+metric was the problem, not the fitted model.
 
 **Finding 5.** The shuffle baseline sitting at chance is what makes the headline
 figure interpretable: the classifier is learning land cover, not geography.
@@ -283,18 +298,18 @@ attributable to the training design, not to the mask.
 ![Add-back](figures/fig7_add_back.png)
 
 **Figure 7.** (a) Final add-back mask. (b) Detail over ~19 km. (c) Accepted patch
-sizes: 2,975 patches, median 13.6 ac, maximum 377 ac — realistic harvest-unit
+sizes: 2,974 patches, median 13.6 ac, maximum 377 ac — realistic harvest-unit
 geometry. Accepted patches are compact and geometrically bounded; the rejected
 holes form the road and riparian network and irregular pasture.
 
 | stratum | hole acres | accepted | after MMU | % of stratum |
 |---|---|---|---|---|
-| S1 cut pre-2016, regrown | 41,549 | 41,549 | **38,786** | 93.3 % |
-| S2 cut 2016–22, regrown | 11,430 | 11,430 | **2,097** | 18.3 % |
-| S3 cut 2016–22, still open | 80,742 | 13,112 | **8,079** | 10.0 % |
-| S4 regrown only | 70,495 | 35,374 | **26,830** | 38.1 % |
+| S1 cut pre-2016, regrown | 41,549 | 41,549 | **38,779** | 93.3 % |
+| S2 cut 2016–22, regrown | 11,430 | 11,430 | **2,099** | 18.3 % |
+| S3 cut 2016–22, still open | 80,742 | 13,112 | **8,088** | 10.0 % |
+| S4 regrown only | 70,495 | 35,374 | **26,866** | 38.1 % |
 | S5 no evidence | 525,787 | 0 | **0** | 0 % |
-| **total** | **730,003** | — | **75,792** | **10.4 %** |
+| **total** | **730,003** | — | **75,831** | **10.4 %** |
 
 S2's collapse under the MMU (11,430 → 2,097 ac) is the expected consequence of
 Finding 3: most of S2 is edge sliver and cannot form a 5 ac patch.
@@ -320,7 +335,9 @@ Every claim above rests on one of the following checks.
 | V11 | Unit tests | 98 passed, 10 skipped; `ruff check` clean |
 | V12 | External validation of S3 against USFS LCMS | see §6.3 |
 | V14 | Local FIADB SQL vs the public EVALIDator API, five counties as one domain | 1,255,424 ac both ways, differ by 0.04 ac |
-| V13 | Roads / developed classes in the add-back | 405 ac Developed-Roads (0.53 %); 4 of 2,975 patches linear |
+| V13 | Roads / developed classes in the add-back | 405 ac Developed-Roads (0.53 %); 4 of 2,974 patches linear |
+| V15 | Stage-B evaluation conditional on Stage-A survival | AUC 0.8834 (vs 0.9818 unconditional) |
+| V16 | Export quantisation bounded to half a step | scores exported at 1/10000 (5e-5 band); 1/100 shifted 39 ac |
 
 **V8 note.** The residual disagreement is scale, not error: the model was trained
 on AlphaEarth at its native 10 m, while the exported product is 30 m to match
@@ -358,21 +375,21 @@ the correct ± 75,903 ac.
 | TreeMap 2022 forest | 1,094,686 | 60.0 % of AOI |
 | **FIA design-based forest, circa 2022** | **1,255,424** | 69.6 %; 95 % CI 1,106,653 – 1,404,195 |
 | TreeMap shortfall | 160,738 | **2.12 SE — significant at 95 %** |
-| returned by this method | 75,792 | 47 % of the shortfall |
-| corrected TreeMap forest | 1,170,478 | 64.1 % of AOI; **inside** the CI |
-| still unexplained | 84,946 | **1.12 SE — not distinguishable from zero** |
+| returned by this method | 75,831 | 47 % of the shortfall |
+| corrected TreeMap forest | 1,170,517 | 64.1 % of AOI; **inside** the CI |
+| still unexplained | 84,907 | **1.12 SE — not distinguishable from zero** |
 
 **Finding 7, stated at the precision the sampling error permits.** Three claims
 survive; one does not.
 
 - **TreeMap significantly under-maps forest.** At 1,094,686 ac it falls *below*
   the FIA 95 % lower bound of 1,106,653 ac. The 160,738 ac shortfall is 2.12 SE.
-- **The corrected value lands inside the interval** (1,170,478 ac) and below the
+- **The corrected value lands inside the interval** (1,170,517 ac) and below the
   point estimate, so the method does not overshoot. Had detection been too
   permissive it could have exceeded 1,255,424 ac; it did not.
 - **The AOI extent is right.** The raster AOI (1,824,689 ac) agrees with FIA's
   total area to 1.2 %, confirming the county selection.
-- **"47 % of the shortfall closed" and the 84,946 ac residual are weak claims.**
+- **"47 % of the shortfall closed" and the 84,907 ac residual are weak claims.**
   The residual is 1.12 SE — statistically indistinguishable from zero. This
   reconciliation therefore cannot establish that more forest remains to be
   recovered. The LCMS validation in §6.3 does that independently, and does not
@@ -384,7 +401,7 @@ of direction and interval membership. County-level FIA has only 262 contributing
 plots, which is why the interval is ± 6 % wide.
 
 **Where the residual plausibly sits** (hypotheses, and note it is not
-statistically distinguishable from zero): the 72,663 ac of S3 rejected by the
+statistically distinguishable from zero): the 72,654 ac of S3 rejected by the
 classifier — of which §6.3 estimates ~26,000 ac really is forest — the 9,333 ac
 of S2 lost to the MMU, and part of the 65,553 ac of holes that LF2022 calls urban
 or developed forest, excluded here by design though FIA would count some of it.
@@ -429,7 +446,7 @@ This was not built into the method and is the strongest corroboration obtained.
 of *rejected* S3 is still LCMS Forest land use — well above the S5 floor of
 7.8 %. Applying that rate to the 72,663 ac rejected implies roughly **26,000 ac
 of managed forest were wrongly left out**, giving an estimated **S3 recall of
-only 0.23**. That is consistent in sign and magnitude with the 84,946 ac residual
+only 0.23**. That is consistent in sign and magnitude with the 84,907 ac residual
 in §6.2 — though since that residual is only 1.12 SE, the agreement is
 directional support rather than confirmation, and LCMS is the load-bearing
 evidence for under-recall.
@@ -490,7 +507,7 @@ otherwise look attractive.
    slash and loblolly pine plantation. Transfer to other regions is untested.
 6. **A linear classifier** was chosen for exact Earth Engine transfer (V7). A
    non-linear model might separate better; this was not tested.
-7. **FIA county-level sampling error is large** (± 6.0 %, 262 plots), so the reconciliation supports direction and interval membership only; the 84,946 ac residual is within noise (§6.2).
+7. **FIA county-level sampling error is large** (± 6.0 %, 262 plots), so the reconciliation supports direction and interval membership only; the 84,907 ac residual is within noise (§6.2).
 8. **The 6–9 year LANDFIRE lag is inferred, not documented** (§3).
 
 ---
@@ -576,7 +593,7 @@ disturbance type and year per pixel and is not currently held locally. It would
 supply harvest year directly rather than by inference, and would largely replace
 the S3 adjudication. This is the highest-value missing dataset.
 
-**Phase 3 — stand assignment.** The 75,792 ac still need tree lists. Because no
+**Phase 3 — stand assignment.** The 75,831 ac still need tree lists. Because no
 young donor exists (§7), the proposal is: estimate harvest year per patch (S1 →
 ≈2014–16 from the LF2016 flag; S3/S4 → from the year of maximum year-over-year
 embedding change); take the modal `TM_ID` of the surrounding TreeMap pixels for

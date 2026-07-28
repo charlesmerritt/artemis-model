@@ -296,16 +296,16 @@ non-forest 0.8241 and only **11.6 %** of it passes.
 The shuffle baseline sitting on 0.5 is what makes the headline number
 believable — the model is learning land cover, not geography.
 
-**Final add-back: 75,792 ac of 730,003 ac of holes (10.4 %)**, in 2,975 patches,
+**Final add-back: 75,831 ac of 730,003 ac of holes (10.4 %)**, in 2,974 patches,
 median 13.6 ac, mean 25.5 ac, max 377 ac — realistic harvest-unit sizes. The
-MMU removed 25,673 ac of speckle.
+MMU removed 25,732 ac of speckle.
 
 | stratum | hole acres | accepted | after MMU | % of stratum |
 |---|---|---|---|---|
-| S1 cut_pre2016_regrown | 41,549 | 41,549 | **38,786** | 93.3 % |
-| S2 cut_2016_2022_regrown | 11,430 | 11,430 | **2,097** | 18.3 % |
-| S3 cut_2016_2022_open | 80,742 | 13,112 | **8,079** | 10.0 % |
-| S4 regrown_only | 70,495 | 35,374 | **26,830** | 38.1 % |
+| S1 cut_pre2016_regrown | 41,549 | 41,549 | **38,779** | 93.3 % |
+| S2 cut_2016_2022_regrown | 11,430 | 11,430 | **2,099** | 18.3 % |
+| S3 cut_2016_2022_open | 80,742 | 13,112 | **8,088** | 10.0 % |
+| S4 regrown_only | 70,495 | 35,374 | **26,866** | 38.1 % |
 | S5 no_evidence | 525,787 | 0 | **0** | 0 % |
 
 ### The age-referencing fix, and the evidence it was needed
@@ -346,16 +346,16 @@ the counties requested as a single domain
 | TreeMap 2022 forest | 1,094,686 | **below** the FIA 95 % lower bound |
 | **FIA forest, circa 2022** | **1,255,424** | 95 % CI 1,106,653 – 1,404,195 (SE 6.05 %, 262 plots) |
 | shortfall | 160,738 | 2.12 SE — significant |
-| our add-back | 75,792 | |
-| corrected TreeMap forest | 1,170,478 | **inside** the CI, below the point estimate |
-| residual | 84,946 | 1.12 SE — **not distinguishable from zero** |
+| our add-back | 75,831 | |
+| corrected TreeMap forest | 1,170,517 | **inside** the CI, below the point estimate |
+| residual | 84,907 | 1.12 SE — **not distinguishable from zero** |
 
 **Parity is the headline.** Published TreeMap sits outside the FIA interval; the
 corrected raster sits inside it without overshooting. That is the strongest
 aggregate statement the data supports.
 
 **Two corrections to the first version.** "47 % of the shortfall closed" and the
-84,946 ac residual were quoted as if exact. With SE at 6 % the residual is 1.12 SE,
+84,907 ac residual were quoted as if exact. With SE at 6 % the residual is 1.12 SE,
 so this comparison *cannot* show that more forest remains to be recovered — LCMS
 does that independently (below). Also, summing per-county SEs in quadrature
 (± 80,718 ac) assumes an independence that does not hold across shared strata;
@@ -395,7 +395,7 @@ reference bookends.
   rate, and it shares optical sensors with AlphaEarth — independent in producer
   and algorithm, not in underlying imagery. Hand-labelled NAIP is still needed.
 - **Roads are not being added back**: 405 ac of `Developed-Roads` = 0.53 % of the
-  add-back, and 4 of 2,975 patches are linear by shape.
+  add-back, and 4 of 2,974 patches are linear by shape.
 - **Earth Engine notebook-mode credentials expire in 7 days.** Re-run
   `uv run earthengine authenticate` (localhost mode) for durable access.
 

@@ -125,9 +125,30 @@ def training_matrix(table: pd.DataFrame, anchor_years: list[int]) -> tuple[np.nd
     return np.vstack(xs), np.concatenate(ys), np.concatenate(groups)
 
 
+def block_cv_scores(x: np.ndarray, y: np.ndarray, groups: np.ndarray, seed: int):
+    """Block-CV AUC and accuracy, plus the label-shuffle baseline for the same split."""
+    model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
+    cv = GroupKFold(n_splits=min(5, len(np.unique(groups))))
+    prob = cross_val_predict(model, x, y, groups=groups, cv=cv, method="predict_proba")[:, 1]
+    shuffled = np.random.default_rng(seed).permutation(y)
+    prob_shuffled = cross_val_predict(model, x, shuffled, groups=groups, cv=cv,
+                                      method="predict_proba")[:, 1]
+    return (roc_auc_score(y, prob), ((prob >= 0.5).astype(int) == y).mean(),
+            roc_auc_score(shuffled, prob_shuffled))
+
+
 def fit_and_evaluate(table: pd.DataFrame, cols: list[str], seed: int,
-                     anchor_years: list[int] | None = None):
-    """Fit the anchor classifier and report block-CV scores against a shuffle baseline."""
+                     anchor_years: list[int] | None = None,
+                     in_mask: pd.Series | None = None):
+    """Fit the anchor classifier and report block-CV scores against a shuffle baseline.
+
+    Two AUCs are reported and the *conditional* one is the operational number.
+    Stage B only ever decides pixels that already cleared Stage A, so scoring it
+    over all anchors credits it for separating easy negatives the mask has
+    already removed — in the committed run only 11.6 % of non-forest anchors
+    reach Stage B at all. The unconditional figure is kept for comparability with
+    the Stage-A sweep, but it flatters the classifier.
+    """
     if anchor_years:
         x, y, groups = training_matrix(table, anchor_years)
     else:
@@ -138,28 +159,38 @@ def fit_and_evaluate(table: pd.DataFrame, cols: list[str], seed: int,
 
     model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
     n_splits = min(5, len(np.unique(groups)))
-    cv = GroupKFold(n_splits=n_splits)
-
-    prob = cross_val_predict(model, x, y, groups=groups, cv=cv, method="predict_proba")[:, 1]
-    auc = roc_auc_score(y, prob)
-    acc = ((prob >= 0.5).astype(int) == y).mean()
-
-    rng = np.random.default_rng(seed)
-    y_shuffled = rng.permutation(y)
-    prob_shuffled = cross_val_predict(model, x, y_shuffled, groups=groups, cv=cv,
-                                      method="predict_proba")[:, 1]
-    auc_shuffled = roc_auc_score(y_shuffled, prob_shuffled)
+    auc, acc, auc_shuffled = block_cv_scores(x, y, groups, seed)
 
     print(f"\nStage B — GroupKFold({n_splits}) on 0.25 deg blocks, n={len(y):,} "
           f"({y.sum():,} clearcut / {(1 - y).sum():,} non-forest)"
           + (f", age-referenced over {anchor_years}" if anchor_years else ""))
-    print(f"  block-CV AUC       {auc:.4f}   accuracy {acc:.4f}")
+    print(f"  block-CV AUC       {auc:.4f}   accuracy {acc:.4f}   (all anchors)")
     print(f"  label-shuffle AUC  {auc_shuffled:.4f}   <- must be near 0.5, else the signal is spurious")
     if auc - auc_shuffled < 0.15:
         print("  WARNING: real and shuffled scores are close; do not trust the apply-set rates.")
 
+    metrics = {"auc_block_cv": auc, "accuracy_block_cv": acc, "auc_label_shuffle": auc_shuffled}
+
+    # Conditional evaluation: Stage B only ever decides Stage-A survivors, so this
+    # is the operational number. The unconditional AUC above is inflated by easy
+    # negatives the mask already removed.
+    if in_mask is not None:
+        conditional = table[table.role.isin(["anchor_clearcut", "anchor_nonforest"]) & in_mask]
+        if conditional.role.nunique() == 2:
+            xc, yc, gc = (training_matrix(conditional.reset_index(drop=True), anchor_years)
+                          if anchor_years
+                          else (conditional[cols].to_numpy(float),
+                                (conditional.role == "anchor_clearcut").astype(int).to_numpy(),
+                                conditional.block.to_numpy()))
+            auc_c, acc_c, _ = block_cv_scores(xc, yc, gc, seed)
+            print(f"  conditional on Stage A: AUC {auc_c:.4f}   accuracy {acc_c:.4f}   "
+                  f"n={len(yc):,} ({yc.sum():,} pos / {(1 - yc).sum():,} neg)  <- OPERATIONAL")
+            metrics |= {"auc_block_cv_conditional": auc_c,
+                        "accuracy_block_cv_conditional": acc_c,
+                        "n_conditional": int(len(yc))}
+
     model.fit(x, y)
-    return model, {"auc_block_cv": auc, "accuracy_block_cv": acc, "auc_label_shuffle": auc_shuffled}
+    return model, metrics
 
 
 def report_apply(table: pd.DataFrame, prob: pd.Series, in_mask: pd.Series, decision: float) -> pd.DataFrame:
@@ -214,7 +245,7 @@ def main() -> None:
         print(f"  {role:<17} median sim {sim[rows].median():.4f}   "
               f"passes mask {in_mask[rows].mean():.1%}")
 
-    model, metrics = fit_and_evaluate(table, cols, args.seed, args.anchor_years)
+    model, metrics = fit_and_evaluate(table, cols, args.seed, args.anchor_years, in_mask)
     prob = pd.Series(model.predict_proba(table[cols].to_numpy(float))[:, 1], index=table.index)
     summary = report_apply(table, prob, in_mask, args.decision)
 

@@ -27,9 +27,10 @@ Sampling discipline
   edge.
 - **Patch-level, not pixel-level, sampling.** Points are drawn from distinct
   patches where possible, so one large clearcut cannot dominate the training set.
-- **Spatial blocks.** Every point carries a 0.5-degree ``block`` id for
-  GroupKFold cross-validation, matching the convention in
-  ``notebooks/clearcut_ag_common.py``.
+- **Spatial blocks.** Every point carries a 0.25-degree ``block`` id for
+  GroupKFold cross-validation. 0.5 degrees, the convention in
+  ``notebooks/clearcut_ag_common.py``, yields only 8 groups across this AOI —
+  too few for a stable GroupKFold — so ``BLOCK_DEGREES`` halves it to give 19.
 """
 
 from __future__ import annotations
