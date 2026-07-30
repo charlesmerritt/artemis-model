@@ -82,7 +82,7 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
   - Federal/state → conservative (selection or no harvest)
   - Family forest → light thinning
   - Corporate → pine plantation rotation (if pine) or clearcut (if hardwood)
-  - Riparian buffer units → no harvest or very light thinning
+  - Riparian buffer units → **no harvest, ever** (no entry of any kind, no buffer class exempted). Assigned by geometry, so it overrides any ownership/forest-type rule above it. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
 - **Output**: `pipeline/s3_management/regime_assignment.py` with `assign_regime(unit_attrs) -> (regime_name, params)`.
 
 ---
@@ -162,3 +162,5 @@ Steps 1-8 can be implemented and verified without running FVS again. Steps 9-12 
 4. **FVS runtime**: Continue with Windows GUI handoff (proven path). Investigate Docker-based fvs2py as a stretch goal for automation.
 5. **Management unit granularity**: Keep parcel-based units from `sketch_management_units.py` for the prototype. Raster-based segmentation is a future improvement.
 6. **Time step**: Use FVS 5-year cycles as the scheduling time step. This matches the natural FVS output unit and the projection config.
+
+See [`methodology-directions.md`](methodology-directions.md) for the 2026-07-27 advisor-meeting follow-ups that touch this plan: keeping per-plot tree lists and area-weighting them into units rather than averaging (affects Steps 2.3 and 4.2), and carrying riparian buffers as separate unmanaged-but-growing units (affects Steps 2.1 and 3.2).
