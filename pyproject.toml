@@ -16,6 +16,7 @@ dependencies = [
     "jupyterlab-widgets>=3.0.16",
     "mapclassify>=2.10.0",
     "matplotlib>=3.10.9",
+    "openpyxl>=3.1.5",
     "pandas>=3.0.3",
     "pyogrio>=0.12.1",
     "pytest>=9.0.3",
