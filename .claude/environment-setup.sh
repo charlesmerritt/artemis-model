@@ -53,20 +53,45 @@ fi
 # through rclone's own --ca-cert instead. /usr/local/bin precedes /usr/bin.
 # ---------------------------------------------------------------------------
 real_rclone="$(command -v rclone)"
+# Baked in as the shim's fallback only. The shim prefers whatever AWS_CA_BUNDLE
+# holds at call time, so it follows the proxy if the bundle ever moves.
+default_ca_bundle="${AWS_CA_BUNDLE:-/root/.ccr/ca-bundle.crt}"
 if [ "$real_rclone" != "/usr/local/bin/rclone" ]; then
   log "installing rclone CA shim at /usr/local/bin/rclone"
   sudo tee /usr/local/bin/rclone >/dev/null <<SHIM
 #!/usr/bin/env bash
-# Wrapper: rclone 1.60's S3 backend cannot use AWS_CA_BUNDLE (unsupported
-# transport). Drop it and supply the proxy CA via rclone's own flag.
+# Wrapper: rclone 1.60's S3 backend cannot use AWS_CA_BUNDLE -- the AWS SDK
+# rejects rclone's transport with "LoadCustomCABundleError" before any request
+# is made. Drop the variable and hand the same bundle to rclone through its own
+# --ca-cert instead.
+#
+# Read the path out of AWS_CA_BUNDLE rather than hardcoding one: that is where
+# the proxy advertises it, so the shim keeps working if the location changes or
+# it runs as a different user. The literal is only a last-resort fallback.
 set -euo pipefail
+ca_bundle="\${AWS_CA_BUNDLE:-${default_ca_bundle}}"
 unset AWS_CA_BUNDLE
-if [ -r /root/.ccr/ca-bundle.crt ]; then
-  export RCLONE_CA_CERT="\${RCLONE_CA_CERT:-/root/.ccr/ca-bundle.crt}"
+if [ -r "\$ca_bundle" ]; then
+  export RCLONE_CA_CERT="\${RCLONE_CA_CERT:-\$ca_bundle}"
+else
+  # Warn rather than proceed silently: without a CA every TLS handshake through
+  # the intercepting proxy fails, and a bare handshake error is exactly the
+  # symptom that tempts someone into disabling verification.
+  printf 'rclone-shim: WARNING: no readable CA bundle at %s; TLS through the proxy will fail\n' "\$ca_bundle" >&2
 fi
 exec "$real_rclone" "\$@"
 SHIM
   sudo chmod +x /usr/local/bin/rclone
+
+  # The shim only takes effect if /usr/local/bin precedes /usr/bin. Assert it,
+  # so a PATH change surfaces here instead of as a baffling
+  # LoadCustomCABundleError from a transfer much later.
+  hash -r
+  active_rclone="$(command -v rclone)"
+  if [ "$active_rclone" != "/usr/local/bin/rclone" ]; then
+    log "WARNING: shim written, but PATH still resolves rclone to ${active_rclone}."
+    log "WARNING: /usr/local/bin must precede /usr/bin or S3/R2 calls will fail with LoadCustomCABundleError."
+  fi
 fi
 
 # ---------------------------------------------------------------------------

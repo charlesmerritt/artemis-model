@@ -36,8 +36,8 @@ uv sync
 # The wheel is installed into a throwaway directory rather than the project venv
 # so the synced environment keeps matching uv.lock exactly.
 log "staging duckdb sqlite_scanner extension"
-duckdb_version="$(uv run python -c 'import duckdb; print(duckdb.__version__)')"
-duckdb_platform="$(uv run python -c 'import duckdb; print(duckdb.execute("PRAGMA platform").fetchone()[0])')"
+duckdb_info="$(uv run python -c 'import duckdb; print(duckdb.__version__, duckdb.execute("PRAGMA platform").fetchone()[0])')"
+read -r duckdb_version duckdb_platform <<<"$duckdb_info"
 extension_dir="${HOME}/.duckdb/extensions/v${duckdb_version}/${duckdb_platform}"
 
 if [ -f "${extension_dir}/sqlite_scanner.duckdb_extension" ]; then
