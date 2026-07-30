@@ -75,3 +75,4 @@ Smoke test run for Union County (`--county-fips 125 --no-split-large --overwrite
 - Decide whether the fishnet split for polygons `> 40 ha` is acceptable for draft statewide units or whether large units should wait for raster segmentation.
 - Add terrain raster once staged locally.
 - Implement merge-to-best-neighbor logic for `< 2 ha` slivers after reviewing pilot outputs.
+- Retain riparian/BMP buffers as their own `unit_class = "riparian"` units instead of erasing them, so those acres are still grown (unmanaged) rather than dropped from the landscape. See [`methodology-directions.md`](methodology-directions.md) item 2.

@@ -130,6 +130,10 @@ def felzenszwalb_segmentation(
         min_size=min_size,
     )
 
+    # felzenszwalb labels start at 0 (unlike slic's start_label=1); shift to 1-based
+    # so 0 stays reserved for nodata and vectorize_segments cannot drop a real segment
+    segments = segments + 1
+
     # Mask out non-forest pixels
     segments_masked = np.where(forest_mask, segments, 0)
 

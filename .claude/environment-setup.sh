@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Setup script for the "claude-code-artemis" Claude Code cloud environment.
+#
+# This file is NOT executed by Claude Code. It is the version-controlled copy of
+# the setup script configured in the web UI for the environment; paste its
+# contents there. Per-session provisioning lives in .claude/hooks/session-start.sh.
+#
+# See notes/claude-code-web-environment.md for the diagnosis behind each step.
+set -euo pipefail
+
+log() { printf 'env-setup: %s\n' "$1" >&2; }
+
+# ---------------------------------------------------------------------------
+# rclone
+#
+# NOT via https://rclone.org/install.sh: the sandbox egress policy denies
+# rclone.org with 403 on CONNECT. Under `set -euo pipefail` that curl failure
+# aborted the whole script at its first line, which is why nothing after it ran.
+#
+# Also not piped into `sudo bash`: /etc/sudoers sets `Defaults env_reset` with
+# the proxy env_keep line commented out, so HTTPS_PROXY and NODE_EXTRA_CA_CERTS
+# do not survive sudo and the installer's own downloads would fail regardless.
+#
+# The Ubuntu archive is reachable and carries rclone, so use apt.
+# ---------------------------------------------------------------------------
+if command -v rclone >/dev/null 2>&1; then
+  log "rclone already present ($(rclone version 2>/dev/null | head -1))"
+else
+  log "installing rclone from the Ubuntu archive"
+  # Refresh only ubuntu.sources. The image also configures the deadsnakes and
+  # ondrej/php PPAs, which the egress policy denies (403 from
+  # ppa.launchpadcontent.net); their errors would fail `apt-get update` under
+  # `set -e`. Note that on noble the Ubuntu archive lives in
+  # sources.list.d/ubuntu.sources and /etc/apt/sources.list is empty, so the
+  # sourcelist/sourceparts values below are deliberately inverted from the
+  # pre-noble idiom.
+  sudo apt-get update -qq \
+    -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources \
+    -o Dir::Etc::sourceparts=/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends rclone
+  log "installed $(rclone version 2>/dev/null | head -1)"
+fi
+
+# ---------------------------------------------------------------------------
+# rclone + proxy CA shim
+#
+# The archive's rclone (1.60.1) cannot consume the globally-set AWS_CA_BUNDLE:
+# its S3 backend hands the AWS SDK a custom transport and the SDK rejects it
+# with "LoadCustomCABundleError: unsupported transport, *fshttp.Transport".
+# Every `rclone ... :s3:` call fails before reaching the network.
+#
+# Shadow it with a wrapper that drops AWS_CA_BUNDLE and passes the bundle
+# through rclone's own --ca-cert instead. /usr/local/bin precedes /usr/bin.
+# ---------------------------------------------------------------------------
+real_rclone="$(command -v rclone)"
+# Baked in as the shim's fallback only. The shim prefers whatever AWS_CA_BUNDLE
+# holds at call time, so it follows the proxy if the bundle ever moves.
+default_ca_bundle="${AWS_CA_BUNDLE:-/root/.ccr/ca-bundle.crt}"
+if [ "$real_rclone" != "/usr/local/bin/rclone" ]; then
+  log "installing rclone CA shim at /usr/local/bin/rclone"
+  sudo tee /usr/local/bin/rclone >/dev/null <<SHIM
+#!/usr/bin/env bash
+# Wrapper: rclone 1.60's S3 backend cannot use AWS_CA_BUNDLE -- the AWS SDK
+# rejects rclone's transport with "LoadCustomCABundleError" before any request
+# is made. Drop the variable and hand the same bundle to rclone through its own
+# --ca-cert instead.
+#
+# Read the path out of AWS_CA_BUNDLE rather than hardcoding one: that is where
+# the proxy advertises it, so the shim keeps working if the location changes or
+# it runs as a different user. The literal is only a last-resort fallback.
+set -euo pipefail
+ca_bundle="\${AWS_CA_BUNDLE:-${default_ca_bundle}}"
+unset AWS_CA_BUNDLE
+if [ -r "\$ca_bundle" ]; then
+  export RCLONE_CA_CERT="\${RCLONE_CA_CERT:-\$ca_bundle}"
+else
+  # Warn rather than proceed silently: without a CA every TLS handshake through
+  # the intercepting proxy fails, and a bare handshake error is exactly the
+  # symptom that tempts someone into disabling verification.
+  printf 'rclone-shim: WARNING: no readable CA bundle at %s; TLS through the proxy will fail\n' "\$ca_bundle" >&2
+fi
+exec "$real_rclone" "\$@"
+SHIM
+  sudo chmod +x /usr/local/bin/rclone
+
+  # The shim only takes effect if /usr/local/bin precedes /usr/bin. Assert it,
+  # so a PATH change surfaces here instead of as a baffling
+  # LoadCustomCABundleError from a transfer much later.
+  hash -r
+  active_rclone="$(command -v rclone)"
+  if [ "$active_rclone" != "/usr/local/bin/rclone" ]; then
+    log "WARNING: shim written, but PATH still resolves rclone to ${active_rclone}."
+    log "WARNING: /usr/local/bin must precede /usr/bin or S3/R2 calls will fail with LoadCustomCABundleError."
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# uv
+#
+# Nothing to install: uv ships in the base image at /root/.local/bin/uv,
+# alongside black, mypy, poetry, pytest and pyright. The astral.sh installer was
+# both redundant and unreachable (astral.sh is denied by the egress policy too),
+# so verify instead of fetching.
+# ---------------------------------------------------------------------------
+if command -v uv >/dev/null 2>&1; then
+  log "uv present: $(uv --version)"
+else
+  log "ERROR: uv missing from the base image and astral.sh is blocked by the egress policy"
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# System GDAL is deliberately NOT installed.
+#
+# rasterio bundles GDAL 3.12.1 and pyogrio bundles 3.11.4 in their wheels; the
+# full test suite passes with no system GDAL. Installing Ubuntu noble's
+# gdal-bin/libgdal-dev (GDAL 3.8) would only add a second, older GDAL.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Preflight: report R2 reachability rather than letting it surprise a later run.
+#
+# Non-fatal on purpose — tooling installed fine, and failing here would block
+# sessions that do not need R2 data.
+# ---------------------------------------------------------------------------
+r2_host="${ARTEMIS_R2_ENDPOINT_HOST:-r2.cloudflarestorage.com}"
+# Guard the assignment with `if`: curl emits its %{http_code} ("000" on a failed
+# CONNECT) *and* exits non-zero, so a trailing `|| echo 000` would concatenate
+# into "000000" and read as reachable, while a bare assignment would trip set -e.
+if r2_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://${r2_host}/" 2>/dev/null)"; then
+  :
+else
+  r2_code="000"
+fi
+if [ "$r2_code" = "000" ]; then
+  log "WARNING: cannot reach ${r2_host} — the egress policy denies it (403 on CONNECT)."
+  log "WARNING: rclone is installed but R2 pulls will fail until an admin allowlists that host."
+else
+  log "R2 endpoint ${r2_host} reachable (HTTP ${r2_code})"
+fi
+
+log "done"
