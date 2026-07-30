@@ -46,9 +46,6 @@ Thumbs.db
 .idea/
 *.swp
 
-# Agents
-.claude/
-
 # Git worktrees
 worktrees/
 .worktrees/
