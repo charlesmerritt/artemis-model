@@ -142,9 +142,19 @@ choice.
   `unit_class = "managed"`).
 - Apply the same LANDFIRE EVT forest mask to buffer polygons — only the forested part
   of a buffer becomes a growing stand.
-- Erase-then-add, so managed and riparian units **partition** the forested area with
-  no overlap. Add an area-accounting check: `Σ managed + Σ riparian == forested AOI
-  area` within tolerance.
+- Erase-then-add, so managed and riparian units **partition** the *eligible* forest
+  area with no overlap. Add an area-accounting check, stated against the
+  post-exclusion area:
+
+      Σ managed + Σ riparian == (forest mask ∩ parcels) − (waterbodies ∪ road buffer)
+
+  The raw forested AOI is the wrong right-hand side. `sketch_management_units.py`
+  builds the forested AOI *before* subtracting the erase layers, and the road-artifact
+  buffer routinely overlaps forested pixels (roads run through forest); NHD waterbody
+  polygons can clip forest-mask pixels too at 30 m. Those acres are permanently
+  excluded from both classes, so an equality against the pre-exclusion area would fail
+  by construction. Report the permanently-excluded area as its own line in the summary
+  so the drop stays visible instead of silently absorbing a bug.
 - Attribute riparian units from the TreeMap pixels they overlap, using the same
   crosswalk as item 1, and assign the `no_management` regime from the regime library
   ([[management-pipeline-plan]] Step 3.1).

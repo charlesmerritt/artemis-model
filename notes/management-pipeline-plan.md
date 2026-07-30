@@ -82,7 +82,7 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
   - Federal/state → conservative (selection or no harvest)
   - Family forest → light thinning
   - Corporate → pine plantation rotation (if pine) or clearcut (if hardwood)
-  - Riparian buffer units → no harvest or very light thinning
+  - Riparian buffer units → **no harvest, ever** (no entry of any kind, no buffer class exempted). Assigned by geometry, so it overrides any ownership/forest-type rule above it. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
 - **Output**: `pipeline/s3_management/regime_assignment.py` with `assign_regime(unit_attrs) -> (regime_name, params)`.
 
 ---
