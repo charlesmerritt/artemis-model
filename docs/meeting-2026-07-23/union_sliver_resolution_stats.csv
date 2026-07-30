@@ -1,0 +1,3 @@
+label,polygons,slivers_lt5ac,sliver_frac,total_forest_ha,median_ha,mean_ha
+before (naive candidate),17020,14870,0.8737,27615.9,0.103,1.623
+after (merge -> state-zero),2442,0,0.0,27614.6,6.76,11.308

@@ -1,0 +1,7 @@
+strategy,stage,units,slivers_lt5ac,sliver_pct,median_ha,mean_ha,total_forest_ha,median_compactness
+Naive,raw,17020,14870,87.4,0.1,1.62,27615.9,0.459
+Naive,merged,2442,0,0.0,6.76,11.31,27614.6,0.201
+Felzenszwalb,raw,21210,19195,90.5,0.09,1.31,27802.7,0.526
+Felzenszwalb,merged,2137,0,0.0,7.42,13.01,27802.7,0.156
+SLIC,raw,11721,10219,87.2,0.1,2.37,27806.3,0.503
+SLIC,merged,1554,0,0.0,8.7,17.89,27806.3,0.135
