@@ -71,7 +71,9 @@ TPO_GROUP = {3: "Private", 4: "Private", 5: "Private",
              6: "Federal (NF)", 7: "Other public", 8: "Other public"}
 TPO_ORDER = ["Private", "Other public", "Federal (NF)"]
 
-COUNTIES = ["Baker", "Columbia", "Hamilton", "Suwanee", "Union"]
+# Correct Florida spelling. The TPO workbook's own header says "Suwanee"; the
+# columns are read positionally, so this only fixes the label on the figures.
+COUNTIES = ["Baker", "Columbia", "Hamilton", "Suwannee", "Union"]
 
 # --- palette (dataviz skill reference palette, light mode) ------------------
 # Validated: `validate_palette.js "#2a78d6,#eb6834,#1baf7a" --mode light --pairs all`
@@ -187,7 +189,12 @@ def save(fig, name: str, outdir: Path):
     path = outdir / name
     fig.savefig(path, dpi=170, facecolor=SURFACE, bbox_inches="tight")
     plt.close(fig)
-    print(f"  wrote {path.relative_to(REPO)}")
+    # --outdir may point anywhere; only shorten the path when it is inside the repo.
+    try:
+        shown = path.relative_to(REPO)
+    except ValueError:
+        shown = path
+    print(f"  wrote {shown}")
 
 
 # --- data loading ----------------------------------------------------------
@@ -504,25 +511,46 @@ def fig_ownership_map(cache, acres, outdir):
 
 
 def fig_bundle_threshold(acres, outdir):
-    """Does dominant-owner-with-threshold actually produce usable bundles?"""
+    """Does dominant-owner-with-threshold actually produce usable bundles?
+
+    Two denominators are in play and they disagree by a lot, so both are shown.
+    The spec says "> 70% of the stand's pixels", which means the stand's **whole
+    painted footprint** — including the 15% of AOI acres Harris classes as
+    non-forest, water or unknown-owner. Dividing instead by only the
+    owner-classified pixels answers a different question ("of the pixels whose
+    owner we know, how many agree?") and reports a materially higher purity.
+    """
     owner_acres = acres[[c for c in acres.columns if c in OWNER_CLASSES]]
-    total_owned = owner_acres.sum(axis=1)
-    share = owner_acres.max(axis=1) / total_owned.replace(0, np.nan)
     stand_acres = acres.sum(axis=1)
+    classified = owner_acres.sum(axis=1)
+    dominant = owner_acres.max(axis=1)
+
+    share = dominant / stand_acres                       # the spec's definition
+    share_cls = dominant / classified.replace(0, np.nan)  # classified pixels only
 
     thresholds = np.arange(0.5, 1.001, 0.05)
-    kept_stands = [(share >= t).sum() for t in thresholds]
+    kept_stands = [int((share >= t).sum()) for t in thresholds]
     kept_acres = [stand_acres[share >= t].sum() for t in thresholds]
+    kept_stands_cls = [int((share_cls >= t).sum()) for t in thresholds]
 
-    fig, (ax1, ax2, ax3) = figure(1, 3, figsize=(13, 4.3),
-                                  gridspec_kw={"wspace": 0.3, "width_ratios": [1, 1.15, 1]})
+    fig, (ax1, ax2, ax3) = figure(1, 3, figsize=(13.5, 4.3),
+                                  gridspec_kw={"wspace": 0.32, "width_ratios": [1.1, 1.15, 1]})
 
     style(ax1, title="Purity of each stand's ownership",
-          ylabel="stands", xlabel="dominant owner's share of the stand's pixels")
-    ax1.hist(share.dropna(), bins=np.arange(0.2, 1.05, 0.05), color=SEQ[2], zorder=3)
+          ylabel="stands", xlabel="dominant owner's share")
+    bins = np.arange(0.0, 1.05, 0.05)
+    ax1.hist(share.dropna(), bins=bins, color=SEQ[2], zorder=2)
+    ax1.hist(share_cls.dropna(), bins=bins, histtype="step", lw=1.8, color="#7a8b99",
+             zorder=3)
     ax1.axvline(0.70, color=CRIT, lw=1.6, ls="--", zorder=4)
-    ax1.text(0.705, ax1.get_ylim()[1] * 0.92, " 70% threshold\n proposed in the spec",
-             color=CRIT, fontsize=8.5, va="top")
+    top = ax1.get_ylim()[1]
+    ax1.set_ylim(0, top * 1.42)
+    ax1.text(0.72, top * 1.40, " 70% threshold\n in the spec", color=CRIT, fontsize=8.5,
+             va="top")
+    ax1.text(0.02, top * 1.40, "filled: share of the whole stand\nfootprint (the spec's rule)",
+             color=SEQ[4], fontsize=8.5, va="top")
+    ax1.text(0.02, top * 1.14, "outline: share of owner-classified\npixels only",
+             color="#7a8b99", fontsize=8.5, va="top")
 
     style(ax2, title="What survives the threshold", xlabel="dominant-owner threshold",
           ylabel="% of the AOI retained")
@@ -530,15 +558,18 @@ def fig_bundle_threshold(acres, outdir):
              lw=2.2, marker="o", ms=5, mfc=SURFACE, mew=1.5, zorder=4)
     ax2.plot(thresholds * 100, np.array(kept_acres) / stand_acres.sum() * 100, color=ORANGE,
              lw=2.2, marker="s", ms=5, mfc=SURFACE, mew=1.5, zorder=4)
-    ax2.text(56, kept_stands[0] / len(share) * 100 - 17, "stands", color=BLUE, fontsize=8.5)
+    ax2.text(56, kept_stands[0] / len(share) * 100 - 15, "stands", color=BLUE, fontsize=8.5)
     ax2.text(50.5, kept_acres[0] / stand_acres.sum() * 100 + 4, "acres", color=ORANGE, fontsize=8.5)
     i70 = int(np.argmin(np.abs(thresholds - 0.70)))
     ax2.axvline(70, color=CRIT, lw=1.4, ls="--", zorder=3)
     ax2.annotate(f"at 70%: {kept_stands[i70]}/{len(share)} stands,\n"
                  f"{kept_acres[i70]/stand_acres.sum():.0%} of acres",
-                 xy=(70, kept_acres[i70] / stand_acres.sum() * 100), xytext=(74, 78),
+                 xy=(70, kept_acres[i70] / stand_acres.sum() * 100), xytext=(76, 46),
                  color=CRIT, fontsize=8.5,
                  arrowprops=dict(arrowstyle="->", color=CRIT, lw=1.2))
+    ax2.text(50.5, 100, f"counting only owner-classified pixels would say "
+             f"{kept_stands_cls[i70]}/{len(share)}\nstands at 70% — a different, easier question",
+             color=INK3, fontsize=8, va="top")
     ax2.set_ylim(0, 105)
 
     style(ax3, title="Acres per owner group, allocated by pixel share",
@@ -553,12 +584,16 @@ def fig_bundle_threshold(acres, outdir):
 
     fig.suptitle("Testing the bundling rule: dominant-owner-with-threshold on TreeMap-imputed stands",
                  color=INK, fontsize=11.5, x=0.005, ha="left", y=1.03)
-    caption(fig, "A TreeMap stand is an imputed FIA plot painted onto many scattered pixels, so its footprint "
-                 "straddles owners by construction. Pixel-share allocation (right) keeps the whole AOI and is the "
-                 "workable alternative to a hard per-stand assignment.")
+    caption(fig, "Threshold is the dominant owner's share of the stand's whole painted footprint, per "
+                 "docs/superpowers/specs/2026-07-17-orchestrator-sketch.md. A TreeMap stand is an imputed FIA plot "
+                 "painted onto many scattered pixels, so its footprint straddles owners by construction. Pixel-share "
+                 "allocation (right) keeps the whole AOI and is the workable alternative to a hard per-stand "
+                 "assignment; see notes/ownership-bundling-pixel-share.md.")
     save(fig, "fig7_bundle_threshold.png", outdir)
     return {"kept_70_stands": int(kept_stands[i70]), "n_stands": int(len(share)),
-            "kept_70_acres_frac": float(kept_acres[i70] / stand_acres.sum())}
+            "kept_70_acres_frac": float(kept_acres[i70] / stand_acres.sum()),
+            "kept_70_stands_classified_only": int(kept_stands_cls[i70]),
+            "unclassified_acre_frac": float(1 - classified.sum() / stand_acres.sum())}
 
 
 def fig_gate_scorecard(outdir):

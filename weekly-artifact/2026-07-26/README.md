@@ -51,16 +51,23 @@ naive case, not a forecast.
 **The bundling rule as specced does not survive contact with the data (fig 7).**
 `2026-07-17-orchestrator-sketch.md` proposes assigning each stand to its plurality
 ownership class when that class clears ~70% of the stand's pixels. Tabulating
-Harris 2025 ownership over each stand's actual footprint: at 70% only **364 of 693
-stands** qualify, holding **40% of the acreage**. The cause is structural, not a
-tuning problem — a TreeMap "stand" is an imputed FIA plot painted onto many
-scattered pixels, so its footprint straddles owners by construction. Even a 50%
-threshold drops 61 stands. **Pixel-share allocation** (each stand contributes its
-acres to each owner proportionally: 830k private / 151k federal / 41k other public)
-keeps the whole AOI and is the workable alternative, at the cost of a stand
-belonging to more than one bundle. The clean fix is to bundle at the management-unit
-level (`pipeline/s3_management`) rather than the imputed-plot level; until those
-units exist, pixel-share is what the even-flow solve should use.
+Harris 2025 ownership over each stand's actual footprint: at 70% only **212 of 693
+stands** qualify, holding **23% of the acreage**; even a bare 50% plurality drops
+30% of the acres. The cause is structural, not a tuning problem — a TreeMap "stand"
+is an imputed FIA plot painted onto many scattered pixels, so its footprint
+straddles owners by construction. **Pixel-share allocation** (each stand contributes
+its acres to each owner proportionally: 830k private / 151k federal / 41k other
+public) keeps the whole AOI and is the workable alternative, at the cost of a stand
+belonging to more than one bundle. Full write-up, including the costs and what it
+does *not* fix (applying a cut still needs a single-owner unit):
+**[`notes/ownership-bundling-pixel-share.md`](../../notes/ownership-bundling-pixel-share.md)**.
+
+*Denominator matters here.* The spec says "share of the stand's pixels", which means
+the whole painted footprint — including the 15% of AOI acres Harris classes as
+non-forest, water or unknown-owner. Dividing instead by only the owner-classified
+pixels answers an easier question and reports 364 stands at 70% rather than 212.
+Fig 7's left panel plots both distributions so the gap is visible; the headline
+numbers use the spec's definition.
 
 **The barrier is doing real work (fig 4).** The 693 stands enter at 24 distinct
 inventory years spanning 1997–2021, and only from 2026 does every stand report on a
@@ -112,6 +119,12 @@ delete the folder to force a refetch. **No input data is committed.**
   non-forest / water / unknown-forest fall inside painted stands for 15% of AOI
   acres; fig 3 keeps them as an unattributed grey band rather than dropping them,
   so the stack and the growth panel describe the same footprint.
+- **Bundling threshold denominator** is the stand's whole painted footprint, per the
+  spec's wording. The owner-classified-only variant is plotted alongside it in fig 7
+  but is not used for any headline number.
+- **County spelling**: the TPO workbook's own header reads "Suwanee"; the figures
+  label it **Suwannee**, matching the rest of the repo and the actual Florida county.
+  Sheet columns are read positionally, so the data is unaffected either way.
 - **Fig 8 is not R2 data.** It charts the measured values recorded in
   `research/restart_fidelity/outputs/gate_cut_injection.txt`; the spike's own FVS
   outputs were never uploaded to R2.
@@ -139,3 +152,5 @@ pipeline rather than a weekly artifact.
    different constraints on the same harvest.
 3. With bundling by dominant owner ruled out at the stand level, does the even-flow
    solve run on pixel-share allocations, or does it wait for real management units?
+   (Recommendation and the open sub-questions are in
+   [`notes/ownership-bundling-pixel-share.md`](../../notes/ownership-bundling-pixel-share.md).)
