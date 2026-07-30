@@ -121,6 +121,11 @@ Two details worth keeping:
 
 ## Expected test result in the web container
 
-`uv run pytest tests/` → **82 passed, 21 skipped**. The skips are the normal
-data-availability guards: `/mnt/d` is not mounted, and `treemap_2022_fl.tif` /
-the `clearcut_ag` interim CSVs are not present. Nothing should fail.
+`uv run pytest tests/` should report **zero failures**, with every skip
+attributable to a data-availability guard: `/mnt/d` is not mounted, and
+`treemap_2022_fl.tif` / the `clearcut_ag` interim CSVs are not present.
+
+Judge a session by that invariant rather than by a fixed count — the totals move
+with the suite (they were 82 passed / 21 skipped when this note was written). A
+*failure*, particularly anywhere in `tests/test_restart_fidelity.py`, means the
+`sqlite_scanner` staging above did not happen.
