@@ -4,6 +4,10 @@ Both Phase-1 modules were verified against the **real** project data pulled from
 Cloudflare R2 bucket `artemis-r2` (S3 API via boto3; the data drive is not mounted in the
 build sandbox). Nothing here used synthetic stand-ins.
 
+> boto3 was the fetch tool available that week. The sandbox image now ships `rclone` and no
+> longer has boto3 installed — see [`config/data_paths.yaml`](../../config/data_paths.yaml)
+> for the current commands. The verification results below are unaffected.
+
 ## TPO parser (`pipeline/s3_management/tpo_targets.py`)
 
 Source: `data/Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx` (R2).

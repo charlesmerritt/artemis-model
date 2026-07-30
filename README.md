@@ -71,6 +71,20 @@ Most production data is intentionally not stored in Git. Local paths are declare
 [`config/data_paths.yaml`](config/data_paths.yaml) and currently assume an external `/mnt/d`
 mount. Update that configuration for another workstation or HPC environment.
 
+Where that drive is not mounted, the same data is available from the Cloudflare R2 bucket
+`artemis-r2`, which holds it under a `data/` prefix — `/mnt/d/<path>` is
+`r2:artemis-r2/data/<path>`. `rclone` takes its credentials from the `RCLONE_CONFIG_R2_*`
+environment variables, so neither an `rclone.conf` nor a committed secret is involved:
+
+```bash
+rclone copyto r2:artemis-r2/data/<path> /mnt/d/<path>
+```
+
+Pipeline code still opens the declared paths, so stage a file where the configuration expects
+it before running. The header of [`config/data_paths.yaml`](config/data_paths.yaml) documents
+the bucket layout, the working commands, and the one directory whose bucket name differs from
+its drive name.
+
 ## Runnable workflows
 
 ### Draft management units
@@ -134,8 +148,10 @@ uv.lock                    Locked Python environment
 
 ## Known constraints and open decisions
 
-- The local `/mnt/d` data mount and interactive Earth Engine credentials are required for many
-  workflows; notebook availability can therefore be environment-dependent.
+- Many workflows need both the project data and interactive Earth Engine credentials, so
+  notebook availability is environment-dependent. The data can come from the local `/mnt/d`
+  mount or, on a machine without it, from the `artemis-r2` bucket; Earth Engine has no such
+  substitute.
 - FIA inventory years differ among stands. The common trajectory anchors are the initial cycle
   and shared final year; arbitrary calendar years do not form complete synchronized snapshots.
 - TreeMap raster, crosswalk, and FIA/FVS outputs must use the same TreeMap vintage.

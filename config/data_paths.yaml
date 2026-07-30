@@ -2,8 +2,46 @@
 # All paths point to /mnt/d/ (external drive, present on local workstation)
 # When promoting to HPC, copy this file and update paths to the HPC data mount.
 # All downstream pipeline code reads paths from here — no hardcoded /mnt/d/ in scripts.
+#
+# Alternative source — Cloudflare R2
+# ----------------------------------
+# The bucket `artemis-r2` holds the same data under its `data/` prefix, so
+#
+#     /mnt/d/<path>   ==   r2:artemis-r2/data/<path>
+#
+# for every entry below unless a per-key comment says otherwise (see the FVS
+# project copy at the bottom, whose bucket name differs). Use R2 wherever the
+# drive is not mounted — cloud sandbox, CI runner, second workstation.
+#
+# rclone reads its credentials from the preconfigured RCLONE_CONFIG_R2_*
+# environment variables (type, provider, endpoint, access key, secret), so no
+# rclone.conf is required and no credentials belong in this file. Verified
+# 2026-07-30 with rclone v1.60.1:
+#
+#     rclone lsf   r2:artemis-r2/data/TreeMap-2022/Data/        # list one directory
+#     rclone size  r2:artemis-r2/data/TreeMap_Chaz/output2020   # check before pulling a tree
+#     rclone copyto \
+#       r2:artemis-r2/data/Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx \
+#       data/raw/Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx
+#     rclone copy  r2:artemis-r2/data/<dir> /mnt/d/<dir>        # whole directory
+#
+# Prefer fetching individual files: several of these directories are ~1 GiB
+# (`TreeMap_Chaz/output2020` is 1.01 GiB over 11 objects) and the raw TreeMap and
+# FIA trees are far larger.
+#
+# Two things to know. The token is scoped to the bucket, so a bare `rclone lsd r2:`
+# returns 403 — always name `artemis-r2`. And nothing below is rewritten
+# automatically: pipeline code still opens the /mnt/d paths, so fetch a file to
+# its declared path (or to the mirror under a local root) before running.
 
 drive: "/mnt/d"
+
+# Object-storage mirror of `drive`. `<remote>:<bucket>/<prefix>/X` holds `<drive>/X`.
+r2:
+  remote:       "r2"            # rclone remote, configured from RCLONE_CONFIG_R2_* env vars
+  bucket:       "artemis-r2"
+  prefix:       "data"
+  endpoint_env: "RCLONE_CONFIG_R2_ENDPOINT"   # account-scoped URL; read from the env, not Git
 
 raw:
   treemap_2022:
@@ -65,6 +103,8 @@ raw:
   Artemis_project_fvs_copy_no_management:
     # For outputs of FVS run from the Windows GUI, the only working interface with FVS so far.
     # Open with duckdb, summary csvs created 'fvs_trajectory.csv', 'fvs_stand_change.csv', and 'fvs_weighted_trajectory.csv'
+    # R2 exception: this directory is 'data/Artemis_project_fvs_copy_no_management/'
+    # in the bucket, not 'data/Artemis_project_fvs_copy/' as the drive paths below.
     FVS_Data_db: "/mnt/d/Artemis_project_fvs_copy/FVS_Data.db"
     FVSOut_db: "/mnt/d/Artemis_project_fvs_copy/FVSOut.db"
     
