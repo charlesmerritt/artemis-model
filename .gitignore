@@ -18,6 +18,8 @@ data/raw
 data/interim/
 data/processed/
 data/build/
+# Local copies pulled from R2 by pipeline/data_access.py
+data/r2_cache/
 
 # GEE credentials
 .config/earthengine/

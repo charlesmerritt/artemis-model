@@ -80,10 +80,12 @@ environment variables, so neither an `rclone.conf` nor a committed secret is inv
 rclone copyto r2:artemis-r2/data/<path> /mnt/d/<path>
 ```
 
-Pipeline code still opens the declared paths, so stage a file where the configuration expects
-it before running. The header of [`config/data_paths.yaml`](config/data_paths.yaml) documents
-the bucket layout, the working commands, and the one directory whose bucket name differs from
-its drive name.
+[`pipeline/data_access.py`](pipeline/data_access.py) resolves a declared path against the
+drive first and the bucket second, fetching on demand, which is how the data-dependent tests
+run without the mount. Pipeline modules still open their declared paths directly, so stage
+those files before running. [`data/index.md`](data/index.md) catalogs every folder in the
+bucket — size, contents, and the config key that points at it — and the header of
+[`config/data_paths.yaml`](config/data_paths.yaml) documents the layout and access commands.
 
 ## Runnable workflows
 

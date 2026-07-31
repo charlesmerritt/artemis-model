@@ -30,18 +30,31 @@
 # FIA trees are far larger.
 #
 # Two things to know. The token is scoped to the bucket, so a bare `rclone lsd r2:`
-# returns 403 — always name `artemis-r2`. And nothing below is rewritten
-# automatically: pipeline code still opens the /mnt/d paths, so fetch a file to
-# its declared path (or to the mirror under a local root) before running.
+# returns 403 — always name `artemis-r2`. And pipeline code still opens the /mnt/d
+# paths directly, so fetch a file to its declared path before running; only callers
+# that go through pipeline/data_access.py get the fallback for free.
+#
+# data/index.md catalogs every folder in the bucket — size, contents, and which
+# config key (if any) points at it.
 
 drive: "/mnt/d"
 
 # Object-storage mirror of `drive`. `<remote>:<bucket>/<prefix>/X` holds `<drive>/X`.
+# Read by pipeline/data_access.py, which resolves a declared path against the
+# drive first and this bucket second.
 r2:
   remote:       "r2"            # rclone remote, configured from RCLONE_CONFIG_R2_* env vars
   bucket:       "artemis-r2"
   prefix:       "data"
   endpoint_env: "RCLONE_CONFIG_R2_ENDPOINT"   # account-scoped URL; read from the env, not Git
+
+  # The bucket also mirrors this repo's gitignored data/ tree (pipeline interim and
+  # processed outputs) under this prefix: <repo>/data/X is <prefix>/Artemis_data/X.
+  repo_data_prefix: "Artemis_data"
+
+  # Directories uploaded under a name other than their name on the drive.
+  renames:
+    Artemis_project_fvs_copy: "Artemis_project_fvs_copy_no_management"
 
 raw:
   treemap_2022:
@@ -86,6 +99,12 @@ raw:
 
   counties:
     p010g_shp:  "/mnt/d/county_p010g.shp_nt00934/countyp010g.shp"
+
+  tpo_guidance:
+    # Source workbook for pipeline/s3_management/tpo_targets.py — harvest volume
+    # targets from USFS TPO reports. Sits at the drive root; when pulled from R2
+    # it is staged into the repo's gitignored data/raw/.
+    xlsx:       "/mnt/d/Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx"
 
   
   # GEE-only datasets 

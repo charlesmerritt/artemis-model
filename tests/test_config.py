@@ -3,8 +3,10 @@ Tests that verify the config files are internally consistent and complete.
 These are the first tests that must pass — they validate the scaffold before
 any data is acquired.
 
-Config-only tests run anywhere. Tests that touch the external data drive skip
-when it is absent (see `_data_paths_or_skip`), so this file is CI-safe.
+Config-only tests run anywhere. Tests that touch project data resolve it through
+`pipeline.data_access`, which answers from the /mnt/d drive or the R2 mirror, and
+skip only where neither is reachable (see `_data_paths_or_skip`) — so this file
+is CI-safe.
 """
 
 import pytest
@@ -116,47 +118,57 @@ def test_ownership_mask_values(projection_config):
     assert 2 in mask  # water
 
 
-def _data_paths_or_skip(config_dir):
-    """Load data_paths.yaml, skipping if the external data drive is absent.
+def _data_paths_or_skip(config_dir, data_access):
+    """Load data_paths.yaml, skipping only when no data source is reachable.
 
-    These paths live on a workstation-mounted drive (/mnt/d). On a machine
-    without it — a CI runner, another checkout — the drive's absence is an
-    environmental fact, not a defect, so skip rather than fail. When the drive
-    IS mounted the tests below still assert each file is really there.
+    The paths below name files on the workstation drive (/mnt/d). Off that
+    workstation the same files are in the R2 bucket, so absence of the mount no
+    longer means absence of the data: `data_access.exists` checks both, and the
+    assertions below hold wherever either answers. Only a machine with neither —
+    a bare CI runner, with no R2 credentials — skips.
+
+    These checks stay cheap: a hit in the bucket is confirmed from object
+    metadata, so nothing here downloads the multi-gigabyte rasters it names.
     """
     import yaml
     from pathlib import Path
     with open(config_dir / "data_paths.yaml") as f:
         paths = yaml.safe_load(f)
-    drive = Path(paths["drive"])
-    if not drive.exists():
-        pytest.skip(f"data drive not mounted: {drive} — see config/data_paths.yaml")
+    if not Path(paths["drive"]).exists() and not data_access.r2_available():
+        pytest.skip(
+            f"data drive not mounted ({paths['drive']}) and no R2 fallback "
+            "(needs rclone plus RCLONE_CONFIG_R2_* credentials)"
+        )
     return paths
 
 
-def test_data_paths_drive_exists(config_dir):
-    """Verify /mnt/d/ is mounted. Skips where the drive is not expected."""
+def test_data_paths_source_available(config_dir, data_access):
+    """At least one declared data source — the drive or the bucket — answers."""
     from pathlib import Path
-    paths = _data_paths_or_skip(config_dir)
-    assert Path(paths["drive"]).exists()
+    paths = _data_paths_or_skip(config_dir, data_access)
+    assert Path(paths["drive"]).exists() or data_access.r2_available()
 
 
-def test_data_paths_treemap_accessible(config_dir):
-    from pathlib import Path
-    paths = _data_paths_or_skip(config_dir)
-    tif = Path(paths["raw"]["treemap_2022"]["tif"])
-    assert tif.exists(), f"TreeMap TIF not found: {tif}"
+def test_data_paths_treemap_accessible(config_dir, data_access):
+    paths = _data_paths_or_skip(config_dir, data_access)
+    tif = paths["raw"]["treemap_2022"]["tif"]
+    assert data_access.exists(tif), data_access.unavailable_reason(tif)
 
 
-def test_data_paths_ownership_accessible(config_dir):
-    from pathlib import Path
-    paths = _data_paths_or_skip(config_dir)
-    tif = Path(paths["raw"]["ownership"]["tif"])
-    assert tif.exists(), f"Ownership TIF not found: {tif}"
+def test_data_paths_ownership_accessible(config_dir, data_access):
+    paths = _data_paths_or_skip(config_dir, data_access)
+    tif = paths["raw"]["ownership"]["tif"]
+    assert data_access.exists(tif), data_access.unavailable_reason(tif)
 
 
-def test_data_paths_fia_sqlite_accessible(config_dir):
-    from pathlib import Path
-    paths = _data_paths_or_skip(config_dir)
-    db = Path(paths["raw"]["fia_sqlite"]["db"])
-    assert db.exists(), f"FIA SQLite not found: {db}"
+def test_data_paths_fia_sqlite_accessible(config_dir, data_access):
+    paths = _data_paths_or_skip(config_dir, data_access)
+    db = paths["raw"]["fia_sqlite"]["db"]
+    assert data_access.exists(db), data_access.unavailable_reason(db)
+
+
+def test_data_paths_tpo_guidance_accessible(config_dir, data_access):
+    """The TPO workbook the harvest-target parser reads."""
+    paths = _data_paths_or_skip(config_dir, data_access)
+    xlsx = paths["raw"]["tpo_guidance"]["xlsx"]
+    assert data_access.exists(xlsx), data_access.unavailable_reason(xlsx)
