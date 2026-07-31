@@ -1,0 +1,102 @@
+```text
+            Corrected TreeMap <----------> FIA / Plot Data
+                     │                            │
+                     └────────────┬───────────────┘
+                                  │
+                                  ▼
+                      LETO "Mother" Initializer
+              Spatial stands, plot assignments, ownership,
+              FVS variants, site data, and initial tree lists
+                                  │
+                                  ▼
+                    ARTEMIS Orchestrator (WSL2)
+                                  │
+          ┌───────────────────────┼────────────────────────┐
+          ▼                       ▼                        ▼
+   ┌─────────────┐         ┌─────────────┐          ┌─────────────┐
+   │ Worker:     │         │ Worker:     │          │ Worker:     │
+   │ FEDERAL     │         │ STATE       │          │ PRIVATE /   │
+   │ stands      │         │ stands      │          │ CORPORATE   │
+   └──────┬──────┘         └──────┬──────┘          └──────┬──────┘
+          │                       │                        │
+          └───────────────────────┼────────────────────────┘
+                                  │
+                Concurrent stand-level FVS simulation
+                One independent OS process per worker
+                                  │
+                                  ▼
+   ┌───────────────────────────────────────────────────────────────┐
+   │             FVS TRAJECTORY LIBRARY GENERATION                 │
+   │                                                               │
+   │  For each representative stand condition:                     │
+   │                                                               │
+   │      stand                                                    │
+   │        × eligible management prescription                    │
+   │        × treatment timing / offset                            │
+   │        × climate scenario                                     │
+   │        × other modeled assumptions                            │
+   │                                                               │
+   │  Run each alternative as a complete multi-cycle FVS           │
+   │  simulation. No synchronization barrier is required between   │
+   │  stands because each trajectory is generated independently.   │
+   │                                                               │
+   │  Example trajectories:                                        │
+   │      • grow only                                               │
+   │      • thin every 20 years                                     │
+   │      • thin when SDI threshold is exceeded                     │
+   │      • clearcut and regenerate at rotation age                 │
+   │      • delayed treatment by 5, 10, or 15 years                 │
+   └──────────────────────────────┬────────────────────────────────┘
+                                  │
+                                  ▼
+   ┌───────────────────────────────────────────────────────────────┐
+   │                    ARTEMIS TRAJECTORY STORE                    │
+   │                         DuckDB                                 │
+   │                                                               │
+   │  stand_id                                                     │
+   │  ownership                                                    │
+   │  prescription_id                                              │
+   │  trajectory_id                                                │
+   │  year / cycle                                                 │
+   │  treatment events                                             │
+   │  removals                                                     │
+   │  TPA, BA, SDI, volume, biomass, carbon, habitat, cost, etc.   │
+   │                                                               │
+   │  Each trajectory describes the complete projected future of   │
+   │  one stand under one predefined management alternative.       │
+   └──────────────────────────────┬────────────────────────────────┘
+                                  │
+                                  ▼
+   ┌───────────────────────────────────────────────────────────────┐
+   │                LANDSCAPE POLICY / SCHEDULER                    │
+   │                                                               │
+   │  Select one trajectory for each spatial stand while enforcing │
+   │  owner-specific and landscape-level objectives:               │
+   │                                                               │
+   │      • even-flow harvest targets                               │
+   │      • treatment budgets and capacity                          │
+   │      • adjacency and green-up constraints                      │
+   │      • maximum contiguous harvest area                         │
+   │      • habitat retention and connectivity                      │
+   │      • watershed or regional treatment limits                  │
+   │      • carbon, biomass, fire-risk, and economic objectives     │
+   │                                                               │
+   │  Neighboring stands influence which trajectories may be       │
+   │  selected together, but they do not require FVS to be rerun.   │
+   └──────────────────────────────┬────────────────────────────────┘
+                                  │
+                                  ▼
+   ┌───────────────────────────────────────────────────────────────┐
+   │                    SELECTED LANDSCAPE PLAN                     │
+   │                                                               │
+   │  stand_id → selected trajectory_id                            │
+   │                                                               │
+   │  Join selected cycle-level outputs back to TreeMap stands,     │
+   │  polygons, or pixels.                                          │
+   └──────────────────────────────┬────────────────────────────────┘
+                                  │
+                  ┌───────────────┼────────────────┐
+                  ▼               ▼                ▼
+          Spatial rasters   Management maps   Regional summaries
+          and time series   and schedules     and scenario metrics
+```
