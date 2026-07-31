@@ -140,9 +140,9 @@ uv venv --python 3.13 .venv && uv pip install boto3 numpy pandas rasterio matplo
 ```
 
 Versions used: numpy 2.5.1, pandas 3.0.3, rasterio 1.5.0, matplotlib 3.11.1,
-boto3 1.43.56, openpyxl 3.1.5. `boto3` and `openpyxl` are not yet in
-`pyproject.toml` dependencies; add them if this script becomes part of the
-pipeline rather than a weekly artifact.
+boto3 1.43.56, openpyxl 3.1.5. `boto3` (R2 access) and `openpyxl` (the TPO
+workbook, read via `pandas.read_excel`) are project dependencies, so the
+one-command regeneration above works from a plain `uv sync`.
 
 ## Open questions these figures raise
 

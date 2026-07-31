@@ -480,7 +480,10 @@ def fig_ownership_map(cache, acres, outdir):
     small = own[::step, ::step]
     extent = [bounds.left / 1e3, bounds.right / 1e3, bounds.bottom / 1e3, bounds.top / 1e3]
 
-    panels = [("Family forest", [3]), ("Corporate / other private", [4]),
+    # Every class in OWNER_CLASSES appears in exactly one panel, so the panel
+    # acreages sum to the grey forest backdrop. Class 5 (tribal) rides with
+    # corporate because TPO_GROUP files both under "Private".
+    panels = [("Family forest", [3]), ("Corporate / other private", [4, 5]),
               ("Federal", [6]), ("State + local", [7, 8])]
     fig, axes = figure(1, 4, figsize=(13.5, 3.4), gridspec_kw={"wspace": 0.08})
     forest = np.isin(small, OWNER_CLASSES)
