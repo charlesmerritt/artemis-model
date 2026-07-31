@@ -138,6 +138,24 @@ def summarize(strata: np.ndarray) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def hole_universe(band: np.ndarray, nodata: float | int | None) -> np.ndarray:
+    """Valid-data footprint of the hole raster.
+
+    ``--aoi-raster`` accepts any raster, and a NoData-less source would make
+    ``band != nodata`` compare against ``None`` element-wise — an all-True array,
+    i.e. the whole rectangular bounding box instead of the in-AOI holes. That is
+    the 3x overstatement documented for ``TreeMap_Holes_CopyRaster`` in
+    ``docs/treemap_holes/README.md``, so fail closed as ``make_report_figures``
+    already does rather than silently stratifying land outside the AOI.
+    """
+    if nodata is None or not np.isfinite(nodata):
+        raise ValueError(
+            "TreeMap hole source must declare a finite NoData value; its "
+            "valid-data footprint defines the hole universe"
+        )
+    return band != nodata
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--aoi-raster", type=Path, default=AOI_HOLES_RASTER,
@@ -146,7 +164,7 @@ def main() -> None:
     args = parser.parse_args()
 
     with rasterio.open(args.aoi_raster) as src:
-        aoi = src.read(1) != src.nodata
+        aoi = hole_universe(src.read(1), src.nodata)
         profile = src.profile
         bounds, transform = src.bounds, src.transform
     print(f"hole universe: {aoi.sum():,} px ({aoi.sum() * ACRES_PER_PIXEL:,.0f} ac)")

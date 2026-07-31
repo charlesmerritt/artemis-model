@@ -11,6 +11,7 @@ _spec = importlib.util.spec_from_file_location("stratify_treemap_holes", _MOD_PA
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 STRATA, fia_tree, summarize = _mod.STRATA, _mod.fia_tree, _mod.summarize
+hole_universe = _mod.hole_universe
 
 
 def test_fia_tree_excludes_urban_and_developed_tree_classes():
@@ -45,3 +46,18 @@ def test_summary_fractions_exclude_nodata_and_sum_to_one():
     assert table.pixels.sum() == 6  # the three zeros are outside the hole universe
     assert table.frac_of_holes.sum() == pytest.approx(1.0)
     assert table.loc[table.code == 1, "acres"].item() == pytest.approx(2 * 0.2224)
+
+
+def test_hole_universe_is_the_valid_data_footprint():
+    band = np.array([[0, 5], [255, 7]], dtype=np.uint8)
+    np.testing.assert_array_equal(hole_universe(band, 255),
+                                  np.array([[True, True], [False, True]]))
+
+
+@pytest.mark.parametrize("nodata", [None, float("nan")])
+def test_hole_universe_rejects_sources_without_a_finite_nodata(nodata):
+    # `band != None` is element-wise True, which would silently promote the whole
+    # bounding box to "hole" and roughly triple the reported recoverable area.
+    band = np.array([[0, 5], [255, 7]], dtype=np.uint8)
+    with pytest.raises(ValueError, match="finite NoData"):
+        hole_universe(band, nodata)

@@ -166,8 +166,17 @@ def main() -> None:
     for name, mask in build_groups(strata, add_back).items():
         points = sample_points(mask, args.per_group, transform, crs, rng)
         print(f"  {name}: {len(points):,} points")
+        if points.empty:
+            # No patch clears the 5-acre MMU with an interior, so there is
+            # nothing to send to Earth Engine. Skipping keeps the remaining
+            # groups reportable instead of failing on absent lon/lat columns.
+            print(f"    skipped: no sampleable area in {name}")
+            continue
         sampled = sample_lcms(ee, points, years)
         frames.append(points.join(sampled).assign(group=name))
+
+    if not frames:
+        raise SystemExit("no group had sampleable area; nothing to validate")
 
     table = pd.concat(frames, ignore_index=True)
     band_cols = [c for c in table if c[:3] in ("LC_", "LU_", "CH_")]
