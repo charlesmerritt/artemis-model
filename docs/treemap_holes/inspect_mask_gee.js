@@ -16,9 +16,12 @@ var emb = ee.ImageCollection('GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL')
   .filterDate(YEAR + '-01-01', (YEAR + 1) + '-01-01')
   .filterBounds(aoi).mosaic().select(BANDS);
 
-// Stage A: max cosine similarity to any clearcut exemplar (bands are unit-norm).
+// Stage A: max cosine similarity to any clearcut exemplar. Normalize the pixel
+// vector too — AlphaEarth bands are only near unit-norm, and SIM_THRESHOLD was
+// fitted on a true cosine.
+var unit = emb.divide(emb.pow(2).reduce(ee.Reducer.sum()).sqrt());
 var sims = EXEMPLARS.map(function (vec) {
-  return emb.multiply(ee.Image.constant(vec)).reduce(ee.Reducer.sum());
+  return unit.multiply(ee.Image.constant(vec)).reduce(ee.Reducer.sum());
 });
 var similarity = ee.ImageCollection(sims).max().rename('similarity');
 

@@ -168,20 +168,30 @@ def probability_image(ee, model: dict):
 
 
 def similarity_image(ee, model: dict):
-    """Max cosine similarity to any anchor exemplar (unit-norm bands => dot product).
+    """Max cosine similarity to any anchor exemplar.
 
     Mirrors ``classify_holes.stage_a_similarity``: one dot product per exemplar,
     then a per-pixel max, so a fresh cut can match the young exemplar without
     having to resemble an established stand.
+
+    Both the pixel vector and the exemplar are normalized, matching
+    ``classify_holes.max_exemplar_similarity``, which applies ``unit_rows`` to
+    the sampled rows before dotting. AlphaEarth bands are *near* unit-norm
+    (measured 1.0001 +/- 0.002), not exactly so; dotting the raw image would
+    compute ``|x| * cos`` and deviate from the thresholded quantity by ~2e-3 —
+    far outside the 5e-5 quantisation band ``SCORE_SCALE`` is chosen to
+    guarantee, and enough to move borderline pixels across the fitted Stage-A
+    cut-off. The threshold is fitted on cosine, so the export must be cosine.
     """
     year = model["feature_year"]
     image = annual_embedding(ee, year).select(list(model["bands"]))
+    unit = image.divide(image.pow(2).reduce(ee.Reducer.sum()).sqrt())
     bands = []
     for i, exemplar in enumerate(model["anchor_exemplars"]):
         vec = np.asarray(exemplar, dtype=float)
         vec = vec / np.linalg.norm(vec)
         bands.append(
-            image.multiply(ee.Image.constant(vec.tolist()))
+            unit.multiply(ee.Image.constant(vec.tolist()))
             .reduce(ee.Reducer.sum())
             .rename(f"sim_{i}")
         )
@@ -336,9 +346,12 @@ var emb = ee.ImageCollection('{EMBEDDING_COLLECTION}')
   .filterDate(YEAR + '-01-01', (YEAR + 1) + '-01-01')
   .filterBounds(aoi).mosaic().select(BANDS);
 
-// Stage A: max cosine similarity to any clearcut exemplar (bands are unit-norm).
+// Stage A: max cosine similarity to any clearcut exemplar. Normalize the pixel
+// vector too — AlphaEarth bands are only near unit-norm, and SIM_THRESHOLD was
+// fitted on a true cosine.
+var unit = emb.divide(emb.pow(2).reduce(ee.Reducer.sum()).sqrt());
 var sims = EXEMPLARS.map(function (vec) {{
-  return emb.multiply(ee.Image.constant(vec)).reduce(ee.Reducer.sum());
+  return unit.multiply(ee.Image.constant(vec)).reduce(ee.Reducer.sum());
 }});
 var similarity = ee.ImageCollection(sims).max().rename('similarity');
 

@@ -558,6 +558,18 @@ otherwise look attractive.
    Thresholding server-side before quantisation would remove the band entirely,
    at the cost of the continuous scores needed to retune thresholds without
    re-exporting (V17).
+
+   **The delivered raster predates the Stage-A cosine fix and must be
+   regenerated before the acreage below is final.** `embed_holes.similarity_image`
+   previously dotted the *raw* AlphaEarth image against a unit-norm exemplar,
+   computing `|x| · cos` rather than the cosine that `classify_holes` fits the
+   Stage-A threshold on. Because the bands are only near unit-norm (1.0001 ±
+   0.002, V3), the exported surface could deviate from the thresholded quantity
+   by ~2 × 10⁻³ — roughly 40× the quantisation band above, and enough to move
+   borderline pixels across the 0.9046 cut-off in either direction. The code now
+   normalizes the pixel vector server-side and `tests/test_embed_holes.py` pins
+   the two paths to one definition, but every score raster, add-back mask and
+   acreage in this report was exported before that change.
 6. **Stage A targets 90 % training recall; held-out recall is lower.** Its
    threshold is a training-fold quantile, so 90 % in-training recall is true by
    construction. Fold-local spatial evaluation retains 86.6 % of held-out
