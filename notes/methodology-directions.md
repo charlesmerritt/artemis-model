@@ -99,6 +99,14 @@ abstraction rather than a *biophysical* one.
 - Whether tiny plot slivers inside a unit (a plot contributing a handful of pixels)
   get dropped below some area threshold to control run count.
 
+**Partly resolved, 2026-08-03.** The "real, unmodified FIA tree list" principle now also
+covers units that have *no* list — TreeMap holes, plots with no live trees, and stands the
+scheduler empties. `config/fallback_treelists.yaml` defines six fixed lists, each one a real
+FIA plot pinned by `PLT_CN`, and `build_fvs_inputs.py` reaches them through a bounded
+ladder (same-type donor within 5 km, any-type within 2 km, then a fixed list) instead of
+LETO's nearest-donor-at-any-distance. Provenance is tagged per tree row and reported by
+area. See [`docs/config-policy.md`](../docs/config-policy.md) §3.
+
 ---
 
 ## 2. Riparian buffers must be their own stands — excluded from management, still grown

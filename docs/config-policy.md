@@ -279,10 +279,12 @@ the same cycles and still reported as their own polygons — see
 
 **Initialization (year 0).** The pixel is forest under the mask but TreeMap gives it
 nothing usable: nodata under the mask, a TM_ID with no crosswalk row, or a donor plot with
-no live tree records. Today `build_fvs_inputs.impute_nearest_runnable` hands such a unit
-the nearest runnable unit's tree list at *any* distance and with no forest-type test — a
-bottomland hardwood unit can inherit a pine plantation from 40 km away, and nothing in the
-output records that it happened.
+no live tree records. LETO's `GenerateNearTable` step — which
+`build_fvs_inputs.impute_nearest_runnable` ported — hands such a unit the nearest runnable
+unit's tree list at *any* distance and with no forest-type test, so a bottomland hardwood
+unit can inherit a pine plantation from 40 km away with nothing in the output recording
+it. The ladder below keeps that behaviour where it is defensible and bounds it where it is
+not.
 
 **Regeneration (mid-run).** The scheduler applies a stand-replacing entry and the stand is
 empty; FVS will grow nothing for the rest of the horizon. Regeneration is **not** expressed
@@ -336,13 +338,45 @@ An initialization gap walks four rungs, first match wins:
 Upland hardwood routes to the mixed slot rather than getting its own; the pilot's upland
 hardwood is largely oak/pine transitional, and a seventh slot would not earn its keep.
 
+Forest type beats proximity inside 5 km: a same-type donor 4 km away wins over a
+different-type donor 100 m away, because a pine tree list is not a hardwood stand. A unit
+whose forest type is unknown can never satisfy rung 1, so it falls to the tighter any-type
+radius — a deliberate degradation, not an oversight.
+
+`pipeline/s4_fvs/build_fvs_inputs.py` walks this ladder; `ladder_decisions()` is the pure
+function that decides, and `impute_nearest_runnable()` is what builds the tree rows.
+
+### Measuring before committing
+
+`ladder_decisions()` needs only geometry and config — no resolved lock file, no pinned donor
+plots. That makes it the tool for the open question below: how much of the landscape
+actually depends on a fixed list.
+
+```bash
+uv run python -m pipeline.s4_fvs.build_fvs_inputs \
+    --units ... --weights ... --tree-init ... --out-dir ... --ladder-report
+```
+
+It writes `initialization_ladder.csv` — one row per gap unit with its rung, donor, and
+donor distance — and prints the rung counts. Run this before resolving slots.
+
 ### Provenance is not optional
 
 Every tree row carries a `TREE_SOURCE` — `FIA_WEIGHTED_DIRECT`, `IMPUTED_NEAREST`,
-`FALLBACK_FIXED`, or `REGEN_FIXED` — and every summary reports area by source. A landscape
-where 8% of the acres came from a fixed list is a different result from one where 0.3% did,
-and that difference must never be invisible. The config states the three required
-reporting cuts; an FVS result without them is not reportable.
+`FALLBACK_FIXED`, or `REGEN_FIXED` — plus `FALLBACK_SLOT` and `NEAR_DIST`. A landscape where
+8% of the acres came from a fixed list is a different result from one where 0.3% did, and
+that difference must never be invisible.
+
+`summarize_tree_sources()` produces the three cuts the config requires, and the CLI writes
+them alongside the FVS inputs on every run:
+
+| File | Cut |
+|---|---|
+| `provenance_by_source.csv` | Area and share of the landscape by `TREE_SOURCE` |
+| `provenance_donor_distance.csv` | Donor-distance median, max, and share over 2 km |
+| `provenance_by_slot.csv` | Area per fixed slot |
+
+An FVS result without these is not reportable.
 
 ### Resolving the slots
 
@@ -368,8 +402,9 @@ These are stated in the configs and repeated here so they are visible in one pla
 
 - **Hole prevalence is unmeasured.** How much area actually lands on ladder rungs 3 and 4
   has never been quantified for the pilot AOI. If it is material, the fixed lists become a
-  headline methods caveat rather than an edge case. **Measure before the first reported
-  managed run.**
+  headline methods caveat rather than an edge case. The tool now exists — `--ladder-report`
+  needs no resolved slots — so this is a run away, and it should happen **before** donor
+  plots are pinned, since the answer determines how much the pinning choice matters.
 - **`industrial_min_acres` is a knob, not a constant.** Sensitivity-test it.
 - **Regeneration delays** (1 year planted pine, 3 years hardwood) are silvicultural
   judgement. LCMS post-harvest recovery slope could calibrate them.
