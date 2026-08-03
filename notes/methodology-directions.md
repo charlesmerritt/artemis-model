@@ -136,8 +136,19 @@ folded into unit-level totals technically appear in the outputs, yet you can no
 longer answer "how much volume/carbon is sitting in riparian buffers, and where?" —
 which is the question the buffers exist to support. Keep them addressable.
 
-**Gap in current code.** `pipeline/s3_management/sketch_management_units.py`
-currently *erases* buffers: stream BMP buffers, NHD waterbodies, and the small road
+**Implemented, 2026-08-03.** `sketch_management_units.py` now retains buffers as
+`unit_class = "riparian"` units. `build_buffer_polygons()` builds them carrying
+`buffer_class`, resolving overlap widest-first; `partition_forest()` splits the eligible
+forest into managed and riparian with no overlap; `check_partition()` enforces the area
+identity below to 0.01 ha; and `area_accounting.csv` reports the permanently-excluded
+line. `SMZ_Pct = 100.0` on riparian units makes the absolute override in
+`regime_assignment.py` fire through the already-tested path. They are exempt from the 40 ha
+fishnet split and from sliver resolution — both would have erased the layer, since a
+35–75 ft buffer is a sliver by area almost everywhere. Two deviations from this note are
+recorded under "Polygon identity" below and in [`docs/config-policy.md`](../docs/config-policy.md).
+
+**Gap in the code before that change.** `pipeline/s3_management/sketch_management_units.py`
+*erased* buffers: stream BMP buffers, NHD waterbodies, and the small road
 buffer are unioned into one erase layer and differenced out of the forested parcels
 (`gpd.overlay(..., how="difference")`). The buffer area is discarded, so today those
 acres would be neither managed nor grown — they are simply absent from the projected
@@ -179,6 +190,22 @@ from the input parcels, that split is acceptable — but each resulting polygon 
 its own `unit_id` and its own row in the summaries. Simulation may still dedupe to
 unique `(plot, no_management)` trajectory keys behind the scenes (item 4); that is a
 run-count optimization and must not collapse the reporting geometry.
+
+> **Deviation in the implementation — needs a ruling.** "Do not merge them into the managed
+> units they abut" is enforced exactly. "Do not dissolve adjacent buffer segments" is only
+> partly enforced: `build_buffer_polygons()` unions buffers within a class and then splits
+> the result into **connected components**, so two buffer segments that physically overlap
+> along one reach become one polygon.
+>
+> The reason is that per-feature buffers overlap, and overlapping polygons cannot partition
+> the landscape. The alternatives are (a) connected components, or (b) slicing shared ground
+> between features in input order, which produces polygons whose boundaries mean nothing.
+> Connected components was chosen as the only non-arbitrary resolution.
+>
+> What is preserved: `buffer_class`, per-polygon `unit_id`s, separate rows in every summary,
+> and further splitting by the parcel and forest-mask intersections. What is lost: the link
+> back to a specific NHD flowline, since one polygon may derive from several. If that link
+> matters, say so and the layer can carry the contributing `permanent_identifier`s.
 
 **`PLAN.md` §4b — updated.** The plan previously listed the riparian regime as "thin
 only or no entry, depends on buffer class," which was looser than the decision above.
@@ -255,7 +282,7 @@ statewide.
 
 | Item | Status |
 |---|---|
-| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Decided.** Needs implementation in `sketch_management_units.py`; `PLAN.md` §4b updated |
+| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Implemented** in `sketch_management_units.py` (retained as `unit_class = "riparian"`, area partition enforced, exempt from splitting and sliver resolution). One deviation on segment dissolving — see item 2 |
 | Keep per-plot tree lists, area-weight to units | **Leaning B.** Needs the unit×stand crosswalk + a partial-harvest distribution rule |
 | Pixel-first growth with per-pixel regime + `(plot, regime, SI)` trajectory keys | **Compatible with the above.** Adopt as the scaling design |
 | Hex-bin overlay | **Cartographic post-process only.** Size and denominator undecided |

@@ -55,9 +55,11 @@ uv run python -m pipeline.spatial_ref     # print the declaration and the confus
   `pipeline/s4_fvs/fallback_treelists.py`. See [`docs/config-policy.md`](docs/config-policy.md)
   for what each decides and what is still an assumption.
 - **Management-unit sketching:** `pipeline/s3_management/sketch_management_units.py`
-  processes Florida county-by-county and can create draft units from parcels, forest cover,
-  roads, water, and BMP exclusions. A Union County smoke run has completed; segmentation,
-  sliver merging, road-buffer policy, and terrain integration remain under review.
+  processes Florida county-by-county and creates draft units from parcels, forest cover,
+  roads, water, and BMP buffers. Managed and riparian units partition the eligible forest
+  exactly — BMP buffers are retained as no-entry `unit_class = "riparian"` units rather than
+  erased — with the area identity enforced and the permanently-excluded acres reported.
+  Segmentation, road-buffer policy, and terrain integration remain under review.
 - **FVS raster painting:** `pipeline/s4_fvs/paint_fvs_to_raster.py` maps stand-level FVS
   trajectories back to TreeMap pixels for initial and final snapshots. It requires external
   five-county trajectory, crosswalk, and raster files.

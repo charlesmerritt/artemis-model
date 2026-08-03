@@ -17,6 +17,7 @@ from pipeline.s3_management.sliver_merge import (
     flag_slivers,
     merge_slivers_to_neighbors,
     resolve_slivers,
+    split_exempt_units,
 )
 
 CRS = "EPSG:5070"  # projected, metres
@@ -206,3 +207,79 @@ def test_resolve_slivers_rejects_unknown_policy():
     gdf = gpd.GeoDataFrame({"unit_id": ["A"]}, geometry=[box(0, 0, 300, 300)], crs=CRS)
     with pytest.raises(ValueError, match="policy"):
         resolve_slivers(gdf, policy="delete")
+
+
+# ---- riparian exemption ----------------------------------------------------------------
+
+def _mixed_frame():
+    """One real managed unit, one managed sliver, one riparian sliver."""
+    return gpd.GeoDataFrame(
+        {
+            "unit_id": ["managed_big", "managed_sliver", "riparian_strip"],
+            "unit_class": ["managed", "managed", "riparian"],
+        },
+        geometry=[
+            box(0, 0, 300, 300),        # ~22 ac
+            box(300, 0, 310, 10),       # ~0.02 ac
+            box(0, 300, 300, 315),      # a 15 m buffer strip, ~1.1 ac
+        ],
+        crs="EPSG:5070",
+    )
+
+
+def test_split_exempt_units_separates_riparian_from_the_rest():
+    work, exempt = split_exempt_units(_mixed_frame())
+    assert list(work["unit_id"]) == ["managed_big", "managed_sliver"]
+    assert list(exempt["unit_id"]) == ["riparian_strip"]
+
+
+def test_a_frame_without_unit_class_is_treated_as_entirely_managed():
+    """Pre-riparian outputs have no unit_class column and must keep working."""
+    gdf = _mixed_frame().drop(columns=["unit_class"])
+    work, exempt = split_exempt_units(gdf)
+    assert len(work) == 3
+    assert len(exempt) == 0
+
+
+def test_drop_policy_deletes_the_managed_sliver_but_keeps_the_riparian_one():
+    """A BMP buffer is a sliver by area almost everywhere; dropping them erases the layer."""
+    out = resolve_slivers(_mixed_frame(), policy="drop", min_acres=5.0)
+    assert set(out["unit_id"]) == {"managed_big", "riparian_strip"}
+
+
+def test_merge_policy_does_not_dissolve_riparian_into_the_managed_unit_it_abuts():
+    """The one thing methodology-directions item 2 rules out by name."""
+    out = resolve_slivers(_mixed_frame(), policy="merge", min_acres=5.0)
+    riparian = out[out["unit_class"] == "riparian"]
+    assert len(riparian) == 1
+    assert riparian.geometry.iloc[0].area == pytest.approx(300 * 15)
+
+
+def test_a_managed_sliver_never_merges_into_a_riparian_polygon():
+    """Riparian units leave the working frame, so they cannot be chosen as merge targets.
+
+    A merged unit that was part no-entry and part harvestable is not a regime the library
+    can express.
+    """
+    gdf = gpd.GeoDataFrame(
+        {
+            "unit_id": ["riparian_strip", "managed_sliver", "managed_big"],
+            "unit_class": ["riparian", "managed", "managed"],
+        },
+        geometry=[
+            box(0, 0, 300, 15),          # riparian, shares a long edge with the sliver
+            box(0, 15, 300, 25),         # managed sliver, ~0.7 ac
+            box(0, 25, 40, 300),         # managed anchor, shares a shorter edge
+        ],
+        crs="EPSG:5070",
+    )
+    out = resolve_slivers(gdf, policy="merge", min_acres=5.0)
+    riparian = out[out["unit_class"] == "riparian"]
+    assert riparian.geometry.iloc[0].area == pytest.approx(300 * 15)   # untouched
+    assert (out[out["unit_class"] == "managed"].geometry.area.sum()
+            == pytest.approx(300 * 10 + 40 * 275))                     # sliver went managed
+
+
+def test_exempt_units_still_get_their_area_columns_refreshed():
+    out = resolve_slivers(_mixed_frame(), policy="drop", min_acres=5.0)
+    assert out["area_acres"].notna().all()

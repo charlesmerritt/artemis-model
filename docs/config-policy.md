@@ -267,9 +267,64 @@ dropped, and a prescription with no entry left inside the horizon resolves to
 
 `overrides.riparian` fires before ownership and cannot be overturned: `SMZ_Pct >= 50` means
 no entry of any kind, no buffer class exempted. It is assigned by geometry, so no
-ownership or forest-type rule can reach it. Riparian units are still grown through FVS on
-the same cycles and still reported as their own polygons — see
-[`notes/methodology-directions.md`](../notes/methodology-directions.md) item 2.
+ownership or forest-type rule can reach it.
+
+`sketch_management_units.py` produces those units and sets `SMZ_Pct = 100.0` on them, which
+is literally true — a riparian unit is entirely stream-management zone by construction — and
+which makes the override above fire through the already-tested path rather than needing
+riparian-specific logic in the regime layer. Managed units get `SMZ_Pct = 0.0`, also true,
+because the buffer area has been differenced out of them.
+
+Three things have to hold together, and requirement 3 is the one that is easy to
+half-satisfy ([`notes/methodology-directions.md`](../notes/methodology-directions.md)
+item 2):
+
+1. **Grown freely** — projected through FVS on the same cycles as everything else.
+2. **Never harvested** — the absolute override above.
+3. **Reported as unique buffer polygons** — their own unit IDs, their own rows. Buffers that
+   are grown but folded into landscape totals technically appear in the outputs, yet you can
+   no longer answer "how much volume and carbon is sitting in riparian buffers, and where?"
+
+### The managed / riparian partition
+
+Buffers used to be unioned into the erase layer and differenced away. Those acres were
+then neither managed nor grown — they vanished from the projected landscape, which is an
+under-count of standing volume and carbon rather than a conservative choice.
+
+`partition_forest()` now splits the eligible forest in two, exhaustively and without
+overlap:
+
+```
+Σ managed + Σ riparian == (forest mask ∩ parcels) − (open water ∪ road buffer)
+```
+
+`check_partition()` enforces that identity to 0.01 ha and raises when acres go missing.
+Note the right-hand side is the **post-exclusion** area: checking against the raw forested
+AOI would fail by construction, because roads run through forest and 30 m water polygons
+clip the forest mask. That permanently-excluded area is written to `area_accounting.csv`
+as its own line, so the drop stays visible instead of silently absorbing a bug.
+
+Open water and the road buffer stay erase-only — water is non-forest, and the road buffer
+exists only to absorb road/parcel alignment artefacts.
+
+**Buffer classes are applied widest-first.** Buffers overlap wherever streams run close
+together, and a polygon can belong to only one class if the output is to partition. The
+widest applicable protection wins contested ground — the conservative direction. Waterbody
+buffers (the 75 ft SMZ around lakes and ponds) are included; the waterbody polygons
+themselves are not.
+
+**Two size rules do not apply to riparian units**, and both would have destroyed the layer:
+
+- The 40 ha fishnet split is an operational harvest-unit cap. Riparian units are never
+  entered, so it has no meaning for them, and fishnetting a buffer strip would multiply
+  polygon count without making any of them more addressable.
+- Sliver resolution would have deleted them outright. A Florida BMP buffer is 35–75 ft
+  wide, so a buffer polygon has to run 600–1300 m along a stream just to reach the 5-acre
+  minimum stand size — almost none do. Under the `merge` policy they would instead have
+  been dissolved into the managed units they abut, producing a unit that is part no-entry
+  and part harvestable, which is not a regime the library can express.
+  `sliver_merge.split_exempt_units()` removes them from the working frame in both
+  directions, so a managed sliver also cannot pick a riparian polygon as its merge target.
 
 ---
 

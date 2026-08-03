@@ -56,6 +56,12 @@ SQ_M_PER_ACRE = 4046.8564224
 # LETO minimum operational stand size (LETO.V1.1 `multipart_to_singlepart_and_delete_small`).
 MIN_STAND_ACRES = 5.0
 
+# Unit classes sliver resolution must leave alone. A BMP buffer is 35-75 ft wide, so it is
+# a sliver by area almost everywhere — dropping or merging them would erase the riparian
+# layer this threshold was never meant to touch.
+UNIT_CLASS_COL = "unit_class"
+EXEMPT_UNIT_CLASSES = frozenset({"riparian"})
+
 
 def area_acres(gdf: gpd.GeoDataFrame) -> pd.Series:
     """Return polygon areas in acres. Requires a projected (metre) CRS."""
@@ -255,6 +261,31 @@ def _refresh_area_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return gdf
 
 
+def split_exempt_units(gdf: gpd.GeoDataFrame, unit_class_col: str = UNIT_CLASS_COL):
+    """
+    Separate units that sliver resolution must not touch from the rest.
+
+    Returns ``(work, exempt)``. Riparian units are exempt in both directions, and both
+    directions matter:
+
+      - Under ``drop`` they would be **deleted**. A Florida BMP buffer is 35-75 ft wide, so
+        a buffer polygon has to run 600-1300 m along a stream just to reach 5 acres. Almost
+        none do. The policy meant to remove delineation noise would remove the entire
+        riparian layer.
+      - Under ``merge`` they would be **dissolved into the managed units they abut**, which
+        is the one thing `notes/methodology-directions.md` item 2 rules out by name: it
+        also makes the merged unit partly no-entry and partly harvestable, which is not a
+        regime the library can express.
+
+    They are also removed from the working frame entirely, so a managed sliver can never
+    choose a riparian polygon as its merge target and contaminate it.
+    """
+    if unit_class_col not in gdf.columns:
+        return gdf, gdf.iloc[0:0]
+    is_exempt = gdf[unit_class_col].isin(EXEMPT_UNIT_CLASSES).to_numpy()
+    return gdf[~is_exempt].copy(), gdf[is_exempt].copy()
+
+
 def resolve_slivers(
     gdf: gpd.GeoDataFrame,
     policy: str = "drop",
@@ -262,29 +293,42 @@ def resolve_slivers(
     explode: bool = True,
     drop_orphans: bool = False,
     nearest_fallback: bool = True,
+    unit_class_col: str = UNIT_CLASS_COL,
 ) -> gpd.GeoDataFrame:
     """
-    Full sliver-resolution procedure: explode multipart → apply policy.
+    Full sliver-resolution procedure: explode multipart → exempt riparian → apply policy.
 
     policy:
         "drop"  — delete sub-threshold polygons (LETO delineation behaviour). Default.
         "merge" — dissolve slivers into a neighbouring unit (longest shared boundary, then
                   nearest-unit fallback for isolated pieces). Area-conserving alternative.
+
+    Units whose ``unit_class`` is exempt (riparian) pass through untouched but still get
+    exploded and their area columns refreshed, so the output schema is uniform. A frame with
+    no ``unit_class`` column is treated as entirely managed, which is what the pre-riparian
+    outputs are.
     """
     if policy not in {"merge", "drop"}:
         raise ValueError(f"policy must be 'merge' or 'drop', got {policy!r}")
 
-    work = explode_to_singlepart(gdf) if explode else gdf
-    n_before = len(work)
-    n_slivers = int(flag_slivers(work, min_acres).sum())
-    logger.info("Resolving slivers: %d polygons, %d below %.1f ac, policy=%s",
-                n_before, n_slivers, min_acres, policy)
+    exploded = explode_to_singlepart(gdf) if explode else gdf
+    work, exempt = split_exempt_units(exploded, unit_class_col)
+    n_before = len(exploded)
+    n_slivers = int(flag_slivers(work, min_acres).sum()) if len(work) else 0
+    logger.info("Resolving slivers: %d polygons (%d exempt), %d below %.1f ac, policy=%s",
+                n_before, len(exempt), n_slivers, min_acres, policy)
 
     if policy == "merge":
         result = merge_slivers_to_neighbors(work, min_acres, drop_orphans=drop_orphans,
                                             nearest_fallback=nearest_fallback)
     else:
         result = drop_slivers(work, min_acres)
+
+    if len(exempt):
+        result = gpd.GeoDataFrame(
+            pd.concat([result, _refresh_area_columns(exempt)], ignore_index=True),
+            crs=gdf.crs,
+        )
 
     logger.info("Sliver resolution done: %d → %d polygons", n_before, len(result))
     return result
