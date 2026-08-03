@@ -16,6 +16,7 @@ Design doc: docs/superpowers/specs/2026-07-01-clearcut-vs-agriculture-embeddings
 from __future__ import annotations
 
 import csv
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -87,18 +88,70 @@ def load_data_paths(repo_root: Path | None = None) -> dict:
         return yaml.safe_load(fh)
 
 
-def evt2022_tif_path(repo_root: Path | None = None) -> str:
-    return load_data_paths(repo_root)["raw"]["landfire"]["evt_tif"]
+def data_access(repo_root: Path | None = None):
+    """The shared path resolver (``pipeline.data_access``), importable from a notebook.
+
+    Notebooks run with ``notebooks/`` on ``sys.path`` rather than the repo root, so
+    the root goes on first.
+    """
+    repo_root = repo_root or find_repo_root()
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from pipeline import data_access as module
+    return module
+
+
+def resolve(path, repo_root: Path | None = None, **kwargs) -> Path:
+    """Local path for a declared file, fetched from R2 when the drive is absent.
+
+    Raises FileNotFoundError naming both sources when neither has it, rather than
+    handing back a path that does not open.
+    """
+    da = data_access(repo_root)
+    local = da.ensure_local(path, **kwargs)
+    if local is None:
+        raise FileNotFoundError(da.unavailable_reason(path))
+    return local
+
+
+def resolve_dir(path, repo_root: Path | None = None, **kwargs) -> Path:
+    """Same as `resolve`, for datasets only usable whole — shapefiles, geodatabases."""
+    da = data_access(repo_root)
+    local = da.ensure_local_dir(path, **kwargs)
+    if local is None:
+        raise FileNotFoundError(da.unavailable_reason(path))
+    return local
+
+
+def evt2022_tif_path(repo_root: Path | None = None, max_fetch_mb: int | None = None) -> str:
+    """The LF2022 EVT raster, from the drive or R2.
+
+    At ~3 GB this sits above the default fetch cap, so off the workstation it
+    raises with the one rclone command that stages it. Pass `max_fetch_mb` to pull
+    it inline instead.
+    """
+    declared = load_data_paths(repo_root)["raw"]["landfire"]["evt_tif"]
+    return str(resolve(declared, repo_root, max_fetch_mb=max_fetch_mb))
 
 
 def evt2022_csv_path(repo_root: Path | None = None) -> Path:
-    """Class-attribute CSV that ships beside the LF2022 EVT tif (``.../CSV_Data/*.csv``)."""
-    tif = Path(evt2022_tif_path(repo_root))
-    csv_dir = tif.parent.parent / "CSV_Data"
-    matches = sorted(csv_dir.glob("*_EVT.csv"))
-    if not matches:
-        raise FileNotFoundError(f"No *_EVT.csv found in {csv_dir}")
-    return matches[0]
+    """Class-attribute CSV that ships beside the LF2022 EVT tif (``.../CSV_Data/*.csv``).
+
+    Resolved by name rather than by fetching the 3 GB raster first: the declared tif
+    path only supplies the directory to look in, on whichever source has it.
+    """
+    declared_tif = Path(load_data_paths(repo_root)["raw"]["landfire"]["evt_tif"])
+    csv_dir = declared_tif.parent.parent / "CSV_Data"
+
+    matches = sorted(csv_dir.glob("*_EVT.csv")) if csv_dir.is_dir() else []
+    if matches:
+        return matches[0]
+
+    da = data_access(repo_root)
+    remote = sorted(n for n in da.list_remote(csv_dir) if n.endswith("_EVT.csv"))
+    if not remote:
+        raise FileNotFoundError(f"No *_EVT.csv found in {csv_dir}, on the drive or in R2")
+    return resolve(csv_dir / remote[0], repo_root)
 
 
 # --------------------------------------------------------------------------------------

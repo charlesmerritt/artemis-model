@@ -32,6 +32,7 @@ Usage:
 
     data_access.exists("/mnt/d/RDS-2025-0045/Data/US_forest_ownership.tif")
     local = data_access.ensure_local("data/interim/clearcut_ag/feature_table.csv")
+    shp_dir = data_access.ensure_local_dir("/mnt/d/tl_2022_us_state")
 """
 
 import json
@@ -166,13 +167,24 @@ def stat(path) -> dict | None:
     return None if meta.get("IsDir", True) else meta
 
 
-def _remote_dir_exists(path) -> bool:
-    """Whether the remote counterpart is a non-empty prefix (a directory)."""
+def list_remote(path) -> list[str]:
+    """Names directly under the remote counterpart of a directory path.
+
+    Directory names come back with a trailing slash, as rclone reports them.
+    Empty when the prefix does not exist — S3 cannot tell the two apart.
+    """
     url = remote_url(path)
     if url is None or not r2_available():
-        return False
+        return []
     proc = _run(["rclone", "lsf", "--max-depth", "1", url], _STAT_TIMEOUT_S)
-    return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
+    if proc is None or proc.returncode != 0:
+        return []
+    return [line for line in proc.stdout.splitlines() if line]
+
+
+def _remote_dir_exists(path) -> bool:
+    """Whether the remote counterpart is a non-empty prefix (a directory)."""
+    return bool(list_remote(path))
 
 
 def exists(path) -> bool:
@@ -222,16 +234,61 @@ def ensure_local(path, dest: Path | None = None, max_fetch_mb: int | None = None
     cap_mb = max_fetch_mb or int(os.environ.get("ARTEMIS_R2_MAX_FETCH_MB", DEFAULT_MAX_FETCH_MB))
     size_mb = meta["Size"] / 1_000_000
     if size_mb > cap_mb:
-        raise RemoteFetchTooLarge(
-            f"{remote_url(path)} is {size_mb:.0f} MB, over the {cap_mb} MB cap; "
-            "raise ARTEMIS_R2_MAX_FETCH_MB or fetch it by hand with rclone"
-        )
+        raise RemoteFetchTooLarge(_too_large_message(remote_url(path), dest, size_mb, cap_mb))
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     logger.info("fetching %s (%.1f MB) -> %s", remote_url(path), size_mb, dest)
     proc = _run(["rclone", "copyto", remote_url(path), str(dest)], _FETCH_TIMEOUT_S)
     if proc is None or proc.returncode != 0:
         logger.warning("fetch failed: %s", (proc.stderr.strip() if proc else "no output"))
+        return None
+    return dest
+
+
+def _too_large_message(url: str, dest: Path, size_mb: float, cap_mb: int) -> str:
+    return (
+        f"{url} is {size_mb:,.0f} MB, over the {cap_mb} MB cap. Raise it with "
+        f"ARTEMIS_R2_MAX_FETCH_MB, or fetch it once by hand:\n"
+        f"    rclone copyto {url} {dest}"
+    )
+
+
+def ensure_local_dir(path, dest: Path | None = None, max_fetch_mb: int | None = None) -> Path | None:
+    """Return a local directory holding this data, mirroring it from R2 if needed.
+
+    The directory-shaped counterpart of `ensure_local`, for datasets that are only
+    usable whole: a shapefile needs its .shx/.dbf/.prj siblings, a .gdb is a folder
+    of tables. Sized before transfer against the same cap, which applies here to
+    the directory total.
+    """
+    absolute = _as_path(path)
+    if absolute.exists():
+        return absolute
+
+    if dest is None:
+        in_repo_data = _relative_to(absolute, repo_root() / "data") is not None
+        dest = absolute if in_repo_data else cache_path(absolute)
+    dest = Path(dest)
+    if dest.exists():
+        return dest
+
+    url = remote_url(path)
+    if url is None or not _remote_dir_exists(path):
+        return None
+
+    proc = _run(["rclone", "size", "--json", url], _STAT_TIMEOUT_S)
+    if proc is None or proc.returncode != 0:
+        return None
+    total_mb = json.loads(proc.stdout).get("bytes", 0) / 1_000_000
+    cap_mb = max_fetch_mb or int(os.environ.get("ARTEMIS_R2_MAX_FETCH_MB", DEFAULT_MAX_FETCH_MB))
+    if total_mb > cap_mb:
+        raise RemoteFetchTooLarge(_too_large_message(url, dest, total_mb, cap_mb).replace("copyto", "copy"))
+
+    dest.mkdir(parents=True, exist_ok=True)
+    logger.info("mirroring %s (%.1f MB) -> %s", url, total_mb, dest)
+    proc = _run(["rclone", "copy", url, str(dest)], _FETCH_TIMEOUT_S)
+    if proc is None or proc.returncode != 0:
+        logger.warning("mirror failed: %s", (proc.stderr.strip() if proc else "no output"))
         return None
     return dest
 

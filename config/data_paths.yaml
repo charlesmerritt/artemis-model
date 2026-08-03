@@ -100,6 +100,12 @@ raw:
   counties:
     p010g_shp:  "/mnt/d/county_p010g.shp_nt00934/countyp010g.shp"
 
+  states:
+    # Census TIGER 2022 state boundaries; the notebooks select Florida (STATEFP 12).
+    # Shapefile — resolve the directory, not the .shp, so the sidecars come with it.
+    tl_2022_dir: "/mnt/d/tl_2022_us_state"
+    tl_2022_shp: "/mnt/d/tl_2022_us_state/tl_2022_us_state.shp"
+
   tpo_guidance:
     # Source workbook for pipeline/s3_management/tpo_targets.py — harvest volume
     # targets from USFS TPO reports. Sits at the drive root; when pulled from R2
