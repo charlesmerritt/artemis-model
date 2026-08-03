@@ -1,11 +1,12 @@
 # ARTEMIS config and policy directions
 
-Three config files set the modelling policy that everything downstream of stand
-delineation depends on. This document says what each decides, why it decides it that way,
-and what is still an assumption rather than a measurement.
+Four config decisions set the modelling policy that everything downstream depends on. This
+document says what each decides, why it decides it that way, and what is still an
+assumption rather than a measurement.
 
 | File | Decides | Read by |
 |---|---|---|
+| [`config/projection.yaml`](../config/projection.yaml) `spatial` | The coordinate reference system and snap grid, for everything | `pipeline/spatial_ref.py` |
 | [`config/ownership_policy.yaml`](../config/ownership_policy.yaml) | Who owns each unit, and which TPO volume budget it charges against | `pipeline/s3_management/owner_classes.py` |
 | [`config/management_regimes.yaml`](../config/management_regimes.yaml) | The prescription library, and 2–3 eligible prescriptions per owner class | `pipeline/s3_management/regime_assignment.py` |
 | [`config/fallback_treelists.yaml`](../config/fallback_treelists.yaml) | What a stand is initialized from when it has no tree list of its own | `pipeline/s4_fvs/fallback_treelists.py` |
@@ -21,6 +22,82 @@ parcel DORUC / acreage ──┘        │              │
                                   └─► eligible menu              ├─► fixed tree list
                                        (scheduler chooses)       │      (pinned PLT_CN)
 TreeMap hole / no live trees ────────────────────────────────────┘
+```
+
+---
+
+## 0. Coordinate reference system
+
+**Everything is EPSG:5070, NAD83 / Conus Albers.** Every raster, every vector, every
+output, every figure. ArcGIS labels this same CRS `NAD_1983_Contiguous_USA_Albers`.
+
+| Property | Value |
+|---|---|
+| Datum | North American Datum 1983 (NAD83) |
+| Projection | Albers Equal Area Conic |
+| Standard parallels | 29.5° N, 45.5° N |
+| Latitude of origin | 23° N |
+| Central meridian | −96° |
+| Units | metre |
+| Working resolution | 30 m |
+| Snap grid | TreeMap 2022 affine `[30, 0, -2361585, 0, -30, 3177435]` |
+
+### Why this one
+
+TreeMap 2022, LANDFIRE EVT, and the Harris ownership raster are all natively 5070, 30 m,
+and pixel-co-registered — and all three carry **categorical** values: plot IDs, vegetation
+types, ownership classes. Reprojecting them means resampling them, and nearest-neighbour
+resampling of a plot-ID raster changes which FIA plot a pixel inherits. Staying on 5070
+makes the raster work reproject-and-snap only, with nothing categorical ever resampled.
+
+It is also equal-area and in metres, so acres and hectares come straight from geometry —
+which the entire area-weighting scheme in [`notes/terminology.md`](../notes/terminology.md)
+depends on.
+
+### Why the snap transform, not `scale=`
+
+TreeMap's grid origin is **not** a multiple of 30: `-2361585 = -78719.5 × 30`. The grid sits
+half a pixel off the "round" 5070 grid. A GEE export using `scale=30` lets Earth Engine
+choose its own origin, which lands on the round grid and is therefore misaligned by 15 m —
+invisible on a map, and enough to hand a pixel the wrong plot. Exports pass
+`crsTransform=` for exactly this reason, and `gee/scripts/gee_utils.py` reads the transform
+from the same config the local pipeline does.
+
+### The confusables
+
+These are wrong for ARTEMIS, and none of them fails loudly — each one still renders as a
+recognisable map of Florida.
+
+| CRS | Why not |
+|---|---|
+| `ESRI:102008` North America Albers | Same NAD83 datum, but parallels 20/60 and origin at 40° — off by kilometres |
+| `ESRI:102003` USA Contiguous Albers | Same parallels, origin at 37.5° — northings differ |
+| `ESRI:102039` USGS version | Numerically equivalent to 5070; use the EPSG code so identity comparison keeps working |
+| `EPSG:6350` NAD83(2011) Conus Albers | Same parameters, newer realization — sub-metre offset, still breaks a 30 m snap grid |
+| `EPSG:4269` NAD83 geographic | Degrees. Every acre figure computed in it is wrong. Several inputs (NHD flowlines and waterbodies) ship in it, so this is the one that arrives by accident |
+
+### How it is enforced
+
+The value lives in `config/projection.yaml` and nowhere else. `pipeline/spatial_ref.py`
+exposes it, and `tests/test_spatial_ref.py` walks the AST of every module under
+`pipeline/`, `gee/`, `research/`, and `scripts/` to fail if any of them contains
+`"EPSG:5070"` as a *value*. Prose that mentions the CRS is fine — stating it clearly is the
+goal; a second copy of it in code is not, because the copy agrees with the config right up
+until the day one of them changes.
+
+```python
+from pipeline.spatial_ref import assert_project_crs, project_crs, to_project_crs
+
+gdf = to_project_crs(gpd.read_file(path))   # reproject if needed, no-op if already
+assert_project_crs(raster, context="ownership raster")
+```
+
+`assert_project_crs` names the confusable it actually received; `assert_projected_metres`
+is the weaker check for helpers that only need metres (`sliver_merge` computes acres from
+area and works in any metre CRS, including the parcels' native UTM 17N).
+
+```bash
+uv run python -m pipeline.spatial_ref
 ```
 
 ---

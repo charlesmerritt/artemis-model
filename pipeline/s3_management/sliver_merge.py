@@ -27,8 +27,9 @@ which imputes tree lists for tree-less/edge units from the nearest runnable unit
 (``GenerateNearTable``) — a separate FVS-input step, not this module. The 5-acre threshold
 is carried over from LETO unchanged.
 
-All geometry work assumes a **projected CRS in metres** (ARTEMIS uses EPSG:5070); a
-geographic CRS raises, because area/length in degrees is meaningless here.
+All geometry work assumes a **projected CRS in metres** (the ARTEMIS project CRS, declared
+in `config/projection.yaml` and read through `pipeline/spatial_ref.py`); a geographic CRS
+raises, because area/length in degrees is meaningless here.
 
 Usage:
     uv run python -m pipeline.s3_management.sliver_merge \\
@@ -45,6 +46,8 @@ import geopandas as gpd
 import pandas as pd
 from shapely.ops import unary_union
 
+from pipeline.spatial_ref import assert_projected_metres, crs_label, project_crs
+
 logger = logging.getLogger(__name__)
 
 # 1 international acre in square metres. Matches LETO's ACRES_US area unit.
@@ -56,11 +59,7 @@ MIN_STAND_ACRES = 5.0
 
 def area_acres(gdf: gpd.GeoDataFrame) -> pd.Series:
     """Return polygon areas in acres. Requires a projected (metre) CRS."""
-    if gdf.crs is None or gdf.crs.is_geographic:
-        raise ValueError(
-            "sliver_merge needs a projected CRS in metres (e.g. EPSG:5070); "
-            f"got {gdf.crs}. Reproject with gdf.to_crs('EPSG:5070') first."
-        )
+    assert_projected_metres(gdf, context="sliver_merge.area_acres")
     return gdf.geometry.area / SQ_M_PER_ACRE
 
 
@@ -304,8 +303,8 @@ def main() -> None:
                         help="Drop any slivers that still cannot be merged (merge policy only)")
     parser.add_argument("--no-nearest-fallback", action="store_true",
                         help="Skip the nearest-unit fallback; keep only shared-boundary merges")
-    parser.add_argument("--target-crs", type=str, default="EPSG:5070",
-                        help="Reproject to this CRS before resolving (default EPSG:5070)")
+    parser.add_argument("--target-crs", type=str, default=project_crs(),
+                        help=f"Reproject to this CRS before resolving (default {crs_label()})")
     args = parser.parse_args()
 
     gdf = gpd.read_file(args.input, layer=args.layer)

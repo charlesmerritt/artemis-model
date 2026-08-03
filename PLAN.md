@@ -11,7 +11,7 @@
 
 ## 0. Project scaffolding (do this first)
 - Define the spatial extent precisely: list of state FIPS codes or a bounding polygon; commit as `config/extent.geojson`.
-- Pick a single CRS for all rasters (recommend EPSG:5070, CONUS Albers Equal Area) and a snap grid aligned to TreeMap.
+- **CRS — decided.** Everything is **EPSG:5070, NAD83 / Conus Albers** (ArcGIS: `NAD_1983_Contiguous_USA_Albers`): every raster, every vector, every output. Equal-area and in metres, so acres and hectares come straight from geometry. Snap grid is the TreeMap 2022 affine `[30, 0, -2361585, 0, -30, 3177435]` — note the origin is half a pixel off the round 30 m grid, so exports must pass `crsTransform=`, never `scale=`. Declared once in `config/projection.yaml`, read through `pipeline/spatial_ref.py`, hardcoding blocked by test. Do not substitute `ESRI:102008` (North America Albers, parallels 20/60 — off by kilometres) or `EPSG:6350` (NAD83(2011) — off by under a metre, still breaks the snap grid); both look right on a map.
 - Set up storage: Zarr or Cloud-Optimized GeoTIFF for raster cubes; Parquet for tabular FIA joins and FVS outputs; PostGIS optional for vector ops.
 - Establish a chunking convention (e.g., HUC8 or 1° tiles) so nothing has to be processed CONUS-wide in memory.
 - **Compute stack:** Google Earth Engine (raster acquisition, clipping, terrain/climate derivatives, LCMS, segmentation inputs) + local workstation (FIA SQL joins, FVS runs, Python pipeline, Zarr/Parquet assembly) + campus HPC (FVS trajectory library at scale, once pipeline is proven locally). Do not architect for HPC until a clean local job exists.

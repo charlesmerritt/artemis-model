@@ -12,8 +12,8 @@ on a five-county north Florida pilot before statewide and eastern-US expansion.
 
 | Dimension | Current direction |
 |---|---|
-| Spatial reference | EPSG:5070 (CONUS Albers Equal Area) |
-| Working grid | 30 m, aligned to TreeMap 2022 |
+| Spatial reference | **EPSG:5070 — NAD83 / Conus Albers** (ArcGIS: `NAD_1983_Contiguous_USA_Albers`). Everywhere, for every raster and vector. |
+| Working grid | 30 m, snapped to the TreeMap 2022 affine `[30, 0, -2361585, 0, -30, 3177435]` |
 | Growth model | FVS Southern (`SN`) variant |
 | Projection horizon | Approximately 50 years, using FVS cycles |
 | Initial forest state | TreeMap 2022 linked to FIA/FVS-ready tree lists |
@@ -23,6 +23,28 @@ on a five-county north Florida pilot before statewide and eastern-US expansion.
 
 See [`PLAN.md`](PLAN.md) for the target architecture. It is a build plan, not a claim that
 every stage is implemented.
+
+### Coordinate reference system
+
+**Everything is EPSG:5070, NAD83 / Conus Albers.** Equal-area, metres, standard parallels
+29.5/45.5, latitude of origin 23, central meridian −96. It is declared once in
+[`config/projection.yaml`](config/projection.yaml) and read through
+[`pipeline/spatial_ref.py`](pipeline/spatial_ref.py); no module hardcodes it, and a test
+enforces that.
+
+It is the native CRS of TreeMap 2022, LANDFIRE EVT, and the Harris ownership raster — all
+30 m, pixel-co-registered, and carrying categorical values. Staying on 5070 makes the
+raster work reproject-and-snap only: nothing categorical is ever resampled.
+
+Do not substitute a similarly named Albers. `ESRI:102008` (North America Albers) uses
+standard parallels 20/60 and is off by kilometres; `EPSG:6350` (NAD83(2011) Conus Albers)
+is off by less than a metre and still breaks a 30 m snap grid. Both still render as a
+recognisable map, which is why `spatial_ref.assert_project_crs` names them explicitly when
+it catches one. The full list is under `spatial.crs_not` in the config.
+
+```bash
+uv run python -m pipeline.spatial_ref     # print the declaration and the confusables
+```
 
 ## Current implementation
 

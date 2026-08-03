@@ -27,11 +27,13 @@ from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 from skimage.segmentation import felzenszwalb, slic
 
+from pipeline.spatial_ref import project_crs
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Constants
-PROJECT_CRS = "EPSG:5070"
+PROJECT_CRS = project_crs()   # EPSG:5070 / NAD83 Conus Albers — see config/projection.yaml
 FLORIDA_FIPS = "12"
 
 
