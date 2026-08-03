@@ -31,10 +31,16 @@
   }
   .deck { display:flex; height:100vh; width:100vw; transition:transform .42s cubic-bezier(.4,0,.2,1); will-change:transform; }
   @media (prefers-reduced-motion: reduce) { .deck { transition:none; } }
+  /* Vertical centring is done with auto margins on .inner, NOT justify-content:center.
+     On a scrollable flex container, centred content that overflows spills past the
+     scroll origin in both directions, and scrollTop cannot go negative — so the top
+     of the slide (eyebrow, heading) becomes unreachable. Auto margins absorb only
+     positive free space: they centre when the content fits and collapse to zero when
+     it does not, leaving the slide scrollable from its true top. */
   .slide { flex:0 0 100vw; height:100vh; overflow-y:auto; overflow-x:hidden;
-           display:flex; flex-direction:column; justify-content:center;
+           display:flex; flex-direction:column;
            padding:clamp(28px,5vh,64px) clamp(24px,6vw,90px); }
-  .inner { width:100%; max-width:1160px; margin:0 auto; }
+  .inner { width:100%; max-width:1160px; margin:auto; }
 
   .eyebrow { font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 14px; }
   h1 { font-size:clamp(30px,5.2vw,54px); line-height:1.06; margin:0 0 16px; letter-spacing:-.02em; text-wrap:balance; font-weight:800; }
