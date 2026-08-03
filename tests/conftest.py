@@ -2,11 +2,17 @@
 pytest configuration and shared fixtures.
 """
 
+import sys
 import pytest
 from pathlib import Path
 
 # Project root — all tests resolve paths relative to this
 PROJECT_ROOT = Path(__file__).parent.parent
+
+# Make the `pipeline` package importable regardless of which test runs first; modules
+# loaded by file path (e.g. paint_fvs_to_raster) still import `pipeline.ids` normally.
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 @pytest.fixture

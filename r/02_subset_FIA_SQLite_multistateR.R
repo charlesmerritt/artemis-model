@@ -62,6 +62,14 @@ library(RSQLite)   # SQLite backend for DBI
 library(dplyr)     # data manipulation
 library(knitr)     # kable() for formatted console tables
 
+# PLT_CN PRECISION:
+#   FIA control numbers are long integers that exceed R's double precision
+#   (~15 significant digits). They are read and kept as character throughout
+#   this script; scipen is set so that any numeric column that still reaches
+#   write.csv is written in full rather than as "1.7498047010478e+13", which
+#   no downstream string join can match.
+options(scipen = 999)
+
 
 # ============================================================
 # SECTION 1: FILE PATHS AND CONFIGURATION
@@ -132,11 +140,17 @@ dest_paths <- list(
 # SECTION 2: LOAD TREEMAP PLT_CN LIST
 # ============================================================
 
-tmid_list   <- read.csv(tmid_csv)
+# Read PLT_CN as character. Without colClasses, read.csv types the column as a
+# double: control numbers above 2^53 are truncated outright, and every value is
+# then re-rendered by paste()/write.csv() in a form the SQL IN clauses below and
+# the downstream Python join will not match.
+tmid_list   <- read.csv(tmid_csv, colClasses = c(PLT_CN = "character"))
 all_plt_cns <- unique(tmid_list$PLT_CN)
 
 cat(paste0("Total unique PLT_CNs from TreeMap five-county area: ",
            length(all_plt_cns), "\n\n"))
+cat(paste0("Sample PLT_CN strings: ",
+           paste(head(all_plt_cns, 3), collapse = ", "), "\n\n"))
 
 
 # ============================================================
@@ -239,8 +253,12 @@ for (state in names(db_paths)) {
   # Retrieve STATECD, COUNTYCD, LAT, LON for verification --
   # confirms whether out-of-state plots are geographically plausible
   # (e.g., southern Georgia counties bordering Florida).
+  # CAST(CN AS TEXT) inside SQLite, not as.character() in R: the cast is done on
+  # the stored integer, so every digit survives. Letting the driver hand back a
+  # double and converting afterwards is what loses them. CN must come back as
+  # character to stay comparable with remaining_cns below.
   found <- dbGetQuery(con,
-    sprintf("SELECT CN, STATECD, COUNTYCD, LAT, LON
+    sprintf("SELECT CAST(CN AS TEXT) AS CN, STATECD, COUNTYCD, LAT, LON
              FROM PLOT WHERE CN IN (%s)", cn_str))
 
   cat(paste0("  PLT_CNs found in ", state, " DB: ", nrow(found), "\n"))
@@ -281,8 +299,9 @@ for (state in names(db_paths)) {
 
   } else {
     # Record empty vector so the state appears in found_by_state
-    # but is cleanly excluded from downstream summaries by Filter()
-    found_by_state[[state]] <- integer(0)
+    # but is cleanly excluded from downstream summaries by Filter().
+    # character(0), not integer(0): PLT_CNs are character everywhere here.
+    found_by_state[[state]] <- character(0)
   }
 
   dbDisconnect(con)
@@ -787,14 +806,19 @@ for (state in names(dest_paths)) {
   
   con <- dbConnect(SQLite(), db_path)
   
-  # Retrieve plot-level geographic identifiers
+  # Retrieve plot-level geographic identifiers. CAST(... AS TEXT) keeps the
+  # control number exact; the previous as.numeric() below was the single most
+  # damaging step in this pipeline -- it pushed every PLT_CN through a double
+  # before write.csv, so FL_5county_TMID_PLT_lookup.csv (the file
+  # pipeline/s3_management/assign_plt_cn.py joins on) could carry re-rendered
+  # or truncated control numbers that match no FVS stand.
   plot_meta <- dbGetQuery(con,
-                          "SELECT CN AS PLT_CN, STATECD, COUNTYCD FROM PLOT")
-  
+                          "SELECT CAST(CN AS TEXT) AS PLT_CN, STATECD, COUNTYCD FROM PLOT")
+
   dbDisconnect(con)
-  
+
   if (nrow(plot_meta) > 0) {
-    plot_meta$PLT_CN   <- as.numeric(plot_meta$PLT_CN)
+    plot_meta$PLT_CN   <- as.character(plot_meta$PLT_CN)
     plot_meta$FOUND_IN <- state
     plot_meta_list[[state]] <- plot_meta
     cat(paste0("  ", state, ": ", nrow(plot_meta), " plots retrieved\n"))
@@ -824,6 +848,21 @@ cat(paste0("\nTotal TM_IDs with matched plot metadata: ",
            sum(!is.na(tmid_lookup$STATECD)), "\n"))
 cat(paste0("TM_IDs without match (unmatched PLT_CNs): ",
            sum(is.na(tmid_lookup$STATECD)), "\n"))
+
+# Guard the file that leaves this script: FL_5county_TMID_PLT_lookup.csv is the
+# TM_ID -> PLT_CN crosswalk every later stage joins on, so a PLT_CN written in
+# any form other than plain digits silently costs stands downstream.
+if (!is.character(tmid_lookup$PLT_CN)) {
+  stop("PLT_CN must be character before writing the lookup; it is ",
+       class(tmid_lookup$PLT_CN))
+}
+bad_cn <- tmid_lookup$PLT_CN[!is.na(tmid_lookup$PLT_CN) &
+                             !grepl("^[0-9]+$", tmid_lookup$PLT_CN)]
+if (length(bad_cn) > 0) {
+  stop(length(bad_cn), " PLT_CN values are not plain digits (e.g. ",
+       paste(head(bad_cn, 3), collapse = ", "),
+       "). They have been through a double somewhere upstream.")
+}
 
 # Save output
 write.csv(tmid_lookup, file.path(output_path,"FL_5county_TMID_PLT_lookup.csv"),

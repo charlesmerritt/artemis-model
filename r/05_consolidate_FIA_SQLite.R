@@ -40,11 +40,11 @@
 #     SQL linkage table; copy from first state only.
 #
 # PLT_CN PRECISION NOTE:
-#   FIA control numbers are 16-digit integers that exceed R's double
+#   FIA control numbers are long integers that exceed R's double
 #   precision (~15 digits). Read from CSV with colClasses = "character"
-#   to preserve all digits. The CSV values are 14 digits (truncated
-#   during original write.csv) but match COND.PLT_CN via SQLite
-#   implicit type coercion.
+#   to preserve all digits, and never convert them to numeric to make a
+#   join work -- scripts 01 and 02 keep the column character end to end
+#   so the values arriving here are the full control numbers.
 #
 # INPUTS:
 #   output/FL_5county_TreeMap_TMIDs.csv  -- PLT_CN reference list
@@ -57,6 +57,10 @@
 library(DBI)
 library(RSQLite)
 library(dplyr)
+
+# Keep any numeric that reaches a paste()/write.csv out of scientific notation;
+# see the PLT_CN precision note above.
+options(scipen = 999)
 
 # ---- File paths ----
 output_path<- "output2020"

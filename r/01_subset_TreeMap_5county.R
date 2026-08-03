@@ -229,10 +229,38 @@ cat(paste0("Total forested acres (TreeMap): ",
 #   select(Value, PLT_CN, pixel_count, pixel_acres,
 #          FORTYPCD, ForTypName, BALIVE, TPA_LIVE, CARBON_L)
 
+# PLT_CN PRECISION AT THE SOURCE:
+#   This is where control numbers enter the pipeline, so it is the only place
+#   they can still be exact. If terra hands back the VAT's PLT_CN as a double,
+#   digits above ~15 significant figures are ALREADY gone and no later cast
+#   recovers them -- as.character() would just freeze the damaged value into a
+#   string that every downstream join then fails to match. Check the incoming
+#   type and stop rather than write a corrupted crosswalk: the fix is to read
+#   PLT_CN from the .vat.dbf as character, not to convert it here.
+if (is.factor(county_data$PLT_CN)) {
+  # A factor's labels are the original text from the .vat.dbf, so this is lossless.
+  county_data$PLT_CN <- as.character(county_data$PLT_CN)
+}
+if (!is.character(county_data$PLT_CN)) {
+  vat_cn  <- as.numeric(county_data$PLT_CN)
+  as_text <- format(vat_cn, scientific = FALSE, trim = TRUE)
+  lossy   <- !is.na(vat_cn) & abs(vat_cn) >= 2^53
+  if (any(lossy)) {
+    stop(sum(lossy), " PLT_CN values arrived from the VAT as doubles at or above ",
+         "2^53 and have lost digits (e.g. ", paste(head(as_text[lossy], 3), collapse = ", "),
+         "). Read PLT_CN from the VAT as character before summarising.")
+  }
+  warning("VAT PLT_CN arrived as ", class(vat_cn), ", not character. All values are ",
+          "below 2^53 so they survived the double intact, but read them as character ",
+          "to remove the risk entirely.")
+}
+
 tmid_list <- county_data %>%
   select(Value, PLT_CN, pixel_count, pixel_acres,
          FORTYPCD, ForTypName, BALIVE, TPA_LIVE, CARBON_L) %>%
-  mutate(PLT_CN = as.character(PLT_CN))  # 
+  # format(scientific = FALSE) rather than as.character(): with scipen already
+  # set these agree, but format() states the intent at the point it matters.
+  mutate(PLT_CN = format(PLT_CN, scientific = FALSE, trim = TRUE))
 
 write.csv(tmid_list, file.path(output_path,"FL_5county_TreeMap_TMIDs.csv"), row.names = FALSE)
 cat("TM_ID list saved to output/FL_5county_TreeMap_TMIDs.csv\n")

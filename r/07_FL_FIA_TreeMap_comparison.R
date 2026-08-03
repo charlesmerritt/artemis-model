@@ -30,6 +30,10 @@ library(terra)
 library(geodata)
 library(dplyr)
 
+# PLT_CN is used as a grouping key in section 4.1; scipen keeps it from being
+# rendered in scientific notation, which would merge distinct plots.
+options(scipen = 999)
+
 
 # ============================================================
 # SECTION 1: FIA STATE-LEVEL SUMMARY
@@ -301,6 +305,10 @@ cat("Comparison table saved to output/FL_FIA_TreeMap_comparison.csv\n")
 # Each TM_ID maps to exactly one PLT_CN (confirmed: n_TM_IDs = 1
 # for all plots in the Florida subset).
 plot_type_summary <- fl_data %>%
+  # PLT_CN is a grouping key here: as a double, two control numbers that differ
+  # only past the 15th digit collapse into one group and their pixels are
+  # double-counted into a single plot's per-acre values.
+  mutate(PLT_CN = format(PLT_CN, scientific = FALSE, trim = TRUE)) %>%
   group_by(FORTYPCD, ForTypName, PLT_CN) %>%
   summarise(
     plot_pixels = sum(pixel_count),
