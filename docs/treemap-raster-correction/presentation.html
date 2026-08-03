@@ -245,8 +245,11 @@
       </div>
       <div class="caveat"><b>Standing rule:</b> TreeMap is validated for mapping and landscape modelling —
         it is not a substitute for design-based estimates. The QA that decomposes the two channels is
-        <span class="mono">1_FL_FIA_TreeMap_comparison.R</span> (rFIA design-based vs TreeMap pixel-weighted, by
-        <span class="mono">BALIVE</span>, <span class="mono">TPA_LIVE</span>, live AG carbon). <b>Not yet ported to ARTEMIS.</b></div>
+        <span class="mono">r/07_FL_FIA_TreeMap_comparison.R</span>, committed in the repo: rFIA design-based vs
+        TreeMap pixel-weighted by <span class="mono">BALIVE</span>, <span class="mono">TPA_LIVE</span> and live AG
+        carbon, per <span class="mono">FORTYPCD</span>, with ESS, z-scores, and a before/after-scaling bias
+        decomposition (mean-balancing after Iles 2009). <b>Its outputs are not committed</b>, so the numbers it
+        produces are not in the repo.</div>
     </div>
   </section>
 
@@ -413,10 +416,49 @@
     </div>
   </section>
 
-  <!-- 11. GEOMETRY -->
+  <!-- 11. THE MISSING FIGURE -->
   <section class="slide">
     <div class="inner">
-      <p class="kicker">Correction 4 <span class="rule"></span> 10</p>
+      <p class="kicker">Correction 3, the missing figure <span class="rule"></span> 10</p>
+      <h2>The obvious figure — recovered acres vs design-based FIA — does not exist</h2>
+      <p class="lede">Both halves are built. They have never been joined, and no figure of the corrected areas has
+        ever been produced. Worth stating plainly, because it looks like it should already be there.</p>
+      <div class="cards">
+        <div class="tcard">
+          <h4>What the EVT side actually produces <span class="tag warn">no figure, no acres</span></h4>
+          <p><span class="mono">Clearcut-vs-Agriculture-EVT-Change.ipynb</span> — 16 cells, <b>zero embedded images,
+            no <span class="mono">savefig</span>, no plotting, no area computation.</b> It is a point-sample table:
+            1,700 points, <b>24 flagged strict</b>, 43 broad.</p>
+          <p>Its one output, <span class="mono">evt_change_samples.csv</span>, is written to
+            <span class="mono">data/interim/</span> — gitignored, so nothing from it is in the repo.</p>
+          <p class="say" style="border-left-color:var(--amber);background:var(--amber-soft)">It is a
+            <b>per-point flag</b>, not a wall-to-wall mask. There is no acreage to compare to anything.</p>
+        </div>
+        <div class="tcard">
+          <h4>What the FIA side already computes <span class="tag">committed, unrun</span></h4>
+          <p><span class="mono">r/07_FL_FIA_TreeMap_comparison.R</span> §4 is exactly the right axis:
+            <span class="mono">AREA_SCALE = FIA_ACRES / TM_ACRES</span> and
+            <span class="mono">AREA_PCT_DIFF</span> per <span class="mono">FORTYPCD</span>, plus the
+            before/after-scaling bias decomposition.</p>
+          <p>So the question "did restoring these acres move TreeMap toward FIA?" has a ready-made denominator —
+            it has simply never been asked with the EVT-recovered acres as the input.</p>
+          <p class="say">Caveat on the framing: this is <b>rFIA</b>, state and forest-type level for all Florida.
+            <b>EVALIDator itself has never been used</b> — one mention, PLAN.md §5.</p>
+        </div>
+      </div>
+      <div class="caveat"><b>Three steps to actually build it:</b> (1) run the EVT-change flag windowed over the
+        LF2022 raster across the AOI so it yields <i>acres</i> rather than sampled points; (2) get the second local
+        LF2016 download, because the GEE 2016 vintage is pre-Remap and its "forest" is inferred from class
+        <i>names</i> — a defensible "forested 2016 → grassland 2022" area needs a same-scheme diff; (3) join those
+        acres to <span class="mono">r/07</span>'s per-<span class="mono">FORTYPCD</span> table and test whether
+        <span class="mono">AREA_PCT_DIFF</span> moves toward zero. Step 2 is the blocker.</div>
+    </div>
+  </section>
+
+  <!-- 12. GEOMETRY -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 4 <span class="rule"></span> 11</p>
       <h2>Segmentation improves shape. It does not fix fragmentation.</h2>
       <p class="lede">Union County, same forest mask, same erase layers, fair comparison. The headline is negative and
         it is the useful part: <b>no segmentation strategy solved the sliver problem</b>.</p>
@@ -443,7 +485,7 @@
   <!-- 12. ERASE LAYER -->
   <section class="slide">
     <div class="inner">
-      <p class="kicker">Correction 5 <span class="rule"></span> 11</p>
+      <p class="kicker">Correction 5 <span class="rule"></span> 12</p>
       <h2>The erase layer is deleting forest we are supposed to grow</h2>
       <p class="lede">Today <span class="mono">sketch_management_units.py</span> unions stream/BMP buffers, NHD
         waterbodies and the road-artifact buffer into one erase layer and differences it out. Buffer acres are
@@ -475,7 +517,7 @@
   <!-- 13. SMEAR -->
   <section class="slide">
     <div class="inner">
-      <p class="kicker">Correction 6 <span class="rule"></span> 12</p>
+      <p class="kicker">Correction 6 <span class="rule"></span> 13</p>
       <h2>Keying management to the plot smears the harvest across the county</h2>
       <p class="lede">Growing TreeMap pixels directly is mechanically what the painter already does. But if the
         <i>regime</i> is keyed to the plot, then managing a plot manages <b>every pixel imputed to that plot,
@@ -506,7 +548,7 @@
   <!-- 14. WHAT SURVIVES -->
   <section class="slide">
     <div class="inner">
-      <p class="kicker">Verification <span class="rule"></span> 13</p>
+      <p class="kicker">Verification <span class="rule"></span> 14</p>
       <h2>What the corrected raster already gets right</h2>
       <p class="lede">The corrections above are not speculative housekeeping — the corrected 2022 pairing produces a
         painted raster that checks out end to end.</p>
@@ -536,7 +578,7 @@
   <!-- 15. OPEN -->
   <section class="slide">
     <div class="inner">
-      <p class="kicker">The gap list <span class="rule"></span> 14</p>
+      <p class="kicker">The gap list <span class="rule"></span> 15</p>
       <h2>What correction has not touched yet</h2>
       <div class="tbl-wrap">
         <table>
@@ -547,7 +589,8 @@
             <tr><td class="name">Condition vs plot tables</td><td>Script docs recommend <span class="mono">FVS_STANDINIT_COND</span>; the one successful observed run used <span class="mono">FVS_STANDINIT_PLOT</span>. Decide before porting.</td><td><span class="res open">undecided</span></td></tr>
             <tr><td class="name">196 <span class="mono">FVS09</span> warnings</td><td>"Plot counts do not match data on the design record" — occurred inside the <i>successful</i> run's 688 cases. Needs triage, not dismissal.</td><td><span class="res open">untriaged</span></td></tr>
             <tr><td class="name">TreeMap 2022 re-validation</td><td>Published accuracy figures are the circa-2014 methodology paper's. Whether 2022 was independently re-validated is <b>needs verification</b>.</td><td><span class="res open">unconfirmed</span></td></tr>
-            <tr><td class="name">Area/attribute QA not ported</td><td><span class="mono">1_FL_FIA_TreeMap_comparison.R</span> is the one script that actually measures the two error channels — it lives in the R prototype, not in ARTEMIS.</td><td><span class="res open">port owed</span></td></tr>
+            <tr><td class="name">Area/attribute QA never run in-repo</td><td><span class="mono">r/07_FL_FIA_TreeMap_comparison.R</span> is committed and measures both error channels — but it is R + rFIA outside the Python pipeline, it writes to an uncommitted <span class="mono">output/</span>, and no run of it is recorded anywhere in the repo.</td><td><span class="res open">no recorded run</span></td></tr>
+            <tr><td class="name">EVALIDator cross-check</td><td>PLAN.md §5 calls for aggregating to county and comparing against FIA EVALIDator. One mention in the whole repo; never attempted. rFIA is the same design-based estimator family off the same FIADB, but it is a different tool.</td><td><span class="res open">not started</span></td></tr>
             <tr><td class="name">Sliver merge rule</td><td>Segmentation was proven insufficient; the merge-to-best-neighbour rule (adjacency? ownership? forest type?) is on the critical path and not built.</td><td><span class="res warn">critical path</span></td></tr>
           </tbody>
         </table>
@@ -558,7 +601,7 @@
   <!-- 16. CLOSING -->
   <section class="slide">
     <div class="inner">
-      <p class="kicker">Where this leaves us <span class="rule"></span> 15</p>
+      <p class="kicker">Where this leaves us <span class="rule"></span> 16</p>
       <h2>The correction story, in one slide</h2>
       <ul class="take">
         <li><b>Repair is a stage now</b> — the pipeline starts at a corrected raster; nothing downstream is trusted before it.</li>
@@ -580,7 +623,7 @@
 
 <nav class="hud" aria-label="slide navigation">
   <button id="prev" aria-label="previous slide">‹</button>
-  <span class="count" id="count">1 / 16</span>
+  <span class="count" id="count">1 / 17</span>
   <button id="next" aria-label="next slide">›</button>
   <span class="sep"></span>
   <button id="theme" aria-label="toggle light/dark">◐</button>
