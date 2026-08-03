@@ -39,6 +39,27 @@ def bmp_rules(config_dir):
 
 
 @pytest.fixture
+def ownership_policy(config_dir):
+    import yaml
+    with open(config_dir / "ownership_policy.yaml") as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture
+def management_regimes(config_dir):
+    import yaml
+    with open(config_dir / "management_regimes.yaml") as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture
+def fallback_treelists(config_dir):
+    import yaml
+    with open(config_dir / "fallback_treelists.yaml") as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture
 def extent_geojson(config_dir):
     import json
     with open(config_dir / "extent.geojson") as f:

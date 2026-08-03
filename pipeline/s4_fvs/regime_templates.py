@@ -14,6 +14,7 @@ keyword keeps the generated keyfiles trustworthy:
     - **no_management** — no cut (the baseline).
     - **clearcut** — remove all trees (proportion 1.0, DBH 0–999) at a target year.
     - **thin_from_below** — remove a proportion of the *small* trees (DBH 0–``max_dbh``).
+    - **thin_from_below_repeated** — that same thin repeated on an interval.
     - **selection_harvest** — a light proportional thin repeated on an interval.
     - **plantation_rotation** — a commercial thin, then a final clearcut at rotation age.
 
@@ -79,6 +80,24 @@ def thin_from_below(params: dict) -> list[ThinDBH]:
     )]
 
 
+def thin_from_below_repeated(params: dict) -> list[ThinDBH]:
+    """A thin from below repeated every ``interval`` years across a window.
+
+    The mechanical half of the thin-and-burn regime used on southern pine public land.
+    Prescribed fire is not modelled — the FVS fire keywords are unverified here and the FFE
+    state does not survive a restart barrier (`notes/restart-fidelity-findings.md`).
+    """
+    start = int(params["start_year"])
+    end = int(params.get("end_year", start + 30))
+    interval = int(params.get("interval", 15))
+    proportion = float(params.get("proportion", 0.30))
+    max_dbh = float(params.get("max_dbh", 10.0))
+    return [
+        ThinDBH(year=y, proportion=proportion, min_dbh=0.0, max_dbh=max_dbh)
+        for y in range(start, end + 1, interval)
+    ]
+
+
 def selection_harvest(params: dict) -> list[ThinDBH]:
     """Light proportional thins every ``interval`` years across a window of years."""
     start = int(params["start_year"])
@@ -101,6 +120,7 @@ REGIMES = {
     "no_management": no_management,
     "clearcut": clearcut,
     "thin_from_below": thin_from_below,
+    "thin_from_below_repeated": thin_from_below_repeated,
     "selection_harvest": selection_harvest,
     "plantation_rotation": plantation_rotation,
 }

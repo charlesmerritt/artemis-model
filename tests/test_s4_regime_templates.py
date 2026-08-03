@@ -53,6 +53,15 @@ def test_thin_from_below_targets_small_trees():
     assert thins[0].proportion == 0.4
 
 
+def test_thin_from_below_repeated_keeps_the_dbh_ceiling_every_entry():
+    thins = build_thins("thin_from_below_repeated",
+                        {"start_year": 2027, "end_year": 2057, "interval": 15,
+                         "proportion": 0.3, "max_dbh": 10.0})
+    assert [t.year for t in thins] == [2027, 2042, 2057]
+    assert all(t.max_dbh == 10.0 and t.min_dbh == 0.0 for t in thins)
+    assert all(t.proportion == 0.3 for t in thins)
+
+
 def test_selection_harvest_repeats_on_interval():
     thins = build_thins("selection_harvest",
                         {"start_year": 2032, "end_year": 2062, "interval": 10, "proportion": 0.2})
@@ -93,6 +102,7 @@ def test_all_registered_regimes_render():
         "no_management": {},
         "clearcut": {"year": 2052},
         "thin_from_below": {"year": 2032},
+        "thin_from_below_repeated": {"start_year": 2027},
         "selection_harvest": {"start_year": 2032},
         "plantation_rotation": {"thin_year": 2037, "clearcut_year": 2052},
     }

@@ -1,0 +1,390 @@
+# ARTEMIS management regimes — the prescription library and who is eligible for what.
+#
+# Two things live here, and keeping them apart is the point:
+#
+#   `prescriptions` — the LIBRARY. Eight distinct silvicultural prescriptions, each one
+#     renderable through the verified keyword templates in pipeline/s4_fvs/regime_templates.py.
+#     Library size is the cost driver: the FVS trajectory library is keyed by
+#     `(plot_id, prescription, site_index_bin)` (PLAN.md §4c, notes/methodology-directions.md
+#     item 4), so every prescription added multiplies the run count. Eight is deliberate.
+#
+#   `owner_classes` — the POLICY. For each owner class from config/ownership_policy.yaml:
+#     two or three eligible prescriptions and one declared default. Prescriptions are
+#     SHARED across owner classes — `public_selection_light` is eligible for four classes
+#     and still costs one column in the trajectory library. That is how each owner gets a
+#     real menu without the library growing owner-by-owner.
+#
+# The default is what pipeline/s3_management/regime_assignment.py assigns deterministically
+# today. The eligible set is what the landscape scheduler is allowed to choose among once
+# the trajectory library exists (see artemis.txt: "stand × eligible management
+# prescription"). Building both now means the scheduler does not have to invent a menu
+# later, and the trajectory library can be generated for the right set from the start.
+
+version: 1
+
+# Offsets and rotation ages resolve against these. Kept in sync with config/projection.yaml
+# (`projection.base_year`, `projection.cycle_years`); the loader asserts they match.
+inventory_year: 2022
+cycle_years: 5
+horizon_years: 50
+
+# Entries scheduled past `inventory_year + horizon_years` are dropped — the keyfile only
+# runs ten 5-year cycles, so a later entry is noise in the keyfile and a lie in the
+# schedule. A prescription whose every entry falls outside the horizon resolves to
+# `no_management` for that stand and says so in the assignment's notes.
+
+# ---------------------------------------------------------------------------------------
+# Overrides — evaluated before owner class, and they win
+# ---------------------------------------------------------------------------------------
+overrides:
+  riparian:
+    when: "smz_pct >= 50.0"
+    prescription: no_management
+    absolute: true
+    rationale: >
+      No entry of any kind, no buffer class exempted. Assigned by geometry, so it
+      overrides every ownership and forest-type rule. Riparian units are still grown
+      through FVS on the same cycles and still reported as their own polygons — see
+      notes/methodology-directions.md item 2 and PLAN.md §4b. `absolute: true` means no
+      later rule, and no scheduler decision, may reinstate an entry.
+
+# ---------------------------------------------------------------------------------------
+# The prescription library
+# ---------------------------------------------------------------------------------------
+# `template`   — the builder in pipeline/s4_fvs/regime_templates.py that renders it.
+# `schedule`   — how entry years are chosen:
+#                  age_based    : entry at (target_age - stand_age), snapped up to the next
+#                                 cycle boundary, floored at one cycle out. Preferred: a
+#                                 22-year-old plantation on a 25-year rotation is cut in
+#                                 3 years, not 30.
+#                  offset_based : fixed offsets from inventory_year. Used when stand_age is
+#                                 unavailable, and it is what reproduces the pre-config
+#                                 behaviour exactly.
+#                `offsets` is therefore required on every prescription — it is the fallback,
+#                not an alternative.
+# `regen`      — what re-initializes the stand after a stand-replacing entry. Regeneration
+#                is NOT expressed with FVS PLANT/NATREGEN keywords: those field layouts are
+#                unverified in this project (regime_templates.py docstring). Instead the
+#                coupling loop restarts the stand from a fixed tree list — the slot named
+#                here, defined in config/fallback_treelists.yaml. External cut injection and
+#                restart are verified exact on stand values
+#                (research/restart_fidelity/outputs/gate_cut_injection.txt).
+# `repeats`    — whether the coupling loop starts the next rotation after regeneration.
+#                A 25-year rotation fits twice in the 50-year horizon; the keyfile only
+#                ever expresses the first rotation.
+
+prescriptions:
+
+  no_management:
+    label: "Grow only — no entry"
+    template: no_management
+    forest_types: [any]
+    schedule:
+      mode: none
+      offsets: {}
+    entries_per_horizon: 0
+    regen: null
+    repeats: false
+    rationale: >
+      The baseline, and a real management choice rather than only a control: it is the
+      mandatory riparian regime, the dominant outcome on county/municipal conservation
+      land, and the honest representation of family forest that is never entered.
+
+  pine_plantation_short_rotation:
+    label: "Industrial pine plantation — pulpwood rotation"
+    template: plantation_rotation
+    forest_types: [pine]
+    schedule:
+      mode: age_based
+      first_thin_age: 15
+      rotation_years: 25
+      offsets:
+        thin_year: 15
+        clearcut_year: 30
+    params:
+      thin_proportion: 0.40
+      thin_max_dbh: 8.0
+    entries_per_horizon: 2
+    regen:
+      treelist_slot: planted_pine_regen
+      delay_years: 1
+    repeats: true
+    rationale: >
+      Short-rotation planted pine on industrial ownership: one commercial thin from below,
+      then a clearcut at rotation age, replanted. The dominant north Florida industrial
+      practice and the largest single contributor to private TPO volume.
+
+  pine_plantation_long_rotation:
+    label: "Pine plantation — sawtimber rotation"
+    template: plantation_rotation
+    forest_types: [pine]
+    schedule:
+      mode: age_based
+      first_thin_age: 18
+      rotation_years: 35
+      offsets:
+        thin_year: 18
+        clearcut_year: 35
+    params:
+      thin_proportion: 0.35
+      thin_max_dbh: 9.0
+    entries_per_horizon: 2
+    regen:
+      treelist_slot: planted_pine_regen
+      delay_years: 1
+    repeats: true
+    rationale: >
+      A longer rotation carried to sawtimber. Held by owners who are less
+      capital-constrained than a pulpwood-driven industrial rotation — state forests,
+      non-industrial corporate, and the managed share of family pine.
+
+  hardwood_clearcut_regen:
+    label: "Hardwood clearcut with natural regeneration"
+    template: clearcut
+    forest_types: [hardwood]
+    schedule:
+      mode: age_based
+      rotation_years: 50
+      offsets:
+        year: 30
+    entries_per_horizon: 1
+    regen:
+      treelist_slot: hardwood_regen
+      delay_years: 3
+    repeats: false
+    rationale: >
+      Stand-replacing harvest of a hardwood type, regenerating naturally rather than
+      planted. Longer delay before the regeneration tree list is injected because
+      hardwood sprout and seedling establishment is slower to reach a measurable list
+      than planted pine.
+
+  family_light_thin:
+    label: "Family forest — single light thin from below"
+    template: thin_from_below
+    forest_types: [any]
+    schedule:
+      mode: offset_based
+      offsets:
+        year: 10
+    params:
+      max_dbh: 8.0
+      proportion: 0.35
+    entries_per_horizon: 1
+    regen: null
+    repeats: false
+    rationale: >
+      One partial entry across the horizon and no regeneration harvest. Matches the
+      irregular, income-driven pattern of small private harvest better than a scheduled
+      rotation does. Offset-based because family harvest timing tracks the owner's
+      circumstances, not the stand's age.
+
+  family_uneven_aged_selection:
+    label: "Family / small private — periodic selection"
+    template: selection_harvest
+    forest_types: [any]
+    schedule:
+      mode: offset_based
+      offsets:
+        start_year: 15
+        end_year: 45
+    params:
+      interval: 15
+      proportion: 0.15
+    entries_per_horizon: 3
+    regen: null
+    repeats: false
+    rationale: >
+      Light repeated removals maintaining continuous cover. The uneven-aged alternative
+      for owners managing for amenity, wildlife, or periodic income rather than rotation
+      yield.
+
+  public_selection_light:
+    label: "Public — conservative periodic selection"
+    template: selection_harvest
+    forest_types: [any]
+    schedule:
+      mode: offset_based
+      offsets:
+        start_year: 10
+        end_year: 40
+    params:
+      interval: 10
+      proportion: 0.20
+    entries_per_horizon: 4
+    regen: null
+    repeats: false
+    rationale: >
+      The conservative public default: light removals on a decadal interval, no
+      stand-replacing entry. Offset-based, because public entry is driven by planning
+      cycles rather than by stand age.
+
+  public_thin_restore:
+    label: "Public — repeated restoration thinning from below"
+    template: thin_from_below_repeated
+    forest_types: [any]
+    schedule:
+      mode: offset_based
+      offsets:
+        start_year: 5
+        end_year: 45
+    params:
+      interval: 15
+      proportion: 0.30
+      max_dbh: 10.0
+    entries_per_horizon: 3
+    regen: null
+    repeats: false
+    rationale: >
+      Repeated thinning from below on a long interval — the density-reduction half of the
+      thin-and-burn regime used on southern pine public land. Prescribed fire is NOT
+      modelled here: the FVS fire keywords are unverified in this project and the FFE
+      state is known to be corrupted across restart barriers
+      (notes/restart-fidelity-findings.md). This prescription is the mechanical thinning
+      only, and the writeup must say so.
+
+# ---------------------------------------------------------------------------------------
+# Eligibility and defaults, by owner class
+# ---------------------------------------------------------------------------------------
+# `default` — one prescription per forest-type branch; what regime_assignment.py assigns.
+# `eligible` — the menu the landscape scheduler may choose from. Two or three per class
+#              beyond `no_management`, which is universally eligible (`no_management` is
+#              always a legal choice: any owner may decline to harvest).
+
+no_management_universally_eligible: true
+
+owner_classes:
+
+  private_industrial:
+    default:
+      pine: pine_plantation_short_rotation
+      hardwood: hardwood_clearcut_regen
+      other: pine_plantation_short_rotation
+    eligible:
+      - pine_plantation_short_rotation
+      - pine_plantation_long_rotation
+      - hardwood_clearcut_regen
+    rationale: >
+      Rotation forestry, with the pulpwood and sawtimber rotations as the real economic
+      choice the scheduler makes per stand, and a hardwood path for the non-pine share.
+
+  private_corporate_other:
+    default:
+      pine: pine_plantation_long_rotation
+      hardwood: family_light_thin
+      other: family_light_thin
+    eligible:
+      - pine_plantation_long_rotation
+      - family_light_thin
+      - family_uneven_aged_selection
+    rationale: >
+      Corporate title without a timber-asset objective. Managed, but on a longer and
+      lighter footing than industrial — closer to family forest in behaviour than to a
+      TIMO's rotation schedule.
+
+  private_family:
+    default:
+      pine: family_light_thin
+      hardwood: family_light_thin
+      other: family_light_thin
+    eligible:
+      - family_light_thin
+      - family_uneven_aged_selection
+      - pine_plantation_long_rotation
+    rationale: >
+      Light entries by default. `pine_plantation_long_rotation` stays eligible because a
+      real minority of family pine is managed on rotation, and the scheduler needs that
+      option to reach the private TPO volume without over-cutting the industrial class.
+
+  tribal:
+    default:
+      pine: public_selection_light
+      hardwood: public_selection_light
+      other: public_selection_light
+    eligible:
+      - public_selection_light
+      - family_light_thin
+    rationale: >
+      Conservative by default. Pilot-scale tribal area is too small to support a
+      class-specific behaviour estimate (config/projection.yaml flags the same 500-event
+      floor), so this is a placeholder policy, not a finding.
+
+  federal:
+    default:
+      pine: public_selection_light
+      hardwood: public_selection_light
+      other: public_selection_light
+    eligible:
+      - public_selection_light
+      - public_thin_restore
+    rationale: >
+      National Forest land under a conservative selection default, with restoration
+      thinning as the alternative — the pilot's federal land is Osceola NF, where
+      density reduction in pine is the characteristic treatment.
+
+  state:
+    default:
+      pine: public_thin_restore
+      hardwood: public_selection_light
+      other: public_selection_light
+    eligible:
+      - public_thin_restore
+      - public_selection_light
+      - pine_plantation_long_rotation
+    rationale: >
+      State forests carry an active timber program alongside conservation objectives, so
+      the pine default is the thinning regime rather than light selection, and a
+      sawtimber rotation stays on the menu.
+
+  local:
+    default:
+      pine: no_management
+      hardwood: no_management
+      other: no_management
+    eligible:
+      - public_selection_light
+      - public_thin_restore
+    rationale: >
+      County and municipal forest is predominantly parks, watershed, and school land
+      where commercial harvest is the exception. Default to no entry — which stays on the
+      menu through `no_management_universally_eligible` — and let the scheduler opt in to
+      light selection or a density-reduction thin where a county does manage its forest.
+
+  unknown:
+    menu_policy: minimal      # deliberately narrower than the 2-3 every real owner gets
+    default:
+      pine: family_light_thin
+      hardwood: family_light_thin
+      other: family_light_thin
+    eligible:
+      - family_light_thin
+    rationale: >
+      Harris `unknown_forest`, which is not an owner type — it is missing information.
+      One light entry or nothing: with no owner known, letting the scheduler place a
+      rotation clearcut here would be inventing behaviour to hit a volume target. The
+      shortfall lands on known private units instead, where it is attributable. Every
+      unit here carries the `unknown_ownership` flag so the area stays reportable.
+
+# ---------------------------------------------------------------------------------------
+# Deliberate changes from the pre-config behaviour
+# ---------------------------------------------------------------------------------------
+# regime_assignment.py previously sent Federal, State, Tribal, and Local alike to
+# `selection_harvest`, and any corporate owner to plantation-or-clearcut. Under this file:
+#   - Federal, tribal  → unchanged (public_selection_light == the old selection_harvest
+#                        parameters exactly).
+#   - State pine       → now public_thin_restore, not selection.
+#   - Local            → now no_management, not selection.
+#   - Corporate        → still industrial-by-default, but now demotable to
+#                        private_corporate_other by parcel evidence, which changes both the
+#                        default prescription and the eligible menu for the demoted units.
+# Everything else resolves to the same template and the same parameters as before, which
+# tests/test_s4_regime_templates.py pins.
+
+# ---------------------------------------------------------------------------------------
+# Trajectory-library cost
+# ---------------------------------------------------------------------------------------
+# 8 prescriptions. Five-county pilot: 693 unique FIA plots (notes/terminology.md). With
+# site-index binning at `si_bins` the upper bound on FVS runs is
+# 693 × 8 × si_bins, before deduplication for plots that are never eligible for a given
+# prescription. Any addition to `prescriptions` must state its cost here.
+si_bins: 3
+estimated_max_runs_pilot: 16632      # 693 × 8 × 3

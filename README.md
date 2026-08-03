@@ -26,6 +26,12 @@ every stage is implemented.
 
 ## Current implementation
 
+- **Config and policy:** ownership classes, the management-regime library, and the fixed
+  fallback tree lists are declared in `config/ownership_policy.yaml`,
+  `config/management_regimes.yaml`, and `config/fallback_treelists.yaml`, and resolved by
+  `pipeline/s3_management/owner_classes.py`, `regime_assignment.py`, and
+  `pipeline/s4_fvs/fallback_treelists.py`. See [`docs/config-policy.md`](docs/config-policy.md)
+  for what each decides and what is still an assumption.
 - **Management-unit sketching:** `pipeline/s3_management/sketch_management_units.py`
   processes Florida county-by-county and can create draft units from parcels, forest cover,
   roads, water, and BMP exclusions. A Union County smoke run has completed; segmentation,
@@ -116,7 +122,8 @@ entry point for each notebook group.
 ## Repository map
 
 ```text
-config/                    Spatial, BMP, projection, and local data-path configuration
+config/                    Spatial, BMP, projection, ownership/regime/treelist policy,
+                           and local data-path configuration
 data/                      Gitignored raw/interim/processed data products
 gee/                       Google Earth Engine export scripts
 notebooks/                 Exploratory analyses and reusable notebook helpers
@@ -132,6 +139,16 @@ pyproject.toml             Python metadata and dependencies
 uv.lock                    Locked Python environment
 ```
 
+### Inspect the ownership and regime policy
+
+```bash
+# Owner classes and the TPO budget each charges against
+uv run python -m pipeline.s3_management.owner_classes
+
+# Fixed fallback tree lists and whether their donor plots are pinned yet
+uv run python -m pipeline.s4_fvs.fallback_treelists
+```
+
 ## Known constraints and open decisions
 
 - The local `/mnt/d` data mount and interactive Earth Engine credentials are required for many
@@ -143,6 +160,10 @@ uv.lock                    Locked Python environment
   large-unit splitting, terrain, and sub-2 ha sliver handling.
 - The committed repository paints existing FVS output but does not yet provide a complete,
   automated FVS trajectory-generation pipeline.
+- The DOR use-code table in `config/ownership_policy.yaml` is transcribed, not yet verified
+  against the parcel layer (`--audit-parcels`), and the fallback tree lists have no pinned
+  donor plots until `fallback_treelists --resolve` runs against the FIA database. Both need
+  the local data mount.
 - Natural disturbances, climate-modified growth, stochastic replicates, and formal uncertainty
   quantification remain outside v1 scope.
 
