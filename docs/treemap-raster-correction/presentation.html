@@ -1,0 +1,619 @@
+<title>ARTEMIS — correcting the TreeMap raster</title>
+<style>
+  :root {
+    --paper:#f6f5ef; --card:#ffffff; --ink:#1b221c; --ink-soft:#4b564c; --ink-faint:#79847a;
+    --line:#e4e4da; --line-strong:#d0d0c3; --accent:#2f6b3f; --accent-soft:#e7f0e5;
+    --amber:#b06a11; --amber-soft:#f6ecd9; --slate:#5a6472; --slate-soft:#e9ebee;
+    --pass:#2f6b3f; --pass-bg:#e7f0e5; --fail:#a4562a; --fail-bg:#f6e7dc;
+    --band-a:#edf3ea; --band-b:#f6efe2; --band-c:#ecedf0;
+    --shadow:0 1px 2px rgba(27,34,28,.06), 0 6px 24px rgba(27,34,28,.08);
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#101310; --card:#1a1f1a; --ink:#eef0ea; --ink-soft:#b7beb5; --ink-faint:#828c81;
+      --line:#282e28; --line-strong:#39413a; --accent:#7bbd84; --accent-soft:#20301f;
+      --amber:#e2a24e; --amber-soft:#2c2413; --slate:#9aa6b4; --slate-soft:#20262d;
+      --pass:#7bbd84; --pass-bg:#1d2b1c; --fail:#e08a55; --fail-bg:#2c1d12;
+      --band-a:#161f15; --band-b:#211d12; --band-c:#181c21;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="light"]{--paper:#f6f5ef;--card:#fff;--ink:#1b221c;--ink-soft:#4b564c;--ink-faint:#79847a;--line:#e4e4da;--line-strong:#d0d0c3;--accent:#2f6b3f;--accent-soft:#e7f0e5;--amber:#b06a11;--amber-soft:#f6ecd9;--slate:#5a6472;--slate-soft:#e9ebee;--pass:#2f6b3f;--pass-bg:#e7f0e5;--fail:#a4562a;--fail-bg:#f6e7dc;--band-a:#edf3ea;--band-b:#f6efe2;--band-c:#ecedf0;--shadow:0 1px 2px rgba(27,34,28,.06),0 6px 24px rgba(27,34,28,.08);}
+  :root[data-theme="dark"]{--paper:#101310;--card:#1a1f1a;--ink:#eef0ea;--ink-soft:#b7beb5;--ink-faint:#828c81;--line:#282e28;--line-strong:#39413a;--accent:#7bbd84;--accent-soft:#20301f;--amber:#e2a24e;--amber-soft:#2c2413;--slate:#9aa6b4;--slate-soft:#20262d;--pass:#7bbd84;--pass-bg:#1d2b1c;--fail:#e08a55;--fail-bg:#2c1d12;--band-a:#161f15;--band-b:#211d12;--band-c:#181c21;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 30px rgba(0,0,0,.45);}
+
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:var(--paper); color:var(--ink); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  .deck { display:flex; height:100vh; width:100vw; transition:transform .42s cubic-bezier(.4,0,.2,1); will-change:transform; }
+  @media (prefers-reduced-motion: reduce) { .deck { transition:none; } }
+  .slide { flex:0 0 100vw; height:100vh; overflow-y:auto; overflow-x:hidden;
+           display:flex; flex-direction:column; justify-content:center;
+           padding:clamp(28px,5vh,64px) clamp(24px,6vw,90px); }
+  .inner { width:100%; max-width:1160px; margin:0 auto; }
+
+  .eyebrow { font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 14px; }
+  h1 { font-size:clamp(30px,5.2vw,54px); line-height:1.06; margin:0 0 16px; letter-spacing:-.02em; text-wrap:balance; font-weight:800; }
+  h2 { font-size:clamp(22px,3.4vw,34px); line-height:1.12; margin:0 0 8px; letter-spacing:-.015em; text-wrap:balance; font-weight:800; }
+  .kicker { font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; margin:0 0 10px; display:flex; gap:10px; align-items:center; }
+  .kicker .rule { height:1px; flex:1; background:var(--line-strong); }
+  .lede { font-size:clamp(15px,1.7vw,18px); color:var(--ink-soft); max-width:74ch; margin:0; }
+  .lede b { color:var(--ink); font-weight:650; }
+  p.sub { font-size:14.5px; color:var(--ink-faint); margin:2px 0 0; }
+  code, .mono { font-family:var(--mono); font-size:.92em; }
+
+  /* title slide */
+  .title-slide .meta { margin-top:26px; display:flex; flex-wrap:wrap; gap:10px; }
+  .chip { font-family:var(--mono); font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:8px;
+          background:var(--card); border:1px solid var(--line); color:var(--ink-soft); box-shadow:var(--shadow); }
+  .chip b { color:var(--accent); }
+
+  /* stat tiles */
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+  .tiles.three { grid-template-columns:repeat(3,1fr); }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+  .tile .n { font-size:clamp(20px,2.6vw,28px); font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .tile .n.good { color:var(--pass); }
+  .tile .n.warn { color:var(--amber); }
+  .tile .l { font-size:12px; color:var(--ink-faint); margin-top:3px; line-height:1.35; }
+  @media (max-width:760px){ .tiles, .tiles.three { grid-template-columns:repeat(2,1fr);} }
+
+  /* tables */
+  .tbl-wrap { overflow-x:auto; margin-top:16px; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); background:var(--card); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; min-width:520px; }
+  thead th { text-align:left; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; padding:11px 14px; background:transparent; border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+  tbody td { padding:11px 14px; border-bottom:1px solid var(--line); color:var(--ink-soft); vertical-align:top; }
+  tbody tr:last-child td { border-bottom:none; }
+  td.name { color:var(--ink); font-weight:600; }
+  td.num, th.num { text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.num b { color:var(--ink); }
+  tr.failrow td { background:var(--fail-bg); }
+  tr.goodrow td { background:var(--pass-bg); }
+  .res { display:inline-flex; font-weight:700; font-size:11.5px; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .res.pass { color:var(--pass); background:var(--pass-bg); }
+  .res.fail { color:var(--fail); background:var(--fail-bg); }
+  .res.open { color:var(--slate); background:var(--slate-soft); }
+  .res.warn { color:var(--amber); background:var(--amber-soft); }
+
+  /* pipeline bands */
+  .bands { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; }
+  .bcol { border-radius:14px; padding:14px; }
+  .bcol.a { background:var(--band-a); } .bcol.b { background:var(--band-b); } .bcol.c { background:var(--band-c); }
+  .bcol h3 { margin:2px 4px 12px; font-size:13px; letter-spacing:.02em; display:flex; align-items:center; gap:8px; }
+  .stage { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:11px 13px; margin-bottom:9px; box-shadow:var(--shadow); }
+  .stage:last-child { margin-bottom:0; }
+  .stage .st { display:flex; align-items:center; gap:8px; }
+  .stage .st b { font-size:14px; }
+  .stage p { margin:5px 0 0; font-size:12px; color:var(--ink-faint); line-height:1.4; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .dot.done{background:var(--accent);} .dot.prog{background:var(--amber);} .dot.plan{background:var(--slate);}
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:16px; font-size:12.5px; color:var(--ink-soft); }
+  .legend span { display:flex; align-items:center; gap:7px; }
+  @media (max-width:760px){ .bands{ grid-template-columns:1fr;} }
+
+  /* cards */
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:18px; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .tcard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:15px 17px; box-shadow:var(--shadow); }
+  .tcard h4 { margin:0 0 6px; font-size:15.5px; display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+  .tcard h4 .tag { font-family:var(--mono); font-size:11px; font-weight:600; color:var(--accent); background:var(--accent-soft); padding:2px 7px; border-radius:6px; letter-spacing:.02em; }
+  .tcard h4 .tag.warn { color:var(--amber); background:var(--amber-soft); }
+  .tcard h4 .tag.open { color:var(--slate); background:var(--slate-soft); }
+  .tcard p { margin:0 0 8px; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .tcard p:last-child { margin-bottom:0; }
+  .tcard .say { font-size:12.5px; color:var(--ink); border-left:3px solid var(--accent); background:var(--accent-soft); padding:8px 11px; border-radius:0 8px 8px 0; }
+  .tcard .say b { color:var(--accent); }
+  @media (max-width:860px){ .cards, .cards.three { grid-template-columns:1fr;} }
+
+  ul.take { margin:16px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
+  ul.take li { position:relative; padding-left:26px; font-size:15px; color:var(--ink-soft); }
+  ul.take li b { color:var(--ink); }
+  ul.take li::before { content:""; position:absolute; left:4px; top:9px; width:8px; height:8px; border-radius:2px; background:var(--accent); }
+  .caveat { margin-top:16px; border-left:3px solid var(--amber); background:var(--amber-soft); border-radius:0 10px 10px 0; padding:12px 15px; font-size:13.5px; color:var(--ink-soft); }
+  .caveat b { color:var(--ink); }
+  .caveat code { color:var(--ink); }
+  .srcline { margin-top:14px; font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); }
+
+  pre.ascii { margin:18px 0 0; padding:16px 18px; background:var(--card); border:1px solid var(--line);
+              border-radius:12px; box-shadow:var(--shadow); overflow-x:auto;
+              font-family:var(--mono); font-size:12.5px; line-height:1.45; color:var(--ink-soft); }
+  pre.ascii b { color:var(--accent); }
+
+  .flow { display:flex; align-items:stretch; gap:10px; margin-top:20px; flex-wrap:wrap; }
+  .fstep { flex:1 1 150px; background:var(--card); border:1px solid var(--line); border-radius:12px;
+           padding:12px 14px; box-shadow:var(--shadow); }
+  .fstep .t { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; }
+  .fstep .v { font-size:14px; font-weight:700; margin-top:5px; }
+  .fstep .d { font-size:12px; color:var(--ink-faint); margin-top:5px; line-height:1.4; }
+
+  /* HUD */
+  .progress { position:fixed; top:0; left:0; height:3px; background:var(--accent); z-index:50; transition:width .42s cubic-bezier(.4,0,.2,1); }
+  .hud { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:50;
+         display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line);
+         border-radius:999px; padding:5px 6px; box-shadow:var(--shadow); }
+  .hud button { border:none; background:transparent; color:var(--ink-soft); font:inherit; cursor:pointer;
+                width:34px; height:34px; border-radius:999px; display:grid; place-items:center; font-size:16px; }
+  .hud button:hover { background:var(--accent-soft); color:var(--accent); }
+  .hud button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .hud .count { font-family:var(--mono); font-size:13px; color:var(--ink-soft); min-width:56px; text-align:center; font-variant-numeric:tabular-nums; }
+  .hud .sep { width:1px; height:20px; background:var(--line); margin:0 2px; }
+  .hint { position:fixed; bottom:22px; right:22px; z-index:40; font-size:12px; color:var(--ink-faint); font-family:var(--mono); }
+  @media (max-width:600px){ .hint{ display:none; } }
+</style>
+
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+
+  <!-- 1. TITLE -->
+  <section class="slide title-slide">
+    <div class="inner">
+      <p class="eyebrow">ARTEMIS · five-county north-Florida pilot</p>
+      <h1>Correcting the TreeMap raster</h1>
+      <p class="lede">TreeMap is an <b>imputation</b>, not a measurement. Every ARTEMIS output inherits its errors,
+        so "repair TreeMap" is now an explicit upstream stage rather than an assumption. This is where that
+        correction stands: what is measured and fixed, what is decided but unbuilt, and what is still open.</p>
+      <div class="meta">
+        <span class="chip"><b>5.41M</b> forested pixels</span>
+        <span class="chip"><b>693</b> unique imputed plots</span>
+        <span class="chip">30&nbsp;m · <b>EPSG:5070</b></span>
+        <span class="chip">TreeMap <b>2022</b> (RDS-2025-0032)</span>
+        <span class="chip">summary <b>2026-08-03</b></span>
+      </div>
+      <p class="sub" style="margin-top:22px">Use ← → or space to move through the deck.</p>
+    </div>
+  </section>
+
+  <!-- 2. WHY IT IS A STAGE -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Framing <span class="rule"></span> 01</p>
+      <h2>"Repair TreeMap" became a pipeline stage, not an assumption</h2>
+      <p class="lede">The 2026-07-27 advisor sketch draws repair as its own upstream box, gated behind the
+        vegetation data and feeding everything downstream. The current architecture diagram now literally
+        <b>starts</b> at <span class="mono">Corrected TreeMap ↔ FIA / Plot Data</span> — nothing enters the
+        LETO initializer until the raster has been through it.</p>
+<pre class="ascii">  [Get Veg data (FIA)] ──┐
+                         ├──&gt; [Decide Sim Units] ──┐
+  <b>[Repair TreeMap]</b> ──┐   │                         │
+                     ├──────&gt; (<b>Repaired TreeMap</b>  &lt;─┘
+  [Repair NWOS       │           + Repaired LO)
+   LO db] ───────────┘            │        │
+        │                         v        │
+        │                  (Simulate Mgt) ──&gt; CC
+        └──────────────────&gt; (Riparian) ────&gt; outputs / summaries</pre>
+      <p class="srcline">notes/methodology-directions.md · artemis.txt</p>
+    </div>
+  </section>
+
+  <!-- 3. WHAT TREEMAP IS -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">The object being corrected <span class="rule"></span> 02</p>
+      <h2>One whole FIA plot is stamped onto every forested pixel</h2>
+      <p class="lede">TreeMap is a 30&nbsp;m raster of <b>imputed FIA plot identifiers</b> (<span class="mono">TM_ID</span> →
+        <span class="mono">PLT_CN</span>). It is a map of <i>which plot best matches here</i> — not a map of measured
+        values. Basal area, volume, carbon and the tree list are all carried over from that plot.</p>
+      <div class="cards">
+        <div class="tcard">
+          <h4>How it is built <span class="tag">Riley / Houtman lineage</span></h4>
+          <p>Modified Random Forest imputation via R <span class="mono">yaImpute</span>, ~249 trees per LANDFIRE zone
+            (83 per response variable). Each pixel receives the <b>single</b> plot that co-occurs with it most often in
+            the terminal nodes — <b>k&nbsp;=&nbsp;1</b>, one whole plot per pixel.</p>
+          <p>Predictors: LANDFIRE EVC/EVH/EVT, disturbance and time-since, terrain, lat/lon, Daymet 1981–2010 normals.
+            Reference: single-condition forested FIA plots, 1997–2022, true unfuzzed coordinates.</p>
+        </div>
+        <div class="tcard">
+          <h4>Why that shape drives every correction <span class="tag warn">consequence</span></h4>
+          <p>Because a whole plot is stamped, an error is never a small numeric nudge — it is <b>the wrong tree list</b>
+            over a contiguous block of ground, and it propagates identically through FVS growth, painting, and every
+            summary built on top.</p>
+          <p>It also means correction has two independent handles: <b>which plot lands where</b> (geography) and
+            <b>how much area each plot gets</b> (allocation). They fail differently and are fixed differently.</p>
+        </div>
+      </div>
+      <p class="srcline">notes/treemap-methodology.md</p>
+    </div>
+  </section>
+
+  <!-- 4. TWO ERROR CHANNELS -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">The core result <span class="rule"></span> 03</p>
+      <h2>Two error channels — and only one of them is correctable by rescaling</h2>
+      <p class="lede">Pixel-count expansion (<span class="mono">acres ≈ Count × 0.2224</span>) is <b>not</b> the FIA
+        design-based estimator. TreeMap pixel sums diverge from FIA in two separable ways, and the standard fix
+        only touches the first.</p>
+      <div class="cards">
+        <div class="tcard">
+          <h4>(a) Area misallocation <span class="tag">correctable</span></h4>
+          <p>Imputation may paint a plot onto more or fewer pixels than its design weight (<span class="mono">EXPNS</span>)
+            warrants. Symptom: forest-type acreages drift away from FIA.</p>
+          <p class="say"><b>Fix:</b> area-scale by FIA forest-type acres. Detect over-concentration with the pixel-weighted
+            plot distribution and <b>effective sample size</b>.</p>
+        </div>
+        <div class="tcard">
+          <h4>(b) Within-type attribute bias <span class="tag warn">not correctable that way</span></h4>
+          <p>Even at exactly the right acreage, the plots chosen inside a forest type can be systematically denser or
+            sparser than the FIA population for that type.</p>
+          <p class="say" style="border-left-color:var(--amber);background:var(--amber-soft)"><b>Area-scaling does not
+            touch this.</b> It has to be measured per <span class="mono">FORTYPCD</span> and reported, not rescaled away.</p>
+        </div>
+      </div>
+      <div class="caveat"><b>Standing rule:</b> TreeMap is validated for mapping and landscape modelling —
+        it is not a substitute for design-based estimates. The QA that decomposes the two channels is
+        <span class="mono">1_FL_FIA_TreeMap_comparison.R</span> (rFIA design-based vs TreeMap pixel-weighted, by
+        <span class="mono">BALIVE</span>, <span class="mono">TPA_LIVE</span>, live AG carbon). <b>Not yet ported to ARTEMIS.</b></div>
+    </div>
+  </section>
+
+  <!-- 5. STATUS BOARD -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Where each correction stands <span class="rule"></span> 04</p>
+      <h2>Six corrections, three states</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Correction</th><th>What it fixes</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr class="goodrow"><td class="name">Vintage disambiguation</td><td>2020 vs 2022 rasters and crosswalks silently mixed</td><td><span class="res pass">resolved &amp; verified</span></td></tr>
+            <tr class="goodrow"><td class="name">Identifier integrity</td><td>Three concrete bugs that dropped or corrupted pixels</td><td><span class="res pass">resolved &amp; tested</span></td></tr>
+            <tr><td class="name">Forest-mask mislabelling</td><td>LANDFIRE EVT calling recent clearcut "grassland/ag"</td><td><span class="res warn">measured, adjudicator chosen</span></td></tr>
+            <tr><td class="name">Geometry / sliver resolution</td><td>Fragmented units that cannot be FVS stands</td><td><span class="res warn">measured, merge owed</span></td></tr>
+            <tr><td class="name">Erase-layer acre loss</td><td>Riparian buffers deleted from the landscape</td><td><span class="res open">decided, unbuilt</span></td></tr>
+            <tr><td class="name">Plot-keyed regime smear</td><td>Managing a plot manages every pixel of that plot</td><td><span class="res open">design settled, unbuilt</span></td></tr>
+            <tr class="failrow"><td class="name">Inventory-year reconciliation</td><td>Plot vintages 1997–2021 against a circa-2022 raster</td><td><span class="res fail">open — largest gap</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span><span class="res pass">resolved</span> measured, fixed, covered by a test or an exact spot-check</span>
+        <span><span class="res warn">measured</span> numbers exist, the fix itself is not built</span>
+        <span><span class="res open">decided</span> the rule is agreed, no code yet</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. VINTAGE -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 1 <span class="rule"></span> 05</p>
+      <h2>The vintage trap: two TreeMaps on disk, and they do not agree</h2>
+      <p class="lede">Prototype scripts labelled outputs <span class="mono">TreeMap2022</span> while reading a
+        <span class="mono">TreeMap2020_CONUS.tif</span> path. The two vintages produce different crosswalks —
+        <b>693 rows vs 688</b> — and pairing them across is a silent, partial data loss.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Pairing</th><th class="num">Crosswalk rows</th><th class="num">FVS stands covered</th><th class="num">Pixel coverage</th><th>Use?</th></tr></thead>
+          <tbody>
+            <tr class="goodrow"><td class="name">TreeMap 2022</td><td class="num"><b>693</b></td><td class="num"><b>693 / 693</b></td><td class="num"><b>5.41M / 5.41M</b></td><td><span class="res pass">yes</span></td></tr>
+            <tr class="failrow"><td class="name">TreeMap 2020</td><td class="num">688</td><td class="num">679 / 693</td><td class="num">partial</td><td><span class="res fail">no</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede" style="margin-top:16px">The painter now reports coverage for both pairings and auto-selects the
+        better one, so the trap cannot be re-entered silently. <b>2022 gives 100% stand and 100% pixel coverage.</b></p>
+      <div class="caveat"><b>Still a live hazard:</b> the richer linkage table carrying
+        <span class="mono">STAND_ID</span> (<span class="mono">output2020/TreeMap_FVS_linkage.csv</span>) is
+        <b>2020-vintage, 688 rows</b> — it must never be paired with the 2022 raster. Plain painting does not need it,
+        because <span class="mono">stand_cn</span> already equals <span class="mono">PLT_CN</span>.</div>
+      <p class="srcline">notes/fvs-to-raster-painting.md · notes/treemap-fvs-workflow.md</p>
+    </div>
+  </section>
+
+  <!-- 7. IDENTIFIER INTEGRITY -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 2 <span class="rule"></span> 06</p>
+      <h2>Three integrity bugs that quietly deleted or scrambled pixels</h2>
+      <p class="lede">None of these announce themselves. Each produces a plausible-looking raster that is wrong,
+        which is why they belong in the correction stage rather than in debugging folklore.</p>
+      <div class="cards three">
+        <div class="tcard">
+          <h4>Category strings for IDs <span class="tag">fixed</span></h4>
+          <p><span class="mono">terra::rast()</span> auto-loads the TreeMap VAT, so <span class="mono">freq()</span>
+            can return active category strings such as <span class="mono">ForTypName</span> instead of integer
+            <span class="mono">TM_ID</span> values.</p>
+          <p class="say"><b>Rule:</b> always count on <span class="mono">as.int()</span>; never trust VAT display names.</p>
+        </div>
+        <div class="tcard">
+          <h4>FIA control numbers overflow <span class="tag">fixed</span></h4>
+          <p><span class="mono">PLT_CN</span> exceeds R double precision, so numeric handling corrupts the join key
+            itself — the identifier survives, but points at the wrong plot.</p>
+          <p class="say"><b>Rule:</b> keep <span class="mono">PLT_CN</span>, <span class="mono">CN</span>,
+            <span class="mono">Stand_CN</span>, <span class="mono">StandID</span> as strings end to end.</p>
+        </div>
+        <div class="tcard">
+          <h4>Label-0 collision <span class="tag">fixed + test</span></h4>
+          <p>skimage's <span class="mono">felzenszwalb()</span> labels from 0, unlike <span class="mono">slic()</span>
+            (<span class="mono">start_label=1</span>). Non-forest was then masked to 0 and vectorisation skipped 0 as
+            nodata — so whichever forest segment happened to be labelled 0 was <b>silently dropped before any
+            measurement</b>.</p>
+          <p class="say"><b>Recovered:</b> 52 pixels · 4.68 ha · 14 patches. Post-erase forest now matches SLIC
+            <b>exactly</b> (27,806.344 ha).</p>
+        </div>
+      </div>
+      <p class="srcline">research/mgmt_units/segmentation_delineation.py · tests/test_segmentation_delineation.py</p>
+    </div>
+  </section>
+
+  <!-- 8. FOREST MASK LIES -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 3 <span class="rule"></span> 07</p>
+      <h2>The forest mask lies about recently-cut ground</h2>
+      <p class="lede">LANDFIRE EVT is both a TreeMap predictor and our forest mask. It labels some
+        <b>recently clearcut forest</b> as agriculture, grassland or shrubland — so that land is dropped from the
+        forested universe entirely, exactly where harvest just happened.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Suspect EVT class (LF2022)</th><th class="num">VALUE</th><th class="num">Embeddings call it clearcut</th><th class="num">EVT-change (strict)</th><th class="num">LCMS tree-removal</th></tr></thead>
+          <tbody>
+            <tr class="failrow"><td class="name">Southeastern Ruderal Grassland</td><td class="num">9823</td><td class="num"><b>0.84</b></td><td class="num">0.38</td><td class="num">0.00</td></tr>
+            <tr><td class="name">Eastern Warm Temperate Pasture &amp; Hayland</td><td class="num">7997</td><td class="num">0.34</td><td class="num">0.06</td><td class="num">0.01</td></tr>
+            <tr><td class="name">EGCP Floodplain Shrubland <span class="mono">(n=1)</span></td><td class="num">9585</td><td class="num">1.00</td><td class="num">1.00</td><td class="num">0.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="take" style="margin-top:18px">
+        <li><b>Ruderal Grassland (9823) is the main offender</b> — all three methods rank it highest, and it sits closer
+          to clearcut than to agriculture in embedding space (centroid cosine distance <b>0.141 vs 0.272</b>).</li>
+        <li><b>Pasture/Hayland (7997) is genuinely agricultural</b> — 0.373 vs 0.194 the other way. Do not "correct" it.</li>
+        <li><b>LCMS tree-removal almost never fires here</b> — these pixels were likely cut before the window or
+          reclassified, which is why the mislabel survives.</li>
+      </ul>
+      <p class="srcline">notes/clearcut-vs-agriculture-embeddings.md</p>
+    </div>
+  </section>
+
+  <!-- 9. ADJUDICATOR -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 3, continued <span class="rule"></span> 08</p>
+      <h2>AlphaEarth embeddings are the adjudicator — and the accuracy survives scrutiny</h2>
+      <div class="tiles">
+        <div class="tile"><div class="n good">0.956</div><div class="l">clearcut vs agriculture, 5-fold CV accuracy (logistic regression)</div></div>
+        <div class="tile"><div class="n good">0.954</div><div class="l">under <b>spatial block CV</b> (GroupKFold by 0.5° cell) — geography is not the signal</div></div>
+        <div class="tile"><div class="n">0.781</div><div class="l">label-shuffle baseline (the majority rate) — the model collapses to it</div></div>
+        <div class="tile"><div class="n">0.72 <span style="font-size:.6em;color:var(--ink-faint)">vs</span> 0.40</div><div class="l"><span class="mono">emb_delta_l2</span> for cut forest vs stable grassland — a real temporal disturbance signal</div></div>
+      </div>
+      <p class="lede" style="margin-top:20px">The feature-engineered run then scores the suspect classes directly.
+        Share of each class estimated to be <b>recently-forest</b>: floodplain shrub <b>0.81</b>,
+        ruderal grassland <b>0.41</b>, pasture/hay <b>0.06</b>.</p>
+      <div class="caveat"><b>Read the headline AUC with care.</b> Featsets B and C reach AUC ≈ 1.000, but positives are
+        <i>defined</i> as pre-year forest and negatives as never-forest, and the pre-year embedding encodes exactly that
+        — near-circular, so treat it as an upper bound. <b>Featset A (event embeddings only), AUC 0.994, is the honest
+        appearance-based number.</b> The apply-set fractions are estimates awaiting imagery or field validation.</div>
+      <p class="srcline">Sampling fix worth keeping: two-stage decimated→full-res reads took rare-class hit rate from <b>2/30 to 150/150</b>.</p>
+    </div>
+  </section>
+
+  <!-- 10. EVT VINTAGE CONSTRAINT -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 3, the constraint <span class="rule"></span> 09</p>
+      <h2>There is no annual EVT series to difference against</h2>
+      <p class="lede">The obvious correction — diff EVT year over year and flag forest→grassland transitions — is
+        blocked by data availability, and the workaround is why EVT-change is only a corroborator.</p>
+      <div class="flow">
+        <div class="fstep"><div class="t">On GEE</div><div class="v">single vintage, ~2016</div><div class="d">AK/CONUS/HI only, <b>pre-Remap</b> code scheme</div></div>
+        <div class="fstep"><div class="t">Code drift</div><div class="v">3997 → 7997</div><div class="d">same class, different value between 2016 and LF2022</div></div>
+        <div class="fstep"><div class="t">LF2022 EVT</div><div class="v">local only</div><div class="d">156336×101538, windowed per-point sampling only</div></div>
+        <div class="fstep"><div class="t">Bridge used</div><div class="v">forest vs not</div><div class="d">2016 "forest" inferred from class <i>name</i> keywords</div></div>
+      </div>
+      <p class="lede" style="margin-top:20px">Because the two vintages are ~6 years apart, coarse, and unaligned with the
+        LCMS event year, EVT-change scores <b>precision 0.04 / recall 0.003</b> strict against LCMS clearcuts. It is
+        conservative by construction.</p>
+      <div class="caveat"><b>Operating rule adopted:</b> use embeddings to <i>flag</i> candidate mislabelled pixels;
+        use EVT-change and LCMS to <i>corroborate</i>. A clean same-scheme LF2016 vs LF2022 diff needs a second local
+        EVT download — the natural follow-up.</div>
+    </div>
+  </section>
+
+  <!-- 11. GEOMETRY -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 4 <span class="rule"></span> 10</p>
+      <h2>Segmentation improves shape. It does not fix fragmentation.</h2>
+      <p class="lede">Union County, same forest mask, same erase layers, fair comparison. The headline is negative and
+        it is the useful part: <b>no segmentation strategy solved the sliver problem</b>.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Strategy</th><th class="num">Units</th><th class="num">Sliver fraction</th><th class="num">Median area (ha)</th><th class="num">Median compactness</th><th class="num">Forest retained (ha)</th></tr></thead>
+          <tbody>
+            <tr><td class="name">Naive (parcel ∩ forest − buffers)</td><td class="num">17,020</td><td class="num">0.873</td><td class="num">0.10</td><td class="num">0.459</td><td class="num">27,615.9</td></tr>
+            <tr class="failrow"><td class="name">Felzenszwalb (scale 100)</td><td class="num">21,227</td><td class="num"><b>0.904</b></td><td class="num">0.09</td><td class="num"><b>0.526</b></td><td class="num">27,806.3</td></tr>
+            <tr><td class="name">SLIC (n=1000)</td><td class="num"><b>11,721</b></td><td class="num">0.871</td><td class="num">0.10</td><td class="num">0.503</td><td class="num">27,806.3</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="take" style="margin-top:18px">
+        <li><b>Compactness genuinely improves</b> — Polsby-Popper 0.46 → 0.50–0.53. Segmentation makes better-shaped units.</li>
+        <li><b>Fragmentation does not</b> — Felzenszwalb makes it <i>worse</i> (0.904 vs 0.873); SLIC is essentially flat.</li>
+        <li><b>Both segmentations retain identical forest area</b> (27,806.344 ha) — the equality invariant the label-0 fix restored, and evidence the comparison is fair.</li>
+        <li><b>Therefore the merge step is load-bearing</b>, not a cleanup detail. Segmentation parameters are a tuning knob on top of it.</li>
+      </ul>
+      <p class="srcline">research/mgmt_units/outputs/strategy_comparison.csv</p>
+    </div>
+  </section>
+
+  <!-- 12. ERASE LAYER -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 5 <span class="rule"></span> 11</p>
+      <h2>The erase layer is deleting forest we are supposed to grow</h2>
+      <p class="lede">Today <span class="mono">sketch_management_units.py</span> unions stream/BMP buffers, NHD
+        waterbodies and the road-artifact buffer into one erase layer and differences it out. Buffer acres are
+        <b>discarded</b> — neither managed nor grown, simply absent from the projected landscape. That is an
+        <b>under-count of standing volume and carbon</b>, not a conservative choice.</p>
+      <div class="cards">
+        <div class="tcard">
+          <h4>The regime, as decided <span class="tag">settled</span></h4>
+          <p><b>Grow freely</b> — projected through FVS on the same cycles as everything else.</p>
+          <p><b>Never harvested</b> — no entry of any kind, assigned by geometry, unconditional.</p>
+          <p><b>Reported as unique buffer polygons</b> — own unit IDs, own rows, own painted pixels. Not dissolved into
+            neighbours, not collapsed into one landscape-wide aggregate.</p>
+        </div>
+        <div class="tcard">
+          <h4>The accounting identity that has to hold <span class="tag warn">unbuilt</span></h4>
+          <p>Erase-then-add, so managed and riparian units <b>partition</b> the eligible forest area with no overlap:</p>
+          <p class="say" style="font-family:var(--mono);font-size:12px">Σ managed + Σ riparian ==<br>(forest mask ∩ parcels) − (waterbodies ∪ road buffer)</p>
+          <p>The raw forested AOI is the <b>wrong</b> right-hand side: roads run through forest and NHD polygons clip
+            forest pixels at 30&nbsp;m, so those acres are permanently excluded. Report that excluded area as its own
+            line so the drop stays visible instead of silently absorbing a bug.</p>
+        </div>
+      </div>
+      <div class="caveat"><b>Still open:</b> whether buffer polygons are generated once against full hydrography and
+        clipped per county, or rebuilt per county — the current per-county loop would split a buffer straddling a
+        county line into two polygons with unrelated IDs.</div>
+    </div>
+  </section>
+
+  <!-- 13. SMEAR -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Correction 6 <span class="rule"></span> 12</p>
+      <h2>Keying management to the plot smears the harvest across the county</h2>
+      <p class="lede">Growing TreeMap pixels directly is mechanically what the painter already does. But if the
+        <i>regime</i> is keyed to the plot, then managing a plot manages <b>every pixel imputed to that plot,
+        wherever it occurs</b>. <span class="mono">TM_ID 2623</span> alone covers <b>1,385 pixels</b> — a clearcut would
+        appear as speckle across the whole AOI instead of a contiguous block.</p>
+      <div class="cards">
+        <div class="tcard">
+          <h4>The fix: split the keys <span class="tag">design settled</span></h4>
+          <p><b>Regime is assigned per pixel</b>, inherited from the management unit the pixel falls in, plus ownership,
+            forest type and riparian class. Contiguity comes from the unit layer.</p>
+          <p><b>Trajectories are keyed by <span class="mono">(plot_id, regime, site-index bin)</span></b>. The same plot
+            can be clearcut in one unit and untouched in another, because those pixels look up different trajectories.</p>
+          <p class="say">The unit decides <b>what treatment</b>; the plot decides <b>what tree list</b>.</p>
+        </div>
+        <div class="tcard">
+          <h4>What it costs <span class="tag warn">watch this</span></h4>
+          <p>FVS run count becomes <span class="mono">unique(plot × regime × SI bin)</span> — bounded by key
+            combinations rather than by pixel or unit count, which is the only form that scales past the pilot.</p>
+          <p>But <b>every regime parameterisation multiplies it</b>. Keeping the regime library small and discrete,
+            rather than continuously parameterised per unit, is what keeps this tractable statewide.</p>
+          <p>Open: the distribution rule for unit-level partial-harvest targets across constituent plots, and whether
+            tiny plot slivers inside a unit get dropped below an area threshold.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14. WHAT SURVIVES -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Verification <span class="rule"></span> 13</p>
+      <h2>What the corrected raster already gets right</h2>
+      <p class="lede">The corrections above are not speculative housekeeping — the corrected 2022 pairing produces a
+        painted raster that checks out end to end.</p>
+      <div class="tiles three">
+        <div class="tile"><div class="n good">exact</div><div class="l"><span class="mono">TM_ID 2623</span> → <span class="mono">PLT_CN 17498047010478</span> → FVS yr-0 BA 42.875 → all <b>1,385</b> pixels carry 42.87472</div></div>
+        <div class="tile"><div class="n good">0.93</div><div class="l">correlation, FVS year-0 basal area vs TreeMap's own <span class="mono">BALIVE</span> (means 76.3 vs 72.6) — consistent, since FVS is initialised from these plots</div></div>
+        <div class="tile"><div class="n good">100%</div><div class="l">stand and pixel coverage: 693/693 stands, 5.41M/5.41M pixels, 9,259 trajectory rows</div></div>
+      </div>
+      <div class="cards" style="margin-top:18px">
+        <div class="tcard">
+          <h4>Per-acre semantics carry through <span class="tag">rule</span></h4>
+          <p>TreeMap stores <b>per-acre densities</b>, never per-pixel totals — and so do the FVS values we paint.
+            Fine for maps, quantiles and pixel-wise change; <b>totals require × pixel acres</b> (900&nbsp;m² = 0.2224 ac).
+            Aggregations are area-weighted means, never naive pixel means.</p>
+        </div>
+        <div class="tcard">
+          <h4>Snapshot keying is ragged <span class="tag warn">gotcha</span></h4>
+          <p>Stands start in different inventory years (1997–2021) but share a projection end year (2076). Absolute
+            mid-run <span class="mono">calendar_year</span> is <b>not</b> a synchronised snapshot. The only two anchors
+            common to all 693 stands: <span class="mono">years_since_start == 0</span> and
+            <span class="mono">calendar_year == 2076</span>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 15. OPEN -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">The gap list <span class="rule"></span> 14</p>
+      <h2>What correction has not touched yet</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Open item</th><th>Why it matters</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr class="failrow"><td class="name">Inventory-year reconciliation</td><td>FVS starts each stand at FIA <span class="mono">INV_YEAR</span>, spanning 1997–2021, against a raster that claims circa-2022. Plots may need growing to a common 2022 vintage <i>before</i> the 50-year projection starts.</td><td><span class="res fail">largest unaddressed correction</span></td></tr>
+            <tr><td class="name"><span class="mono">INV_PLOT_SIZE = 0.041800</span></td><td>An unexplained manual patch at the end of the prototype's FVS input build. Do not port blindly — verify against FIA2FVS docs and the current FIADB schema first.</td><td><span class="res open">unverified</span></td></tr>
+            <tr><td class="name">Condition vs plot tables</td><td>Script docs recommend <span class="mono">FVS_STANDINIT_COND</span>; the one successful observed run used <span class="mono">FVS_STANDINIT_PLOT</span>. Decide before porting.</td><td><span class="res open">undecided</span></td></tr>
+            <tr><td class="name">196 <span class="mono">FVS09</span> warnings</td><td>"Plot counts do not match data on the design record" — occurred inside the <i>successful</i> run's 688 cases. Needs triage, not dismissal.</td><td><span class="res open">untriaged</span></td></tr>
+            <tr><td class="name">TreeMap 2022 re-validation</td><td>Published accuracy figures are the circa-2014 methodology paper's. Whether 2022 was independently re-validated is <b>needs verification</b>.</td><td><span class="res open">unconfirmed</span></td></tr>
+            <tr><td class="name">Area/attribute QA not ported</td><td><span class="mono">1_FL_FIA_TreeMap_comparison.R</span> is the one script that actually measures the two error channels — it lives in the R prototype, not in ARTEMIS.</td><td><span class="res open">port owed</span></td></tr>
+            <tr><td class="name">Sliver merge rule</td><td>Segmentation was proven insufficient; the merge-to-best-neighbour rule (adjacency? ownership? forest type?) is on the critical path and not built.</td><td><span class="res warn">critical path</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 16. CLOSING -->
+  <section class="slide">
+    <div class="inner">
+      <p class="kicker">Where this leaves us <span class="rule"></span> 15</p>
+      <h2>The correction story, in one slide</h2>
+      <ul class="take">
+        <li><b>Repair is a stage now</b> — the pipeline starts at a corrected raster; nothing downstream is trusted before it.</li>
+        <li><b>The mechanical corrections are done</b> — vintage disambiguated (693/693, 100% pixels), identifiers made exact, the label-0 drop closed and tested.</li>
+        <li><b>The mask problem is measured, not fixed</b> — ruderal grassland is the offender, embeddings are the adjudicator at 0.954 under spatial block CV, and the apply-set fractions still need imagery validation.</li>
+        <li><b>Segmentation was the negative result that mattered</b> — better shapes, no fewer slivers. The merge is the load-bearing step.</li>
+        <li><b>Two corrections are decided but unbuilt</b> — riparian acres must stop being erased, and regimes must key to pixels while trajectories key to <span class="mono">(plot, regime, SI)</span>.</li>
+        <li><b>One correction has not started</b> — reconciling 1997–2021 plot vintages to the circa-2022 raster, and porting the area-vs-attribute QA that would tell us how big the remaining bias is.</li>
+      </ul>
+      <div class="caveat" style="border-left-color:var(--accent);background:var(--accent-soft)">
+        <b>The honest limit:</b> area-scaling can correct <i>where</i> the acres are. Nothing in this stage corrects
+        within-forest-type attribute bias — that can only be measured and reported. TreeMap stays a mapping and
+        landscape-modelling product, never a substitute for design-based FIA estimates.
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<nav class="hud" aria-label="slide navigation">
+  <button id="prev" aria-label="previous slide">‹</button>
+  <span class="count" id="count">1 / 16</span>
+  <button id="next" aria-label="next slide">›</button>
+  <span class="sep"></span>
+  <button id="theme" aria-label="toggle light/dark">◐</button>
+</nav>
+<div class="hint">← → / space</div>
+
+<script>
+  (function(){
+    var deck = document.getElementById('deck');
+    var slides = deck.querySelectorAll('.slide');
+    var n = slides.length, i = 0;
+    var count = document.getElementById('count');
+    var progress = document.getElementById('progress');
+    function render(){
+      deck.style.transform = 'translateX(' + (-i*100) + 'vw)';
+      count.textContent = (i+1) + ' / ' + n;
+      progress.style.width = ((i+1)/n*100) + '%';
+    }
+    function go(d){ i = Math.max(0, Math.min(n-1, i+d)); render(); }
+    function to(x){ i = Math.max(0, Math.min(n-1, x)); render(); }
+    document.getElementById('next').onclick = function(){ go(1); };
+    document.getElementById('prev').onclick = function(){ go(-1); };
+    document.addEventListener('keydown', function(e){
+      if (e.key==='ArrowRight' || e.key===' ' || e.key==='PageDown'){ e.preventDefault(); go(1); }
+      else if (e.key==='ArrowLeft' || e.key==='PageUp'){ e.preventDefault(); go(-1); }
+      else if (e.key==='Home'){ e.preventDefault(); to(0); }
+      else if (e.key==='End'){ e.preventDefault(); to(n-1); }
+    });
+    // theme toggle: cycle system -> light -> dark
+    var root = document.documentElement, modes=['','light','dark'], m=0;
+    document.getElementById('theme').onclick = function(){
+      m=(m+1)%3; if(modes[m]) root.setAttribute('data-theme',modes[m]); else root.removeAttribute('data-theme');
+    };
+    render();
+  })();
+</script>
