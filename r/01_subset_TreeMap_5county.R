@@ -253,14 +253,31 @@ if (!is.character(county_data$PLT_CN)) {
   warning("VAT PLT_CN arrived as ", class(vat_cn), ", not character. All values are ",
           "below 2^53 so they survived the double intact, but read them as character ",
           "to remove the risk entirely.")
+  # Convert here, once, while we still know the column is numeric. format() is right
+  # for a NUMERIC (scientific = FALSE gives full digits, trim drops the leading blanks
+  # from right-justification) but WRONG for a character vector: there `justify = "left"`
+  # pads to the width of the longest element and `trim` does not suppress it -- per
+  # ?format, trim applies to "logical, numeric and complex values" only. Control numbers
+  # vary in width, so running format() over the already-character case would append
+  # trailing blanks to every shorter key and break each downstream lookup.
+  county_data$PLT_CN <- format(vat_cn, scientific = FALSE, trim = TRUE)
+}
+
+# By here PLT_CN is character and exact whichever branch produced it. Assert it rather
+# than trust it: this is the file every later stage joins on, and a stray blank or a
+# stray "e" is invisible in a CSV until a join quietly returns nothing.
+stopifnot(is.character(county_data$PLT_CN))
+bad_cn <- county_data$PLT_CN[!is.na(county_data$PLT_CN) &
+                             !grepl("^[0-9]+$", county_data$PLT_CN)]
+if (length(bad_cn) > 0) {
+  stop(length(bad_cn), " PLT_CN values are not plain digits (e.g. '",
+       paste(head(bad_cn, 3), collapse = "', '"),
+       "'). Padding or scientific notation here corrupts the TM_ID crosswalk.")
 }
 
 tmid_list <- county_data %>%
   select(Value, PLT_CN, pixel_count, pixel_acres,
-         FORTYPCD, ForTypName, BALIVE, TPA_LIVE, CARBON_L) %>%
-  # format(scientific = FALSE) rather than as.character(): with scipen already
-  # set these agree, but format() states the intent at the point it matters.
-  mutate(PLT_CN = format(PLT_CN, scientific = FALSE, trim = TRUE))
+         FORTYPCD, ForTypName, BALIVE, TPA_LIVE, CARBON_L)
 
 write.csv(tmid_list, file.path(output_path,"FL_5county_TreeMap_TMIDs.csv"), row.names = FALSE)
 cat("TM_ID list saved to output/FL_5county_TreeMap_TMIDs.csv\n")

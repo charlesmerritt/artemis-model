@@ -307,8 +307,12 @@ cat("Comparison table saved to output/FL_FIA_TreeMap_comparison.csv\n")
 plot_type_summary <- fl_data %>%
   # PLT_CN is a grouping key here: as a double, two control numbers that differ
   # only past the 15th digit collapse into one group and their pixels are
-  # double-counted into a single plot's per-acre values.
-  mutate(PLT_CN = format(PLT_CN, scientific = FALSE, trim = TRUE)) %>%
+  # double-counted into a single plot's per-acre values. trimws() wraps format()
+  # because the VAT column may already be character, and format() left-justifies a
+  # character vector to a common width -- `trim` only suppresses the blanks from
+  # right-justifying numerics (?format). Harmless for grouping, since the padding
+  # would be uniform, but the padded value must never reach a join or a file.
+  mutate(PLT_CN = trimws(format(PLT_CN, scientific = FALSE, trim = TRUE))) %>%
   group_by(FORTYPCD, ForTypName, PLT_CN) %>%
   summarise(
     plot_pixels = sum(pixel_count),

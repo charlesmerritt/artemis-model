@@ -53,6 +53,26 @@ push an identifier through a number to satisfy a join.
 |---|---|
 | `r/02:806` | `as.numeric(PLT_CN)` before `write.csv` of the crosswalk (above) |
 | `r/02:525` | A **second** `as.numeric(PLT_CN)`, in Section 7, to make a `left_join` typecheck. Missed by the first sweep and caught in review of PR #15 — once Section 2 reads character it does not merely lose digits, dplyr refuses the join and the script aborts *before* Section 10 writes the crosswalk. Lesson: sweep the whole file for coercions, not just the one the symptom points at |
+
+### The fix that was itself a defect
+
+Worth recording, because it is the same shape as the bug it was meant to prevent. The
+first pass on `r/01` replaced `as.character(PLT_CN)` with
+`format(PLT_CN, scientific = FALSE, trim = TRUE)` to keep a numeric out of scientific
+notation. That is correct for a numeric and **wrong for a character vector**: `format()`
+left-justifies character input to the width of the longest element, and `trim` does not
+suppress it — per `?format`, `trim` applies to "logical, numeric and complex values" only.
+Control numbers vary in width, so every shorter key silently gained a trailing blank, and
+the *healthy* path (PLT_CN already character, which is what the rest of this work exists to
+achieve) was the one that broke. Downstream, `"17498047010478 "` never matches
+`CAST(CN AS TEXT)`, `setdiff` never clears the unmatched pool, and `r/04`'s digits-only
+guard aborts.
+
+The conversion now happens once, inside the numeric branch where the type is known, and
+both branches are followed by a digits-only assertion. Two lessons: a whitespace-visible
+identifier bug is exactly as silent as a precision one, and a guard that asserts the
+*output* shape (`^[0-9]+$`) catches defects in the fix as well as in the original code —
+which is why the same assertion now sits in `r/01`, `r/02` and `r/04`.
 | `r/02:135`, `r/03:108` | `read.csv(tmid_csv)` with no `colClasses` — the only two of the seven R scripts missing it. PLT_CN became a double, then fed the SQL `IN` clauses |
 | `r/02`, `r/03`, `r/06` | `CN` / `STAND_ID` pulled from SQLite raw and `paste()`d into `IN` clauses — typing left to the driver |
 | `r/02:299` | `integer(0)` sentinel in an otherwise character PLT_CN pool |
