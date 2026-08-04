@@ -186,7 +186,10 @@ def build_fvs_inputs(
     units[id_field] = as_id_series(units[id_field], column=id_field)
 
     tree_final, runnable = build_tree_init(weights, tree_init, min_weight=min_weight)
-    report_key_overlap(units[id_field], weights["MU_ID"],
+    # Compare against the normalised MU_ID, not the caller's raw column: the join itself
+    # runs on the normalised copy inside filter_and_renormalize_weights, so diffing the raw
+    # one here would manufacture a "no key matched" warning for a join that is fine.
+    report_key_overlap(units[id_field], as_id_series(weights["MU_ID"], column="MU_ID"),
                        left_name=f"units {id_field}", right_name="weights MU_ID")
     if impute:
         tree_final = impute_nearest_runnable(units, tree_final, runnable, id_field=id_field)

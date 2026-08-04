@@ -242,12 +242,12 @@ if (is.factor(county_data$PLT_CN)) {
   county_data$PLT_CN <- as.character(county_data$PLT_CN)
 }
 if (!is.character(county_data$PLT_CN)) {
-  vat_cn  <- as.numeric(county_data$PLT_CN)
-  as_text <- format(vat_cn, scientific = FALSE, trim = TRUE)
-  lossy   <- !is.na(vat_cn) & abs(vat_cn) >= 2^53
+  vat_cn <- as.numeric(county_data$PLT_CN)
+  lossy  <- !is.na(vat_cn) & abs(vat_cn) >= 2^53
   if (any(lossy)) {
     stop(sum(lossy), " PLT_CN values arrived from the VAT as doubles at or above ",
-         "2^53 and have lost digits (e.g. ", paste(head(as_text[lossy], 3), collapse = ", "),
+         "2^53 and have lost digits (e.g. ",
+         paste(head(format(vat_cn[lossy], scientific = FALSE, trim = TRUE), 3), collapse = ", "),
          "). Read PLT_CN from the VAT as character before summarising.")
   }
   warning("VAT PLT_CN arrived as ", class(vat_cn), ", not character. All values are ",

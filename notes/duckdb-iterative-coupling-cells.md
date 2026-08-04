@@ -46,6 +46,15 @@ value, so no digit is lost — but it only protects the view's own output. If a 
 was loaded with a control number already sitting in a `DOUBLE`, the digits are gone before
 these cells ever run.
 
+**`case_id` and `cycle` are deliberately left numeric.** `CaseID` is an FVS run-sequence
+integer — small, generated per run, and not a FIA control number — so it is not exposed to
+this failure. Casting it would be worse than useless: `fvs_trajectory` arrives from CSV with
+`case_id` as `BIGINT`, so a `VARCHAR` `case_id` in cells 3 and 6 would mismatch the joins in
+cells 5 (`cc.case_id = rs.case_id`) and 8 (`x.case_id = l.case_id`) and reintroduce the exact
+zero-row failure this section is about. Cast the control numbers; leave the counters alone.
+The rule is about which columns are *identifiers of record*, not about casting everything in
+sight.
+
 Sanity check after loading, before trusting any join:
 
 ```sql
@@ -220,7 +229,7 @@ SELECT
   -- these through unchanged.
   CAST(c.Stand_CN AS VARCHAR) AS stand_cn,
   CAST(s.StandID  AS VARCHAR) AS stand_id,
-  CAST(s.CaseID   AS VARCHAR) AS case_id,
+  s.CaseID AS case_id,
   c.MgmtID AS management_id,
   c.RunTitle AS run_title,
   c.SamplingWt AS sampling_weight,
@@ -359,7 +368,7 @@ SELECT DISTINCT
   CAST(stands.stand_id           AS VARCHAR) AS spatial_stand_id,
 
   CAST(c.StandID AS VARCHAR) AS fvs_stand_id,
-  CAST(c.CaseID  AS VARCHAR) AS case_id,
+  c.CaseID AS case_id,
   c.MgmtID AS management_id,
   c.SamplingWt AS sampling_weight
 FROM

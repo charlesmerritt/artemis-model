@@ -11,7 +11,10 @@ Two distinct failure modes, both reachable from this repo's stack:
 1. **Truncation** — above ``2**53`` consecutive integers are no longer distinct in a
    double: ``int(float("1234567890123456789")) == 1234567890123456768``. Those digits are
    gone; no downstream cast recovers them, and two different plots can collapse onto one
-   key.
+   key. The bound belongs to the *dtype*, not to the pipeline: a float32 gives out at
+   ``2**24``, so an ordinary 15-digit control number sitting in a float32 column is already
+   rounded (``236048879010661`` → ``236048886005760``) while still looking small enough to
+   trust. :func:`exact_int_limit` derives the right bound per dtype.
 2. **Reformatting** — an ID that *is* exactly representable still stops being a usable key
    once it round-trips through a float. pandas renders ``236048879010661.0`` as
    ``"236048879010661.0"``; R's ``write.csv`` renders the same value as
@@ -24,9 +27,9 @@ Plain ``.astype(str)`` is never correct on an ID column — on a float column it
 ``"1.0"`` where the other side of the join holds ``"1"``.
 
 Mode 2 is repairable and is repaired here (with a warning naming the column), because a
-value below ``2**53`` provably survived the double intact. Mode 1 is not repairable and
-raises :class:`IdPrecisionError` — a truncated control number must not be passed off as a
-join key.
+value inside its dtype's exact-integer range provably survived the float intact. Mode 1 is
+not repairable and raises :class:`IdPrecisionError` — a truncated control number must not
+be passed off as a join key.
 
 Note on zero-padded IDs: digit-only strings are passed through untouched, so FVS
 ``STAND_ID`` values like ``"010006100083"`` keep their leading zeros. A zero-padded ID that
@@ -42,6 +45,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -50,6 +54,24 @@ logger = logging.getLogger(__name__)
 # so a value that has been through a double cannot be trusted to be the value we started
 # with — the only honest response is to refuse it.
 MAX_EXACT_FLOAT_INT = 2**53
+
+
+def exact_int_limit(spec) -> int:
+    """Largest integer the given float type represents exactly.
+
+    The bound is a property of the *source* dtype, not a constant. A float32 carries 24
+    mantissa bits, so it stops representing consecutive integers at 2**24 — a control
+    number like 236048879010661 is already rounded to 236048886005760 by the time it is
+    sitting in a float32 column, yet it is still far below the float64 bound of 2**53.
+    Checking every float against 2**53 would wave that through and emit a corrupted value
+    as an exact-looking key. ``spec`` may be a numpy dtype, a pandas extension dtype, or a
+    scalar type; anything unrecognised falls back to the float64 bound.
+    """
+    numpy_dtype = getattr(spec, "numpy_dtype", spec)  # pandas Float32Dtype -> float32
+    try:
+        return 2 ** (int(np.finfo(numpy_dtype).nmant) + 1)
+    except (TypeError, ValueError):
+        return MAX_EXACT_FLOAT_INT
 
 # The dtype every identifier column should end up in.
 ID_DTYPE = "string"
@@ -89,8 +111,17 @@ def _fail(column: str, value: object, why: str) -> IdPrecisionError:
     )
 
 
-def _normalize(value: object, column: str) -> tuple[str, bool]:
-    """Return ``(exact_string, was_repaired)`` for one identifier value."""
+def _normalize(
+    value: object, column: str, limit: int | None = None, width: str | None = None
+) -> tuple[str, bool]:
+    """Return ``(exact_string, was_repaired)`` for one identifier value.
+
+    ``limit`` is the exact-integer bound of the source dtype (see :func:`exact_int_limit`)
+    and ``width`` its name, for the error message. Callers that know the column's dtype
+    should pass both — pandas hands plain Python floats to the iterator for some dtypes, so
+    the scalar cannot always be trusted to report the width it came from. A bare string
+    carries no evidence of what produced it, so those fall back to the float64 bound.
+    """
     if isinstance(value, str):
         text = value.strip()
         if not text:
@@ -106,6 +137,8 @@ def _normalize(value: object, column: str) -> tuple[str, bool]:
                 raise _fail(column, value, "is not an integer identifier") from None
             if dec != dec.to_integral_value():
                 raise _fail(column, value, "is not a whole number")
+            # A string has no dtype to interrogate, so the float64 bound is the only one
+            # available — text is assumed to have come from the widest float.
             if abs(dec) >= MAX_EXACT_FLOAT_INT:
                 raise _fail(column, value, f"exceeds {MAX_EXACT_FLOAT_INT} and lost digits to a float")
             return str(int(dec)), True
@@ -115,21 +148,30 @@ def _normalize(value: object, column: str) -> tuple[str, bool]:
         # guards against float damage, it does not police identifier formats.
         return text, False
 
-    if isinstance(value, (bool,)):
+    if isinstance(value, (bool, np.bool_)):
         raise _fail(column, value, "is not an integer identifier")
 
-    # numpy integers included; bool is excluded above.
-    if isinstance(value, int):
-        return str(value), False
+    # Match the integer types explicitly. numpy integers do not subclass Python ``int``,
+    # and ``.is_integer()`` on integer scalars is a recent addition (CPython 3.12,
+    # NumPy 1.25) — relying on the method existing would silently reject an already-exact
+    # numpy int sitting in an object-dtype column on an older stack.
+    if isinstance(value, (int, np.integer)):
+        return str(int(value)), False
 
-    if isinstance(value, float) or hasattr(value, "is_integer"):
+    if isinstance(value, (float, np.floating)) or hasattr(value, "is_integer"):
         number = float(value)
         if not math.isfinite(number):
             raise _fail(column, value, "is not finite")
         if not number.is_integer():
             raise _fail(column, value, "is not a whole number")
-        if abs(number) >= MAX_EXACT_FLOAT_INT:
-            raise _fail(column, value, f"exceeds {MAX_EXACT_FLOAT_INT} and lost digits to a float")
+        # Bound by the dtype the value actually arrived in. Using 2**53 for a float32 would
+        # accept an already-rounded control number and hand it on as an exact-looking key.
+        dtype = getattr(value, "dtype", None)
+        bound = limit if limit is not None else exact_int_limit(dtype if dtype is not None else type(value))
+        if abs(number) >= bound:
+            label = width or getattr(dtype, "name", "float64")
+            raise _fail(column, value, f"exceeds {bound}, the exact-integer limit for {label}, "
+                                       f"and has already lost digits")
         return str(int(number)), True
 
     raise _fail(column, value, "is not an integer identifier")
@@ -148,11 +190,17 @@ def as_id_series(values, *, column: str | None = None) -> pd.Series:
     guaranteed — reading a GeoPackage field, joining two frames, or accepting a caller's
     DataFrame. Missing values pass through as ``pd.NA``.
 
-    Values that went through a float but stayed below ``2**53`` are repaired to their exact
-    digits and logged; values at or above it raise :class:`IdPrecisionError`.
+    Values that went through a float but stayed inside that float's exact-integer range are
+    repaired to their exact digits and logged; values at or above it raise
+    :class:`IdPrecisionError`. The bound comes from the column's own dtype — 2**53 for a
+    float64, but only 2**24 for a float32 — so a control number already rounded by a narrow
+    float is rejected rather than passed on as an exact-looking key.
     """
     series = values if isinstance(values, pd.Series) else pd.Series(values)
     name = column or (series.name if series.name is not None else "id")
+    is_float = pd.api.types.is_float_dtype(series.dtype)
+    limit = exact_int_limit(series.dtype) if is_float else None
+    width = getattr(series.dtype, "name", str(series.dtype)) if is_float else None
 
     if pd.api.types.is_integer_dtype(series.dtype) and not pd.api.types.is_bool_dtype(series.dtype):
         return series.astype(ID_DTYPE).rename(series.name)
@@ -172,16 +220,17 @@ def as_id_series(values, *, column: str | None = None) -> pd.Series:
         if value is None or (not isinstance(value, str) and pd.isna(value)):
             out.append(pd.NA)
             continue
-        text_value, was_repaired = _normalize(value, str(name))
+        text_value, was_repaired = _normalize(value, str(name), limit, width)
         repaired += was_repaired
         out.append(text_value)
 
     if repaired:
         logger.warning(
             "column %r: repaired %d identifier(s) that had been through a float "
-            "(e.g. '1.0' or '1.7498047010478e+13'). The values were below %d so no digits "
-            "were lost, but the producing step should emit them as strings.",
-            name, repaired, MAX_EXACT_FLOAT_INT,
+            "(e.g. '1.0' or '1.7498047010478e+13'). The values were below %d, the exact-"
+            "integer limit for %s, so no digits were lost — but the producing step should "
+            "emit them as strings.",
+            name, repaired, limit or MAX_EXACT_FLOAT_INT, width or "float64",
         )
     return pd.Series(out, index=series.index, dtype=ID_DTYPE, name=series.name)
 

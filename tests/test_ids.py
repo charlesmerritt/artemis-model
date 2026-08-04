@@ -18,6 +18,7 @@ from pipeline.ids import (
     MAX_EXACT_FLOAT_INT,
     IdPrecisionError,
     as_id_series,
+    exact_int_limit,
     normalize_id,
     read_id_csv,
     report_key_overlap,
@@ -71,6 +72,37 @@ def test_value_too_wide_for_a_double_is_rejected_not_repaired():
         as_id_series(pd.Series(["1.234567890123457e+18"]), column="PLT_CN")
 
 
+def test_exact_int_limit_follows_the_dtype():
+    assert exact_int_limit(np.dtype("float64")) == 2**53 == MAX_EXACT_FLOAT_INT
+    assert exact_int_limit(np.dtype("float32")) == 2**24
+    assert exact_int_limit(np.dtype("float16")) == 2**11
+    assert exact_int_limit(pd.Float32Dtype()) == 2**24     # pandas extension dtype
+    assert exact_int_limit(object) == MAX_EXACT_FLOAT_INT  # unrecognised -> widest bound
+
+
+def test_float32_rounds_an_ordinary_control_number_and_is_rejected():
+    # The 2**53 bound belongs to float64. A float32 gives out at 2**24, so a perfectly
+    # ordinary 15-digit CN is already rounded while still looking small enough to trust:
+    # checking it against 2**53 would emit the corrupted value as an exact-looking key.
+    assert int(np.float32(int(CN_15))) != int(CN_15)
+    assert abs(float(np.float32(int(CN_15)))) < MAX_EXACT_FLOAT_INT  # slips past the wide bound
+    with pytest.raises(IdPrecisionError, match="float32"):
+        as_id_series(pd.Series([int(CN_15)], dtype="float32"), column="PLT_CN")
+
+
+def test_float32_still_accepts_ids_it_can_represent_exactly():
+    # Not a blanket rejection of narrow floats: small MU_IDs are exact in float32.
+    assert as_id_series(pd.Series([1, 2], dtype="float32"), column="MU_ID").tolist() == ["1", "2"]
+
+
+def test_float16_bound_is_narrower_still():
+    assert as_id_series(pd.Series([1024], dtype="float16"), column="MU_ID").tolist() == ["1024"]
+    # 3000 is above the float16 exact-integer limit of 2**11 but still inside its range,
+    # so this exercises the precision bound rather than an overflow to inf.
+    with pytest.raises(IdPrecisionError, match="float16"):
+        as_id_series(pd.Series([3000], dtype="float16"), column="MU_ID")
+
+
 def test_wide_control_number_survives_as_a_string():
     # The same 19-digit CN is fine as long as it never touched a float.
     assert as_id_series(pd.Series([CN_19], dtype="string"), column="PLT_CN").tolist() == [CN_19]
@@ -90,6 +122,25 @@ def test_non_integer_numbers_are_rejected():
         as_id_series(pd.Series([1.5]), column="PLT_CN")
     with pytest.raises(IdPrecisionError, match="whole number"):
         as_id_series(pd.Series(["236048879010661.5"]), column="PLT_CN")
+
+
+def test_numpy_scalars_in_an_object_column_are_handled_by_type():
+    # An object-dtype column reaches the per-value loop, where numpy scalars arrive. They
+    # do not subclass Python int/float, so the dispatch must match them explicitly rather
+    # than rely on `.is_integer()` existing (CPython 3.12 / NumPy 1.25 and up).
+    mixed = pd.Series([np.int64(1), np.int32(2), 3, "4.0"], dtype=object)
+    assert as_id_series(mixed, column="MU_ID").tolist() == ["1", "2", "3", "4"]
+    wide = pd.Series([np.int64(int(CN_19))], dtype=object)
+    assert as_id_series(wide, column="PLT_CN").tolist() == [CN_19]  # int64 is exact, keep it
+
+
+def test_booleans_are_not_identifiers():
+    # Guards the scalar path. (An object-dtype *column* is stringified by the text fast
+    # path before dispatch, so a bool there becomes the literal "True" and passes through
+    # as a non-numeric label — an edge case with no real analogue in this data.)
+    for value in (True, np.bool_(True)):
+        with pytest.raises(IdPrecisionError):
+            normalize_id(value, column="MU_ID")
 
 
 def test_missing_values_pass_through_as_na():

@@ -519,11 +519,13 @@ if (length(fl_cns) > 0) {
   )
 }
 
-# Ensure PLT_CN is numeric for join -- state_lookup PLT_CNs are
-# character from lapply; tmid_list PLT_CN is numeric
-state_lookup$tmp    <- state_lookup$PLT_CN
-state_lookup$PLT_CN <- as.numeric(state_lookup$tmp)
-state_lookup$tmp    <- NULL
+# Both sides of this join are character: tmid_list$PLT_CN from colClasses in
+# Section 2, state_lookup$PLT_CN from the CAST(CN AS TEXT) queries above. The
+# previous line here forced the key through as.numeric() so the join would
+# typecheck -- the same anti-pattern as Section 10, and once Section 2 reads
+# character it does not merely lose digits, it aborts the join outright and the
+# script never reaches Section 10 to write the crosswalk.
+state_lookup$PLT_CN <- as.character(state_lookup$PLT_CN)
 
 # Join state tags to pixel-level data.
 # Rows with no FOUND_IN match (unmatched PLT_CNs) are excluded;
