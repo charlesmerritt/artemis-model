@@ -8,6 +8,14 @@ value for its stand. The mechanism is a pure pixel-value swap:
         -> fvs_trajectory.stand_cn   (stand_cn == PLT_CN, plot-level)
         -> any FVS metric at a snapshot (e.g. basal_area)
 
+Both hops are string joins on FIA control numbers, so both are exposed to the
+float-precision failure documented in [Identifier precision](identifier-precision.md).
+`dtype="string"` on the read is **not** sufficient: the crosswalk is written by
+`r/02_subset_FIA_SQLite_multistateR.R`, so a PLT_CN that R held in a double arrives as the
+*text* `"1.7498047010478e+13"`, which a string dtype preserves perfectly and which then
+matches no stand. Both loaders now normalise through `pipeline.ids.as_id_series`, and an
+empty PLT_CN join raises instead of writing an all-nodata GeoTIFF and reporting success.
+
 ## Script
 
 `pipeline/s4_fvs/paint_fvs_to_raster.py` — run with `uv run python ...`.
