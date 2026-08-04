@@ -13,9 +13,17 @@ passes through a float is damaged in one of two ways, and **neither raises at th
 happens** — the join simply returns fewer rows, and a stand quietly inherits the wrong tree
 list.
 
-1. **Truncation** above `2**53`. `int(float("1234567890123456789")) == 1234567890123456768`.
-   Digits are gone; no downstream cast recovers them, and two distinct plots can collapse
-   onto one key.
+1. **Truncation** above the float's exact-integer range. For a float64 that is `2**53`:
+   `int(float("1234567890123456789")) == 1234567890123456768`. Digits are gone; no
+   downstream cast recovers them, and two distinct plots can collapse onto one key.
+
+   **The bound belongs to the dtype, not to the pipeline.** A float32 carries 24 mantissa
+   bits and so gives out at `2**24` — an ordinary 15-digit control number sitting in a
+   float32 column is *already* rounded (`236048879010661` → `236048886005760`) while still
+   looking far too small to worry about. Checking every float against `2**53` waves that
+   through and emits the corrupted value as an exact-looking key. `exact_int_limit()`
+   derives the right bound per dtype from the mantissa width. This was caught in review of
+   PR #15, not in the original audit.
 2. **Reformatting.** A value that survives the double intact stops being a usable *key* once
    printed from one. pandas writes `236048879010661.0`; R's `write.csv` writes
    `1.7498047010478e+13`. The digits are all there, the string key is not, and every
@@ -44,6 +52,7 @@ push an identifier through a number to satisfy a join.
 | Where | Defect |
 |---|---|
 | `r/02:806` | `as.numeric(PLT_CN)` before `write.csv` of the crosswalk (above) |
+| `r/02:525` | A **second** `as.numeric(PLT_CN)`, in Section 7, to make a `left_join` typecheck. Missed by the first sweep and caught in review of PR #15 — once Section 2 reads character it does not merely lose digits, dplyr refuses the join and the script aborts *before* Section 10 writes the crosswalk. Lesson: sweep the whole file for coercions, not just the one the symptom points at |
 | `r/02:135`, `r/03:108` | `read.csv(tmid_csv)` with no `colClasses` — the only two of the seven R scripts missing it. PLT_CN became a double, then fed the SQL `IN` clauses |
 | `r/02`, `r/03`, `r/06` | `CN` / `STAND_ID` pulled from SQLite raw and `paste()`d into `IN` clauses — typing left to the driver |
 | `r/02:299` | `integer(0)` sentinel in an otherwise character PLT_CN pool |
@@ -69,7 +78,8 @@ and the `docs/superpowers/` design docs.
 ## What is enforced now
 
 - **`as_id_series()`** replaces `.astype(str)` on any ID column. It repairs values that
-  provably survived a double (below `2**53`), logging a warning that names the column, and
+  provably survived the float (inside that dtype's exact-integer range — `2**53` for a
+  float64, `2**24` for a float32), logging a warning that names the column, and
   raises `IdPrecisionError` on anything that lost digits. Non-numeric identifiers such as
   `mu_12125_00000001` pass through untouched — the module guards against float damage, it
   does not police identifier formats. Zero-padded IDs like FVS `STAND_ID`
