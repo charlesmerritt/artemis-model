@@ -242,15 +242,19 @@ if (is.factor(county_data$PLT_CN)) {
   county_data$PLT_CN <- as.character(county_data$PLT_CN)
 }
 if (!is.character(county_data$PLT_CN)) {
-  vat_cn <- as.numeric(county_data$PLT_CN)
-  lossy  <- !is.na(vat_cn) & abs(vat_cn) >= 2^53
+  # Capture the incoming class BEFORE converting: vat_cn is numeric by construction,
+  # so reporting its class would print "numeric" every time and tell the operator
+  # nothing about what actually produced the column (integer, integer64, double, ...).
+  vat_class <- paste(class(county_data$PLT_CN), collapse = "/")
+  vat_cn    <- as.numeric(county_data$PLT_CN)
+  lossy     <- !is.na(vat_cn) & abs(vat_cn) >= 2^53
   if (any(lossy)) {
     stop(sum(lossy), " PLT_CN values arrived from the VAT as doubles at or above ",
          "2^53 and have lost digits (e.g. ",
          paste(head(format(vat_cn[lossy], scientific = FALSE, trim = TRUE), 3), collapse = ", "),
          "). Read PLT_CN from the VAT as character before summarising.")
   }
-  warning("VAT PLT_CN arrived as ", class(vat_cn), ", not character. All values are ",
+  warning("VAT PLT_CN arrived as ", vat_class, ", not character. All values are ",
           "below 2^53 so they survived the double intact, but read them as character ",
           "to remove the risk entirely.")
   # Convert here, once, while we still know the column is numeric. format() is right
@@ -260,7 +264,13 @@ if (!is.character(county_data$PLT_CN)) {
   # ?format, trim applies to "logical, numeric and complex values" only. Control numbers
   # vary in width, so running format() over the already-character case would append
   # trailing blanks to every shorter key and break each downstream lookup.
-  county_data$PLT_CN <- format(vat_cn, scientific = FALSE, trim = TRUE)
+  #
+  # ifelse keeps a missing PLT_CN missing: format(NA_real_) renders the literal string
+  # "NA", which is not NA, so the digits-only guard below would treat it as a corrupted
+  # identifier and abort with a message blaming precision damage that never happened.
+  # The character branch skips real NAs via !is.na(), so both branches must agree.
+  county_data$PLT_CN <- ifelse(is.na(vat_cn), NA_character_,
+                               format(vat_cn, scientific = FALSE, trim = TRUE))
 }
 
 # By here PLT_CN is character and exact whichever branch produced it. Assert it rather
