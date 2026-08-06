@@ -12,9 +12,12 @@ Durable context for future agents and collaborators.
   prescription mapping, library schema, the SA formulation and its required quality
   reporting, and what it supersedes. Documentation is ahead of implementation: nothing in
   `pipeline/` implements the annealer yet.
-- [Guiding references](../docs/references/README.md) — the two papers this work follows,
-  **`LAMPS`** (Bettinger & Lennette et al.) and **`CLIMATE-FVS`** (GMUG 2015). Neither PDF
-  is committed yet; the README records why and where they go.
+- [Guiding references](../docs/references/README.md) — the two papers this work follows.
+  **`CLIMATE-FVS`** (Diaz et al. 2015, Ecotrust) is the end-to-end precedent: the same
+  batch-simulate-then-anneal architecture applied to western Oregon BLM lands, with
+  published code for both halves; PDF committed. **`LAMPS`** (Bettinger & Lennette et al.)
+  supplies the eligibility and adjacency machinery Diaz et al. did not need; PDF still
+  missing from the repo.
 
 ## Index
 

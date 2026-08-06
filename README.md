@@ -47,15 +47,17 @@ every stage is implemented.
 ## Guiding references
 
 Two documents guide the methodology; see
-[`docs/references/README.md`](docs/references/README.md) for citations, status, and what
-each contributes.
+[`docs/references/README.md`](docs/references/README.md) for citations and the detailed
+mapping onto ARTEMIS.
 
+- **`CLIMATE-FVS`** — Diaz, Perry, Tutak, Hodges & Mertens (2015), *Potential climate change
+  impacts on management outcomes for western Oregon BLM forestlands simulated using
+  Climate-FVS*, Ecotrust, report to BLM. **The end-to-end precedent**: Ecotrust built the
+  same batch-simulate-then-anneal system and published both halves
+  (`growth-yield-batch`, `harvest-scheduler`). Committed in `docs/references/`.
 - **`LAMPS`** — Bettinger & Lennette et al., Landscape Management Policy Simulator:
-  eligibility screening, adjacency and green-up, heuristic harvest scheduling.
-- **`CLIMATE-FVS`** — Climate-FVS Simulation Report (GMUG, 2015): FVS-driven alternative
-  management trajectories per stand.
-
-Neither PDF is committed yet. Both are expected in `docs/references/`.
+  eligibility screening, adjacency and green-up — the spatial constraint machinery Diaz
+  et al. did not need. PDF not yet committed.
 
 ## Current implementation
 

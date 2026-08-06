@@ -17,20 +17,37 @@ enumerates what each stand *could* do; the scheduler decides what each stand *wi
 ## Guiding references
 
 Two documents are the methodological guides for this architecture; see
-[`docs/references/README.md`](../docs/references/README.md) for citations, status, and what
-each contributes.
+[`docs/references/README.md`](../docs/references/README.md) for full citations, the
+side-by-side mapping onto ARTEMIS, and links to published code.
 
+- **`CLIMATE-FVS`** — Diaz, Perry, Tutak, Hodges & Mertens (2015), *Potential climate change
+  impacts on management outcomes for western Oregon BLM forestlands simulated using
+  Climate-FVS*, Ecotrust, report to BLM. **This architecture is not novel — Ecotrust built
+  it.** They batch-simulated every eligible prescription (× timing offset × climate
+  scenario) for every stand into a database, then selected among the precomputed results
+  with a simulated-annealing scheduler, and published both halves:
+  `github.com/Ecotrust/growth-yield-batch` and `github.com/Ecotrust/harvest-scheduler`.
+  Read their §"Methods" (pp. 14–28) before implementing §4–6 below.
 - **`LAMPS`** (Bettinger & Lennette et al., Landscape Management Policy Simulator) —
-  eligibility screening (MHA/MHP), adjacency and green-up (URM/ARM), and the precedent for
-  heuristic rather than exact scheduling at landscape scale. Sections 3, 6, and 8 below
-  follow it.
-- **`CLIMATE-FVS`** (Climate-FVS Simulation Report, GMUG 2015) — the worked example of
-  running FVS to produce alternative management trajectories per stand, i.e. the
-  library-generation half of sections 4 and 5.
+  eligibility screening (MHA/MHP), adjacency and green-up (URM/ARM), and the heuristic
+  scheduling lineage. It supplies the **spatial constraint machinery Diaz et al. did not
+  need**: their scheduler optimizes global metrics with no adjacency constraint at all.
 
-Neither PDF is committed yet: the LAMPS file has never been in the repo, and the
-Climate-FVS download is blocked by this session's egress policy. Both are expected in
-`docs/references/`.
+The Climate-FVS report is committed. The LAMPS PDF has never been in the repo — it is
+expected at `docs/references/LAMPS_Bettinger_et_al.pdf`.
+
+Three specific things ARTEMIS takes from Diaz et al. beyond the overall shape, each marked
+where it lands below:
+
+1. **Timing offsets are a first-class axis.** They delayed the first activity of each
+   prescription by 5/10/15 years explicitly "to offer choices to the optimization model."
+   Our `*_offset` grids in `config/prescriptions.yaml` are the same device (§4).
+2. **Four objective forms**, not an objective-plus-penalties split: `maximize`, `minimize`,
+   `evenflow`, `evenflow_target`. Adopted in §6.
+3. **Global targets let the scheduler shift harvest between sub-units.** Theirs did,
+   concentrating harvest into one BLM District — a departure from practice they flag in
+   their own footnotes. This is why ARTEMIS keeps county and owner-group dimensions on its
+   caps (§6).
 
 ---
 
@@ -184,6 +201,14 @@ identical trajectory, so key the FVS run cache on a content hash of those three 
 the result. The library still carries one row set per `(stand, prescription)` and every
 polygon keeps its own identity in the outputs — the dedup is invisible above the runner.
 
+**Timing offsets are a deliberate axis, not padding.** A family's parameter grid varies
+*when* the first activity happens as well as how hard it cuts. Diaz et al. built exactly
+this — offsets delaying the first activity by 5, 10, or 15 years — and state the purpose
+plainly: the offsets "offer choices to the optimization model to schedule the initiation of
+activities to best achieve multiple objectives." Without them the scheduler can choose
+*what* happens to a stand but not *when*, which is most of what an even-flow constraint
+needs to work with. Our `*_offset` grids in `config/prescriptions.yaml` serve the same role.
+
 **Library size.** Per stand, the library is the sum over its eligible prescription
 families of that family's parameter-grid size — target **6–12 trajectories per stand**,
 which puts the five-county pilot at roughly 10⁵ FVS runs. That is hours on one
@@ -228,33 +253,63 @@ solution is the vector over all stands. With ~10⁴ stands and ~8 trajectories e
 space is ~8^10000 — which is why the answer is a heuristic and why the search quality has
 to be *reported*, not assumed.
 
-**Objective.** A weighted sum, all terms evaluated by summing precomputed per-trajectory
-quantities:
+**Objective — four forms, after `CLIMATE-FVS` §"Scheduling model".** Rather than one
+objective plus a bag of penalties, every scenario goal is expressed in one of four forms,
+each evaluated by summing precomputed per-trajectory quantities across the plan:
 
-```text
-maximize  Σ_s  value(x_s)  −  Σ_c  penalty_c(plan)
-```
+| Form | Meaning | ARTEMIS use |
+|---|---|---|
+| `maximize` | Maximize a metric over the landscape | Carbon storage, NPV, habitat area |
+| `minimize` | Minimize a metric | Harvest cost, high-fire-hazard area |
+| `evenflow` | Minimize the standard deviation of a metric across periods | Non-declining yield where no target is set |
+| `evenflow_target` | Minimize variation around a target — a value or a range, which **may vary over time** | TPO volume caps; the primary harvest goal |
 
-where `value` is the scenario objective (NPV of harvest revenue, total merchantable
-volume, ending carbon stock, or a stated combination) and `penalty_c` prices each
-constraint violation. Weights are a scenario input and must be recorded with the run.
+Each objective carries a weight setting its priority relative to the others. Diaz et al.
+weighted their binding timber target **6×** against 1× for everything else, so the scheduler
+"will first and foremost attempt to achieve harvest targets and will try to
+minimize/maximize the other objectives within that constraint." That is a sound default
+shape for ARTEMIS: one dominant `evenflow_target` on volume, secondary objectives at unit
+weight. Weights are a scenario input and must be recorded with the run.
+
+Note what this reframing does to the TPO caps. They are **not** hard ceilings — they are an
+`evenflow_target` the plan is pulled toward from both sides, which is the right model for a
+figure derived from observed historical removals. A plan that undershoots the county target
+is as much a finding as one that overshoots.
+
+**Targets must stay dimensioned.** Diaz et al. set all targets at a single global level and
+documented the consequence: the scheduler shifted harvest between BLM Districts to hit the
+landscape total, concentrating it in Salem and pulling it out of Coos Bay, Roseburg and
+Medford under worsening scenarios — visible only in district-level figures, and contrary to
+how BLM actually allocates sale quantities by Sustained-Yield Unit. `config/tpo_targets.yaml`
+already carries county and owner-group dimensions. **Keep them, and report per-dimension
+outcomes rather than only the total**, or ARTEMIS will reproduce the same artifact across
+Florida counties.
 
 **Constraints, and how each is enforced.**
 
 | Constraint | Source | Enforcement |
 |---|---|---|
 | Riparian no-entry | `methodology-directions.md` item 2 | **Structural** — library of size 1 |
-| Minimum harvest age, reserve status, operability | LAMPS eligibility screen | **Structural** — prescription dropped at build time |
-| TPO volume caps (total / county / owner group) | `config/tpo_targets.yaml` | Penalty, per cycle per dimension |
-| Even flow / non-declining yield within an ownership class | orchestrator sketch objective | Penalty on period-to-period harvest deviation |
-| Adjacency and green-up (URM/ARM) | LAMPS adjacency | Penalty on adjacent stands harvesting in the same period |
+| Minimum harvest age, reserve status, operability | `LAMPS` eligibility screen | **Structural** — prescription dropped at build time |
+| TPO volume caps (total / county / owner group) | `config/tpo_targets.yaml` | `evenflow_target` objective, per cycle per dimension |
+| Even flow / non-declining yield within an ownership class | orchestrator sketch objective | `evenflow` objective |
+| Adjacency and green-up (URM/ARM) | `LAMPS` adjacency | Penalty on adjacent stands harvesting in the same period |
 | Maximum contiguous opening size | Florida practice | Penalty on block area exceeding the cap |
 | Treatment budget / capacity | scenario input | Penalty per cycle |
 
 The split is deliberate: constraints that encode a **policy absolute** are made
 unrepresentable, and constraints that encode a **target to balance** are priced. A penalty
-the search can pay is the right model for a volume cap and the wrong model for a
+the search can pay is the right model for a volume target and the wrong model for a
 no-harvest buffer.
+
+Diaz et al. did the first two rows differently and it is worth knowing why. Their absolutes
+(stream buffers, wilderness, Critical Habitat) were enforced exactly as ours are — by
+restricting which prescriptions a land classification may draw on — which is the strongest
+independent confirmation available that structural enforcement is the right call. But their
+scheduler carried **no spatial constraint at all**: no adjacency, no green-up, no opening
+size. Those three rows are ARTEMIS's own requirement, sourced from `LAMPS`, and they are
+what forces the block move in the move set below. Do not expect the Ecotrust scheduler code
+to supply them.
 
 **Moves.** Propose from a mixture, not a single kind:
 
@@ -339,6 +394,16 @@ Beyond the growth validation in `PLAN.md` §5, which is unchanged:
 - Final objective ≥ greedy baseline on the pilot.
 
 **Landscape plausibility:**
+- **The selected prescription mix, by ownership class.** This is a headline result, not a
+  diagnostic. Diaz et al. report it as their Figure 16 — 18% regeneration harvest, 25% no
+  active management, 58% thinning or patch cut in their baseline, shifting to 44–66%
+  regeneration harvest as growth declined under high emissions — and it is how the plan's
+  behaviour is actually read. Report the same distribution, and report it per ownership
+  class, since the ownership libraries are what generate it.
+- **Per-dimension outcomes, not just landscape totals.** Harvested volume and area per cycle
+  broken out by county and owner group. A plan that hits the total by quietly reallocating
+  harvest between counties is the failure mode Diaz et al. documented, and it is invisible
+  in an aggregate figure.
 - Harvested area per cycle per ownership class against TPO and LCMS observation.
 - Age-class distribution through time — a plan that liquidates the oldest classes in cycle
   1 and flatlines is satisfying its constraints and failing forestry.
@@ -366,14 +431,22 @@ run beyond the library build; step 5 needs no FVS at all.
 
 ## 10. Open questions
 
-1. **Objective for v1.** NPV, volume, carbon, or a stated weighting? The weights are the
-   scenario definition, so this is a project decision, not a tuning parameter.
+1. **Objective for v1.** Which metrics, in which of the four forms, at which weights? The
+   shape is settled by `CLIMATE-FVS` — one dominant `evenflow_target` on harvest volume at
+   ~6× weight, secondary objectives at 1× — but the secondary set is ours to choose. Carbon
+   storage is the obvious candidate and is currently disabled (question 6). The weights are
+   the scenario definition, so this is a project decision, not a tuning parameter.
 2. **Parameter-grid resolution per prescription family.** How many rotation ages and thin
-   timings genuinely change the answer? Library cost is multiplicative in this.
-3. **Even-flow scope.** Per ownership class (the orchestrator sketch's framing), per
-   county, or landscape-wide — and non-declining, or within a ± band?
+   timings genuinely change the answer? Library cost is multiplicative in this. Diaz et al.
+   used 4 timing offsets (0/5/10/15 yr) across 6 prescriptions as their working answer.
+3. **Even-flow scope — leaning resolved.** Keep the county and owner-group dimensions
+   already in `config/tpo_targets.yaml` rather than collapsing to a landscape total; that
+   is the direct lesson of the Diaz et al. district-shifting artifact. Still open: whether
+   the target is non-declining or a ± band, and whether ownership-class even flow applies on
+   top of the county caps or instead of them.
 4. **Adjacency source.** Unit-polygon topology, or a distance threshold between centroids?
-   URM vs. ARM formulation for green-up.
+   URM vs. ARM formulation for green-up. No help from `CLIMATE-FVS` here — their scheduler
+   had no spatial constraint — so this comes from `LAMPS` alone.
 5. **Tribal and unknown-ownership eligible sets.** Both are conservative placeholders in
    `config/prescriptions.yaml` and need a documented source before publication.
 6. **Re-enabling carbon.** The barrier-free architecture removes the measured obstacle;

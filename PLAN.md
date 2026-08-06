@@ -11,11 +11,12 @@
 > Read [`notes/trajectory-library-and-annealing.md`](notes/trajectory-library-and-annealing.md)
 > first — it is the design of record, and §3c/§4 below are its build-plan form.
 >
-> **Guiding references.** Two documents guide this work and should be consulted before
-> changing §3c, §4, or §5: **`LAMPS`** (Bettinger & Lennette et al., Landscape Management
-> Policy Simulator — eligibility, adjacency/green-up, heuristic scheduling) and
-> **`CLIMATE-FVS`** (Climate-FVS Simulation Report, GMUG 2015 — FVS-driven alternative
-> trajectories per stand). See [`docs/references/README.md`](docs/references/README.md).
+> **Guiding references** — consult before changing §3c, §4, or §5. See
+> [`docs/references/README.md`](docs/references/README.md).
+> **`CLIMATE-FVS`** (Diaz et al. 2015, Ecotrust) is the end-to-end precedent: the same
+> batch-simulate-then-anneal design, applied to western Oregon BLM lands, with published
+> code for both halves. **`LAMPS`** (Bettinger & Lennette et al.) supplies the eligibility
+> and adjacency/green-up machinery Diaz et al. did not need.
 
 ## Scope notes for the agent
 - **In scope:** deterministic, pixel-level forward projection using FVS Southern variant, initialized from TreeMap 2022 + FIA tree lists, with management selected by constrained optimization over a precomputed trajectory library.
@@ -189,8 +190,10 @@ The core of the architecture. **One library per stand, its contents determined b
 
 ### 4d. Harvest scheduling by simulated annealing
 - **Decision variable:** one choice `x_s` per stand from its library `L_s`. With ~10⁴ stands and ~8 trajectories each, the space is astronomically large — hence a heuristic, and hence the requirement to *report* search quality rather than assume it.
-- **Objective:** weighted sum of per-trajectory precomputed terms (NPV, merchantable volume, ending carbon), minus penalties. Evaluating a whole landscape plan is a lookup and a sum, not an FVS run — which is what makes search affordable at all.
-- **Constraint split.** Policy absolutes are made **unrepresentable** (riparian no-entry and eligibility screens are enforced by library construction, so the search cannot select them). Targets to balance are **priced** as penalties: TPO volume caps by total/county/owner group (`config/tpo_targets.yaml`), even flow within an ownership class, adjacency and green-up, maximum contiguous opening size, treatment budget.
+- **Objective — four forms** after `CLIMATE-FVS`: `maximize`, `minimize`, `evenflow` (minimize the standard deviation of a metric across periods), and `evenflow_target` (minimize variation around a target, which may be a value or a range and may vary over time). Each carries a weight; the binding harvest target is weighted well above the rest so the scheduler hits it first and optimizes the others within that constraint. Evaluating a whole landscape plan is a lookup and a sum, not an FVS run — which is what makes search affordable at all.
+- **TPO figures are an `evenflow_target`, not a hard ceiling.** They derive from observed historical removals, so undershooting a county target is as much a finding as overshooting it.
+- **Keep targets dimensioned by county and owner group.** Diaz et al. set theirs globally and their scheduler shifted harvest between BLM Districts to hit the landscape total — an artifact they flag against actual BLM practice. Report per-dimension outcomes, not just the total.
+- **Constraint split.** Policy absolutes are made **unrepresentable** (riparian no-entry and eligibility screens are enforced by library construction, so the search cannot select them — the same device Diaz et al. used for stream buffers, wilderness, and Critical Habitat). Spatial constraints are **priced** as penalties: adjacency and green-up, maximum contiguous opening size, treatment budget. These come from `LAMPS`; the Diaz et al. scheduler carried no spatial constraint at all, so its code cannot supply them.
 - **Moves:** a mixture of single-stand reassignment, whole adjacency-block reassignment (single-stand moves stall under a green-up penalty), and period swaps between comparable stands.
 - **Acceptance and cooling:** Metropolis acceptance; geometric cooling; `T₀` calibrated at run start to a target initial acceptance rate rather than hardcoded. Parameters in `config/projection.yaml` under `harvest.annealing`.
 - **Initial solution:** seed from the greedy oldest-first allocator in `pipeline/s3_management/harvest_scheduler.py`, which is retained for this purpose and as a reported baseline.
@@ -229,6 +232,8 @@ The core of the architecture. **One library per stand, its contents determined b
 - **Seed spread.** Report objective spread across restarts; a wide spread means the search has not converged, whatever the best run shows.
 
 ### 5d. Landscape plausibility
+- **The selected prescription mix, by ownership class** — a headline result, not a diagnostic. Diaz et al. report exactly this (their Figure 16) as the primary read on scheduler behaviour.
+- **Per-dimension outcomes**, by county and owner group. A plan that hits the landscape total by reallocating harvest between counties is invisible in an aggregate figure.
 - Harvested area per cycle per ownership class against TPO targets and the LCMS observed record (§3d).
 - Age-class distribution through time. A plan that liquidates the oldest classes in cycle 1 and flatlines is satisfying its constraints and failing forestry.
 - Opening-size distribution against the green-up rules.

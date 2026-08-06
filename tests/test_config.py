@@ -82,6 +82,45 @@ def test_projection_config_harvest_selection_is_annealing(projection_config):
     )
 
 
+# The four objective forms in Diaz et al. (2015), "Scheduling model". See docs/references/.
+OBJECTIVE_FORMS = {"maximize", "minimize", "evenflow", "evenflow_target"}
+
+
+def test_scheduler_objectives_use_known_forms(projection_config):
+    objectives = projection_config["harvest"]["objectives"]
+    assert objectives, "the scheduler needs at least one objective"
+    for obj in objectives:
+        assert obj["form"] in OBJECTIVE_FORMS, (
+            f"{obj['metric']}: unknown objective form {obj['form']!r}; "
+            f"choices: {sorted(OBJECTIVE_FORMS)}"
+        )
+        assert obj["weight"] > 0
+
+
+def test_harvest_volume_target_stays_dimensioned(projection_config):
+    """The volume target must stay broken out by county and owner group.
+
+    Diaz et al. (2015) set all targets at a single global level; their scheduler then
+    shifted harvest between BLM Districts to hit the landscape total, concentrating it in
+    one District — contrary to how BLM actually allocates sale quantities by
+    Sustained-Yield Unit. Collapsing `dimensions` to a landscape total reproduces that
+    artifact across Florida counties, so it is asserted rather than left to drift.
+    """
+    objectives = projection_config["harvest"]["objectives"]
+    volume = next(o for o in objectives if o["metric"] == "harvest_volume")
+    assert volume["form"] == "evenflow_target"
+    assert set(volume["dimensions"]) >= {"county", "owner_group"}
+
+
+def test_one_objective_dominates_the_rest(projection_config):
+    """Diaz et al. weighted the binding target 6x against 1x for everything else, so the
+    scheduler hits the harvest target first and optimizes the rest within that constraint.
+    A flat weight vector means no objective is primary."""
+    weights = sorted(o["weight"] for o in projection_config["harvest"]["objectives"])
+    if len(weights) > 1:
+        assert weights[-1] > weights[-2], "no objective is weighted as primary"
+
+
 def test_annealing_schedule_is_well_formed(projection_config):
     ann = projection_config["harvest"]["annealing"]
     assert 0.0 < ann["cooling_factor"] < 1.0, "geometric cooling must contract"

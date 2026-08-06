@@ -69,20 +69,47 @@ harvest:
       period_swap: 0.10
     seed_from: "greedy"              # initial solution: pipeline/s3_management/harvest_scheduler.py
 
-  objective:
-    # Scenario definition, not a tuning knob. Weights are recorded with every run.
-    # OPEN: the v1 objective is undecided -- see notes/trajectory-library-and-annealing.md
-    # section 10, question 1.
-    maximize: "harvest_volume"       # alternatives: "npv", "ending_carbon", weighted combination
-    weights:
-      harvest_volume: 1.0
+  objectives:
+    # Four objective FORMS, after Diaz et al. (2015) section "Scheduling model"
+    # (docs/references/): maximize | minimize | evenflow | evenflow_target.
+    #   evenflow        -> minimize the standard deviation of a metric across periods
+    #   evenflow_target -> minimize variation around a target (a value or a range, and it
+    #                      may vary over time)
+    # Weights set relative priority. Diaz et al. weighted their binding timber target 6x
+    # against 1x for everything else, so the scheduler hits the harvest target first and
+    # optimizes the rest within that constraint. Same shape here.
+    #
+    # NOTE: the TPO figures are NOT hard ceilings. They are an evenflow_target derived from
+    # observed historical removals, so undershooting a county target is as much a finding as
+    # overshooting it.
+    #
+    # `dimensions` keeps a target broken out rather than collapsed to a landscape total.
+    # Diaz et al. set all targets globally and their scheduler shifted harvest between BLM
+    # Districts to hit the total -- contrary to how BLM actually allocates sale quantities.
+    # Do not collapse these to [] without deciding to accept that behaviour.
+    #
+    # OPEN: the secondary objective set is undecided -- see
+    # notes/trajectory-library-and-annealing.md section 10, question 1.
+    - metric: "harvest_volume"
+      form: "evenflow_target"
+      target_source: "config/tpo_targets.yaml"
+      dimensions: ["county", "owner_group"]
+      weight: 6.0
+    - metric: "standing_volume"
+      form: "maximize"
+      weight: 1.0
+    # - metric: "carbon_storage"      # blocked on fvs.carbon_extension
+    #   form: "maximize"
+    #   weight: 1.0
 
   penalties:
-    # Constraints that price a TARGET. Absolutes (riparian no-entry, eligibility screens)
-    # are enforced structurally in the library instead -- a penalty the search can pay is
-    # the wrong model for a no-harvest buffer.
-    tpo_volume_cap: 1.0              # config/tpo_targets.yaml, per cycle per dimension
-    even_flow: 1.0                   # period-to-period harvest deviation within an ownership class
+    # SPATIAL constraints, priced. These are ARTEMIS's own requirement, sourced from LAMPS:
+    # the Diaz et al. scheduler carried no adjacency constraint at all, so its code cannot
+    # supply them.
+    #
+    # Absolutes (riparian no-entry, eligibility screens) are enforced structurally in the
+    # library instead -- a penalty the search can pay is the wrong model for a no-harvest
+    # buffer.
     adjacency_greenup: 1.0           # adjacent stands harvesting in the same period
     max_opening_size: 1.0            # contiguous harvested block area
     treatment_budget: 0.0            # disabled until capacity figures exist
