@@ -12,12 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pipeline.s3_management.sketch_management_units import (
     BUFFER_CLASS_PRIORITY,
     build_buffer_polygons,
-    check_partition,
     classify_stream_fcode,
     classify_unit_size,
     clean_geometries,
     feet_to_meters,
-    partition_forest,
     split_large_geometry,
     target_grid_cell_size_m,
 )
@@ -146,103 +144,3 @@ def test_no_buffers_yields_an_empty_layer_with_the_right_schema():
     buffers = build_buffer_polygons(_streams([]), WIDTHS)
     assert len(buffers) == 0
     assert "buffer_class" in buffers.columns
-
-
-# ---- the partition ---------------------------------------------------------------------
-
-def _forest(width=200.0):
-    return gpd.GeoDataFrame(
-        {"PARCELID": ["p1"]},
-        geometry=[box(0, -50, width, 50)],
-        crs=CRS,
-    )
-
-
-def test_managed_and_riparian_partition_the_eligible_forest():
-    buffers = build_buffer_polygons(
-        _streams([("perennial_small", LineString([(0, 0), (200, 0)]))]), WIDTHS
-    )
-    managed, riparian, accounting = partition_forest(_forest(), buffers)
-    assert accounting["partition_residual_ha"] == pytest.approx(0.0, abs=1e-9)
-    assert managed.geometry.area.sum() > 0
-    assert riparian.geometry.area.sum() > 0
-    check_partition(accounting)      # does not raise
-
-
-def test_buffer_acres_are_retained_rather_than_erased():
-    """The bug this replaces: buffered acres were neither managed nor grown.
-
-    They were unioned into the erase layer and differenced away, so they vanished from the
-    projected landscape entirely — an under-count of standing volume and carbon, not a
-    conservative choice.
-    """
-    buffers = build_buffer_polygons(
-        _streams([("perennial_small", LineString([(0, 0), (200, 0)]))]), WIDTHS
-    )
-    forest = _forest()
-    managed, riparian, accounting = partition_forest(forest, buffers)
-    erased_only = managed.geometry.area.sum() / 10_000
-    assert accounting["riparian_ha"] > 0
-    assert accounting["eligible_ha"] == pytest.approx(erased_only + accounting["riparian_ha"])
-
-
-def test_riparian_units_keep_their_buffer_class_and_smz_share():
-    buffers = build_buffer_polygons(
-        _streams([("perennial_small", LineString([(0, 0), (200, 0)]))]), WIDTHS
-    )
-    _, riparian, _ = partition_forest(_forest(), buffers)
-    assert set(riparian["buffer_class"]) == {"perennial_small"}
-    assert (riparian["unit_class"] == "riparian").all()
-    assert (riparian["SMZ_Pct"] == 100.0).all()
-
-
-def test_managed_units_report_no_smz_because_buffers_were_differenced_out():
-    buffers = build_buffer_polygons(
-        _streams([("perennial_small", LineString([(0, 0), (200, 0)]))]), WIDTHS
-    )
-    managed, _, _ = partition_forest(_forest(), buffers)
-    assert (managed["unit_class"] == "managed").all()
-    assert (managed["SMZ_Pct"] == 0.0).all()
-
-
-def test_riparian_units_assign_no_management_through_the_existing_override():
-    """The interlock: SMZ_Pct = 100 makes the tested riparian override fire, no new logic."""
-    from pipeline.s3_management.regime_assignment import assign_prescription
-
-    buffers = build_buffer_polygons(
-        _streams([("perennial_small", LineString([(0, 0), (200, 0)]))]), WIDTHS
-    )
-    _, riparian, _ = partition_forest(_forest(), buffers)
-    unit = riparian.iloc[0].to_dict()
-    unit["OWN_CODE"] = 4          # corporate pine would otherwise be a plantation rotation
-    unit["FORTYPCD"] = 161
-    prescription = assign_prescription(unit)
-    assert prescription.prescription_id == "no_management"
-    assert prescription.template == "no_management"
-
-
-def test_hard_exclusions_are_removed_from_both_classes_and_reported():
-    """Water and the road buffer are not stands, and their acres must not vanish silently."""
-    buffers = build_buffer_polygons(
-        _streams([("perennial_small", LineString([(0, 0), (200, 0)]))]), WIDTHS
-    )
-    hard = gpd.GeoDataFrame(geometry=[box(150, -50, 200, 50)], crs=CRS)
-    _, _, accounting = partition_forest(_forest(), buffers, hard)
-    assert accounting["hard_excluded_ha"] > 0
-    assert accounting["eligible_ha"] < accounting["forested_parcel_ha"]
-    assert accounting["partition_residual_ha"] == pytest.approx(0.0, abs=1e-9)
-
-
-def test_check_partition_raises_when_acres_go_missing():
-    bad = {"eligible_ha": 100.0, "managed_ha": 60.0, "riparian_ha": 20.0,
-           "partition_residual_ha": 20.0}
-    with pytest.raises(ValueError, match="does not account for"):
-        check_partition(bad)
-
-
-def test_partition_without_buffers_is_all_managed():
-    empty = build_buffer_polygons(_streams([]), WIDTHS)
-    managed, riparian, accounting = partition_forest(_forest(), empty)
-    assert len(riparian) == 0
-    assert accounting["riparian_ha"] == 0.0
-    assert accounting["managed_ha"] == pytest.approx(accounting["eligible_ha"])

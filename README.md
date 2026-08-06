@@ -54,12 +54,13 @@ uv run python -m pipeline.spatial_ref     # print the declaration and the confus
   `pipeline/s3_management/owner_classes.py`, `regime_assignment.py`, and
   `pipeline/s4_fvs/fallback_treelists.py`. See [`docs/config-policy.md`](docs/config-policy.md)
   for what each decides and what is still an assumption.
-- **Management-unit sketching:** `pipeline/s3_management/sketch_management_units.py`
-  processes Florida county-by-county and creates draft units from parcels, forest cover,
-  roads, water, and BMP buffers. Managed and riparian units partition the eligible forest
-  exactly — BMP buffers are retained as no-entry `unit_class = "riparian"` units rather than
-  erased — with the area identity enforced and the permanently-excluded acres reported.
-  Segmentation, road-buffer policy, and terrain integration remain under review.
+- **Management-unit delineation:** three steps, in order —
+  `sketch_management_units.py` (parcels ∩ forest, minus water and road artefacts) →
+  `sliver_merge.py` (resolve sub-5-acre stands) → `riparian_overlay.py` (cut the settled
+  stands along the BMP buffers and classify the buffered pieces no-entry). Buffers are
+  built in step 1 but applied only in step 3, so hydrography annotates the stand map rather
+  than shaping it. Stands are contiguous and the overlay conserves area exactly, both
+  enforced. Segmentation, road-buffer policy, and terrain integration remain under review.
 - **FVS raster painting:** `pipeline/s4_fvs/paint_fvs_to_raster.py` maps stand-level FVS
   trajectories back to TreeMap pixels for initial and final snapshots. It requires external
   five-county trajectory, crosswalk, and raster files.
@@ -114,6 +115,23 @@ uv run python -m pipeline.s3_management.sketch_management_units \
 uv run python -m pipeline.s3_management.sketch_management_units \
   --county-fips 125 --save-qa --overwrite
 ```
+
+Then resolve slivers and overlay the riparian buffers, in that order:
+
+```bash
+uv run python -m pipeline.s3_management.sliver_merge \
+  --input  data/interim/management_units/12125/candidate_management_units.gpkg \
+  --output data/interim/management_units/12125/management_units_state0.gpkg
+
+uv run python -m pipeline.s3_management.riparian_overlay \
+  --stands  data/interim/management_units/12125/management_units_state0.gpkg \
+  --buffers data/interim/management_units/12125/riparian_buffers.gpkg \
+  --output  data/interim/management_units/12125/management_units_final.gpkg
+```
+
+The overlay must run last. A BMP buffer is 35–75 ft wide, so buffer polygons are almost all
+below the 5-acre minimum stand size — overlaying before `sliver_merge` would delete the
+riparian layer outright.
 
 Statewide `--all-florida` processing is not implemented; it currently exits with status 1.
 Use `--pilot-five-county` or run supported counties individually.

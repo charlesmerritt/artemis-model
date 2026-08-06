@@ -285,27 +285,46 @@ item 2):
    are grown but folded into landscape totals technically appear in the outputs, yet you can
    no longer answer "how much volume and carbon is sitting in riparian buffers, and where?"
 
-### The managed / riparian partition
+### The riparian overlay is the last step
 
 Buffers used to be unioned into the erase layer and differenced away. Those acres were
 then neither managed nor grown — they vanished from the projected landscape, which is an
 under-count of standing volume and carbon rather than a conservative choice.
 
-`partition_forest()` now splits the eligible forest in two, exhaustively and without
-overlap:
+They are now retained, and applied **last**:
 
 ```
-Σ managed + Σ riparian == (forest mask ∩ parcels) − (open water ∪ road buffer)
+sketch_management_units    parcels ∩ forest − (water ∪ road buffer), split >40 ha
+                           builds riparian_buffers.gpkg but does NOT apply it
+        ↓
+sliver_merge               resolve sub-5-acre stands → settled operational stand map
+        ↓
+riparian_overlay           cut the stands along the buffers, classify the buffered
+                           pieces untouchable
 ```
 
-`check_partition()` enforces that identity to 0.01 ha and raises when acres go missing.
-Note the right-hand side is the **post-exclusion** area: checking against the raw forested
-AOI would fail by construction, because roads run through forest and 30 m water polygons
-clip the forest mask. That permanently-excluded area is written to `area_accounting.csv`
-as its own line, so the drop stays visible instead of silently absorbing a bug.
+Ordering is the whole point. Applying buffers at delineation time lets hydrography *shape*
+the stands: every stream carves the parcel before the map is cleaned, and the leftovers hit
+sliver resolution. Applying them last makes the buffer an *annotation* on stands that
+already exist — so each riparian polygon carries `parent_unit_id` and you can say which
+stand it came out of.
 
-Open water and the road buffer stay erase-only — water is non-forest, and the road buffer
-exists only to absorb road/parcel alignment artefacts.
+**Stands are contiguous.** A buffer running through a stand yields *two stands*, one per
+bank, plus the strip between them. Not one stand with a hole, and not one multipart unit
+spanning the water. This needs enforcing rather than assuming: `gpd.overlay` returns one
+row per input feature, so the natural implementation silently produces a single MultiPolygon
+"stand" on both banks of a river. `explode_to_stands()` splits them and
+`check_contiguity()` fails the run if any survive.
+
+Because every piece is a stand in its own right, a piece that lands below the minimum stand
+size is an ordinary sliver and goes through the ordinary policy — there is no special
+"remnant" concept and nothing gets absorbed across a stream.
+
+The overlay conserves area exactly (`check_area_conserved`, 0.01 ha tolerance): it
+reclassifies ground, it never erases any. Erasure happens once, upstream, where open water
+and the road buffer are removed — water is non-forest, and the road buffer exists only to
+absorb road/parcel alignment artefacts. Those permanently-excluded acres get their own line
+in `area_accounting.csv` so the drop stays visible instead of silently absorbing a bug.
 
 **Buffer classes are applied widest-first.** Buffers overlap wherever streams run close
 together, and a polygon can belong to only one class if the output is to partition. The
@@ -313,18 +332,17 @@ widest applicable protection wins contested ground — the conservative directio
 buffers (the 75 ft SMZ around lakes and ponds) are included; the waterbody polygons
 themselves are not.
 
-**Two size rules do not apply to riparian units**, and both would have destroyed the layer:
+**The ordering solves the sliver problem rather than working around it.** A Florida BMP
+buffer is 35–75 ft wide, so a buffer polygon has to run 600–1300 m along a stream just to
+reach the 5-acre minimum stand size — almost none do. Running the overlay before sliver
+resolution would therefore have deleted the entire riparian layer under the default `drop`
+policy, or dissolved it into the managed units it abuts under `merge`. Running it after
+means sliver resolution never sees a buffer.
 
-- The 40 ha fishnet split is an operational harvest-unit cap. Riparian units are never
-  entered, so it has no meaning for them, and fishnetting a buffer strip would multiply
-  polygon count without making any of them more addressable.
-- Sliver resolution would have deleted them outright. A Florida BMP buffer is 35–75 ft
-  wide, so a buffer polygon has to run 600–1300 m along a stream just to reach the 5-acre
-  minimum stand size — almost none do. Under the `merge` policy they would instead have
-  been dissolved into the managed units they abut, producing a unit that is part no-entry
-  and part harvestable, which is not a regime the library can express.
-  `sliver_merge.split_exempt_units()` removes them from the working frame in both
-  directions, so a managed sliver also cannot pick a riparian polygon as its merge target.
+`sliver_merge.split_exempt_units()` still exempts `unit_class = "riparian"` in both
+directions, so re-running sliver resolution on an already-overlaid map is safe and a managed
+sliver can never pick a riparian polygon as its merge target. With the current order that is
+a guard rather than the mechanism.
 
 ---
 

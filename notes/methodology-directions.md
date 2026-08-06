@@ -136,16 +136,29 @@ folded into unit-level totals technically appear in the outputs, yet you can no
 longer answer "how much volume/carbon is sitting in riparian buffers, and where?" —
 which is the question the buffers exist to support. Keep them addressable.
 
-**Implemented, 2026-08-03.** `sketch_management_units.py` now retains buffers as
-`unit_class = "riparian"` units. `build_buffer_polygons()` builds them carrying
-`buffer_class`, resolving overlap widest-first; `partition_forest()` splits the eligible
-forest into managed and riparian with no overlap; `check_partition()` enforces the area
-identity below to 0.01 ha; and `area_accounting.csv` reports the permanently-excluded
-line. `SMZ_Pct = 100.0` on riparian units makes the absolute override in
-`regime_assignment.py` fire through the already-tested path. They are exempt from the 40 ha
-fishnet split and from sliver resolution — both would have erased the layer, since a
-35–75 ft buffer is a sliver by area almost everywhere. Two deviations from this note are
-recorded under "Polygon identity" below and in [`docs/config-policy.md`](../docs/config-policy.md).
+**Implemented, 2026-08-03.** Buffers are retained, and applied as the **last** step of
+delineation rather than the first:
+
+    sketch_management_units  →  sliver_merge  →  riparian_overlay
+
+`sketch_management_units.py` builds the buffer layer (`build_buffer_polygons()`, carrying
+`buffer_class`, overlap resolved widest-first) and writes it without applying it.
+`riparian_overlay.py` then cuts the settled stand map along those buffers and classifies the
+buffered pieces. Applying them earlier would let hydrography *shape* the stands — every
+stream carving the parcel before the map is cleaned — and would have destroyed the layer
+outright, since a 35–75 ft buffer is below the 5-acre minimum stand size almost everywhere.
+
+**Stands are contiguous.** A buffer through a stand yields two stands, one per bank, plus
+the strip between — never one multipart unit spanning the water. `gpd.overlay` returns
+multipart by default, so `explode_to_stands()` splits and `check_contiguity()` enforces.
+Every piece is a stand in its own right, so anything below the minimum is an ordinary
+sliver, not a "remnant" to be absorbed across a stream.
+
+The overlay conserves area exactly (`check_area_conserved`); erasure happens once, upstream,
+and the permanently-excluded acres get their own line in `area_accounting.csv`.
+`SMZ_Pct = 100.0` on riparian units makes the absolute override in `regime_assignment.py`
+fire through the already-tested path. One deviation from this note is recorded under
+"Polygon identity" below and in [`docs/config-policy.md`](../docs/config-policy.md).
 
 **Gap in the code before that change.** `pipeline/s3_management/sketch_management_units.py`
 *erased* buffers: stream BMP buffers, NHD waterbodies, and the small road
@@ -282,7 +295,7 @@ statewide.
 
 | Item | Status |
 |---|---|
-| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Implemented** in `sketch_management_units.py` (retained as `unit_class = "riparian"`, area partition enforced, exempt from splitting and sliver resolution). One deviation on segment dissolving — see item 2 |
+| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Implemented** as `riparian_overlay.py`, run last (after sliver merge). Stands stay contiguous; area conserved exactly. One deviation on segment dissolving — see item 2 |
 | Keep per-plot tree lists, area-weight to units | **Leaning B.** Needs the unit×stand crosswalk + a partial-harvest distribution rule |
 | Pixel-first growth with per-pixel regime + `(plot, regime, SI)` trajectory keys | **Compatible with the above.** Adopt as the scaling design |
 | Hex-bin overlay | **Cartographic post-process only.** Size and denominator undecided |

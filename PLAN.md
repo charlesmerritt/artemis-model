@@ -94,13 +94,14 @@
     - Lakes and ponds → 75 ft
   - Store rules as `config/bmp_rules.yaml` keyed by state FIPS; add additional states at expansion time.
 - Output: `riparian_buffer.tif` (categorical: buffer class per pixel).
-- **Implemented 2026-08-03:** buffers are **retained as units**, not erased.
-  `sketch_management_units.py` emits them with `unit_class = "riparian"` and `buffer_class`,
-  and `partition_forest`/`check_partition` enforce
-  `Σ managed + Σ riparian == (forest ∩ parcels) − (water ∪ road buffer)` to 0.01 ha, with
-  the permanently-excluded acres reported separately. Riparian units are exempt from the
-  40 ha operational split and from sliver resolution — a 35–75 ft buffer is a sliver by
-  area almost everywhere, so either would have erased the layer.
+- **Implemented 2026-08-03:** buffers are **retained**, and applied **last** —
+  `sketch_management_units` → `sliver_merge` → `riparian_overlay`. The buffer layer is built
+  in step 1 and written unapplied; `riparian_overlay.py` cuts the settled stand map along it
+  and sets `unit_class = "riparian"` + `buffer_class` + `parent_unit_id`. Stands stay
+  contiguous (a stream through a stand makes two stands, enforced by `check_contiguity`) and
+  the overlay conserves area exactly (`check_area_conserved`). Ordering matters: a 35–75 ft
+  buffer is below the 5-acre minimum stand size almost everywhere, so overlaying before
+  sliver resolution would have deleted the layer.
 
 ### 3c. Ownership and harvest behavior model
 - **Ownership assignment per pixel:**

@@ -1,9 +1,22 @@
 """
 Draft Florida management-unit delineation via naive boundary intersection.
 
-This script creates candidate forest management units by intersecting parcels with
-LANDFIRE EVT forest mask, then erasing Florida BMP stream buffers, NHD waterbodies,
-and a small road-artifact buffer. Outputs are per-county GeoPackages + CSV summaries.
+Creates candidate forest management units by intersecting parcels with the LANDFIRE EVT
+forest mask, then erasing NHD waterbodies and a small road-artifact buffer. Outputs are
+per-county GeoPackages + CSV summaries.
+
+**BMP riparian buffers are built here but deliberately not applied.** They are written to
+`riparian_buffers.gpkg` and overlaid later by `riparian_overlay.py`, after large units are
+split and slivers resolved. Applying them at delineation time lets hydrography shape the
+stands — every stream carves the parcel before the stand map is cleaned. Applying them last
+makes the buffer an annotation on stands that already exist. See
+`notes/methodology-directions.md` item 2.
+
+Stands are contiguous: anything an erase splits in two becomes two stands, never one
+multipart unit spanning the gap.
+
+Pipeline order:
+    sketch_management_units  →  sliver_merge  →  riparian_overlay
 
 Usage:
     uv run python -m pipeline.s3_management.sketch_management_units --county-fips 125
@@ -27,6 +40,7 @@ from rasterio.mask import mask as rio_mask
 from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
+from pipeline.s3_management.riparian_overlay import explode_to_stands
 from pipeline.spatial_ref import project_crs
 
 # Setup logging
@@ -46,11 +60,6 @@ SMALL_ROAD_BUFFER_M = 3.0  # Overcome alignment artifacts
 # order between them is fixed here only so the result is deterministic.
 BUFFER_CLASS_PRIORITY = ("waterbody", "perennial_large", "perennial_small",
                          "ephemeral_intermittent")
-
-# Managed + riparian must account for the eligible forest to within this much. Not zero:
-# repeated overlay and buffer(0) cleaning move vertices by floating-point amounts, and a
-# county carries tens of thousands of polygons.
-PARTITION_TOLERANCE_HA = 0.01
 
 # Five-county pilot
 PILOT_COUNTIES = ["003", "023", "047", "089", "125"]  # Baker, Columbia, Hamilton, Nassau, Suwannee, Union
@@ -147,84 +156,6 @@ def build_buffer_polygons(
     if not pieces:
         return gpd.GeoDataFrame({"buffer_class": []}, geometry=[], crs=streams.crs)
     return gpd.GeoDataFrame(pieces, crs=streams.crs).reset_index(drop=True)
-
-
-def partition_forest(
-    forested_parcels: gpd.GeoDataFrame,
-    buffers: gpd.GeoDataFrame,
-    hard_exclusions: Optional[gpd.GeoDataFrame] = None,
-) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, dict]:
-    """
-    Split the eligible forest into managed and riparian units that partition it exactly.
-
-    Returns ``(managed, riparian, accounting)``. Riparian units are the buffered part of the
-    eligible forest and carry ``buffer_class``; managed units are everything else. Both
-    carry ``unit_class`` and an ``SMZ_Pct`` that makes the riparian override in
-    `regime_assignment.py` fire without any new logic: riparian units are 100% stream
-    management zone by construction, managed units are 0% because that area has been
-    differenced out of them.
-
-    ``hard_exclusions`` (open water, the road-artifact buffer) is erase-only — that land is
-    neither managed nor grown. Its area is reported as its own line in ``accounting``
-    rather than being absorbed, because the accounting identity is
-
-        Σ managed + Σ riparian == (forest ∩ parcels) − hard_exclusions
-
-    and checking it against the *pre*-exclusion area would fail by construction: roads run
-    through forest and 30 m water pixels clip the forest mask.
-    """
-    forested_ha = forested_parcels.geometry.area.sum() / 10_000
-
-    eligible = forested_parcels
-    if hard_exclusions is not None and len(hard_exclusions) > 0:
-        eligible = gpd.overlay(forested_parcels, hard_exclusions, how="difference")
-    eligible = clean_geometries(eligible)
-    eligible_ha = eligible.geometry.area.sum() / 10_000
-
-    if len(buffers) > 0 and len(eligible) > 0:
-        riparian = clean_geometries(gpd.overlay(eligible, buffers, how="intersection"))
-        managed = clean_geometries(gpd.overlay(eligible, buffers, how="difference"))
-    else:
-        riparian = gpd.GeoDataFrame({"buffer_class": []}, geometry=[], crs=eligible.crs)
-        managed = eligible.copy()
-
-    managed["unit_class"] = "managed"
-    managed["buffer_class"] = pd.NA
-    managed["SMZ_Pct"] = 0.0
-    riparian["unit_class"] = "riparian"
-    riparian["SMZ_Pct"] = 100.0
-
-    managed_ha = managed.geometry.area.sum() / 10_000
-    riparian_ha = riparian.geometry.area.sum() / 10_000
-    accounting = {
-        "forested_parcel_ha": forested_ha,
-        "hard_excluded_ha": forested_ha - eligible_ha,
-        "eligible_ha": eligible_ha,
-        "managed_ha": managed_ha,
-        "riparian_ha": riparian_ha,
-        "partition_residual_ha": eligible_ha - (managed_ha + riparian_ha),
-    }
-    return managed, riparian, accounting
-
-
-def check_partition(accounting: dict, tolerance_ha: float = PARTITION_TOLERANCE_HA) -> None:
-    """
-    Raise when managed + riparian fails to account for the eligible forest.
-
-    The failure this guards is silent area loss: before buffers were retained, every acre
-    inside a BMP buffer simply vanished from the projected landscape — an under-count of
-    standing volume and carbon that no summary would have shown.
-    """
-    residual = abs(accounting["partition_residual_ha"])
-    if residual > tolerance_ha:
-        raise ValueError(
-            f"managed + riparian ({accounting['managed_ha']:.2f} + "
-            f"{accounting['riparian_ha']:.2f} ha) does not account for the eligible forest "
-            f"({accounting['eligible_ha']:.2f} ha); residual {residual:.2f} ha exceeds the "
-            f"{tolerance_ha} ha tolerance. Managed and riparian units must partition the "
-            f"eligible area exactly — a residual means acres are being dropped or "
-            f"double-counted."
-        )
 
 
 def classify_unit_size(area_ha: float, min_area_ha: float = MIN_UNIT_AREA_HA,
@@ -519,11 +450,16 @@ def process_county(
 
     logger.info(f"Forested parcel fragments: {len(forested_parcels)}")
 
-    # 5. Build the BMP buffer layer — RETAINED as riparian units, not erased.
+    # 5. Build the BMP buffer layer — WRITTEN, NOT APPLIED.
     # Buffers used to be unioned into the erase layer, which meant those acres were
     # neither managed nor grown: they simply disappeared from the projected landscape,
-    # under-counting standing volume and carbon. See notes/methodology-directions.md item 2.
-    logger.info("Building BMP riparian buffers (retained as units)...")
+    # under-counting standing volume and carbon. They are not applied here either, because
+    # applying them at delineation time lets hydrography *shape* the stands: every stream
+    # carves the parcel before the stand map is cleaned, and the leftovers hit sliver
+    # resolution. The layer is saved and applied by `riparian_overlay.py` after slivers are
+    # resolved, so the buffer annotates a settled stand map instead of driving it.
+    # See notes/methodology-directions.md item 2.
+    logger.info("Building BMP riparian buffers (saved for the post-sliver overlay)...")
     streams["buffer_class"] = streams["fcode"].apply(classify_stream_fcode)
 
     buffer_widths = {
@@ -552,33 +488,37 @@ def process_county(
         if hard_parts else gpd.GeoDataFrame(geometry=[], crs=PROJECT_CRS)
     )
 
-    # 8. Partition the eligible forest into managed and riparian units.
-    logger.info("Partitioning eligible forest into managed and riparian units...")
-    managed_units, riparian_units, accounting = partition_forest(
-        forested_parcels, buffer_gdf, hard_exclusions
-    )
-    check_partition(accounting)
+    # 8. Erase the hard exclusions. Stands are contiguous, so anything the erase splits in
+    # two becomes two stands rather than one multipart unit spanning the gap.
+    logger.info("Erasing hard exclusions from the forested parcels...")
+    if len(hard_exclusions) > 0:
+        candidate_units = gpd.overlay(forested_parcels, hard_exclusions, how="difference")
+    else:
+        candidate_units = forested_parcels.copy()
+    candidate_units = clean_geometries(candidate_units)
+    candidate_units = explode_to_stands(candidate_units)
+
+    eligible_ha = candidate_units.geometry.area.sum() / 10_000
+    forested_ha = forested_parcels.geometry.area.sum() / 10_000
+    accounting = {
+        "forested_parcel_ha": forested_ha,
+        "hard_excluded_ha": forested_ha - eligible_ha,
+        "eligible_ha": eligible_ha,
+        "buffer_layer_ha": buffer_gdf.geometry.area.sum() / 10_000 if len(buffer_gdf) else 0.0,
+    }
     logger.info(
-        "Area accounting (ha): forested %.1f, hard-excluded %.1f, eligible %.1f "
-        "= managed %.1f + riparian %.1f (residual %.4f)",
+        "Area accounting (ha): forested %.1f, hard-excluded %.1f, eligible %.1f; "
+        "buffer layer %.1f (not applied here)",
         accounting["forested_parcel_ha"], accounting["hard_excluded_ha"],
-        accounting["eligible_ha"], accounting["managed_ha"], accounting["riparian_ha"],
-        accounting["partition_residual_ha"],
+        accounting["eligible_ha"], accounting["buffer_layer_ha"],
     )
 
-    for frame in (managed_units, riparian_units):
-        frame["unit_area_ha"] = frame.geometry.area / 10_000
-        frame["size_class"] = frame["unit_area_ha"].apply(classify_unit_size)
+    candidate_units["unit_area_ha"] = candidate_units.geometry.area / 10_000
+    candidate_units["size_class"] = candidate_units["unit_area_ha"].apply(classify_unit_size)
 
-    # 9. Optionally split large polygons — MANAGED ONLY.
-    # The 40 ha cap is an operational harvest-unit size. Riparian units are never entered,
-    # so the cap has no meaning for them, and fishnetting a buffer strip would multiply
-    # polygon count without making any of them more addressable. They are initialized from
-    # an area-weighted plot mix and dedupe to unique (plot, no_management) trajectory keys
-    # regardless of size.
-    candidate_units = managed_units
+    # 9. Optionally split large polygons.
     if split_large:
-        logger.info("Splitting large managed polygons...")
+        logger.info("Splitting large polygons...")
         large_mask = candidate_units["size_class"] == "large_gt_target"
         n_large = large_mask.sum()
 
@@ -604,12 +544,8 @@ def process_county(
 
             logger.info(f"Split {n_large} large units into {len(split_rows)} parts")
 
-    # 10. Recombine. Riparian units rejoin here, after the managed-only split, and keep
-    # their own rows and their own unit_ids — they are never dissolved into the managed
-    # units they abut.
-    candidate_units = gpd.GeoDataFrame(
-        pd.concat([candidate_units, riparian_units], ignore_index=True), crs=PROJECT_CRS
-    )
+    # 10. Add metadata. Every unit here is a candidate managed stand; the riparian class is
+    # assigned later by riparian_overlay.py.
     candidate_units["unit_id"] = [
         f"mu_{county_code}_{i:08d}" for i in range(len(candidate_units))
     ]
@@ -621,7 +557,7 @@ def process_county(
         candidate_units["source_parcel_area_ha"] = candidate_units["ACRES"] * 0.404686  # acres to ha
 
     # Reorder columns
-    id_cols = ["unit_id", "county_fips", "county_name", "unit_class", "buffer_class"]
+    id_cols = ["unit_id", "county_fips", "county_name"]
     parcel_cols = [c for c in candidate_units.columns if c in ["CNTYNAME", "PARCELID", "NPARNO", "DORUC", "PARUSEDESC", "ACRES"]]
     area_cols = ["source_parcel_area_ha", "unit_area_ha", "size_class"] if "source_parcel_area_ha" in candidate_units.columns else ["unit_area_ha", "size_class"]
     other_cols = [c for c in candidate_units.columns if c not in id_cols + parcel_cols + area_cols + ["geometry"]]
@@ -634,9 +570,7 @@ def process_county(
     logger.info(f"Saving to {output_gpkg}")
     candidate_units.to_file(output_gpkg, driver="GPKG")
 
-    # Save summary CSV — cut by unit_class as well as size, so riparian acres are visible
-    # rather than folded into a landscape total.
-    summary = candidate_units.groupby(["unit_class", "size_class"]).agg(
+    summary = candidate_units.groupby("size_class").agg(
         polygon_count=("unit_id", "count"),
         total_area_ha=("unit_area_ha", "sum"),
         median_area_ha=("unit_area_ha", "median"),
@@ -646,18 +580,13 @@ def process_county(
     summary.to_csv(summary_csv, index=False)
     logger.info(f"Summary:\n{summary}")
 
-    # Riparian acres by buffer class. Buffers are summarised by class without the polygons
-    # themselves being merged by class — the polygons keep their own identity.
-    if len(riparian_units) > 0:
-        riparian_summary = candidate_units[candidate_units["unit_class"] == "riparian"].groupby(
-            "buffer_class"
-        ).agg(
-            polygon_count=("unit_id", "count"),
-            total_area_ha=("unit_area_ha", "sum"),
-            median_area_ha=("unit_area_ha", "median"),
-        ).reset_index()
-        riparian_summary.to_csv(county_output_dir / "riparian_summary.csv", index=False)
-        logger.info(f"Riparian by buffer class:\n{riparian_summary}")
+    # The buffer layer is a first-class output, not a QA artefact: riparian_overlay.py
+    # consumes it after slivers are resolved.
+    buffer_gpkg = county_output_dir / "riparian_buffers.gpkg"
+    if len(buffer_gdf) > 0:
+        buffer_gdf.to_file(buffer_gpkg, driver="GPKG")
+        logger.info("Wrote %d buffer polygons to %s — apply with riparian_overlay.py "
+                    "after sliver resolution", len(buffer_gdf), buffer_gpkg)
 
     # Area accounting, including the permanently-excluded line. Reported as its own row so
     # the drop stays visible instead of silently absorbing a bug.
@@ -668,8 +597,6 @@ def process_county(
         qa_dir = county_output_dir / "qa"
         qa_dir.mkdir(exist_ok=True)
 
-        if len(buffer_gdf) > 0:
-            buffer_gdf.to_file(qa_dir / "riparian_buffers.gpkg", driver="GPKG")
         if len(hard_exclusions) > 0:
             hard_exclusions.to_file(qa_dir / "hard_exclusions.gpkg", driver="GPKG")
         if len(forest_mask_gdf) > 0:
