@@ -8,7 +8,7 @@ reasoning behind it.
 **Vocabulary: LETO, not Harris.** The config is keyed on the **LETO ownership classes**
 carried by `FVS_StandInit.csv` — the table the FVS runs actually consume — not on the
 Harris RDS-2025-0045 raster values. The two systems use the same column name (`OWN_CODE`)
-with different meanings, which is a live bug ([#19](#the-own_code-collision)). The Harris
+with different meanings, which is a live bug ([#20](#the-own_code-collision)). The Harris
 raster remains the per-pixel ownership source and is crosswalked, never substituted.
 
 ---
@@ -194,7 +194,7 @@ its own numbers, multiplies this directly.
 
 `regime_assignment.py` hardcodes the mapping *and* speaks the wrong vocabulary. Both are
 fixed by the same change ([#16](https://github.com/charlesmerritt/artemis-model/issues/16),
-[#19](https://github.com/charlesmerritt/artemis-model/issues/19)): have `assign_regime()`
+[#20](https://github.com/charlesmerritt/artemis-model/issues/20)): have `assign_regime()`
 read this config, key off `OWN_TYPE` (the string, which cannot collide) rather than a bare
 integer, and take the riparian test from `MGMT_CLASS`.
 

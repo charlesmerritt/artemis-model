@@ -15,7 +15,7 @@
 #
 # Every shared integer means something different. LETO 3 is Federal; Harris 3 is
 # Family. LETO 4 is State; Harris 4 is Corporate. Mixing them silently assigns the
-# wrong regime to every stand — see GitHub issue #19 and the `harris_*` fields below,
+# wrong regime to every stand — see GitHub issue #20 and the `harris_*` fields below,
 # which exist so a consumer can always tell which system a value came from.
 # ############################################################################
 

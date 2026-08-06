@@ -124,7 +124,7 @@ def test_ownership_mask_values(projection_config):
 # --- management_regimes.yaml: the unified owner-class -> regime direction -------------
 # See notes/management-regimes-by-owner.md. Keyed on the LETO ownership vocabulary
 # (OWN_CODE/OWN_TYPE from FVS_StandInit.csv), NOT the Harris raster values — the two
-# use the same column name with different meanings. See issue #19.
+# use the same column name with different meanings. See issue #20.
 
 LETO_OWNER_CLASSES = [
     "unknown", "private", "corporate", "federal", "state", "county", "ngo", "other",
@@ -292,7 +292,7 @@ def test_config_direction_matches_assignment_code(management_regimes, projection
 
     `regime_assignment.py` still speaks Harris codes, so this compares through
     `harris_raster_value` rather than `leto_own_code` — passing a LETO code straight in
-    is the bug tracked as issue #19, pinned by the test below.
+    is the bug tracked as issue #20, pinned by the test below.
 
     `assignment_status: current` means the code reproduces this regime today. `proposed`
     means the direction has moved ahead and must name what it `supersedes`.
@@ -329,12 +329,12 @@ def test_config_direction_matches_assignment_code(management_regimes, projection
 
 
 def test_leto_own_code_fed_to_assignment_code_gives_the_wrong_regime(management_regimes):
-    """Pin the live bug (issue #19) so a fix cannot land unnoticed.
+    """Pin the live bug (issue #20) so a fix cannot land unnoticed.
 
     `regime_assignment.assign_regime` reads `OWN_CODE` and interprets it as a Harris
     value. The LETO FVS_StandInit.csv column of the same name uses a different system,
     so feeding it through today mis-assigns. This test asserts the *current wrong*
-    behaviour on purpose: when #19 is fixed it must fail and be replaced.
+    behaviour on purpose: when #20 is fixed it must fail and be replaced.
     """
     from pipeline.s3_management.regime_assignment import assign_regime
 
@@ -343,7 +343,7 @@ def test_leto_own_code_fed_to_assignment_code_gives_the_wrong_regime(management_
     # LETO 3 = Federal, but Harris 3 = family_forest, so the code gives the family regime.
     regime, _ = assign_regime({"OWN_CODE": 3, "SMZ_Pct": 0.0})
     assert regime == "thin_from_below", (
-        "if this now returns selection_harvest, issue #19 is fixed — delete this test"
+        "if this now returns selection_harvest, issue #20 is fixed — delete this test"
     )
     assert regime != federal["default"]["regime"], (
         "LETO Federal should map to selection_harvest; the code disagrees, which is the bug"
@@ -354,7 +354,7 @@ def test_leto_own_code_fed_to_assignment_code_gives_the_wrong_regime(management_
     # LETO 4 = State, but Harris 4 = corporate_forest, so a state stand gets clearcut.
     regime, _ = assign_regime({"OWN_CODE": 4, "SMZ_Pct": 0.0, "FORTYPCD": 503})
     assert regime == "clearcut", (
-        "if this no longer returns clearcut, issue #19 is fixed — delete this test"
+        "if this no longer returns clearcut, issue #20 is fixed — delete this test"
     )
 
 
