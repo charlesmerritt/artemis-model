@@ -122,14 +122,20 @@ def test_ownership_mask_values(projection_config):
 
 
 # --- management_regimes.yaml: the unified owner-class -> regime direction -------------
-# See notes/management-regimes-by-owner.md. The config is the direction; the executed
-# rule still lives in pipeline/s3_management/regime_assignment.py. These tests hold the
-# two together so the direction cannot drift out of agreement with the code unnoticed.
+# See notes/management-regimes-by-owner.md. Keyed on the LETO ownership vocabulary
+# (OWN_CODE/OWN_TYPE from FVS_StandInit.csv), NOT the Harris raster values — the two
+# use the same column name with different meanings. See issue #19.
 
-FOREST_OWNER_CLASSES = [
-    "unknown_forest", "family_forest", "corporate_forest",
-    "tribal_forest", "federal_forest", "state_forest", "local_forest",
+LETO_OWNER_CLASSES = [
+    "unknown", "private", "corporate", "federal", "state", "county", "ngo", "other",
 ]
+
+# LETO OWN_CODE -> OWN_TYPE, verified against the 2026-08-04 Hard_Ownership_Boundaries
+# run (57,527 stands). This is the vocabulary the FVS inputs actually carry.
+LETO_CODE_TO_TYPE = {
+    0: "Unknown", 1: "Private", 2: "Corporate", 3: "Federal",
+    4: "State", 5: "County", 6: "NGO", 7: "Other",
+}
 
 
 def _resolve_params(params, inv_year):
@@ -143,39 +149,66 @@ def _resolve_params(params, inv_year):
     return resolved
 
 
-def test_management_regimes_cover_every_forest_owner_class(management_regimes):
-    """Every Harris forest class gets a regime; masked classes never do."""
-    assert set(management_regimes["owner_classes"]) == set(FOREST_OWNER_CLASSES)
-    assert set(management_regimes["masked_classes"]) == {"non_forest", "water"}
+def test_management_regimes_cover_every_leto_owner_class(management_regimes):
+    assert set(management_regimes["owner_classes"]) == set(LETO_OWNER_CLASSES)
 
 
-def test_management_regimes_raster_values_match_projection_config(
+def test_leto_own_codes_match_the_observed_vocabulary(management_regimes):
+    """Codes and type strings must match what FVS_StandInit.csv actually contains."""
+    for name, block in management_regimes["owner_classes"].items():
+        code = block["leto_own_code"]
+        assert LETO_CODE_TO_TYPE[code] == block["leto_own_type"], (
+            f"{name}: LETO code {code} is {LETO_CODE_TO_TYPE[code]!r}, "
+            f"not {block['leto_own_type']!r}"
+        )
+    codes = [b["leto_own_code"] for b in management_regimes["owner_classes"].values()]
+    assert sorted(codes) == sorted(LETO_CODE_TO_TYPE), "LETO codes must be covered exactly once"
+
+
+def test_leto_and_harris_code_systems_are_never_conflated(management_regimes):
+    """The two OWN_CODE vocabularies collide. Assert they are kept distinct.
+
+    LETO 3 is Federal but Harris 3 is family_forest; LETO 4 is State but Harris 4 is
+    corporate_forest. Treating one as the other assigns the wrong regime to every stand
+    in the AOI. The config must therefore never claim the integers agree.
+    """
+    crosswalk = management_regimes["crosswalks"]["leto_own_code_to_harris_raster_value"]
+    collisions = 0
+    for name, block in management_regimes["owner_classes"].items():
+        leto = block["leto_own_code"]
+        harris = block["harris_raster_value"]
+        assert crosswalk[leto] == harris, f"{name}: crosswalk disagrees with the class block"
+        if harris is not None and harris != leto:
+            collisions += 1
+    # Only Unknown (0 -> 0) survives as an identity mapping; everything else moves.
+    assert collisions >= 5, (
+        "expected the LETO and Harris numbering to diverge for most classes; "
+        "if this fails, one of the two vocabularies has been silently rewritten"
+    )
+    assert crosswalk[0] == 0, "Unknown is the one code that means the same in both systems"
+
+
+def test_harris_raster_values_resolve_to_the_named_harris_class(
     management_regimes, projection_config
 ):
-    """Owner-class raster values are the Harris pixel values, not a parallel numbering."""
+    """Where a Harris equivalent is claimed, it must be the real Harris class."""
     harris = projection_config["ownership"]["classes"]
-    blocks = {**management_regimes["owner_classes"], **management_regimes["masked_classes"]}
-    for name, block in blocks.items():
-        assert harris[block["raster_value"]] == name
+    for name, block in management_regimes["owner_classes"].items():
+        value, cls = block["harris_raster_value"], block["harris_class"]
+        if value is None:
+            assert cls is None, f"{name}: harris_class set without a raster value"
+            continue
+        assert harris[value] == cls, f"{name}: Harris {value} is {harris[value]!r}, not {cls!r}"
 
 
-def test_management_regimes_own_code_equals_raster_value(management_regimes):
-    """regime_assignment.py keys off LETO OWN_CODE while the raster carries Harris values.
-
-    The assignment code only works because those two numberings coincide for the six
-    named classes. Assert it rather than leaving it as a coincidence to rediscover.
-    """
-    from pipeline.s3_management.regime_assignment import (
-        CORPORATE, FAMILY, FEDERAL, LOCAL, STATE, TRIBAL,
-    )
-    code_values = {
-        "family_forest": FAMILY, "corporate_forest": CORPORATE, "tribal_forest": TRIBAL,
-        "federal_forest": FEDERAL, "state_forest": STATE, "local_forest": LOCAL,
-    }
-    for name, own_code in code_values.items():
+def test_classes_harris_cannot_express_are_recorded(management_regimes):
+    """NGO and Other have no Harris equivalent — the reason to key off LETO at all."""
+    for name in ("ngo", "other"):
         block = management_regimes["owner_classes"][name]
-        assert block["own_code"] == own_code
-        assert block["raster_value"] == own_code
+        assert block["harris_class"] is None
+        assert block["harris_raster_value"] is None
+    absent = management_regimes["harris_classes_absent_from_leto"]
+    assert "tribal_forest" in absent, "Harris tribal has no LETO counterpart; keep it visible"
 
 
 def test_management_regimes_reference_only_implemented_regimes(management_regimes):
@@ -211,32 +244,58 @@ def test_tpo_crosswalk_names_match_tpo_targets_exactly(management_regimes, tpo_t
 
 
 def test_every_owner_class_appears_once_in_each_crosswalk(management_regimes):
-    """Both crosswalks must partition the owner classes — no class missing, none double-mapped."""
-    for crosswalk in management_regimes["crosswalks"].values():
+    """The owner crosswalks must partition the classes — none missing, none double-mapped."""
+    for name in ("tpo_owner_group", "lamps_mha_group"):
+        crosswalk = management_regimes["crosswalks"][name]
         mapped = [cls for members in crosswalk.values() for cls in members]
-        assert sorted(mapped) == sorted(FOREST_OWNER_CLASSES)
+        assert sorted(mapped) == sorted(LETO_OWNER_CLASSES), f"{name} does not partition"
 
 
-def test_riparian_override_matches_assignment_code(management_regimes):
-    """Riparian is unconditional: no entry, no owner class able to override it."""
+def test_fvs_db_group_is_not_an_ownership_vocabulary(management_regimes):
+    """DB_GROUP flattens the owner and management axes; regimes must not key off it.
+
+    Verified against the LETO run: DB_GROUP == OWN_TYPE for all 39,824 upland stands and
+    'Riparian' for all 17,703 riparian stands, so the 9 groups are 8 owners + a geometry
+    class that overrides ownership entirely.
+    """
+    db = management_regimes["crosswalks"]["fvs_db_group"]
+    assert "Riparian" in db["groups"]
+    assert len(db["groups"]) == 9
+    owner_types = {b["leto_own_type"] for b in management_regimes["owner_classes"].values()}
+    assert set(db["groups"]) - {"Riparian"} == owner_types
+    assert "Riparian" not in owner_types, "Riparian is a management class, not an owner"
+
+
+def test_riparian_override_is_unconditional(management_regimes):
+    """Riparian beats ownership: rank 1 in the precedence ladder, no exemptions."""
     from pipeline.s3_management.regime_assignment import RIPARIAN_SMZ_PCT, assign_regime
 
     override = management_regimes["riparian_override"]
     assert override["regime"] == "no_management"
+    assert override["mgmt_class_value"] == 1
     assert override["smz_pct_threshold"] == RIPARIAN_SMZ_PCT
 
+    ladder = management_regimes["precedence"]
+    assert ladder[0]["rule"] == "riparian_override" and ladder[0]["rank"] == 1
+
+    # The SMZ fallback still holds for every owner class the code can currently see.
     for block in management_regimes["owner_classes"].values():
-        unit = {"OWN_CODE": block["own_code"], "SMZ_Pct": override["smz_pct_threshold"]}
+        harris = block["harris_raster_value"]
+        if harris is None:
+            continue
+        unit = {"OWN_CODE": harris, "SMZ_Pct": override["smz_pct_threshold"]}
         assert assign_regime(unit) == ("no_management", {})
 
 
 def test_config_direction_matches_assignment_code(management_regimes, projection_config):
-    """The config's stated direction and the executed rule must agree.
+    """The config's direction and the executed rule must agree, via the Harris crosswalk.
 
-    `assignment_status: current` means regime_assignment.py produces exactly this today.
-    `proposed` means the direction has moved ahead of the code, and the block must name
-    what it supersedes — which is then what the code has to produce. Either way an
-    unannounced change on one side fails here.
+    `regime_assignment.py` still speaks Harris codes, so this compares through
+    `harris_raster_value` rather than `leto_own_code` — passing a LETO code straight in
+    is the bug tracked as issue #19, pinned by the test below.
+
+    `assignment_status: current` means the code reproduces this regime today. `proposed`
+    means the direction has moved ahead and must name what it `supersedes`.
     """
     from pipeline.s3_management.regime_assignment import assign_regime
 
@@ -245,24 +304,58 @@ def test_config_direction_matches_assignment_code(management_regimes, projection
         status = block["assignment_status"]
         assert status in ("current", "proposed"), f"{name}: bad assignment_status {status!r}"
 
-        default = block["default"]
-        if "by_forest_type" in default:
+        harris = block["harris_raster_value"]
+        expected_block = block["supersedes"] if status == "proposed" else block["default"]
+
+        if "by_forest_type" in expected_block:
             cases = [
-                ({"FORTYPCD": 161}, default["by_forest_type"]["pine"]),      # loblolly-shortleaf
-                ({"FORTYPCD": 503}, default["by_forest_type"]["other"]),     # oak-hickory
+                ({"FORTYPCD": 161}, expected_block["by_forest_type"]["pine"]),
+                ({"FORTYPCD": 503}, expected_block["by_forest_type"]["other"]),
             ]
         else:
-            cases = [({}, default)]
+            cases = [({}, expected_block)]
 
         for extra, expected in cases:
-            if status == "proposed":
-                expected = block["supersedes"]
-            unit = {"OWN_CODE": block["own_code"], "SMZ_Pct": 0.0, **extra}
+            # Classes Harris cannot express reach the code's unknown-owner fallback.
+            own_code = harris if harris is not None else None
+            unit = {"OWN_CODE": own_code, "SMZ_Pct": 0.0, **extra}
             got_regime, got_params = assign_regime(unit, inv_year=inv_year)
-            assert got_regime == expected["regime"], f"{name}: regime disagrees with code"
+            assert got_regime == expected["regime"], (
+                f"{name}: code gives {got_regime!r}, config says {expected['regime']!r}"
+            )
             assert got_params == _resolve_params(expected["params"], inv_year), (
                 f"{name}: params disagree with code"
             )
+
+
+def test_leto_own_code_fed_to_assignment_code_gives_the_wrong_regime(management_regimes):
+    """Pin the live bug (issue #19) so a fix cannot land unnoticed.
+
+    `regime_assignment.assign_regime` reads `OWN_CODE` and interprets it as a Harris
+    value. The LETO FVS_StandInit.csv column of the same name uses a different system,
+    so feeding it through today mis-assigns. This test asserts the *current wrong*
+    behaviour on purpose: when #19 is fixed it must fail and be replaced.
+    """
+    from pipeline.s3_management.regime_assignment import assign_regime
+
+    federal = management_regimes["owner_classes"]["federal"]
+    assert federal["leto_own_code"] == 3
+    # LETO 3 = Federal, but Harris 3 = family_forest, so the code gives the family regime.
+    regime, _ = assign_regime({"OWN_CODE": 3, "SMZ_Pct": 0.0})
+    assert regime == "thin_from_below", (
+        "if this now returns selection_harvest, issue #19 is fixed — delete this test"
+    )
+    assert regime != federal["default"]["regime"], (
+        "LETO Federal should map to selection_harvest; the code disagrees, which is the bug"
+    )
+
+    state = management_regimes["owner_classes"]["state"]
+    assert state["leto_own_code"] == 4
+    # LETO 4 = State, but Harris 4 = corporate_forest, so a state stand gets clearcut.
+    regime, _ = assign_regime({"OWN_CODE": 4, "SMZ_Pct": 0.0, "FORTYPCD": 503})
+    assert regime == "clearcut", (
+        "if this no longer returns clearcut, issue #19 is fixed — delete this test"
+    )
 
 
 def _data_paths_or_skip(config_dir):

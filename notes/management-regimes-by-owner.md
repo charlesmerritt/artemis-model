@@ -5,150 +5,209 @@ would have to be measured to change it. The machine-readable form is
 [`config/management_regimes.yaml`](../config/management_regimes.yaml); this note is the
 reasoning behind it.
 
-**Status.** The config is a *direction*, not the executed rule.
-`pipeline/s3_management/regime_assignment.py` still carries its own hardcoded copy of the
-mapping. Tests in `tests/test_config.py` assert the two agree today and will fail if
-either side moves without the other, so the direction cannot rot silently. Making the
-assignment code read the YAML is a follow-up, deliberately not done here — see
-[Making it live](#making-it-live).
+**Vocabulary: LETO, not Harris.** The config is keyed on the **LETO ownership classes**
+carried by `FVS_StandInit.csv` — the table the FVS runs actually consume — not on the
+Harris RDS-2025-0045 raster values. The two systems use the same column name (`OWN_CODE`)
+with different meanings, which is a live bug ([#19](#the-own_code-collision)). The Harris
+raster remains the per-pixel ownership source and is crosswalked, never substituted.
 
 ---
 
-## The problem this resolves
+## Source
 
-"Which regime does a state forest get?" had four answers in four files, and they did not
-agree:
+`r2://artemis-r2/data/20260804_095846_Hard_Ownership_Boundaries/` — a LETO FVS database
+run, 2026-08-04. Confirmed against `Inputs/FVS_StandInit.csv` (57,527 stands, 1,052,306
+acres, 9,199,539 tree records, variant SN, FIPS 12, inventory year 2022, 529 retained
+unique `PLT_CN` donor plots).
 
-| Where | What it said |
-|---|---|
-| `PLAN.md` §3c | Seven forest ownership classes, **each its own class, no collapsing** |
-| `PLAN.md` §4b | Six *policy* regimes (NIPF light, industrial pine, public conservative, …) |
-| `regime_assignment.py` | Four classes **collapsed** into one `PUBLIC_OWNERS` branch |
-| `config/tpo_targets.yaml` | Three owner groups (`Federal (NF)`, `Other public`, `Private`) |
-| LAMPS scheduler plan | Two MHA groups (`industrial`, `public`), family unmapped |
+The stand table carries **two independent axes**, which is exactly the structure the
+precedence ladder needs:
 
-Three of those are different owner vocabularies at different granularities (7 / 3 / 2),
-and the fourth is a regime vocabulary that does not line up one-to-one with the five
-templates actually implemented in `regime_templates.py`. Any of them can be right for its
-own purpose; what was missing was the place where they are reconciled.
+| Axis | Columns | Values |
+|---|---|---|
+| Ownership | `OWN_CODE`, `OWN_TYPE` | 0 Unknown, 1 Private, 2 Corporate, 3 Federal, 4 State, 5 County, 6 NGO, 7 Other |
+| Management | `MGMT_CLASS`, `MGMT_TYPE` | 0 Upland, 1 Riparian |
 
-The config now holds all of it: one block per owner class carrying its default regime,
-its eligible regime set, and its key in each of the other two vocabularies.
+`DB_GROUP` (the 9 FVS database groups) is **not** a third vocabulary — it is
+`OWN_TYPE` for upland stands and `Riparian` for every riparian stand regardless of owner.
+Verified: the identity holds for all 39,824 upland and all 17,703 riparian stands. It is a
+run-packaging key for splitting FVS databases, and assigning regimes off it would silently
+treat a geometry class as an ownership class.
+
+There is **no NWOS dataset on R2**. The only `RDS-*` directories in the bucket are
+`RDS-2025-0045` (Harris ownership), `RDS-2025-0031`/`RDS-2025-0032` (TreeMap). The LETO
+run above is the ownership vocabulary the project actually has.
 
 ---
 
 ## The direction, in one table
 
-Riparian geometry overrides everything below it — a buffer on corporate land is
-unmanaged, not a plantation. Year values are offsets from the inventory year (2022).
+Riparian geometry overrides everything below it. Acreages are **upland** stands only,
+since riparian stands are taken by rank-1 precedence before ownership applies. Year values
+are offsets from the inventory year (2022).
 
-| Owner class | Harris px | Default regime | TPO group | LAMPS MHA |
-|---|---|---|---|---|
-| `unknown_forest` | 0 | thin_from_below (+10, ≤8″, 35%) | *uncapped* | — |
-| `family_forest` | 3 | thin_from_below (+10, ≤8″, 35%) | Private | — |
-| `corporate_forest` | 4 | pine → plantation_rotation (thin +15, clearcut +30); else clearcut (+30) | Private | industrial |
-| `tribal_forest` | 5 | selection_harvest (+10→+40, every 10 yr, 20%) | Other public | public |
-| `federal_forest` | 6 | selection_harvest (+10→+40, every 10 yr, 20%) | Federal (NF) | public |
-| `state_forest` | 7 | selection_harvest (+10→+40, every 10 yr, 20%) | Other public | public |
-| `local_forest` | 8 | selection_harvest (+10→+40, every 10 yr, 20%) | Other public | public |
-
-`non_forest` (1) and `water` (2) are masked out of the pipeline entirely and never
-receive a regime.
+| LETO class | code | Upland acres | Default regime | TPO group | LAMPS MHA |
+|---|---:|---:|---|---|---|
+| `unknown` | 0 | 2,122 | thin_from_below (+10, ≤8″, 35%) | *uncapped* | — |
+| `private` | 1 | 269,312 | thin_from_below (+10, ≤8″, 35%) | Private | — |
+| `corporate` | 2 | 212,814 | pine → plantation_rotation (thin +15, cc +30); else clearcut (+30) | Private | industrial |
+| `federal` | 3 | 213,546 | selection_harvest (+10→+40, every 10 yr, 20%) | Federal (NF) | public |
+| `state` | 4 | 74,398 | selection_harvest | Other public | public |
+| `county` | 5 | 3,875 | selection_harvest | Other public | public |
+| `ngo` | 6 | 15,508 | selection_harvest *(proposed)* | Private | public |
+| `other` | 7 | 234,245 | thin_from_below *(holding position)* | *uncapped* | — |
+| **riparian** | — | 26,485 | **no_management, unconditional** | — | never scheduled |
 
 ---
 
-## Three decisions worth arguing with
+## The `OWN_CODE` collision
 
-### 1. Separate classes, shared parameters
+**This is the most important thing in this note.** Two ownership code systems share one
+column name and agree on nothing:
 
-The four public classes carry identical parameters today. That is **not** the
-`PUBLIC_OWNERS` collapse re-spelled — the difference is where the sameness lives.
+| Code | LETO `OWN_TYPE` | Harris class |
+|---:|---|---|
+| 0 | Unknown | unknown_forest |
+| 1 | Private | non_forest |
+| 2 | Corporate | water |
+| 3 | **Federal** | **family_forest** |
+| 4 | **State** | **corporate_forest** |
+| 5 | County | tribal_forest |
+| 6 | NGO | federal_forest |
+| 7 | Other | state_forest |
+| 8 | — | local_forest |
 
-Collapsing in code destroys the distinction: a tribal unit and a county park become the
-same row and there is no place to put evidence when it arrives. Carrying seven classes
-whose parameters currently coincide keeps every class addressable in the units table, in
-the summaries, and in the config, so differentiating one is a parameter edit rather than
-a refactor. `PLAN.md` §3c asks for the former; the current code does the latter.
+Only code 0 means the same thing in both. `pipeline/s3_management/regime_assignment.py`
+reads `OWN_CODE` and interprets it as Harris. `FVS_StandInit.csv` — the table that feeds
+the FVS runs — populates that column with LETO codes. Running the current assignment code
+against the real stand table gives every stand the wrong regime, and the failure is
+silent because both systems are small integers in the same range:
 
-So each class block carries a `differentiation` field stating what would have to be
-measured for it to earn its own numbers. That is the honest version of "we don't know
-yet" — it names the measurement instead of inventing a number that looks calibrated.
+- Federal stands (LETO 3) get `thin_from_below`, the family-forest regime
+- State stands (LETO 4) get `plantation_rotation` or `clearcut`, the corporate regime
+- County stands (LETO 5) get the tribal branch
+- NGO stands (LETO 6) get the federal regime
 
-### 2. `local_forest` is the most likely over-harvest
+`tests/test_config.py::test_leto_own_code_fed_to_assignment_code_gives_the_wrong_regime`
+asserts the *current wrong behaviour* on purpose, so the bug cannot be fixed by accident
+without the test failing and being deliberately removed. The docstring at
+`regime_assignment.py:15` describing "the LETO / RDS-2025-0045 lookup" is where the two
+systems got conflated — they are different lookups.
 
-County and municipal forest in the 5-county AOI is largely parks and watershed land where
-commercial entry is rare. Giving it the public schedule means a 20% selection cut every
-decade for 40 years on land that may never be entered at all.
+---
 
-It is left on the public default rather than quietly set to `no_management`, because
-guessing downward is still guessing. The criterion is stated instead: if class-8 pixels
-show a Tree Removal rate near zero in LCMS 1985–2024 over the AOI, the default becomes
-`no_management`. That check is cheap and should be run before any harvest total from this
-pipeline is reported.
+## Four decisions worth arguing with
 
-### 3. `unknown_forest` stays out of `Private`
+### 1. `other` is the biggest open problem
 
-Class 0 is forest with unresolved ownership. The tempting move is to fold it into
-`Private`, since private is ~92% of the AOI's TPO volume. That would attach the largest
-cap in the table (66–71M cuft/yr) to pixels with no evidence behind them and make the
-private harvest total unfalsifiable. It stays uncapped, reported on its own row, and held
-to the light default so it cannot dominate a total by accident. The fix is to resolve the
-pixels, not to tune their regime.
+15,190 upland stands and 234,245 acres — 22% of upland acreage, the second-largest class —
+sit in a bucket with no owner semantics. Every harvest total this pipeline produces is
+sensitive to what it turns out to be.
+
+The light-thin default is a holding position chosen so the class cannot dominate a total,
+not a claim about management. It is left **uncapped** on the TPO side deliberately:
+assigning 22% of the landscape to an owner group's volume ceiling before knowing what it
+is would corrupt that group's constraint.
+
+The parcel summary (`data/Owner_Summaries_FL5Co_Parcels.txt`) suggests the decomposition:
+`Other-Misc` is 702,605 parcel acres at a 1.61 ac median, plus `Other-State`,
+`Other-Private`, `Other-County`, `Other-Federal`. That reads as mostly small
+non-industrial parcels plus the non-forest-classified holdings of owners already named. If
+most of it is really private, it belongs in `private` and under the Private cap.
+
+### 2. NGO is why LETO wins over Harris
+
+Harris has no NGO class at all — those 15,508 acres land in family or corporate by
+default, and a land trust gets a commercial thin. LETO names them. This is the single
+clearest argument for keying regimes off the stand table rather than the raster, and it
+generalizes: the raster's seven classes are a national product, while LETO's classes come
+from the parcels in this AOI.
+
+`ngo` is the one class marked `assignment_status: proposed` on its merits — the direction
+(public conservative) differs from what the code can currently produce (private light
+thin), because the code has no NGO branch to reach.
+
+### 3. Corporate hides the distinction that matters most
+
+LETO collapses REIT, TIMO, and operating company into one `Corporate` class. The parcel
+summary keeps them apart — Forest-REIT 179,723 ac, Forest-TIMO 45,848 ac, Forest-Company
+45,235 ac — and they do not manage alike. REIT and TIMO are the most rotation-driven
+owners in the AOI, which is exactly the behaviour `plantation_rotation` encodes.
+
+Splitting this class is the highest-value refinement available, and unusually cheap: the
+data already exists one layer upstream.
+
+### 4. `county` is the most likely over-harvest
+
+Largely parks and watershed land, given the public schedule: a 20% selection cut every
+decade for 40 years on land that may never be entered. Left on the public default rather
+than quietly set to `no_management`, because guessing downward is still guessing. The
+criterion: if these stands show a Tree Removal rate near zero in LCMS 1985–2024, the
+default flips. At 3,875 acres the acreage bounds the damage — unlike `other`.
+
+---
+
+## Riparian, as the data confirms it
+
+17,703 of 57,527 stands (31%) are riparian, carrying 26,485 acres — **2.5% of the
+acreage**. Mean riparian stand is 1.50 ac against 25.76 ac for upland.
+
+The two-axis structure vindicates the precedence ladder: riparian is a `MGMT_CLASS`, not
+an owner, and it crosses every ownership class (2,654 corporate riparian stands, 1,758
+federal, 4,954 private, and so on). The config's rank-1 override matches how the source
+data is actually shaped, and the `SMZ_Pct >= 50` test drops to a fallback for units that
+predate LETO segmentation.
+
+The sliver problem is real and visible here — 31% of stands for 2.5% of area — but it is a
+delineation artifact for `pipeline/s3_management/sliver_merge.py` to handle, and it must
+not be resolved by dissolving buffers into neighbours
+([`methodology-directions.md`](methodology-directions.md) item 2 is explicit that buffer
+polygons keep their own identity).
 
 ---
 
 ## What this costs in FVS runs
 
-Run count is `unique(plot × regime × site-index bin)` (`PLAN.md` §4c). Across every
-eligible set in the config there are **five** distinct parameterizations —
-`no_management`, `thin_from_below`, `selection_harvest`, `plantation_rotation`,
-`clearcut`. For the pilot's 693 plots that is an upper bound of **3,465 runs**, against
-693 for the no-management baseline. Site index adds no multiplier while it is inherited
-from the plot rather than predicted per pixel (`PLAN.md` §2d).
+Run count is `unique(plot × regime × site-index bin)` (`PLAN.md` §4c). The LETO run
+resolves 57,527 stands from **529 retained unique `PLT_CN` donors**, so the library is
+keyed on donors, not stands. Five distinct parameterizations across every eligible set
+gives an upper bound of **529 × 5 = 2,645 runs**.
 
-This is the reason the public classes share one parameter set. Three plausible-looking
-variants of `selection_harvest` — one each for federal, state, and local — would cost
-1,386 additional runs to encode a distinction we cannot currently defend.
+That is the whole argument for keeping the regime library small and discrete. Splitting
+`corporate` into REIT/TIMO/Company with distinct parameters, or giving each public class
+its own numbers, multiplies this directly.
 
 ---
 
 ## Known gaps in the regimes themselves
 
-- **`plantation_rotation` does not replant.** No `PLANT`/`NATREGEN` keyword is emitted,
-  so the stand regenerates by FVS default after the clearcut, which understates the next
-  rotation on exactly the class where rotations matter most. Blocked on verifying the
-  regeneration keyword field layout — the same constraint that keeps every regime built
-  from the one verified `ThinDBH` keyword (`regime_templates.py` docstring).
-- **Shelterwood is absent.** Listed in `management-pipeline-plan.md` Step 3.1, not
-  implemented, for the same reason.
-- **Fixed entry years are a placeholder for the harvest model.** `PLAN.md` §3c specifies
-  a fitted model predicting P(harvest | features) applied pseudo-deterministically with a
-  locked seed. Every entry year in this config is a stand-in until that model exists.
-- **The riparian SMZ threshold is a delineation artifact.** `SMZ_Pct >= 50` is a fallback.
-  Once buffers are emitted as their own units
-  ([`methodology-directions.md`](methodology-directions.md) item 2), a unit is riparian by
-  construction and the percentage test stops carrying the decision.
+- **`plantation_rotation` does not replant** ([#18](https://github.com/charlesmerritt/artemis-model/issues/18)) — no `PLANT`/`NATREGEN` keyword, so the stand regenerates by FVS default after clearcut. Blocked on [#17](https://github.com/charlesmerritt/artemis-model/issues/17).
+- **Shelterwood is absent** — listed in `management-pipeline-plan.md` Step 3.1, unimplemented, same blocker.
+- **Fixed entry years are a placeholder** for the fitted harvest model (`PLAN.md` §3c).
+- **No tribal class in this AOI.** Harris carries one (value 5); LETO's FL 5-county run has
+  none. Kept visible in `harris_classes_absent_from_leto` so the crosswalk is total in both
+  directions rather than quietly lossy — it matters when the pipeline expands.
 
 ---
 
 ## Making it live
 
-`regime_assignment.py` duplicates this mapping in Python. Two ways to close that:
+`regime_assignment.py` hardcodes the mapping *and* speaks the wrong vocabulary. Both are
+fixed by the same change ([#16](https://github.com/charlesmerritt/artemis-model/issues/16),
+[#19](https://github.com/charlesmerritt/artemis-model/issues/19)): have `assign_regime()`
+read this config, key off `OWN_TYPE` (the string, which cannot collide) rather than a bare
+integer, and take the riparian test from `MGMT_CLASS`.
 
-1. **Loader** — `assign_regime()` reads `config/management_regimes.yaml`, resolves offsets
-   against `inv_year`, and keeps the current signature. The config becomes the executed
-   rule; the module keeps only the precedence logic and `is_pine`.
-2. **Generated constants** — keep the module hardcoded, generate it from the config in CI.
-   Cheaper to review, easy to forget to regenerate.
+Keying off the string is the durable fix. Two integer vocabularies in one column will
+collide again; `"Federal"` and `"family_forest"` cannot be silently swapped.
 
-Option 1 is the direction. Until it lands, `tests/test_config.py` holds the two in sync:
-classes marked `assignment_status: current` must be reproduced exactly by
-`assign_regime()`, and any class marked `proposed` must name what it supersedes and match
-that instead — so a config edit that code has not adopted fails loudly rather than
-becoming a quiet lie.
+Until then `tests/test_config.py` holds the line: classes marked
+`assignment_status: current` must be reproduced by `assign_regime()` *through the Harris
+crosswalk*, `proposed` classes must name what they supersede, and the collision itself is
+pinned by its own test.
 
 ---
 
-Related: [[management-pipeline-plan]] Step 3.2 (the assignment step),
-[[methodology-directions]] item 2 (riparian, non-negotiable) and item 4 (per-pixel regime,
-per-plot tree list), [[terminology]] (unit vs. plot vs. stand), [[management_units]].
+Related: [[management-pipeline-plan]] Step 3.2, [[methodology-directions]] item 2
+(riparian) and item 4 (per-pixel regime, per-plot tree list), [[terminology]],
+[[management_units]].

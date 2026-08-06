@@ -14,6 +14,29 @@ raw:
 
   ownership:
     tif:        "/mnt/d/RDS-2025-0045/Data/US_forest_ownership.tif"
+    # Harris raster values (0 unknown, 3 family, 4 corporate, 5 tribal, 6 federal,
+    # 7 state, 8 local). NOT the same numbering as the LETO OWN_CODE below — see
+    # config/management_regimes.yaml. Both columns are called OWN_CODE downstream.
+
+  leto_ownership_run:
+    # LETO FVS database run, Hard_Ownership_Boundaries, 2026-08-04.
+    # PRIMARY ownership vocabulary for regime assignment: OWN_CODE/OWN_TYPE
+    # (0 Unknown, 1 Private, 2 Corporate, 3 Federal, 4 State, 5 County, 6 NGO, 7 Other)
+    # plus an independent management axis MGMT_CLASS/MGMT_TYPE (0 Upland, 1 Riparian).
+    # 57,527 stands; 1,052,305.90 acres; 529 unique PLT_CN donors; variant SN; FIPS 12.
+    root:         "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries"
+    stand_init:   "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv"
+    tree_init:    "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_TreeInit.csv"
+    plt_cn_weights: "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/Segment_PLT_CN_Weights_Filtered.csv"
+    db_group_summary: "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/FVS_Database_Group_Summary.csv"
+    # Per-owner FVS inventory DBs live under .../Databases/FVS_Inventory_<Group>.db
+    # where <Group> is DB_GROUP: OWN_TYPE for uplands, "Riparian" for riparian stands.
+    r2_prefix:    "r2://artemis-r2/data/20260804_095846_Hard_Ownership_Boundaries/"
+
+  parcel_owner_summary:
+    # Finer owner taxonomy upstream of LETO OWN_TYPE — REIT / TIMO / Company split out.
+    txt:        "/mnt/d/Owner_Summaries_FL5Co_Parcels.txt"
+    r2:         "r2://artemis-r2/data/Owner_Summaries_FL5Co_Parcels.txt"
 
   fia_sqlite:
     db:         "/mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"
