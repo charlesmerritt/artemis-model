@@ -1,5 +1,24 @@
 """
-Constrained harvest scheduler (Phase 4.1).
+Greedy harvest allocator — the baseline and the annealer's initial solution.
+
+.. note::
+   **Architecture status (2026-08-06).** ARTEMIS now builds a library of candidate
+   trajectories per stand (contents set by ownership class) and selects one trajectory per
+   stand with **simulated annealing** — see `notes/trajectory-library-and-annealing.md`
+   and `notes/management-pipeline-plan.md` Step 4.3. That scheduler is not implemented yet.
+
+   This module is *not* deprecated by it. The greedy allocator has two standing jobs in the
+   new design:
+
+   1. **Initial solution.** The annealer seeds from a greedy oldest-first plan rather than
+      from a random assignment (`config/projection.yaml` -> ``harvest.annealing.seed_from``).
+   2. **Reported baseline.** A simulated-annealing plan is not publishable without the
+      greedy result beside it; an annealed plan that fails to beat greedy is a finding
+      about the search and must be reported as one.
+
+   The difference in kind: this allocator decides *which units cut in which cycle*, one
+   cycle at a time, committing to cycle t before it can see cycle t+5. The annealer picks a
+   whole precomputed trajectory per stand and evaluates the entire horizon at once.
 
 Allocates harvests across management units, per FVS 5-year cycle, honouring the TPO volume
 caps parsed by ``pipeline.s3_management.tpo_targets``. Follows

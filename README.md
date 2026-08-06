@@ -8,6 +8,22 @@ forest structure, timber volume, and carbon change through time.
 The intended v1 extent is Florida. Current implementation and validation work concentrates
 on a five-county north Florida pilot before statewide and eastern-US expansion.
 
+## How ARTEMIS decides management
+
+ARTEMIS builds a **library of candidate trajectories for every stand**, where the stand's
+**ownership class** determines which management prescriptions are eligible for it. FVS runs
+once per `(stand, prescription)` pair, offline and without restart barriers. A **harvest
+scheduler then uses simulated annealing** to select one trajectory per stand, subject to
+volume, flow, adjacency, and reserve constraints.
+
+Simulation enumerates what each stand *could* do; the scheduler decides what each stand
+*will* do. Because every candidate is precomputed, evaluating a whole landscape plan costs
+a table lookup and a sum rather than an FVS run — which is what makes searching the
+decision space affordable at all.
+
+[`notes/trajectory-library-and-annealing.md`](notes/trajectory-library-and-annealing.md) is
+the design of record.
+
 ## Modeling frame
 
 | Dimension | Current direction |
@@ -17,12 +33,29 @@ on a five-county north Florida pilot before statewide and eastern-US expansion.
 | Growth model | FVS Southern (`SN`) variant |
 | Projection horizon | Approximately 50 years, using FVS cycles |
 | Initial forest state | TreeMap 2022 linked to FIA/FVS-ready tree lists |
+| Simulation unit | Management-unit polygon, initialized from the area-weighted union of its FIA plots' tree lists |
+| Decision space | Per-stand trajectory library; eligible prescriptions set by ownership class ([`config/prescriptions.yaml`](config/prescriptions.yaml)) |
+| Management selection | Simulated annealing over one trajectory per stand |
+| Constraints | TPO volume caps, even flow, adjacency/green-up, opening size; riparian no-entry and eligibility screens enforced structurally |
 | Management evidence | LCMS tree removal, ownership, parcels, roads, water, and Florida BMP constraints |
-| Compute model | GEE for remote raster preparation; local Python/FVS for joins, simulation, painting, and validation |
-| Reproducibility | `uv`, pytest, fixed inputs/configuration, and documented iteration |
+| Compute model | GEE for remote raster preparation; local Python/FVS for joins, simulation, painting, and validation; parallel FVS workers for library generation |
+| Reproducibility | `uv`, pytest, fixed inputs/configuration, locked scheduler seed and objective weights |
 
 See [`PLAN.md`](PLAN.md) for the target architecture. It is a build plan, not a claim that
 every stage is implemented.
+
+## Guiding references
+
+Two documents guide the methodology; see
+[`docs/references/README.md`](docs/references/README.md) for citations, status, and what
+each contributes.
+
+- **`LAMPS`** — Bettinger & Lennette et al., Landscape Management Policy Simulator:
+  eligibility screening, adjacency and green-up, heuristic harvest scheduling.
+- **`CLIMATE-FVS`** — Climate-FVS Simulation Report (GMUG, 2015): FVS-driven alternative
+  management trajectories per stand.
+
+Neither PDF is committed yet. Both are expected in `docs/references/`.
 
 ## Current implementation
 
@@ -30,6 +63,14 @@ every stage is implemented.
   processes Florida county-by-county and can create draft units from parcels, forest cover,
   roads, water, and BMP exclusions. A Union County smoke run has completed; segmentation,
   sliver merging, road-buffer policy, and terrain integration remain under review.
+- **Prescription templates:** `pipeline/s4_fvs/regime_templates.py` renders FVS keyfiles for
+  the five prescription families that make up the libraries, all built from the verified
+  `ThinDBH` keyword. `pipeline/s3_management/regime_assignment.py` still picks a single
+  default regime per unit; expanding it to emit an ownership-class *eligible set* is the
+  next change (see the design note).
+- **Harvest allocation:** `pipeline/s3_management/harvest_scheduler.py` is a greedy
+  oldest-first allocator against TPO caps. It is retained as the annealer's initial solution
+  and as a reported baseline; the simulated-annealing scheduler itself is not built yet.
 - **FVS raster painting:** `pipeline/s4_fvs/paint_fvs_to_raster.py` maps stand-level FVS
   trajectories back to TreeMap pixels for initial and final snapshots. It requires external
   five-county trajectory, crosswalk, and raster files.
@@ -117,17 +158,23 @@ entry point for each notebook group.
 
 ```text
 config/                    Spatial, BMP, projection, and local data-path configuration
+  prescriptions.yaml       Ownership class → eligible prescriptions + parameter grids
+  projection.yaml          Projection, ownership, and scheduler/annealing settings
+  tpo_targets.yaml         TPO harvest volume caps by county and owner group
 data/                      Gitignored raw/interim/processed data products
+docs/references/           The two guiding papers (LAMPS, Climate-FVS)
+docs/superpowers/          Design specs and implementation plans
 gee/                       Google Earth Engine export scripts
 notebooks/                 Exploratory analyses and reusable notebook helpers
 pipeline/
-  s3_management/           Draft management-unit generation
-  s4_fvs/                  FVS trajectory-to-raster painting
+  s3_management/           Management units, ownership, regimes, harvest allocation
+  s4_fvs/                  FVS input building, keyfile rendering, raster painting
 research/mgmt_units/       Segmentation research, state, and next steps
 scripts/                    Repository utility scripts
 tests/                      Pytest suite
 notes/                      Durable findings, decisions, run status, and open questions
 PLAN.md                    Target v1 architecture and build sequence
+artemis.txt                One-page architecture diagram
 pyproject.toml             Python metadata and dependencies
 uv.lock                    Locked Python environment
 ```
@@ -142,7 +189,20 @@ uv.lock                    Locked Python environment
 - The draft management-unit workflow still needs visual QA and decisions on road buffers,
   large-unit splitting, terrain, and sub-2 ha sliver handling.
 - The committed repository paints existing FVS output but does not yet provide a complete,
-  automated FVS trajectory-generation pipeline.
+  automated FVS trajectory-generation pipeline. **No trajectory library has been generated
+  and no simulated-annealing scheduler exists yet** — the documentation defines the target
+  so implementation can be reviewed against it.
+- The decision space is frozen when a library is built. A prescription that was not
+  enumerated cannot be selected, so state-dependent silviculture must be expressed as FVS
+  event-monitor logic inside a trajectory rather than as a scheduler decision.
+- Simulated annealing gives no optimality guarantee. A plan is not a result until it is
+  reported with its constraint-violation vector, its gap to the per-stand upper bound, the
+  greedy and random baselines, and the objective spread across seeds.
+- The v1 objective (NPV, volume, carbon, or a weighting) is undecided, and the tribal and
+  unknown-ownership eligible sets are conservative placeholders pending a documented source.
+- Carbon output stays disabled (`carbon_extension: false`). The measured corruption was a
+  stop/restart artifact and library runs have no barriers, so re-enabling is now a scope
+  decision rather than a blocked one.
 - Natural disturbances, climate-modified growth, stochastic replicates, and formal uncertainty
   quantification remain outside v1 scope.
 
@@ -172,4 +232,9 @@ research detail in the root README.
 - POLARIS soils via the GEE community catalog
 - USGS 3DEP terrain
 
+Methodological references are tracked separately in
+[`docs/references/README.md`](docs/references/README.md).
+
 Dataset version pinning and a publication-ready data dictionary remain planned deliverables.
+Version pinning must also cover the trajectory-library version, the scheduler seed, the
+cooling schedule, and the objective weights — a plan is not reproducible without them.

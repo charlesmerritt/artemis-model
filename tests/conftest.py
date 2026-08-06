@@ -32,6 +32,13 @@ def projection_config(config_dir):
 
 
 @pytest.fixture
+def prescriptions_config(config_dir):
+    import yaml
+    with open(config_dir / "prescriptions.yaml") as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture
 def bmp_rules(config_dir):
     import yaml
     with open(config_dir / "bmp_rules.yaml") as f:

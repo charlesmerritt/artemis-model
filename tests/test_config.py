@@ -64,7 +64,154 @@ def test_projection_config_carbon_is_disabled(projection_config):
 
 def test_projection_config_harvest_seed_is_locked(projection_config):
     assert projection_config["harvest"]["random_seed"] == 42
-    assert projection_config["harvest"]["forward_method"] == "pseudo_deterministic"
+
+
+def test_projection_config_harvest_selection_is_annealing(projection_config):
+    """Harvest is decided by the scheduler, not drawn from a fitted probability model.
+
+    The previous `forward_method: pseudo_deterministic` drew a per-pixel harvest schedule
+    from an LCMS-fitted model. Under the adopted architecture the scheduler selects one
+    precomputed trajectory per stand from its ownership-class library by simulated
+    annealing; the fitted model became validation evidence.
+    See notes/trajectory-library-and-annealing.md.
+    """
+    harvest = projection_config["harvest"]
+    assert harvest["selection_method"] == "simulated_annealing"
+    assert "forward_method" not in harvest, (
+        "forward_method is the retired pseudo-deterministic draw; use selection_method"
+    )
+
+
+def test_annealing_schedule_is_well_formed(projection_config):
+    ann = projection_config["harvest"]["annealing"]
+    assert 0.0 < ann["cooling_factor"] < 1.0, "geometric cooling must contract"
+    assert 0.0 < ann["initial_accept_rate"] < 1.0
+    assert ann["min_temperature"] > 0
+    assert ann["iterations_per_temperature"] >= 1
+    assert ann["restarts"] >= 1
+    weights = ann["move_weights"]
+    assert set(weights) == {"single_stand", "block", "period_swap"}
+    assert sum(weights.values()) == pytest.approx(1.0)
+    assert weights["block"] > 0, (
+        "block moves are required: single-stand moves alone stall under a green-up penalty"
+    )
+
+
+# --- Ownership-class prescription libraries (config/prescriptions.yaml) ---------------
+#
+# The scheduler can only select what the library contains, so these tests are the guard
+# on the decision space itself. See notes/trajectory-library-and-annealing.md section 3.
+
+# Prescription families implemented in pipeline/s4_fvs/regime_templates.py.
+REGIME_FAMILIES = {
+    "no_management", "clearcut", "thin_from_below",
+    "selection_harvest", "plantation_rotation",
+}
+
+
+def _families(entry):
+    return [p["family"] for p in entry["prescriptions"]]
+
+
+def test_prescription_families_are_implemented(prescriptions_config):
+    """Every family named in the config must exist in regime_templates.REGIMES."""
+    used = set()
+    for entry in prescriptions_config["ownership_libraries"].values():
+        used.update(_families(entry))
+    used.update(_families(prescriptions_config["overrides"]["riparian"]))
+    unknown = used - REGIME_FAMILIES
+    assert not unknown, f"prescriptions.yaml names unimplemented families: {sorted(unknown)}"
+
+
+def test_prescription_libraries_cover_every_unmasked_ownership_class(
+    prescriptions_config, projection_config
+):
+    """Every forest ownership class needs a library, or its stands have no decision space."""
+    classes = projection_config["ownership"]["classes"]
+    masked = set(prescriptions_config["masked_classes"])
+    expected = {name for name in classes.values() if name not in masked}
+    assert set(prescriptions_config["ownership_libraries"]) == expected
+
+
+def test_prescription_owner_codes_match_projection_config(
+    prescriptions_config, projection_config
+):
+    classes = projection_config["ownership"]["classes"]
+    for name, entry in prescriptions_config["ownership_libraries"].items():
+        assert classes[entry["owner_code"]] == name, (
+            f"{name} is owner_code {entry['owner_code']}, which projection.yaml calls "
+            f"{classes[entry['owner_code']]!r}"
+        )
+
+
+def test_masked_classes_match_projection_mask_values(prescriptions_config, projection_config):
+    classes = projection_config["ownership"]["classes"]
+    masked = {classes[v] for v in projection_config["ownership"]["mask_values"]}
+    assert set(prescriptions_config["masked_classes"]) == masked
+
+
+def test_every_library_offers_no_management(prescriptions_config):
+    """A stand must always be allowed to grow untreated.
+
+    Without it a binding volume cap has no feasible answer, and "the plan harvested this
+    stand" stops being a decision the scheduler made.
+    """
+    for name, entry in prescriptions_config["ownership_libraries"].items():
+        assert "no_management" in _families(entry), f"{name} cannot choose to grow untreated"
+
+
+def test_riparian_override_is_no_management_only(prescriptions_config):
+    """No-entry is enforced by the absence of an alternative, not by a priced constraint.
+
+    A penalty weight can be tuned; an empty menu cannot. This is the structural form of
+    the "no entry, ever" decision in notes/methodology-directions.md item 2.
+    """
+    assert _families(prescriptions_config["overrides"]["riparian"]) == ["no_management"]
+
+
+def test_public_libraries_exclude_clearcut(prescriptions_config):
+    """No clearcut in the v1 public multiple-use eligible sets."""
+    for name in ("federal_forest", "state_forest", "local_forest", "tribal_forest"):
+        families = _families(prescriptions_config["ownership_libraries"][name])
+        assert "clearcut" not in families, f"{name} offers clearcut"
+
+
+def test_prescription_offsets_fall_within_the_projection_horizon(prescriptions_config):
+    """Offsets are years after inventory; a treatment past the horizon never happens."""
+    horizon = prescriptions_config["horizon_years"]
+    for name, entry in prescriptions_config["ownership_libraries"].items():
+        for presc in entry["prescriptions"]:
+            for key, values in (presc.get("grid") or {}).items():
+                if not key.endswith("_offset"):
+                    continue
+                for value in values:
+                    assert 0 < value <= horizon, (
+                        f"{name}/{presc['family']}: {key}={value} is outside the "
+                        f"{horizon}-year horizon"
+                    )
+
+
+def test_prescription_base_year_matches_projection_config(prescriptions_config, projection_config):
+    assert prescriptions_config["base_year"] == projection_config["projection"]["base_year"]
+    assert prescriptions_config["horizon_years"] == projection_config["projection"]["horizon_years"]
+
+
+def test_library_size_stays_within_the_run_budget(prescriptions_config):
+    """Trajectory count per stand is the FVS run multiplier for the whole landscape.
+
+    Each grid expands as a cartesian product, so one extra value in one list multiplies
+    the run count for every stand in that class. The ceiling is a budget decision
+    (notes/trajectory-library-and-annealing.md section 4), so it is asserted rather than
+    left to drift.
+    """
+    for name, entry in prescriptions_config["ownership_libraries"].items():
+        total = 0
+        for presc in entry["prescriptions"]:
+            size = 1
+            for values in (presc.get("grid") or {}).values():
+                size *= len(values)
+            total += size
+        assert 2 <= total <= 12, f"{name} library has {total} trajectories per stand"
 
 
 def test_bmp_rules_florida_exists(bmp_rules):

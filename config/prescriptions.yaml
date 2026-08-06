@@ -1,0 +1,224 @@
+# Ownership-class prescription libraries
+#
+# Authoritative mapping from a stand's OWNERSHIP CLASS to the set of management
+# prescriptions it is ELIGIBLE for. Ownership decides the menu; the harvest scheduler
+# (simulated annealing) decides which item on the menu each stand actually gets.
+# See notes/trajectory-library-and-annealing.md for the architecture and
+# notes/terminology.md for what "stand" means here (= management unit polygon).
+#
+# One trajectory is generated per (stand x expanded prescription). Each `grid` below
+# expands as a full cartesian product of its lists, so trajectory count per stand is
+# the sum of the grid sizes for its ownership class. Growth is multiplicative --
+# adding one value to one list multiplies the FVS run count for every stand in that
+# class. Keep grids small and justified.
+#
+# Prescription families and their parameter names must match
+# pipeline/s4_fvs/regime_templates.py REGIMES. Ownership class names and codes must
+# match config/projection.yaml `ownership.classes`. tests/test_config.py enforces both.
+#
+# Offsets are YEARS AFTER THE STAND'S INVENTORY YEAR, not calendar years, so the
+# library survives a change of TreeMap/FIA vintage. The generator resolves them to
+# calendar years per stand.
+
+version: 1
+base_year: 2022                      # matches config/projection.yaml projection.base_year
+horizon_years: 50                    # all offsets must fall inside this window
+
+# --------------------------------------------------------------------------------
+# Absolute overrides. Applied AFTER the ownership lookup and they always win.
+# --------------------------------------------------------------------------------
+overrides:
+  riparian:
+    # A unit whose geometry puts it in a BMP stream-management zone gets a library of
+    # exactly one trajectory. No-entry is enforced by the ABSENCE of an alternative,
+    # not by a scheduler constraint that a penalty weight could trade away.
+    # See notes/methodology-directions.md item 2 ("no entry, ever").
+    applies_when: "SMZ_Pct >= 50.0"   # RIPARIAN_SMZ_PCT in regime_assignment.py
+    prescriptions:
+      - family: no_management
+
+# --------------------------------------------------------------------------------
+# Eligible sets by ownership class (Harris, Caputo & Butler 2025; RDS-2025-0045).
+#
+# Rule 1: no_management appears in EVERY library. A stand must always be allowed to
+#         grow untreated, or a binding volume cap has no feasible answer.
+# Rule 2: eligibility screens (minimum harvest age, reserve status, operability)
+#         REMOVE prescriptions at build time. They never add any.
+# Rule 3: a library that screens down to {no_management} is a valid outcome and must
+#         be logged, not dropped.
+# --------------------------------------------------------------------------------
+ownership_libraries:
+
+  unknown_forest:
+    owner_code: 0
+    rationale: >-
+      Ownership could not be resolved. Conservative menu only; count and report these
+      stands separately so the ambiguity stays visible in the outputs.
+    prescriptions:
+      - family: no_management
+      - family: thin_from_below
+        grid:
+          year_offset: [15, 25]
+          proportion: [0.30]
+          max_dbh: [8.0]
+
+  family_forest:
+    owner_code: 3
+    rationale: >-
+      NIPF behaviour is the most heterogeneous of any class: the same owner type may do
+      nothing for decades, thin opportunistically, or liquidate. The eligible set has to
+      span that range rather than assert one behaviour.
+    prescriptions:
+      - family: no_management
+      - family: thin_from_below
+        grid:
+          year_offset: [10, 20, 30]
+          proportion: [0.35]
+          max_dbh: [8.0]
+      - family: selection_harvest
+        grid:
+          start_offset: [10, 20]
+          end_offset: [40]
+          interval: [10]
+          proportion: [0.20]
+      - family: clearcut
+        grid:
+          year_offset: [25, 35, 45]
+
+  corporate_forest:
+    owner_code: 4
+    rationale: >-
+      Industrial intent is safe to assume; rotation length and thin timing are the actual
+      decision, so the grid resolves those rather than the choice to manage at all.
+    prescriptions:
+      - family: no_management
+      - family: thin_from_below
+        grid:
+          year_offset: [10, 15]
+          proportion: [0.40]
+          max_dbh: [8.0]
+      - family: plantation_rotation
+        grid:
+          thin_offset: [12, 18]
+          thin_proportion: [0.40]
+          thin_max_dbh: [8.0]
+          clearcut_offset: [25, 35]
+      - family: clearcut
+        grid:
+          year_offset: [20, 30, 40]
+
+  tribal_forest:
+    owner_code: 5
+    rationale: >-
+      PLACEHOLDER pending a documented tribal-management source. Mirrors the public
+      conservative set; must not be published as a tribal behaviour claim.
+      config/projection.yaml already flags this class for a pooled fallback when the
+      training sample is thin.
+    prescriptions:
+      - family: no_management
+      - family: selection_harvest
+        grid:
+          start_offset: [10, 20]
+          end_offset: [40]
+          interval: [10]
+          proportion: [0.15, 0.25]
+      - family: thin_from_below
+        grid:
+          year_offset: [15, 25]
+          proportion: [0.30]
+          max_dbh: [8.0]
+
+  federal_forest:
+    owner_code: 6
+    rationale: >-
+      Public multiple-use management. No clearcut in the v1 eligible set. Reserve status
+      (wilderness, designated areas) is an eligibility screen applied on top of this --
+      federal ownership is not the same as harvestable.
+    prescriptions:
+      - family: no_management
+      - family: selection_harvest
+        grid:
+          start_offset: [10, 20]
+          end_offset: [40]
+          interval: [10]
+          proportion: [0.15, 0.25]
+      - family: thin_from_below
+        grid:
+          year_offset: [15, 25]
+          proportion: [0.30]
+          max_dbh: [8.0]
+
+  state_forest:
+    owner_code: 7
+    rationale: >-
+      As federal. Florida state forests carry multiple-use mandates; longleaf restoration
+      thinning is the dominant observed treatment.
+    prescriptions:
+      - family: no_management
+      - family: selection_harvest
+        grid:
+          start_offset: [10, 20]
+          end_offset: [40]
+          interval: [10]
+          proportion: [0.15, 0.25]
+      - family: thin_from_below
+        grid:
+          year_offset: [15, 25]
+          proportion: [0.30]
+          max_dbh: [8.0]
+
+  local_forest:
+    owner_code: 8
+    rationale: >-
+      County and municipal holdings are small and typically low-intensity. Narrow menu
+      until there is evidence for anything more active.
+    prescriptions:
+      - family: no_management
+      - family: selection_harvest
+        grid:
+          start_offset: [15, 25]
+          end_offset: [40]
+          interval: [10]
+          proportion: [0.15]
+      - family: thin_from_below
+        grid:
+          year_offset: [20]
+          proportion: [0.25]
+          max_dbh: [8.0]
+
+# --------------------------------------------------------------------------------
+# Classes that are masked out of the pipeline entirely and never become stands.
+# Mirrors config/projection.yaml `ownership.mask_values`.
+# --------------------------------------------------------------------------------
+masked_classes:
+  - non_forest                       # code 1
+  - water                            # code 2
+
+# --------------------------------------------------------------------------------
+# Eligibility screens. These SHRINK a library at build time; the scheduler never sees
+# the removed options, so it cannot select them. Values are placeholders pending the
+# LAMPS constraint port -- see docs/superpowers/plans/2026-07-28-lamps-scheduler-integration.md
+# --------------------------------------------------------------------------------
+eligibility_screens:
+  minimum_harvest_age:
+    # A prescription whose first removal lands before the stand reaches this age is
+    # dropped from that stand's library. Ages in years, by ownership class.
+    enabled: true
+    by_ownership:
+      family_forest: 25
+      corporate_forest: 20
+      tribal_forest: 40
+      federal_forest: 40
+      state_forest: 40
+      local_forest: 40
+      unknown_forest: 40
+  reserve_status:
+    # Stands on reserved land keep only no_management. Requires a reserve layer that
+    # is not yet acquired; disabled until it is, and its absence must be stated in any
+    # federal/state result rather than silently assumed away.
+    enabled: false
+    source: null
+  operability:
+    # Slope / access screens. Not applicable at Florida pilot relief; revisit on
+    # expansion to the southern Appalachians.
+    enabled: false

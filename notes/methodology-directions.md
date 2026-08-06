@@ -5,6 +5,14 @@ open decisions**, not measured results and not yet implemented. Each item record
 the question, the options, the trade-offs, and what in the current code would have
 to change.
 
+> **Resolved by the adopted architecture (2026-08-06).** Items 1 and 4 are settled by
+> [`trajectory-library-and-annealing.md`](trajectory-library-and-annealing.md): stands get a
+> library of candidate trajectories determined by ownership class, and the harvest scheduler
+> selects among them by simulated annealing. Item 2 (riparian no-entry) survives unchanged
+> and is *strengthened* — it is now enforced structurally rather than as a rule the
+> scheduler could weigh. Item 3 (hex-bin cartography) is untouched. The resolutions are
+> marked inline below; the original reasoning is kept because it is what justifies them.
+
 ---
 
 ## Pipeline sketch from the meeting
@@ -86,18 +94,36 @@ decision 3 there already uses area weighting for unit stand age
   across the unit") do not have a unique translation — we need a stated rule for
   distributing removals across constituent plots.
 
-**Current lean.** Option B. Assign regimes at the unit level (that is the management
-decision), simulate at the plot level, area-weight back to the unit. This keeps the
-FVS side identical to the trajectory-library plan and keeps units as a *management*
-abstraction rather than a *biophysical* one.
+**RESOLVED (2026-08-06): weighted union — neither option as originally framed.**
 
-**To decide.**
-- The distribution rule for unit-level partial-harvest targets across plots
-  (proportional to plot BA? to acres? treat the unit target as per-acre and apply the
-  same per-acre residual to each plot?).
+The dichotomy above was false. `build_fvs_inputs.py::build_tree_init` already builds a
+**weighted union**: every donor tree record from every constituent plot is kept intact and
+its `TPA` expansion factor is scaled by that plot's area share of the unit (LETO 5% floor,
+then renormalize). That has Option B's biophysics — no trees are averaged, so the diameter
+distribution and species mixture survive, and the "growing the mean tree ≠ mean of grown
+trees" bias does not apply — with Option A's run structure, one FVS stand per unit and no
+re-aggregation of results.
+
+This is what makes "one trajectory library per stand" well-defined: the library is keyed by
+`(management unit, prescription)`, and the unit *is* the FVS stand.
+
+Two consequences:
+
+- **The distribution rule dissolves.** The open question below — how to spread a unit-level
+  residual target across separate per-plot runs — has no content once there is one
+  composite list per unit. The `ThinDBH` proportion applies to the unit's own list.
+- **The composite is one competitive arena.** FVS computes density-dependent mortality and
+  diameter growth over the pooled list, so a tree donated by plot A competes with a tree
+  donated by plot B as though co-located. For a delineated management unit that is the
+  intended reading, but it is a modeling assumption, not neutral bookkeeping. State it in
+  the methods writeup.
+
+**Still to decide.**
 - Whether unit-level reporting is per forested acre in the unit or per unit acre.
-- Whether tiny plot slivers inside a unit (a plot contributing a handful of pixels)
-  get dropped below some area threshold to control run count.
+- Whether tiny plot slivers inside a unit (a plot contributing a handful of pixels) get
+  dropped below some area threshold. Note this is now a *fidelity* question about the
+  composite tree list, not a run-count question — run count is `units × prescriptions` and
+  does not depend on how many plots a unit draws from.
 
 ---
 
@@ -224,22 +250,28 @@ managing a plot manages **every pixel imputed to that plot**, wherever it occurs
 whole AOI instead of landing in a contiguous block — spatially wrong, and wrong in a
 way that matters for anything edge-, patch-, or disturbance-related.
 
-**Reconciliation with item 1.** These two are not competing architectures once you
-split the keys:
-- **Regime is assigned per pixel** (inherited from the management unit the pixel falls
-  in, plus ownership, forest type, riparian class).
-- **Trajectories are keyed by `(plot_id, regime, site-index bin)`** — `PLAN.md` §4c.
+**RESOLVED (2026-08-06): the unit is the modeling unit; the plot is the tree-list source.**
 
-The same plot can then be clearcut in one unit and untouched in another, because those
-pixels look up different trajectories. Contiguity comes from the unit layer; FVS run
-count stays bounded by unique key combinations, not by pixel or unit count. Item 1's
-Option B and item 4 converge on exactly this design — the unit decides *what
-treatment*, the plot decides *what tree list*.
+The adviser's objection is decisive and the pixel-first architecture is rejected as the
+*modeling* unit. Trajectories are keyed by **`(management unit, prescription)`**, not by
+plot. A unit's tree list is the weighted union of its constituent plots' lists (item 1),
+so the same plot contributes to many units and can be clearcut in one and untouched in
+another — contiguity comes from the unit layer by construction, and the speckling problem
+cannot arise because no decision is ever keyed to a plot.
 
-**Consequence to watch.** FVS run count is `unique(plot × regime × SI bin)`. Every
-regime parameterization we add multiplies it. Keeping the regime library small and
-discrete (rather than continuously parameterized per unit) is what keeps this tractable
-statewide.
+Pixels remain what they always were: the painting substrate. Each pixel inherits the
+selected trajectory of the unit it falls in (`PLAN.md` §4e), which is mechanically what
+`paint_fvs_to_raster.py` already does for the no-management baseline.
+
+**Consequence to watch — it changed shape.** FVS run count is now
+`units × prescriptions per unit`, not `unique(plot × regime × SI bin)`. That is a larger
+number (order 10⁵ for the five-county pilot rather than order 10³), and it no longer
+shrinks when plots repeat across the landscape. The cost is bought back three ways: the
+runs are barrier-free and embarrassingly parallel, identical `(tree list, site attrs,
+prescription)` triples are cached, and the library is a **one-time cost per version**
+rather than a per-scenario cost — re-running the scheduler under a new objective touches
+no FVS at all. Grid growth is multiplicative, so parameter-grid size is the standing
+budget question. See `trajectory-library-and-annealing.md` §4.
 
 ---
 
@@ -247,10 +279,12 @@ statewide.
 
 | Item | Status |
 |---|---|
-| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Decided.** Needs implementation in `sketch_management_units.py`; `PLAN.md` §4b updated |
-| Keep per-plot tree lists, area-weight to units | **Leaning B.** Needs the unit×stand crosswalk + a partial-harvest distribution rule |
-| Pixel-first growth with per-pixel regime + `(plot, regime, SI)` trajectory keys | **Compatible with the above.** Adopt as the scaling design |
+| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Decided, and strengthened.** Now enforced structurally: a riparian unit's trajectory library contains only `no_management`, so no-entry is not a constraint the scheduler could weigh. Still needs implementation in `sketch_management_units.py` |
+| Tree-list aggregation into units | **Resolved: weighted union.** Neither original option — donor trees kept intact, `TPA` scaled by area share (`build_tree_init`). Partial-harvest distribution rule dissolved |
+| Modeling unit and trajectory key | **Resolved: `(management unit, prescription)`.** Pixel-first rejected as the modeling unit; pixels remain the painting substrate |
+| Ownership's role | **Resolved: defines the eligible set, not the choice.** `config/prescriptions.yaml`; the scheduler selects within it by simulated annealing |
 | Hex-bin overlay | **Cartographic post-process only.** Size and denominator undecided |
 
-Related: [[management_units]], [[management-pipeline-plan]], [[treemap-methodology]],
+Related: [[trajectory-library-and-annealing]] (the architecture these resolutions come
+from), [[management_units]], [[management-pipeline-plan]], [[treemap-methodology]],
 [[fvs-to-raster-painting]].

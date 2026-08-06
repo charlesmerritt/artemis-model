@@ -25,6 +25,13 @@ fvs:
   # no summary-level check catches it. Stand values are exact; only carbon is affected.
   # Do NOT re-enable for iteratively coupled runs until that is resolved; see the note.
   # Continuous (unsegmented) runs are unaffected.
+  #
+  # 2026-08-06: trajectory-library runs ARE continuous -- one uninterrupted FVS run per
+  # (stand, prescription), no restart barrier -- so this failure mode does not arise in
+  # the adopted architecture. The flag stays false and the tripwire test stays in place
+  # because flipping it must remain a conscious, reviewed act; but the blocker is now a
+  # scope decision rather than a measured defect.
+  # See notes/trajectory-library-and-annealing.md section 2.
   carbon_extension: false
   carbon_pools:                      # All five IPCC pools -- the intended set when re-enabled
     - aboveground_live
@@ -34,9 +41,51 @@ fvs:
     - soil_organic
 
 harvest:
-  forward_method: "pseudo_deterministic"
+  # Harvest is DECIDED, not drawn. The scheduler selects one precomputed trajectory per
+  # stand from that stand's ownership-class library (config/prescriptions.yaml) using
+  # simulated annealing. This replaces the previous "pseudo_deterministic" method, which
+  # drew a per-pixel schedule from a fitted LCMS harvest probability model; that model is
+  # now calibration/validation evidence rather than the forward generator.
+  # See notes/trajectory-library-and-annealing.md.
+  selection_method: "simulated_annealing"
   random_seed: 42                    # Document this in versions.lock; never change post-publication
   # random_seed must be locked before any results are reported externally
+
+  annealing:
+    # Cooling schedule. initial_temperature is calibrated empirically at run start --
+    # sample random moves and solve for T0 such that `initial_accept_rate` of worsening
+    # moves are accepted -- because a hardcoded temperature means something different on
+    # every landscape. `null` = calibrate; a number = override and record why.
+    initial_temperature: null
+    initial_accept_rate: 0.80
+    cooling_factor: 0.95             # geometric: T <- alpha * T
+    iterations_per_temperature: 10   # multiplied by the stand count
+    min_temperature: 1.0e-4
+    stall_temperature_levels: 20     # stop after N levels with no best-solution improvement
+    restarts: 5                      # report best-of-R with EVERY seed logged, never best-of-unreported
+    move_weights:                    # mixture; single-stand moves alone stall under green-up
+      single_stand: 0.70
+      block: 0.20
+      period_swap: 0.10
+    seed_from: "greedy"              # initial solution: pipeline/s3_management/harvest_scheduler.py
+
+  objective:
+    # Scenario definition, not a tuning knob. Weights are recorded with every run.
+    # OPEN: the v1 objective is undecided -- see notes/trajectory-library-and-annealing.md
+    # section 10, question 1.
+    maximize: "harvest_volume"       # alternatives: "npv", "ending_carbon", weighted combination
+    weights:
+      harvest_volume: 1.0
+
+  penalties:
+    # Constraints that price a TARGET. Absolutes (riparian no-entry, eligibility screens)
+    # are enforced structurally in the library instead -- a penalty the search can pay is
+    # the wrong model for a no-harvest buffer.
+    tpo_volume_cap: 1.0              # config/tpo_targets.yaml, per cycle per dimension
+    even_flow: 1.0                   # period-to-period harvest deviation within an ownership class
+    adjacency_greenup: 1.0           # adjacent stands harvesting in the same period
+    max_opening_size: 1.0            # contiguous harvested block area
+    treatment_budget: 0.0            # disabled until capacity figures exist
 
 ownership:
   source: "harris_2025"

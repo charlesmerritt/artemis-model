@@ -1,6 +1,14 @@
 """
 FVS management-regime templates (Phase 3.1).
 
+These are the **prescription families** the trajectory libraries are built from: one
+keyfile per ``(stand, prescription)`` pair, where a prescription is a family with its
+parameters bound from the grid in ``config/prescriptions.yaml``. Which families a stand may
+draw on is set by its ownership class; see `notes/trajectory-library-and-annealing.md`.
+Library runs are **continuous — one uninterrupted FVS run per keyfile, no restart barrier**,
+which is what keeps them independent, parallelizable, and free of the FFE carbon artifact
+measured in `notes/restart-fidelity-findings.md`.
+
 Renders per-stand FVS keyfiles for a small library of silvicultural regimes. Every harvest
 is expressed with the **`ThinDBH` keyword** — the one management keyword already verified
 against real FVS runs in this project (`research/restart_fidelity/make_cut_keyfiles.py`):

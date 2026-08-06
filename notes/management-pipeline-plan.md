@@ -1,6 +1,8 @@
-# Management Pipeline Plan — From No-Management Baseline to Constrained Harvest Simulation
+# Management Pipeline Plan — From No-Management Baseline to a Scheduled Landscape
 
-Build a spatially explicit harvest scheduling prototype for the 5-county Florida AOI that uses the completed FVS no-management baseline as standing inventory, TPO reports as harvest volume constraints, and ownership/county boundaries as constraint dimensions, then runs managed FVS simulations per management unit.
+Build a spatially explicit harvest scheduling prototype for the 5-county Florida AOI that uses the completed FVS no-management baseline as standing inventory, TPO reports as harvest volume constraints, and ownership/county boundaries as constraint dimensions — then **generates a library of candidate trajectories per management unit from its ownership class, and selects one trajectory per unit by simulated annealing**.
+
+> **Architecture note (2026-08-06).** Phases 1 and 2 below are unchanged — the data integration and spatial layers are needed either way. Phases 3–5 were rewritten: management is no longer one deterministic regime per unit fed to a greedy per-cycle allocator. Ownership class now defines an *eligible set*, FVS enumerates every eligible alternative up front, and the scheduler chooses among precomputed trajectories. See [`trajectory-library-and-annealing.md`](trajectory-library-and-annealing.md) for the design and [`../docs/references/README.md`](../docs/references/README.md) for the two guiding papers (`LAMPS`, `CLIMATE-FVS`).
 
 ---
 
@@ -64,74 +66,79 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 
 ---
 
-## Phase 3: Management regime library
+## Phase 3: Prescription library by ownership class
 
-### Step 3.1: Define regime templates
-- Define 4-6 FVS keyword templates as parameterized text (extending `keyword_builder.py`):
-  1. **no_management** — already have this (baseline)
-  2. **clearcut** — harvest all trees at a target year, optionally replant
-  3. **thinning_from_below** — remove a target BA percentage at a target year
-  4. **shelterwood** — partial harvest + removal cut after regeneration
-  5. **selection_harvest** — periodic partial removals
-  6. **pine_plantation_rotation** — site prep, plant, thin, clearcut on rotation (industrial)
-- Each template parameterized by: harvest year, intensity (BA% removed, TPA target), regeneration method.
-- **Output**: `pipeline/s4_fvs/regime_templates.py` with `render_keyfile(stand, regime, params)`.
+### Step 3.1: Define prescription templates
+- Implement each prescription family as a parameterized FVS keyword template. Every family is built from the **`ThinDBH` keyword**, the one management keyword verified against real FVS runs in this project:
+  1. **no_management** — the baseline; also the required member of every library
+  2. **clearcut** — full removal at a target year
+  3. **thin_from_below** — proportional removal below a DBH ceiling
+  4. **selection_harvest** — light proportional thins on an interval
+  5. **plantation_rotation** — commercial thin, then clearcut at rotation age
+- Regeneration keywords (`PLANT`/`NATREGEN`), `ThinBBA`/shelterwood, and the FFE/carbon block are deliberately **not** emitted until their FVS field layouts are verified.
+- **Output**: `pipeline/s4_fvs/regime_templates.py` with `render_keyfile(stand, regime, params)`. ✅ Implemented.
 
-### Step 3.2: Assign default regimes by ownership × forest type
-- Simple deterministic mapping:
-  - Federal/state → conservative (selection or no harvest)
-  - Family forest → light thinning
-  - Corporate → pine plantation rotation (if pine) or clearcut (if hardwood)
-  - Riparian buffer units → **no harvest, ever** (no entry of any kind, no buffer class exempted). Assigned by geometry, so it overrides any ownership/forest-type rule above it. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
-- **Output**: `pipeline/s3_management/regime_assignment.py` with `assign_regime(unit_attrs) -> (regime_name, params)`.
+### Step 3.2: Map ownership class → *eligible set*, not one regime
+- **This is the change.** `regime_assignment.py` currently returns exactly one `(regime, params)` per unit. Under the adopted architecture the same ownership signal instead returns the **set** of prescriptions the unit may be assigned, and the scheduler picks within it.
+- Authoritative mapping and parameter grids: [`../config/prescriptions.yaml`](../config/prescriptions.yaml). Guarded by `tests/test_config.py`.
+- Three rules:
+  - **`no_management` is in every non-riparian library.** Without it, a binding volume cap has no feasible answer and "the plan harvested this stand" stops being a decision.
+  - **Riparian units get a library of exactly one trajectory** (`no_management`). No harvest, ever — no entry of any kind, no buffer class exempted. Assigned by geometry, so it overrides any ownership rule. Enforced by the **absence of an alternative**, which no objective weight can trade away. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
+  - **Eligibility screens shrink a library, never extend it.** Minimum harvest age, reserve status, and operability drop prescriptions at build time (the `LAMPS` MHA/MHP screens). A library that reduces to `{no_management}` is a valid outcome and must be logged.
+- **Output**: `assign_eligible_prescriptions(unit_attrs) -> list[(prescription_id, params)]` alongside the existing single-regime `assign_regime`, which is retained for the greedy baseline.
+- **Verify**: every unit's emitted set is a subset of its ownership class's config entry; riparian units emit exactly one; screened-out units are logged, not dropped.
 
 ---
 
-## Phase 4: Constrained harvest scheduling prototype
+## Phase 4: Trajectory library and simulated-annealing scheduling
 
-### Step 4.1: Build the harvest scheduling engine
-- Core logic in `pipeline/s3_management/harvest_scheduler.py`:
-  1. Load management units with attributes and baseline inventory.
-  2. Load TPO volume targets (annual or multi-year average).
-  3. For each time step (5-year FVS cycle):
-     - Compute available volume per unit = standing volume from FVS trajectory.
-     - Select units for harvest based on regime assignment + priority (oldest stand age first).
-     - Simulate harvest: compute volume removed per unit.
-     - Check constraints: total, by county, by owner group, by county × owner group.
-     - If over target, reduce harvest (drop lowest-priority units) until within constraint.
-     - If under target, add more units (if available).
-  4. Output: per-unit harvest schedule (unit_id, cycle, regime, volume_removed).
-- **Verify**: scheduled harvest volumes are within TPO constraints for all four constraint levels.
+### Step 4.1: Assign ownership class to each unit
+- Dominant-owner vote over the Harris raster within each unit footprint, with a confidence threshold (e.g. >70% of pixels). Sub-threshold units are **excluded and logged** — a reviewable list, never a silent drop.
+- **Verify**: every retained unit has one ownership class; the excluded list is written and counted.
 
-### Step 4.2: Generate managed FVS keyfiles from the schedule
-- For each unique `(stand_cn, regime, params)` combination in the schedule, render a FVS keyfile using the regime templates.
-- Reuse `generate_smoke_keyfiles.py` pattern but with management keywords.
-- **Output**: `data/interim/fvs/managed_keyfiles/manifest.csv` + per-stand keyfile directories.
+### Step 4.2: Enumerate and generate the trajectory library
+- For every unit, expand its eligible set from `config/prescriptions.yaml` into concrete prescriptions (grids expand as a cartesian product), then render one FVS keyfile per `(unit, prescription)`.
+- Run each as **one continuous FVS simulation — no restart barrier**. Runs are independent, so this is embarrassingly parallel; use the concurrent worker pattern proven in `research/restart_fidelity/parallel_demo.py`.
+- Cache on a content hash of `(tree list, site attributes, prescription)`. Dedup is a cache, never a reporting decision.
+- Budget: target **6–12 trajectories per unit**; the 5-county pilot (order 10⁴ units) is then order 10⁵ runs, a one-time cost per library version.
+- **Output**: `trajectory_index` (one row per trajectory — the scheduler's working set) and `trajectory_cycles` (one row per trajectory × cycle) in DuckDB/Parquet. Built from raw `FVS_Summary2` using the view vocabulary in [`duckdb-iterative-coupling-cells.md`](duckdb-iterative-coupling-cells.md).
+- **Verify** (library integrity, on every build): ≥2 trajectories for every non-riparian unit and exactly 1 for every riparian unit; exactly `n_cycles` rows per trajectory with no NaNs in objective columns; unit layer and library cover each other in **both** directions; every prescription is a member of its class's eligible set.
 
-### Step 4.3: Run managed FVS simulations
-- Run through Windows FVS GUI (same handoff pattern as baseline).
-- Alternatively, investigate Docker-based fvs2py runtime if available.
-- **Output**: `data/interim/fvs/managed_outputs/FVSOut.db` + trajectory CSVs.
+### Step 4.3: Build the simulated-annealing scheduler
+- Core logic in `pipeline/s3_management/harvest_scheduler.py`, alongside the existing greedy allocator:
+  1. Load `trajectory_index` and the TPO caps (`config/tpo_targets.yaml`).
+  2. Seed the initial solution from the greedy oldest-first allocator.
+  3. Iterate: propose a move (single-stand reassignment / adjacency-block reassignment / period swap), score the resulting plan, accept by Metropolis, cool geometrically.
+  4. Return the best plan plus its quality report.
+- Constraint split — **absolutes are structural, targets are priced**:
+  - Structural (unrepresentable, so unselectable): riparian no-entry, minimum harvest age, reserve status, operability.
+  - Priced as penalties: TPO caps by total/county/owner group, even flow within an ownership class, adjacency and green-up, maximum contiguous opening size, treatment budget.
+- Parameters live in `config/projection.yaml` under `harvest.annealing`, `harvest.objective`, and `harvest.penalties`. `T₀` is calibrated at run start to a target acceptance rate rather than hardcoded.
+- **Verify**: determinism under a fixed seed; monotone best-so-far objective; structural constraints honoured exactly; final objective ≥ the greedy baseline.
 
-### Step 4.4: Compare managed vs. baseline trajectories
-- Load both trajectory sets.
-- Compute differences: volume removed, residual standing inventory, growth response.
-- Summarize by county, owner group, forest type.
-- **Output**: notebook `notebooks/Managed_vs_Baseline_5co_FL.ipynb` with summary tables and plots.
+### Step 4.4: Report the plan (a plan is not a result without this)
+- Simulated annealing gives no optimality guarantee, so every plan ships with: the objective value; the **full constraint-violation vector** per dimension per cycle; the **unconstrained per-stand best** `Σ_s max_{x∈L_s} value(x)` as an optimality-gap bound; the **greedy and random baselines**; and the **objective spread across seeds**.
+- A plan that does not beat greedy is a finding about the search, and must be reported as one rather than tuned until it goes away.
+- **Output**: `selected_plan.parquet` (`unit_id` → `trajectory_id`) + `scheduler_report.json`.
+
+### Step 4.5: Compare the selected plan against the baseline
+- Join the plan to `trajectory_cycles`; compute volume removed, residual standing inventory, and growth response against the no-management baseline.
+- Summarize by county, owner group, forest type; check age-class distribution through time and opening-size distribution against green-up rules.
+- **Output**: notebook `notebooks/Scheduled_vs_Baseline_5co_FL.ipynb`.
 
 ---
 
 ## Phase 5: Iteration and scaling
 
-### Step 5.1: Sensitivity analysis
-- Vary TPO constraint levels (all years vs. 2013-2024 average).
-- Test single-constraint vs. multi-constraint scenarios.
-- Document how constraints interact (county constraint may bind before owner group constraint).
+### Step 5.1: Scenario and sensitivity analysis
+- **This is where the architecture pays off.** A new objective, a new weight set, or a different TPO constraint level is a re-run of Step 4.3 — seconds to minutes — not a re-run of FVS. Only a change to the *eligible sets or parameter grids* forces a library rebuild.
+- Vary TPO constraint levels (all years vs. 2013-2024 average); test single- vs. multi-constraint scenarios; document which constraint binds first (county may bind before owner group).
+- Vary objective weights and report the efficient frontier between harvest volume and retained carbon.
 
 ### Step 5.2: Scaling path
-- Document what changes for statewide Florida (county count, stand count, compute time).
-- Identify bottlenecks: FVS runtime (trajectory library approach vs. per-stand runs), vector overlay performance, raster sampling.
-- The trajectory library approach (run FVS once per unique `(plot_id, regime, si_bin)`, paint to pixels) becomes essential at scale.
+- Document what changes for statewide Florida (county count, unit count, library size, compute time).
+- The dominant cost moves from scheduler runtime to **library generation**: run count is `units × prescriptions per unit`, and grid growth is multiplicative. Keeping grids small and justified is the scaling lever.
+- Other bottlenecks: vector overlay performance, raster sampling, and holding `trajectory_index` in memory at statewide scale.
 
 ---
 
@@ -139,28 +146,30 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 
 1. **Step 1.1** — parse TPO spreadsheet → config  *(small, unblocks everything)*
 2. **Step 1.2** — load FVS baseline trajectories + linkage → Parquet  *(small)*
-3. **Step 2.2** — assign ownership to stands via raster sampling  *(medium, needs ownership raster)*
+3. **Step 4.1 / 2.2** — assign ownership class to units via raster sampling  *(medium, needs ownership raster)*
 4. **Step 1.3** — compute standing inventory by constraint dimensions  *(medium)*
 5. **Step 2.1** — bring `sketch_management_units.py` to main, run 5 counties  *(medium)*
 6. **Step 2.3** — build unit × stand crosswalk  *(medium)*
-7. **Step 3.1** — define regime templates  *(medium)*
-8. **Step 3.2** — assign regimes by ownership × forest type  *(small)*
-9. **Step 4.1** — build harvest scheduling engine  *(large, core deliverable)*
-10. **Step 4.2** — generate managed keyfiles  *(medium)*
-11. **Step 4.3** — run managed FVS  *(external dependency on Windows FVS)*
-12. **Step 4.4** — compare managed vs. baseline  *(medium)*
+7. **Step 3.1** — prescription templates  *(medium)* ✅ done
+8. **Step 3.2** — ownership class → eligible set  *(small; pure function, synthetic fixtures)*
+9. **Step 4.2** — enumerate and generate the trajectory library  *(large; the FVS-dependent step)*
+10. **Step 4.3** — simulated-annealing scheduler  *(large, core deliverable)*
+11. **Step 4.4** — quality report  *(medium; do not defer — it is what makes step 4.3 reviewable)*
+12. **Step 4.5** — compare against baseline  *(medium)*
 
-Steps 1-8 can be implemented and verified without running FVS again. Steps 9-12 require the managed FVS run, which depends on the Windows GUI or a working Linux FVS runtime.
+Steps 1–8 and 10–11 can be implemented and verified without running FVS: the scheduler is testable end to end against a synthetic library with a known optimum. Only step 9 needs the Windows GUI or a working Linux FVS runtime.
 
 ---
 
 ## Key design decisions (confirmed)
 
-1. **Constraint hierarchy**: Test each constraint level independently first to understand individual effects, then combine. Build the scheduler to support both modes.
-2. **Harvest priority**: Oldest stand age first. Must compute area-weighted average stand age across all FIA plots (TreeMap pixels) within each management unit. This requires the unit×stand crosswalk (Step 2.3) plus stand age from FVS trajectory cycle 0.
-3. **Stand age aggregation**: A management unit may span multiple TreeMap pixels, each imputed to a different FIA plot with a different stand age. Compute `unit_age = sum(stand_age_i × pixel_acres_i) / sum(pixel_acres_i)` for each unit.
-4. **FVS runtime**: Continue with Windows GUI handoff (proven path). Investigate Docker-based fvs2py as a stretch goal for automation.
-5. **Management unit granularity**: Keep parcel-based units from `sketch_management_units.py` for the prototype. Raster-based segmentation is a future improvement.
-6. **Time step**: Use FVS 5-year cycles as the scheduling time step. This matches the natural FVS output unit and the projection config.
+1. **Ownership decides the menu, not the meal.** Ownership class selects a *set* of eligible prescriptions; the scheduler selects within it. This is the core change from the deterministic one-regime-per-unit rule.
+2. **Constraint hierarchy**: Test each constraint level independently first to understand individual effects, then combine. The scheduler supports both modes.
+3. **Absolutes are structural, targets are priced.** A penalty the search can pay is the right model for a volume cap and the wrong model for a no-harvest buffer.
+4. **Greedy is retained** as the annealer's initial solution *and* as a reported baseline — not as dead code.
+5. **Stand age aggregation**: A management unit may span multiple TreeMap pixels, each imputed to a different FIA plot with a different stand age. Compute `unit_age = sum(stand_age_i × pixel_acres_i) / sum(pixel_acres_i)`. Still needed — it drives the greedy seed and the eligibility screens.
+6. **FVS runtime**: Continue with Windows GUI handoff (proven path). Investigate Docker-based fvs2py as a stretch goal — it matters more now, since library generation is the bulk of the compute.
+7. **Management unit granularity**: Keep parcel-based units from `sketch_management_units.py` for the prototype. Raster-based segmentation is a future improvement.
+8. **Time step**: FVS 5-year cycles as the scheduling time step. Matches the natural FVS output unit and the projection config.
 
-See [`methodology-directions.md`](methodology-directions.md) for the 2026-07-27 advisor-meeting follow-ups that touch this plan: keeping per-plot tree lists and area-weighting them into units rather than averaging (affects Steps 2.3 and 4.2), and carrying riparian buffers as separate unmanaged-but-growing units (affects Steps 2.1 and 3.2).
+See [`methodology-directions.md`](methodology-directions.md) for the 2026-07-27 advisor-meeting follow-ups that touch this plan. Item 1 (tree-list aggregation) is resolved by the weighted-union initialization described in [`trajectory-library-and-annealing.md`](trajectory-library-and-annealing.md) §4; item 2 (riparian buffers as separate unmanaged-but-growing units) is preserved and strengthened by Step 3.2 above.

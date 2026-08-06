@@ -1,7 +1,38 @@
 # Design sketch: ARTEMIS orchestrator (bundle-per-ownership, even-flow)
 
+> **SUPERSEDED 2026-08-06 — read this first.**
+>
+> The **iterative coupling loop below is no longer the architecture.** ARTEMIS does not run
+> FVS to a barrier, gather state, solve an allocation, inject cuts, and resume. It
+> precomputes a library of candidate trajectories per stand (contents set by ownership
+> class) and selects among them with simulated annealing. See
+> [`notes/trajectory-library-and-annealing.md`](../../../notes/trajectory-library-and-annealing.md).
+>
+> Why: with FVS inside the loop, every candidate plan costs a full re-projection, so the
+> scheduler can only afford one greedy myopic pass. Precomputing the trajectories makes
+> evaluating a whole landscape plan a lookup and a sum, which is what a metaheuristic needs.
+>
+> **What this document still gets right, and is retained for:**
+> - **Even flow per ownership class** as the objective — now a scheduler penalty term.
+> - **Ownership as the decomposition axis** — now the key that defines each stand's
+>   trajectory library rather than a worker bundle.
+> - **Concurrent isolated FVS worker processes** (proven, `parallel_demo.py`) — this is
+>   exactly how the library is generated. Better, in fact: library runs need no barrier at
+>   all, so the `maxstands 500` sub-bundling problem and the cross-process gather it forces
+>   both disappear.
+> - **The stand-selection guards** (§"Stand selection layer") — ownership assignment by
+>   dominant-owner-with-threshold, the operability mask, and crosswalk-vintage safety all
+>   carry over unchanged. They now shape library *contents* instead of bundle membership.
+> - **The Gate result** — management injection at a barrier is proven and remains the
+>   fallback mechanism if a future design needs runtime cuts.
+>
+> **What is retired:** the restart barrier as a *scheduling* mechanism, the rolling-horizon
+> MPC loop (decision 1), and the bundle-as-unit-of-work framing. A useful side effect: with
+> no barriers, the FFE carbon corruption that forced `carbon_extension: false` does not
+> arise in library runs.
+
 **Date:** 2026-07-17
-**Status:** Sketch — depends on an unproven mechanism (see Gate). Not yet a buildable spec.
+**Status:** Superseded (see above). Originally: sketch depending on an unproven mechanism.
 **Branch:** `claude-code/parallel-fvs-runs`
 **Predecessors:** `2026-07-16-parallel-fvs-runs-design.md` (spike),
 `notes/restart-fidelity-findings.md` (measured results).

@@ -1,3 +1,7 @@
+ARTEMIS architecture — trajectory libraries + simulated-annealing scheduling
+Design of record: notes/trajectory-library-and-annealing.md
+Guiding references: docs/references/README.md  (LAMPS; Climate-FVS)
+
 ```text
             Corrected TreeMap <----------> FIA / Plot Data
                      │                            │
@@ -7,6 +11,28 @@
                       LETO "Mother" Initializer
               Spatial stands, plot assignments, ownership,
               FVS variants, site data, and initial tree lists
+                                  │
+                                  ▼
+   ┌───────────────────────────────────────────────────────────────┐
+   │              OWNERSHIP CLASS DEFINES THE MENU                  │
+   │                                                               │
+   │  Each stand's ownership class (Harris et al. 2025) selects a  │
+   │  set of ELIGIBLE prescriptions -- not a single regime.        │
+   │  config/prescriptions.yaml is authoritative.                  │
+   │                                                               │
+   │    family    -> no_mgmt, thin, selection, clearcut            │
+   │    corporate -> no_mgmt, thin, plantation rotation, clearcut  │
+   │    federal   -> no_mgmt, selection, thin      (no clearcut)   │
+   │    state     -> no_mgmt, selection, thin      (no clearcut)   │
+   │    tribal    -> no_mgmt, selection, thin      (placeholder)   │
+   │    local     -> no_mgmt, selection, thin                      │
+   │    unknown   -> no_mgmt, thin                 (conservative)  │
+   │                                                               │
+   │  Absolutes are structural, never priced:                      │
+   │    riparian (BMP geometry) -> {no_management} ONLY            │
+   │    eligibility screens (min harvest age, reserve, operability)│
+   │      REMOVE prescriptions; they never add any                 │
+   └──────────────────────────────┬────────────────────────────────┘
                                   │
                                   ▼
                     ARTEMIS Orchestrator (WSL2)
@@ -28,24 +54,32 @@
    ┌───────────────────────────────────────────────────────────────┐
    │             FVS TRAJECTORY LIBRARY GENERATION                 │
    │                                                               │
-   │  For each representative stand condition:                     │
+   │  For each stand (= management unit polygon):                  │
    │                                                               │
    │      stand                                                    │
-   │        × eligible management prescription                    │
-   │        × treatment timing / offset                            │
-   │        × climate scenario                                     │
-   │        × other modeled assumptions                            │
+   │        × each ELIGIBLE prescription for its ownership class   │
+   │        × that prescription's parameter grid                   │
+   │            (treatment timing, intensity, rotation age)        │
    │                                                               │
    │  Run each alternative as a complete multi-cycle FVS           │
-   │  simulation. No synchronization barrier is required between   │
-   │  stands because each trajectory is generated independently.   │
+   │  simulation -- ONE CONTINUOUS RUN, NO RESTART BARRIER.        │
+   │  No synchronization is required between stands because each   │
+   │  trajectory is generated independently.                       │
+   │                                                               │
+   │  Target 6-12 trajectories per stand. Grid growth is           │
+   │  multiplicative: one extra value multiplies the run count     │
+   │  for every stand in that ownership class.                     │
    │                                                               │
    │  Example trajectories:                                        │
-   │      • grow only                                               │
-   │      • thin every 20 years                                     │
-   │      • thin when SDI threshold is exceeded                     │
-   │      • clearcut and regenerate at rotation age                 │
-   │      • delayed treatment by 5, 10, or 15 years                 │
+   │      • grow only (always present; the default choice)         │
+   │      • thin from below at +10 / +20 / +30 years               │
+   │      • selection harvest every 10 years from +10 / +20        │
+   │      • plantation: thin at +12/+18, clearcut at +25/+35       │
+   │      • clearcut at +25 / +35 / +45 years                      │
+   │                                                               │
+   │  Cache on hash(tree list, site attrs, prescription) so        │
+   │  identical inputs are not re-run. Dedup is a CACHE, never a   │
+   │  reporting decision -- every polygon keeps its identity.      │
    └──────────────────────────────┬────────────────────────────────┘
                                   │
                                   ▼
@@ -53,14 +87,16 @@
    │                    ARTEMIS TRAJECTORY STORE                    │
    │                         DuckDB                                 │
    │                                                               │
-   │  stand_id                                                     │
-   │  ownership                                                    │
-   │  prescription_id                                              │
-   │  trajectory_id                                                │
-   │  year / cycle                                                 │
-   │  treatment events                                             │
-   │  removals                                                     │
-   │  TPA, BA, SDI, volume, biomass, carbon, habitat, cost, etc.   │
+   │  trajectory_index   (one row per trajectory -- the scheduler's │
+   │                      working set; must fit in memory)          │
+   │      trajectory_id, stand_id, prescription_id                 │
+   │      ownership_class, county, area_ac, unit_class             │
+   │      harvest_cuft per cycle, precomputed objective terms      │
+   │                                                               │
+   │  trajectory_cycles  (one row per trajectory × cycle -- joined  │
+   │                      only AFTER selection, for painting)       │
+   │      year / cycle, treatment events, removals                 │
+   │      TPA, BA, SDI, QMD, volume, biomass, carbon, cost, etc.   │
    │                                                               │
    │  Each trajectory describes the complete projected future of   │
    │  one stand under one predefined management alternative.       │
@@ -68,21 +104,38 @@
                                   │
                                   ▼
    ┌───────────────────────────────────────────────────────────────┐
-   │                LANDSCAPE POLICY / SCHEDULER                    │
+   │        HARVEST SCHEDULER  --  SIMULATED ANNEALING              │
    │                                                               │
-   │  Select one trajectory for each spatial stand while enforcing │
-   │  owner-specific and landscape-level objectives:               │
+   │  Select ONE trajectory for each spatial stand. Evaluating a   │
+   │  whole landscape plan is a table lookup and a sum, not an FVS │
+   │  run -- which is what makes searching the space affordable.   │
    │                                                               │
-   │      • even-flow harvest targets                               │
-   │      • treatment budgets and capacity                          │
+   │  Decision:   x_s ∈ L_s  for every stand s                     │
+   │  Objective:  maximize Σ value(x_s) − Σ penalty(plan)          │
+   │  Moves:      single-stand / adjacency-block / period-swap     │
+   │  Accept:     Metropolis, exp(−Δ/T)                            │
+   │  Cool:       geometric; T0 calibrated to a target accept rate │
+   │  Seed from:  greedy oldest-first allocator (also a baseline)  │
+   │                                                               │
+   │  PRICED as penalties (targets to balance):                    │
+   │      • even-flow harvest targets, per ownership class          │
+   │      • TPO volume caps: total / county / owner group           │
    │      • adjacency and green-up constraints                      │
    │      • maximum contiguous harvest area                         │
-   │      • habitat retention and connectivity                      │
-   │      • watershed or regional treatment limits                  │
+   │      • treatment budgets and capacity                          │
    │      • carbon, biomass, fire-risk, and economic objectives     │
    │                                                               │
+   │  STRUCTURAL (absolutes -- the search cannot select them):     │
+   │      • riparian no-entry (library of size 1)                   │
+   │      • min harvest age, reserve status, operability            │
+   │                                                               │
    │  Neighboring stands influence which trajectories may be       │
-   │  selected together, but they do not require FVS to be rerun.   │
+   │  selected together, but they do not require FVS to be rerun.  │
+   │                                                               │
+   │  NO OPTIMALITY GUARANTEE. A plan is not a result until it is  │
+   │  reported with: constraint-violation vector per dimension per │
+   │  cycle; gap to the unconstrained per-stand upper bound; the   │
+   │  greedy and random baselines; and the spread across seeds.    │
    └──────────────────────────────┬────────────────────────────────┘
                                   │
                                   ▼
@@ -92,7 +145,8 @@
    │  stand_id → selected trajectory_id                            │
    │                                                               │
    │  Join selected cycle-level outputs back to TreeMap stands,     │
-   │  polygons, or pixels.                                          │
+   │  polygons, or pixels. Per-acre densities paint directly;       │
+   │  totals require × pixel acres (30 m pixel = 0.2224 ac).        │
    └──────────────────────────────┬────────────────────────────────┘
                                   │
                   ┌───────────────┼────────────────┐
@@ -100,3 +154,27 @@
           Spatial rasters   Management maps   Regional summaries
           and time series   and schedules     and scenario metrics
 ```
+
+Notes on what changed, and why
+------------------------------
+
+FVS LEAVES THE SCHEDULING LOOP. The earlier design ran every stand to a 5-year
+restart barrier, gathered state, solved an allocation, injected cuts, and resumed.
+That made each candidate plan cost a full FVS re-projection, so the scheduler could
+only afford a single greedy forward pass. Precomputing the trajectories converts
+scheduling into selection over a fixed discrete set, and a metaheuristic becomes
+worth using.
+
+A SECOND CONSEQUENCE: the FFE carbon corruption measured in
+notes/restart-fidelity-findings.md is a stop/restart artifact. Library trajectories
+have no barriers, so it does not arise. carbon_extension stays false and its tripwire
+test stays in place, but the blocker is now a scope decision, not a defect.
+
+WHAT THIS COSTS: the decision space is frozen when the library is built. A
+prescription that was not enumerated cannot be selected. State-dependent silviculture
+("thin when SDI crosses 450") must be expressed as FVS event-monitor logic INSIDE a
+trajectory, enumerated as its own prescription -- not recovered in the scheduler.
+
+CLIMATE SCENARIO is not an axis of the library in v1 (PLAN.md scope notes place
+climate-modified growth out of scope). It is a natural fourth axis if that changes;
+reading the Climate-FVS reference should settle it.

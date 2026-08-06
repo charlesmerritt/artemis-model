@@ -1,5 +1,22 @@
 """
-Default management-regime assignment (Phase 3.2).
+Default management-regime assignment (Phase 3.2) — one regime per unit.
+
+.. note::
+   **Architecture status (2026-08-06).** Ownership class now defines a stand's *eligible
+   set* of prescriptions, not its single regime: ARTEMIS builds a trajectory library per
+   stand and a simulated-annealing scheduler selects within it. See
+   `notes/trajectory-library-and-annealing.md` section 3, and
+   `config/prescriptions.yaml` for the authoritative ownership -> eligible-set mapping.
+
+   The eligible-set expander (``assign_eligible_prescriptions``) is not implemented yet.
+   This deterministic single-regime rule stays in place meanwhile, and keeps a permanent
+   job afterwards: it is what the greedy baseline schedule is built from
+   (`harvest_scheduler.py`). Read what follows as "the default choice for a unit", not as
+   "the only prescription a unit may receive".
+
+   The riparian rule below is the one part that is *not* superseded — it becomes stronger.
+   In the new design a riparian unit's library contains only ``no_management``, so no-entry
+   is enforced by the absence of an alternative rather than by this rule firing first.
 
 Maps each management unit to a silvicultural regime from
 ``pipeline.s4_fvs.regime_templates`` using a simple, deterministic rule on ownership,

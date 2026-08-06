@@ -33,8 +33,9 @@ road/water/BMP), then cleaned to runnable size by `sliver_merge.py`.
 - Code id: `MU_ID` / `unit_id`; FVS `STAND_ID = "MU_<MU_ID>"` in `build_fvs_inputs.py`.
 
 ### FVS stand
-The **simulation unit FVS runs on** — one growth trajectory per stand. "Stand" is FVS's own
-term for a simulation unit and is agnostic to what it physically represents.
+The **simulation unit FVS runs on** — one growth trajectory per stand *per prescription*.
+"Stand" is FVS's own term for a simulation unit and is agnostic to what it physically
+represents.
 
 - **Target design:** one FVS stand **= one management unit**, initialized from the
   area-weighted plot mix.
@@ -75,6 +76,43 @@ pixels are equal-area in EPSG:5070). Example: a 40-ac unit = plot A (15 ac) + pl
   values for a total. Pixel-count means *are* already area-weighted. See
   `notes/treemap-methodology.md`.
 
+## Scheduling vocabulary
+
+These four words are easy to blur, and the architecture depends on keeping them apart.
+See [`trajectory-library-and-annealing.md`](trajectory-library-and-annealing.md).
+
+### Prescription family
+A **named silvicultural pattern** with free parameters — `thin_from_below`,
+`selection_harvest`, `plantation_rotation`, `clearcut`, `no_management`. Implemented as a
+keyfile template in `pipeline/s4_fvs/regime_templates.py`. Historically called a "regime"
+in this repo; the two words mean the same thing and `regime` survives in code identifiers.
+
+### Prescription
+A family **with its parameters bound** — `plantation_rotation` with `thin_year=2037,
+clearcut_year=2052`. This is what gets rendered into a keyfile. One family expands into
+many prescriptions via the parameter grid in `config/prescriptions.yaml`.
+
+### Trajectory
+The **result** of running one prescription on one stand: the full 50-year, 10-cycle path of
+that stand's state and removals. Keyed by `(stand_id, prescription_id)`. A prescription is
+an *instruction*; a trajectory is an *outcome*. Do not use them interchangeably.
+
+### Trajectory library
+The **set of trajectories available to one stand** — its candidate futures, and therefore
+the complete decision space the scheduler has for that stand. Contents are determined by
+the stand's **ownership class**. Two hard rules: `no_management` is always in it, and a
+riparian unit's library contains *only* `no_management`.
+
+- Also used for the landscape-wide store of all stands' libraries (`trajectory_index` +
+  `trajectory_cycles`). Say "this stand's library" or "the trajectory library" and the
+  scope is clear from context.
+- **Eligible set** — the prescription families an ownership class may draw from, before
+  the parameter grid expands them and before eligibility screens shrink them.
+
+### Selected plan
+The scheduler's output: exactly one `trajectory_id` per `stand_id`. Not a schedule of
+treatments — the treatments are already inside the chosen trajectories.
+
 ## Supporting terms
 
 - **TreeMap / TM_ID** — a raster where each pixel's value (`TM_ID`, crosswalk `Value`) is the
@@ -102,9 +140,16 @@ pixels are equal-area in EPSG:5070). Example: a 40-ac unit = plot A (15 ac) + pl
    baseline, management unit in the target) when it matters.
 4. Keep `PLT_CN`, `CN`, `Stand_CN`, `STAND_ID`, `MU_ID` as **strings**.
 5. Per-acre values paint directly; **totals need × pixel acres**.
+6. A **prescription** is an instruction, a **trajectory** is its outcome. "Run the
+   trajectory" and "select the prescription" are both wrong.
+7. Ownership class defines a stand's **library**, not its treatment. Saying "corporate
+   stands get plantation rotation" describes the old deterministic rule, not the current
+   design — corporate stands *may* get it, and the scheduler decides.
 
 ## See also
 
+- `notes/trajectory-library-and-annealing.md` — the architecture the scheduling vocabulary
+  above belongs to.
 - `notes/treemap-methodology.md` — imputation, per-acre vs area totals.
 - `notes/fvs-to-raster-painting.md` — `stand_cn == PLT_CN` (plot-level baseline).
 - `notes/management-pipeline-plan.md` — units, crosswalk, area-weighted aggregation.
