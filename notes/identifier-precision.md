@@ -123,6 +123,35 @@ Regression coverage: `tests/test_ids.py`, plus cases in `tests/test_s3_assign_pl
 `MU_ID` on the units side, a float `STAND_CN` on the tree-list side, and R-style scientific
 notation in a lookup CSV.
 
+## Verifying the R side without the FIA databases
+
+The R guards were originally written in a container with no R, and **four defects escaped
+that reading-only review — two of them introduced by the fix for the previous one.** Both
+turned on behavioural facts about base R that reading does not reliably surface
+(`format()` pads character vectors; `format(NA_real_)` is the string `"NA"`).
+
+`r/tests/test_guards.R` closes most of that gap and needs **base R only** — no DBI,
+RSQLite, dplyr or terra, and no `/mnt/d` data:
+
+```bash
+Rscript r/tests/test_guards.R     # 18 checks, exits non-zero on the first failure
+```
+
+It parses the guard blocks straight out of `r/01` and `r/02` and evaluates them against
+synthetic inputs, so it cannot drift from what actually ships. It covers each input shape
+the VAT can produce (character, factor, numeric, numeric-with-NA, numeric at `2**53`) and
+asserts that the digits-only guard catches all three corruption shapes seen so far:
+padding, the literal `"NA"`, and scientific notation. Every previously-escaped defect is
+now a failing check if reintroduced.
+
+Installing R for this is one `apt-get install -y r-base-core` and takes a couple of minutes;
+CI does not currently do it, so the checks are manual for now.
+
+What this still does **not** cover: the `CAST(... AS TEXT)` statements, which need a real
+FIA SQLite schema, and everything downstream of an actual `dbGetQuery`. A full
+`Rscript r/01_...R && Rscript r/02_...R` against the real databases remains the only way to
+validate those.
+
 ## Open
 
 - **Existing `/mnt/d` outputs were not audited** — the drive is not mounted in the container
