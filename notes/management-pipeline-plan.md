@@ -83,7 +83,8 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
   - Family forest → light thinning
   - Corporate → pine plantation rotation (if pine) or clearcut (if hardwood)
   - Riparian buffer units → **no harvest, ever** (no entry of any kind, no buffer class exempted). Assigned by geometry, so it overrides any ownership/forest-type rule above it. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
-- **Output**: `pipeline/s3_management/regime_assignment.py` with `assign_regime(unit_attrs) -> (regime_name, params)`.
+- **The full mapping now lives in [`config/management_regimes.yaml`](../config/management_regimes.yaml)**, with the reasoning in [`management-regimes-by-owner.md`](management-regimes-by-owner.md). It carries all **seven** Harris forest classes separately (per `PLAN.md` §3c) rather than the four-way `PUBLIC_OWNERS` collapse the sketch above implies, plus each class's eligible regime set and its key in the TPO and LAMPS owner vocabularies.
+- **Output**: `pipeline/s3_management/regime_assignment.py` with `assign_regime(unit_attrs) -> (regime_name, params)`. The module still hardcodes its own copy of the mapping; `tests/test_config.py` asserts it agrees with the config until the loader lands.
 
 ---
 

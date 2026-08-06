@@ -1,0 +1,320 @@
+# Management regimes by ownership class — the unified direction
+#
+# Single source of truth for "which silvicultural regime does each owner class get?".
+# Before this file the answer was spread across four places that did not agree:
+# PLAN.md 3c/4b (policy intent), pipeline/s3_management/regime_assignment.py (the
+# executed rule), config/tpo_targets.yaml (constraint vocabulary), and the LAMPS
+# scheduler plan (a third owner vocabulary). See notes/management-regimes-by-owner.md
+# for the reasoning, the open questions, and what has to change in code.
+#
+# Status of this file: DIRECTION, not yet the executed rule. `regime_assignment.py`
+# still hardcodes its own copy. Each owner class carries an `assignment_status` that
+# records whether code currently agrees; tests/test_config.py enforces both cases, so
+# the two cannot silently drift apart.
+
+version: 1
+
+sources:
+  ownership_raster: "Harris, Caputo & Butler (2025), doi:10.2737/RDS-2025-0045 — 30 m, circa 2022"
+  ownership_classes: "config/projection.yaml: ownership.classes"
+  regime_library: "pipeline/s4_fvs/regime_templates.py: REGIMES"
+  assignment_code: "pipeline/s3_management/regime_assignment.py: assign_regime"
+  volume_caps: "config/tpo_targets.yaml: by_owner_group"
+  buffer_rules: "config/bmp_rules.yaml"
+
+# Year-valued params below are OFFSETS from the inventory year
+# (config/projection.yaml: projection.base_year, 2022). A `*_offset` key of 10 means
+# the absolute FVS keyword year is inv_year + 10 = 2032. Offsets keep the direction
+# independent of the inventory vintage; regime_templates.py consumes absolute years.
+inventory_year_source: "config/projection.yaml: projection.base_year"
+
+# ---------------------------------------------------------------------------------
+# Precedence — evaluated top to bottom, first match wins.
+#
+# Ownership is NOT the outermost key: geometry beats it. A riparian buffer on
+# corporate land is unmanaged, not a plantation.
+# ---------------------------------------------------------------------------------
+precedence:
+  - rank: 1
+    rule: riparian_override
+    keyed_by: geometry
+    detail: >-
+      A unit in a stream-management zone gets `no_management` unconditionally — no entry
+      of any kind, no buffer class exempted, no ownership able to override it. Still
+      grown and reported as its own polygon. See notes/methodology-directions.md item 2.
+  - rank: 2
+    rule: owner_class_default
+    keyed_by: ownership_class
+    detail: "The per-class `default` block below."
+  - rank: 3
+    rule: forest_type_split
+    keyed_by: forest_type_group
+    detail: >-
+      Only inside a class that declares `default.by_forest_type` (corporate today).
+      Pine test is FORTYPCD 140-179 per regime_assignment.is_pine.
+
+riparian_override:
+  regime: no_management
+  params: {}
+  # A unit at or above this share of its area in an SMZ is treated as riparian.
+  smz_pct_threshold: 50.0
+  applies_to: all_owner_classes
+  note: >-
+    Threshold mirrors regime_assignment.RIPARIAN_SMZ_PCT. It is a delineation artifact,
+    not a policy dial — once buffers are emitted as their own units
+    (notes/methodology-directions.md item 2) a unit is riparian by construction and the
+    percentage test becomes a fallback for units that predate that change.
+
+# ---------------------------------------------------------------------------------
+# Regime library — the mechanical templates, plus the PLAN.md 4b policy name each one
+# implements. PLAN 4b lists six policy regimes; the library has five templates because
+# "Industrial hardwood/mixed" and "Riparian" reuse `clearcut` and `no_management`.
+# Shelterwood from PLAN 3.1 is deliberately absent: its FVS field layout is unverified.
+# ---------------------------------------------------------------------------------
+regimes:
+  no_management:
+    policy_name: "No management / Riparian"
+    cuts: false
+  thin_from_below:
+    policy_name: "NIPF light"
+    cuts: true
+  selection_harvest:
+    policy_name: "Public conservative management"
+    cuts: true
+  plantation_rotation:
+    policy_name: "Industrial pine plantation"
+    cuts: true
+  clearcut:
+    policy_name: "Industrial hardwood / mixed"
+    cuts: true
+
+# ---------------------------------------------------------------------------------
+# Owner classes.
+#
+# All seven forest classes are carried separately, per PLAN.md 3c ("no collapsing"),
+# even where their parameters currently coincide. Coincident parameters are a statement
+# about missing evidence, not a decision to merge the classes: `differentiation` records
+# what would have to be measured for a class to earn its own numbers.
+#
+# `raster_value` is the Harris pixel value; `own_code` is the LETO/FIA ownership code
+# used by regime_assignment.py. They are the same integers by construction for 3-8 —
+# tests/test_config.py asserts that, because the assignment code relies on it.
+#
+# `assignment_status`:
+#   current  — regime_assignment.py produces exactly this regime and these params today.
+#   proposed — the direction differs from code; `supersedes` names what code does now.
+# ---------------------------------------------------------------------------------
+owner_classes:
+
+  unknown_forest:
+    raster_value: 0
+    own_code: 0
+    label: "Forested, ownership unresolved"
+    tpo_owner_group: null          # deliberately uncapped — see reporting note
+    lamps_mha_group: null          # no minimum-harvest-age mapping; not schedulable
+    assignment_status: current
+    default:
+      regime: thin_from_below
+      params:
+        year_offset: 10
+        max_dbh: 8.0
+        proportion: 0.35
+    eligible_regimes: [no_management, thin_from_below]
+    differentiation: >-
+      Not a real owner. Resolve the pixels rather than tune the regime. Kept to the
+      light default so the class cannot dominate any harvest total by accident.
+    reporting: >-
+      Report as its own row, never folded into Private. Folding unknown into Private
+      would inflate the largest TPO cap (66-71M cuft/yr) with pixels that have no
+      evidence behind them.
+
+  family_forest:
+    raster_value: 3
+    own_code: 3
+    label: "Family forest (NIPF)"
+    tpo_owner_group: "Private"
+    lamps_mha_group: null          # LAMPS plan maps industrial+public only; family raises
+    assignment_status: current
+    default:
+      regime: thin_from_below
+      params:
+        year_offset: 10
+        max_dbh: 8.0
+        proportion: 0.35
+    eligible_regimes: [no_management, thin_from_below, selection_harvest, clearcut]
+    differentiation: >-
+      Family harvest is episodic and owner-driven rather than rotation-driven. A single
+      deterministic thin is a placeholder for the fitted harvest model (PLAN.md 3c),
+      which should predict entry probability per year rather than a fixed entry year.
+    open:
+      - "No LAMPS minimum-harvest-age group. Scheduler must degrade to schedulable=false
+         for family units rather than crash — see the LAMPS integration plan, Task 4."
+
+  corporate_forest:
+    raster_value: 4
+    own_code: 4
+    label: "Corporate / other private forest"
+    tpo_owner_group: "Private"
+    lamps_mha_group: "industrial"
+    assignment_status: current
+    default:
+      by_forest_type:
+        pine:
+          regime: plantation_rotation
+          params:
+            thin_year_offset: 15
+            thin_proportion: 0.40
+            thin_max_dbh: 8.0
+            clearcut_year_offset: 30
+        other:
+          regime: clearcut
+          params:
+            year_offset: 30
+      forest_type_test: "pipeline.s3_management.regime_assignment.is_pine (FORTYPCD 140-179)"
+    eligible_regimes: [thin_from_below, plantation_rotation, clearcut]
+    differentiation: >-
+      The one class whose regime is genuinely rotation-driven, so a fixed schedule is
+      defensible here in a way it is not for the others. 30-year rotation is the
+      Southeast loblolly convention, not a fitted value.
+    open:
+      - "Rotation length and thin timing are conventions, not calibrated to the AOI.
+         LCMS Tree Removal intervals on class-4 pixels would give a measured rotation."
+      - "plantation_rotation emits no PLANT/NATREGEN keyword, so the post-clearcut stand
+         regenerates by FVS default rather than as a planted plantation. That understates
+         the next rotation. Blocked on verifying the regeneration field layout
+         (pipeline/s4_fvs/regime_templates.py docstring)."
+
+  tribal_forest:
+    raster_value: 5
+    own_code: 5
+    label: "Tribal forest"
+    tpo_owner_group: "Other public"
+    lamps_mha_group: "public"
+    assignment_status: current
+    default:
+      regime: selection_harvest
+      params:
+        start_year_offset: 10
+        end_year_offset: 40
+        interval: 10
+        proportion: 0.20
+    eligible_regimes: [no_management, selection_harvest, thin_from_below]
+    differentiation: >-
+      Carried as its own class but currently shares the public parameters. projection.yaml
+      already states the criterion: fall back to a pooled estimate if the class has fewer
+      than 500 harvest events in training. Until the harvest model is fitted, pooled is
+      what these numbers are.
+    open:
+      - "Tribal land is grouped under TPO 'Other public' for the volume cap, which is a
+         reporting convenience, not a claim about management similarity."
+
+  federal_forest:
+    raster_value: 6
+    own_code: 6
+    label: "Federal forest (National Forest and other federal)"
+    tpo_owner_group: "Federal (NF)"
+    lamps_mha_group: "public"
+    assignment_status: current
+    default:
+      regime: selection_harvest
+      params:
+        start_year_offset: 10
+        end_year_offset: 40
+        interval: 10
+        proportion: 0.20
+    eligible_regimes: [no_management, selection_harvest, thin_from_below]
+    differentiation: >-
+      The only class with its own TPO cap (1.77M cuft/yr all-years, 2.02M for 2013-2024
+      — about 2.5% of the AOI total), so it is already separable on the constraint side
+      even while its regime parameters match the other public classes.
+    open:
+      - "The TPO 'Federal (NF)' cap is National Forest only; other federal ownership in
+         the Harris class-6 pixels has no cap of its own and would consume the NF budget."
+
+  state_forest:
+    raster_value: 7
+    own_code: 7
+    label: "State forest"
+    tpo_owner_group: "Other public"
+    lamps_mha_group: "public"
+    assignment_status: current
+    default:
+      regime: selection_harvest
+      params:
+        start_year_offset: 10
+        end_year_offset: 40
+        interval: 10
+        proportion: 0.20
+    eligible_regimes: [no_management, selection_harvest, thin_from_below, plantation_rotation]
+    differentiation: >-
+      Florida state forests are managed more actively than the federal parameters imply
+      (longleaf restoration, thinning for red-cockaded woodpecker habitat, some pine
+      production). Diverging from the shared public numbers needs evidence: LCMS Tree
+      Removal rate on class-7 pixels versus class-6, over the AOI. Until then the shared
+      parameters stand and plantation_rotation stays eligible but unused.
+
+  local_forest:
+    raster_value: 8
+    own_code: 8
+    label: "Local government forest (county / municipal)"
+    tpo_owner_group: "Other public"
+    lamps_mha_group: "public"
+    assignment_status: current
+    default:
+      regime: selection_harvest
+      params:
+        start_year_offset: 10
+        end_year_offset: 40
+        interval: 10
+        proportion: 0.20
+    eligible_regimes: [no_management, selection_harvest]
+    differentiation: >-
+      County and municipal forest in this AOI is largely parks and watershed land, where
+      commercial entry is rare. The testable criterion: if class-8 pixels show a Tree
+      Removal rate near zero in LCMS 1985-2024, the default becomes no_management rather
+      than a 20% selection cut every decade. Applying the public schedule here is the
+      most likely over-harvest in this table.
+
+# Masked classes — not forest, never assigned a regime, excluded from FVS entirely
+# (config/projection.yaml: ownership.mask_values).
+masked_classes:
+  non_forest: {raster_value: 1}
+  water: {raster_value: 2}
+
+# ---------------------------------------------------------------------------------
+# Crosswalks — the three owner vocabularies in play, resolved in one place.
+# ---------------------------------------------------------------------------------
+crosswalks:
+
+  # Harris ownership class -> TPO owner group. Names must match
+  # config/tpo_targets.yaml: by_owner_group keys exactly; the scheduler's OWNER
+  # constraint dimension looks up caps by these strings.
+  tpo_owner_group:
+    "Federal (NF)": [federal_forest]
+    "Other public": [tribal_forest, state_forest, local_forest]
+    "Private": [family_forest, corporate_forest]
+    _uncapped: [unknown_forest]
+
+  # Harris ownership class -> LAMPS minimum-harvest-age group
+  # (docs/superpowers/plans/2026-07-28-lamps-scheduler-integration.md).
+  # family_forest and unknown_forest have no group by design: LAMPS refuses to invent
+  # an MHA, so the scheduler must mark those units schedulable=false rather than crash.
+  lamps_mha_group:
+    industrial: [corporate_forest]
+    public: [tribal_forest, federal_forest, state_forest, local_forest]
+    _unmapped: [family_forest, unknown_forest]
+
+# ---------------------------------------------------------------------------------
+# Trajectory-library cost. FVS run count is unique(plot x regime x site-index bin)
+# (PLAN.md 4c). Distinct parameterizations across every eligible set above:
+#   no_management, thin_from_below, selection_harvest, plantation_rotation, clearcut = 5.
+# Pilot upper bound: 693 plots x 5 = 3,465 runs, against 693 for the no-management
+# baseline. SI adds no multiplier while site index is inherited from the plot.
+# Every new per-class parameterization multiplies this — which is the reason the public
+# classes share one parameter set instead of getting three plausible-looking variants.
+# ---------------------------------------------------------------------------------
+trajectory_library:
+  distinct_parameterizations: 5
+  pilot_plots: 693
+  pilot_upper_bound_runs: 3465
+  si_binning: "inherited from plot; no multiplier until per-pixel SI regression lands (PLAN.md 2d)"

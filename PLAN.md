@@ -144,6 +144,7 @@
   - Public conservative management
   - Riparian (**no entry, ever**; still grown and reported as unique buffer polygons — see `notes/methodology-directions.md`)
 - Each regime gets selected per pixel by a deterministic function of `(ownership, forest type, riparian buffer class, stand age)`.
+- **Owner class → regime is specified in `config/management_regimes.yaml`** (reasoning: `notes/management-regimes-by-owner.md`): one default regime and one eligible regime set per ownership class from §3c, all seven carried separately, with riparian geometry overriding ownership. That config also crosswalks the seven classes to the three TPO owner groups used as volume caps and to the LAMPS minimum-harvest-age groups.
 - Output: `regimes/*.key` templates + `regime_assignment.py` (the function).
 
 ### 4c. Trajectory library construction
