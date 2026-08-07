@@ -8,9 +8,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipeline.s4_fvs.regime_templates import (
+    REGEN_DEFAULTS,
     REGIMES,
     Regeneration,
     ThinDBH,
+    apportion_by_sdi,
     build_regeneration,
     build_thins,
     render_keyfile,
@@ -192,6 +194,89 @@ def test_plantation_rotation_replants_after_the_final_cut():
 def test_partial_cuts_do_not_regenerate(regime, params):
     """The residual overstory is the seed source; a Plant record would double-count."""
     assert build_regeneration(regime, params) == []
+
+
+# ---- Diaz et al. natural-regeneration species rule -----------------------------------
+#
+# Natural regeneration is limited to the species already present in the stand, with density
+# set by each species' share of stand SDI (Diaz et al. 2015 p. 27, docs/references/).
+# Planting is separate: planted species is a management choice, not a property of the
+# stand that was cut.
+
+def test_apportion_splits_tpa_by_sdi_share():
+    pairs = apportion_by_sdi({"LP": 75.0, "SA": 25.0}, total_tpa=400)
+    assert pairs == [("LP", 300.0), ("SA", 100.0)]
+
+
+def test_apportion_drops_trace_species_and_renormalizes():
+    """A 2% species would otherwise get a near-zero record; the rest must still sum to total."""
+    pairs = apportion_by_sdi({"LP": 60.0, "SA": 38.0, "WO": 2.0}, total_tpa=400, min_share=0.05)
+    assert [sp for sp, _ in pairs] == ["LP", "SA"]
+    assert sum(tpa for _, tpa in pairs) == pytest.approx(400.0)
+
+
+def test_apportion_keeps_the_largest_when_everything_is_below_the_floor():
+    """A very mixed stand is not an empty one — returning nothing would drop the harvest."""
+    even = {code: 1.0 for code in ("LP", "SA", "WO", "RM", "SU", "YP", "BG", "WA", "HI", "CO",
+                                   "SP", "LL", "TM", "PP", "PD", "WP", "VP", "BY", "PC", "HM",
+                                   "FM", "BE", "SV", "SM", "BU")}
+    pairs = apportion_by_sdi(even, total_tpa=400, min_share=0.05)
+    assert len(pairs) == 1
+    assert pairs[0][1] == pytest.approx(400.0)
+
+
+def test_apportion_ignores_absent_species():
+    pairs = apportion_by_sdi({"LP": 80.0, "SA": 20.0, "WO": 0.0}, total_tpa=100)
+    assert [sp for sp, _ in pairs] == ["LP", "SA"]
+
+
+@pytest.mark.parametrize("sdi, tpa, match", [
+    ({"LP": 1.0}, 0, "total_tpa"),
+    ({"LP": 0.0}, 400, "positive SDI"),
+])
+def test_apportion_rejects_degenerate_input(sdi, tpa, match):
+    with pytest.raises(ValueError, match=match):
+        apportion_by_sdi(sdi, total_tpa=tpa)
+
+
+def test_natural_regen_follows_stand_composition():
+    regen = build_regeneration("clearcut", {
+        "year": 2052, "regen_tpa": 400, "stand_sdi": {"SA": 70.0, "LP": 30.0},
+    })
+    assert [(r.species, r.trees_per_acre) for r in regen] == [("SA", 280.0), ("LP", 120.0)]
+    assert all(r.natural for r in regen)
+    assert {r.year for r in regen} == {2053}
+
+
+def test_natural_regen_without_composition_warns_and_falls_back(caplog):
+    """Falling back means the Diaz rule was skipped for that stand — it must not be silent."""
+    with caplog.at_level("WARNING"):
+        regen = build_regeneration("clearcut", {"year": 2052})
+    assert len(regen) == 1
+    assert "stand_sdi" in caplog.text
+
+
+def test_planting_ignores_stand_composition():
+    """What gets planted is a management decision, not a property of the stand that was cut."""
+    regen = build_regeneration("plantation_rotation", {
+        "thin_year": 2037, "clearcut_year": 2052, "stand_sdi": {"WO": 90.0, "RM": 10.0},
+    })
+    assert [r.species for r in regen] == [REGEN_DEFAULTS["plant_species"]]
+    assert regen[0].natural is False
+
+
+def test_planted_stands_suppress_automatic_regeneration():
+    """NATURAL forces NOINGROW/NOAUTALY itself; planted stands state them so the two
+    trajectory types stay comparable."""
+    key = render_keyfile("MU_1", "MU_1", "plantation_rotation",
+                         {"thin_year": 2037, "clearcut_year": 2052})
+    estab = key.split("Estab")[1]
+    assert "NoInGrow" in estab and "NoAutAly" in estab
+
+
+def test_naturally_regenerated_stands_do_not_repeat_the_suppression():
+    key = render_keyfile("MU_1", "MU_1", "clearcut", {"year": 2052})
+    assert "NoInGrow" not in key
 
 
 def test_regen_mode_and_species_are_overridable():

@@ -22,8 +22,19 @@ followed by a **regeneration record** inside an `Estab` packet — `Plant` for a
 replant, `Natural` for natural regeneration. Without one, a clearcut stand stays bare for
 the remainder of the horizon, which understates volume and carbon and (under the
 trajectory-library architecture) biases the scheduler against clearcut trajectories for a
-reason that is a modelling artifact rather than silviculture. See `_ESTAB_FIELDS` below for
-the verified field layout and `REGEN_DEFAULTS` for the values still needing calibration.
+reason that is a modelling artifact rather than silviculture.
+
+Which species regenerate follows **Diaz et al. (2015)** (`docs/references/`): natural
+regeneration is limited to the species already present in the stand, apportioned by each
+species' share of stand SDI (``apportion_by_sdi``, from the caller's ``stand_sdi``).
+Planting is treated separately in that same work — planted species is a management choice,
+so `plantation_rotation` uses the configured commercial species regardless of what stood
+there before.
+
+**Every keyword layout and every number lives in `config/fvs_keywords.yaml`**, which is the
+assumptions register: the parameter fields of each keyword we emit, where that layout was
+verified, the silvicultural defaults, and an `open_questions` list naming the values that
+are still placeholders. This module reads that file rather than keeping its own copies.
 
 `ThinBBA`/shelterwood and the FFE/carbon block are still **not** emitted here; they need
 their field layouts verified the same way first. The schedule/DataBase scaffolding mirrors
@@ -37,12 +48,39 @@ Usage:
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+logger = logging.getLogger(__name__)
 
 # Default projection schedule (matches config/projection.yaml: 50 yr, 5-yr cycles from 2022).
 DEFAULT_INV_YEAR = 2022
 DEFAULT_CYCLE_YEARS = 5
 DEFAULT_NUM_CYCLE = 10
+
+KEYWORD_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "fvs_keywords.yaml"
+
+
+def load_keyword_config(path: Path | None = None) -> dict:
+    """Load the FVS keyword register (`config/fvs_keywords.yaml`).
+
+    That file is the single record of both halves of a keyfile's correctness: the parameter
+    field layout of every keyword we emit, and the silvicultural numbers those keywords are
+    filled with. Nothing in this module keeps a second copy — see the register's own header
+    for why, and its `open_questions` list for which values are still placeholders.
+    """
+    with open(path or KEYWORD_CONFIG_PATH) as f:
+        return yaml.safe_load(f)
+
+
+KEYWORD_CONFIG = load_keyword_config()
+KEYWORD_FIELDS: dict[str, list[str]] = KEYWORD_CONFIG["keyword_fields"]
+REGIME_DEFAULTS: dict[str, dict] = KEYWORD_CONFIG["defaults"]["regimes"]
+REGEN_DEFAULTS: dict = KEYWORD_CONFIG["defaults"]["regeneration"]
 
 # FVS reads keyword records in fixed 10-column fields: columns 1-10 hold the keyword,
 # 11-20 field 1, 21-30 field 2, and so on. Getting a value into the wrong field is silent —
@@ -122,26 +160,8 @@ _ESTAB_FIELDS = "date, species, trees_per_acre, survival_pct, age, height_ft, sh
 
 # Species codes are the SN (Southern) variant alpha codes from `sn/blkdat.f` DATA JSP:
 # LP = loblolly pine (13), SA = slash pine (6), LL = longleaf (8), SP = shortleaf (5).
-#
-# POLICY DEFAULTS -- these are placeholders, not calibrated values, and the library
-# generator should override them per stand rather than inherit them:
-#   * `species`   should come from the unit's forest type. Diaz et al. (2015) limited
-#                 regeneration to species already present in the stand; doing the same
-#                 needs the unit's composite tree list, which the generator has and this
-#                 template does not.
-#   * `tpa`       605/ac is a conventional 8x9 ft plantation spacing for the Southeast.
-#   * `survival`  100% is *FVS's own* default (esin.f resets out-of-range values to it).
-#                 Operational southern pine plantings run nearer 80-90%; left at the FVS
-#                 default rather than inventing a number.
-REGEN_DEFAULTS = {
-    "species": "LP",
-    "plant_tpa": 605.0,
-    "natural_tpa": 400.0,
-    "survival_pct": 100.0,
-    "age": 1.0,
-    "height_ft": 0.5,
-    "delay_years": 1,
-}
+# Every value below comes from `config/fvs_keywords.yaml`; see that file for the basis of
+# each number and for the ones still flagged as placeholders.
 
 
 @dataclass(frozen=True)
@@ -153,7 +173,7 @@ class Regeneration:
     so choosing it also turns off automatic tallying and ingrowth for the stand.
     """
     year: int
-    species: str = REGEN_DEFAULTS["species"]
+    species: str = REGEN_DEFAULTS["fallback_species"]
     trees_per_acre: float = REGEN_DEFAULTS["plant_tpa"]
     natural: bool = False
     survival_pct: float = REGEN_DEFAULTS["survival_pct"]
@@ -193,28 +213,32 @@ def clearcut(params: dict) -> list[ThinDBH]:
 
 
 def thin_from_below(params: dict) -> list[ThinDBH]:
+    defaults = REGIME_DEFAULTS["thin_from_below"]
     return [ThinDBH(
         year=int(params["year"]),
-        proportion=float(params.get("proportion", 0.35)),
+        proportion=float(params.get("proportion", defaults["proportion"])),
         min_dbh=0.0,
-        max_dbh=float(params.get("max_dbh", 8.0)),
+        max_dbh=float(params.get("max_dbh", defaults["max_dbh"])),
     )]
 
 
 def selection_harvest(params: dict) -> list[ThinDBH]:
     """Light proportional thins every ``interval`` years across a window of years."""
+    defaults = REGIME_DEFAULTS["selection_harvest"]
     start = int(params["start_year"])
-    end = int(params.get("end_year", start + 30))
-    interval = int(params.get("interval", 10))
-    proportion = float(params.get("proportion", 0.2))
+    end = int(params.get("end_year", start + defaults["window_years"]))
+    interval = int(params.get("interval", defaults["interval"]))
+    proportion = float(params.get("proportion", defaults["proportion"]))
     return [ThinDBH(year=y, proportion=proportion) for y in range(start, end + 1, interval)]
 
 
 def plantation_rotation(params: dict) -> list[ThinDBH]:
     """A commercial thin from below, then a final clearcut at rotation age."""
+    defaults = REGIME_DEFAULTS["plantation_rotation"]
     return [
-        ThinDBH(year=int(params["thin_year"]), proportion=float(params.get("thin_proportion", 0.4)),
-                max_dbh=float(params.get("thin_max_dbh", 8.0))),
+        ThinDBH(year=int(params["thin_year"]),
+                proportion=float(params.get("thin_proportion", defaults["thin_proportion"])),
+                max_dbh=float(params.get("thin_max_dbh", defaults["thin_max_dbh"]))),
         ThinDBH(year=int(params["clearcut_year"]), proportion=1.0),
     ]
 
@@ -248,23 +272,95 @@ def build_thins(regime: str, params: dict) -> list[ThinDBH]:
 _REGEN_MODES = {"plant", "natural", "none"}
 
 
+def apportion_by_sdi(
+    stand_sdi: Mapping[str, float],
+    total_tpa: float,
+    min_share: float | None = None,
+) -> list[tuple[str, float]]:
+    """Split ``total_tpa`` across a stand's species in proportion to their SDI share.
+
+    This is the Diaz et al. (2015) natural-regeneration rule: regeneration is limited to
+    the species **already present in the stand**, with density set by "the proportion of
+    SDI occupied by each species in the stand" (report p. 27, `docs/references/`). It
+    replaces picking one species for the whole landscape, which regenerated every clearcut
+    as loblolly regardless of what stood there.
+
+    ``stand_sdi`` maps an FVS species code to that species' stand density index — or to any
+    non-negative quantity proportional to it, since only the shares matter. Species below
+    ``min_share`` of the total are dropped and the remainder renormalised, so a trace
+    species does not produce a record FVS would reject for near-zero TPA. Returns
+    ``(species, trees_per_acre)`` pairs ordered by descending share.
+    """
+    if min_share is None:
+        min_share = float(REGEN_DEFAULTS["min_species_share"])
+    if total_tpa <= 0:
+        raise ValueError(f"total_tpa must be > 0, got {total_tpa}")
+
+    positive = {str(sp): float(v) for sp, v in stand_sdi.items() if float(v) > 0}
+    total = sum(positive.values())
+    if not positive:
+        raise ValueError("stand_sdi has no species with positive SDI")
+
+    kept = {sp: v for sp, v in positive.items() if v / total >= min_share}
+    if not kept:
+        # Every species is below the floor, which means the stand is very mixed rather
+        # than empty. Keep the single largest instead of returning nothing.
+        kept = {max(positive, key=positive.get): max(positive.values())}
+
+    kept_total = sum(kept.values())
+    pairs = [(sp, total_tpa * v / kept_total) for sp, v in kept.items()]
+    return sorted(pairs, key=lambda pair: (-pair[1], pair[0]))
+
+
 def _regen_after(harvest_year: int, params: dict, *, default_mode: str) -> list[Regeneration]:
-    """Build the regeneration record following a stand-replacing harvest."""
+    """Build the regeneration records following a stand-replacing harvest.
+
+    Natural regeneration follows the stand's own composition (see ``apportion_by_sdi``) when
+    the caller supplies ``stand_sdi``; planting uses the configured commercial species,
+    because what gets planted is a management decision rather than a property of the stand
+    that was cut — the same split Diaz et al. drew.
+    """
     mode = str(params.get("regen", default_mode)).lower()
     if mode not in _REGEN_MODES:
         raise ValueError(f"regen must be one of {sorted(_REGEN_MODES)}, got {mode!r}")
     if mode == "none":
         return []
+
     natural = mode == "natural"
+    year = harvest_year + int(params.get("regen_delay_years", REGEN_DEFAULTS["delay_years"]))
     default_tpa = REGEN_DEFAULTS["natural_tpa"] if natural else REGEN_DEFAULTS["plant_tpa"]
+    total_tpa = float(params.get("regen_tpa", default_tpa))
+    shared = {
+        "natural": natural,
+        "survival_pct": float(params.get("regen_survival_pct", REGEN_DEFAULTS["survival_pct"])),
+        "age": float(params.get("regen_age", REGEN_DEFAULTS["age"])),
+        "height_ft": float(params.get("regen_height_ft", REGEN_DEFAULTS["height_ft"])),
+    }
+
+    stand_sdi = params.get("stand_sdi")
+    if natural and REGEN_DEFAULTS["natural_follows_stand_composition"] and stand_sdi:
+        return [
+            Regeneration(year=year, species=sp, trees_per_acre=tpa, **shared)
+            for sp, tpa in apportion_by_sdi(stand_sdi, total_tpa)
+        ]
+
+    if natural and not stand_sdi:
+        # Not silent: falling back means the Diaz composition rule was skipped for this
+        # stand, and every such stand regenerates as one hard-coded species.
+        logger.warning(
+            "natural regeneration for year %d has no stand_sdi; falling back to a single "
+            "%s record. Supply stand_sdi to follow the stand's own composition.",
+            year, REGEN_DEFAULTS["fallback_species"],
+        )
+
+    species_default = (
+        REGEN_DEFAULTS["fallback_species"] if natural else REGEN_DEFAULTS["plant_species"]
+    )
     return [Regeneration(
-        year=harvest_year + int(params.get("regen_delay_years", REGEN_DEFAULTS["delay_years"])),
-        species=str(params.get("regen_species", REGEN_DEFAULTS["species"])),
-        trees_per_acre=float(params.get("regen_tpa", default_tpa)),
-        natural=natural,
-        survival_pct=float(params.get("regen_survival_pct", REGEN_DEFAULTS["survival_pct"])),
-        age=float(params.get("regen_age", REGEN_DEFAULTS["age"])),
-        height_ft=float(params.get("regen_height_ft", REGEN_DEFAULTS["height_ft"])),
+        year=year,
+        species=str(params.get("regen_species", species_default)),
+        trees_per_acre=total_tpa,
+        **shared,
     )]
 
 
@@ -307,6 +403,13 @@ def render_estab_block(regen: list[Regeneration]) -> str:
     if not regen:
         return ""
     lines = [_keyword_line("Estab", min(r.year for r in regen))]
+    if any(not r.natural for r in regen) and REGEN_DEFAULTS["suppress_automatic_regeneration"]:
+        # `Natural` already forces NOINGROW and NOAUTALY (esin.f FORMAT 1230). Stating them
+        # for planted stands too keeps clearcut and plantation_rotation trajectories
+        # comparable instead of differing by a side effect nobody chose, and is the
+        # plain-FVS analogue of Diaz et al. turning the default regeneration process off.
+        lines.append(_keyword_line("NoInGrow"))
+        lines.append(_keyword_line("NoAutAly"))
     lines.extend(r.render() for r in regen)
     lines.append("End")
     return "\n".join(lines)
