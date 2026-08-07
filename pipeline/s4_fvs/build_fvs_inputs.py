@@ -56,11 +56,14 @@ import pandas as pd
 
 from pipeline.s4_fvs.fallback_treelists import (
     SOURCE_DIRECT,
+    SOURCE_FALLBACK,
     forest_type_group,
     load_fallback_policy,
+    ladder_type_key,
     plt_cn_for_slot,
     resolve_initialization,
 )
+from pipeline.spatial_ref import assert_project_crs, to_project_crs
 
 logger = logging.getLogger(__name__)
 
@@ -180,8 +183,16 @@ def ladder_decisions(
     donor_id, donor_distance_m, same_forest_type``. Units whose forest type is unknown can
     never satisfy the same-type rung, so they fall to the tighter any-type radius — a
     deliberate degradation, not an oversight.
+
+    The units must be in the project CRS. The ladder's 5 km and 2 km bounds are distances
+    in metres, so a units file in degrees would report every donor as well under a
+    kilometre and the bound would never fire — the stand would silently take a donor from
+    the far side of the state instead of falling through to a fixed list. Before the bounds
+    existed this was cosmetic, because the distance was only recorded; now it decides.
     """
     import numpy as np
+
+    assert_project_crs(units_gdf, context="ladder_decisions: donor distances are in metres")
 
     policy = policy or load_fallback_policy()
     gdf = units_gdf.copy()
@@ -192,7 +203,7 @@ def ladder_decisions(
     missing_pos = np.where(~is_runnable)[0]
     runnable_pos = np.where(is_runnable)[0]
 
-    columns = ["MU_ID", "rung", "method", "tree_source", "slot", "donor_id",
+    columns = ["MU_ID", "fortypcd", "rung", "method", "tree_source", "slot", "donor_id",
                "donor_distance_m", "same_forest_type"]
     if len(missing_pos) == 0:
         return pd.DataFrame(columns=columns)
@@ -241,13 +252,46 @@ def ladder_decisions(
             decision = resolve_initialization(fortypcd=fortypcd, policy=policy)
 
         rows.append({
-            "MU_ID": str(ids[pos]), "rung": decision.rung, "method": decision.method,
+            "MU_ID": str(ids[pos]), "fortypcd": fortypcd,
+            "rung": decision.rung, "method": decision.method,
             "tree_source": decision.tree_source, "slot": decision.slot,
             "donor_id": donor_id, "donor_distance_m": donor_distance,
             "same_forest_type": same_type,
         })
 
     return pd.DataFrame(rows, columns=columns)
+
+
+def _relabel(rows: pd.DataFrame, mu_id: str, stand_prefix: str, tree_source: str) -> pd.DataFrame:
+    """Point a block of donor tree rows at its recipient unit and tag its provenance."""
+    rows["STAND_ID"] = stand_prefix + mu_id
+    rows["MU_ID"] = mu_id
+    rows["TREE_SOURCE"] = tree_source
+    return rows
+
+
+def _fallback_slot_resolver(policy: dict):
+    """A ``(mu_id, decisions) -> slot`` function for units rerouted off a dead donor rung.
+
+    Reuses the ladder's own forest-type mapping, so a rerouted unit lands on the same fixed
+    slot it would have reached had no donor been found at all — rather than on some
+    separate rule that could drift from the ladder.
+    """
+    ladder = {rung["rung"]: rung for rung in policy["initialization_ladder"]}
+    by_type = next((r for r in ladder.values() if r["method"] == "fallback_slot" and "mapping" in r), None)
+    default = next(r for r in reversed(policy["initialization_ladder"])
+                   if r["method"] == "fallback_slot" and r.get("slot"))
+
+    def resolve(mu_id: str, decisions: pd.DataFrame) -> str:
+        row = decisions[decisions["MU_ID"] == mu_id]
+        key = None
+        if by_type is not None and not row.empty:
+            key = ladder_type_key(row.iloc[0].get("fortypcd"), policy)
+        if by_type is not None and key is not None:
+            return by_type["mapping"].get(key, default["slot"])
+        return default["slot"]
+
+    return resolve
 
 
 def impute_nearest_runnable(
@@ -292,52 +336,69 @@ def impute_nearest_runnable(
         return tree_final.reset_index(drop=True)
 
     trees_by_stand = {sid: df for sid, df in tree_final.groupby("STAND_ID")}
-    imputed, skipped, no_donor_trees = [], {}, 0
+
+    # Normalise the per-plot table once. Doing it inside the loop copies the whole statewide
+    # tree table per gap unit, which is O(units x table rows) the moment slots are pinned.
+    trees_by_plt: dict[str, pd.DataFrame] = {}
+    if tree_init is not None:
+        source = tree_init.copy()
+        source[stand_key] = source[stand_key].astype(str)
+        trees_by_plt = {plt: df for plt, df in source.groupby(stand_key)}
+
+    fallback_slot_for = _fallback_slot_resolver(policy)
+    imputed, skipped, rerouted = [], {}, 0
 
     for row in decisions.itertuples(index=False):
+        slot, tree_source = row.slot, row.tree_source
+
         if row.method == "nearest_runnable_unit":
             donor_trees = trees_by_stand.get(stand_prefix + row.donor_id)
             if donor_trees is None or donor_trees.empty:
-                no_donor_trees += 1
+                # The donor rung matched a unit that turned out to have no tree rows. Fall
+                # through to the fixed-list rungs, which exist for exactly this situation,
+                # rather than dropping the unit — a dropped unit leaves no row to carry
+                # provenance, which is the one thing this module promises.
+                slot = fallback_slot_for(row.MU_ID, decisions)
+                tree_source = SOURCE_FALLBACK
+                rerouted += 1
+            else:
+                rows = donor_trees.copy()
+                rows["DONOR_STAND_ID"] = stand_prefix + row.donor_id
+                rows["NEAR_DIST"] = row.donor_distance_m
+                rows["FALLBACK_SLOT"] = pd.NA
+                imputed.append(_relabel(rows, row.MU_ID, stand_prefix, tree_source))
                 continue
-            rows = donor_trees.copy()
-            rows["DONOR_STAND_ID"] = stand_prefix + row.donor_id
-            rows["NEAR_DIST"] = row.donor_distance_m
-            rows["FALLBACK_SLOT"] = pd.NA
-        else:
-            try:
-                plt_cn = plt_cn_for_slot(row.slot, policy)
-                if tree_init is None:
-                    raise RuntimeError(
-                        f"unit {row.MU_ID} needs fixed tree list {row.slot!r} but no "
-                        f"per-plot tree table was supplied to pull PLT_CN {plt_cn} from"
-                    )
-                source = tree_init.copy()
-                source[stand_key] = source[stand_key].astype(str)
-                rows = source[source[stand_key] == plt_cn].copy()
-                if rows.empty:
-                    raise RuntimeError(
-                        f"fixed tree list {row.slot!r} is pinned to PLT_CN {plt_cn}, which "
-                        f"is not present in the supplied tree table"
-                    )
-            except RuntimeError:
-                if on_missing_fallback == "raise":
-                    raise
-                skipped[row.slot] = skipped.get(row.slot, 0) + 1
-                continue
-            rows["DONOR_STAND_ID"] = ""
-            rows["NEAR_DIST"] = pd.NA
-            rows["FALLBACK_SLOT"] = row.slot
 
-        rows["STAND_ID"] = stand_prefix + row.MU_ID
-        rows["MU_ID"] = row.MU_ID
-        rows["TREE_SOURCE"] = row.tree_source
-        imputed.append(rows)
+        try:
+            plt_cn = plt_cn_for_slot(slot, policy)
+            if not trees_by_plt:
+                raise RuntimeError(
+                    f"unit {row.MU_ID} needs fixed tree list {slot!r} but no per-plot tree "
+                    f"table was supplied to pull PLT_CN {plt_cn} from"
+                )
+            rows = trees_by_plt.get(plt_cn)
+            if rows is None or rows.empty:
+                raise RuntimeError(
+                    f"fixed tree list {slot!r} is pinned to PLT_CN {plt_cn}, which "
+                    f"is not present in the supplied tree table"
+                )
+            rows = rows.copy()
+        except RuntimeError:
+            if on_missing_fallback == "raise":
+                raise
+            skipped[slot] = skipped.get(slot, 0) + 1
+            continue
+
+        rows["DONOR_STAND_ID"] = ""
+        rows["NEAR_DIST"] = pd.NA
+        rows["FALLBACK_SLOT"] = slot
+        imputed.append(_relabel(rows, row.MU_ID, stand_prefix, tree_source))
 
     by_rung = decisions["rung"].value_counts().to_dict()
     logger.info("Initialization ladder over %d non-runnable units: %s", len(decisions), by_rung)
-    if no_donor_trees:
-        logger.warning("%d units matched a donor that had no tree rows", no_donor_trees)
+    if rerouted:
+        logger.warning("%d units matched a donor with no tree rows and fell through to a "
+                       "fixed list", rerouted)
     if skipped:
         logger.warning(
             "%d units left without trees — fixed lists unavailable per slot: %s. "
@@ -447,7 +508,9 @@ def main() -> None:
 
     import geopandas as gpd
 
-    units = gpd.read_file(args.units)
+    # Reproject rather than assert: a units file in another CRS is a common, recoverable
+    # input, and the ladder's distance bounds are only meaningful in metres.
+    units = to_project_crs(gpd.read_file(args.units))
     weights = pd.read_csv(args.weights, dtype={"MU_ID": str, "PLT_CN": str})
     tree_init = pd.read_csv(args.tree_init, dtype={TREE_STAND_KEY: str}, low_memory=False)
 

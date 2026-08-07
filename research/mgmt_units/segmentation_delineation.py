@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 from typing import Tuple
 
@@ -27,7 +28,12 @@ from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 from skimage.segmentation import felzenszwalb, slic
 
-from pipeline.spatial_ref import project_crs
+# This module is documented and used as a directly-executed script, so Python puts
+# `research/mgmt_units` on sys.path rather than the repository root, and the project
+# declares no [build-system] for uv to install. Same shim as gee/scripts/gee_utils.py.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from pipeline.spatial_ref import project_crs  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

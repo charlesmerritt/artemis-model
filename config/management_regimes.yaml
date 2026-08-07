@@ -38,7 +38,12 @@ horizon_years: 50
 # ---------------------------------------------------------------------------------------
 overrides:
   riparian:
-    when: "smz_pct >= 50.0"
+    # Executable, not descriptive. `regime_assignment.py` reads `field` and `min_value` to
+    # decide, and derives its RIPARIAN_SMZ_PCT constant from `min_value` — editing the
+    # number here changes the behaviour. `absolute` is a tripwire: the code asserts it is
+    # true, because no non-absolute riparian path exists to fall back to.
+    field: SMZ_Pct
+    min_value: 50.0
     prescription: no_management
     absolute: true
     rationale: >
@@ -139,9 +144,13 @@ prescriptions:
       non-industrial corporate, and the managed share of family pine.
 
   hardwood_clearcut_regen:
-    label: "Hardwood clearcut with natural regeneration"
+    label: "Hardwood / mixed clearcut with natural regeneration"
     template: clearcut
-    forest_types: [hardwood]
+    # Also covers `other` — the oak/pine group and stands whose type is unknown. A
+    # stand-replacing harvest regenerating naturally is the type-agnostic option; planting
+    # pine on a stand that may not be pine is the guess the forest-type filter exists to
+    # prevent.
+    forest_types: [hardwood, other]
     schedule:
       mode: age_based
       rotation_years: 50
@@ -258,7 +267,7 @@ owner_classes:
     default:
       pine: pine_plantation_short_rotation
       hardwood: hardwood_clearcut_regen
-      other: pine_plantation_short_rotation
+      other: hardwood_clearcut_regen     # unknown/mixed type: harvest, but do not plant pine
     eligible:
       - pine_plantation_short_rotation
       - pine_plantation_long_rotation

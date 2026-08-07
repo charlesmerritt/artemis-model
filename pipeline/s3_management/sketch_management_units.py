@@ -94,6 +94,26 @@ def classify_stream_fcode(fcode: Optional[int]) -> Optional[str]:
         return None
 
 
+def _polygonal_parts(geom):
+    """The non-degenerate polygon members of any geometry, flattened.
+
+    Differencing polygon sets that share boundaries can return a ``GeometryCollection``
+    mixing polygons with degenerate line and point remnants. That type does not start with
+    ``"Multi"``, so a naive multipart check passes it through whole, and a collection
+    carrying a LineString is not a stand.
+    """
+    if geom.is_empty:
+        return []
+    if geom.geom_type in ("MultiPolygon", "GeometryCollection"):
+        return [
+            part for member in geom.geoms
+            for part in _polygonal_parts(member)
+        ]
+    if geom.geom_type == "Polygon" and geom.area > 0:
+        return [geom]
+    return []
+
+
 def build_buffer_polygons(
     streams: gpd.GeoDataFrame,
     buffer_widths_m: dict,
@@ -147,10 +167,9 @@ def build_buffer_polygons(
             continue
         claimed = geom if claimed is None else unary_union([claimed, geom])
 
-        parts = list(geom.geoms) if geom.geom_type.startswith("Multi") else [geom]
         pieces.extend(
             {"buffer_class": buffer_class, "geometry": part}
-            for part in parts if not part.is_empty and part.area > 0
+            for part in _polygonal_parts(geom)
         )
 
     if not pieces:

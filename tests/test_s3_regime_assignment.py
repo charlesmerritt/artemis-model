@@ -253,3 +253,127 @@ def test_assign_prescriptions_carries_the_trajectory_library_key():
     ]
     assert out.loc[0, "regen_slot"] == "planted_pine_regen"
     assert out.loc[2, "regime"] == "no_management"      # riparian override
+
+
+# ---- PR #14 review regressions ---------------------------------------------------------
+
+def test_nan_stand_age_falls_back_to_offsets_instead_of_crashing():
+    """A pandas row with no age carries NaN, not None, and float(NaN) succeeds.
+
+    Without rejecting it the value reached math.ceil(NaN) and aborted the whole assignment
+    rather than taking the documented offset fallback. (codex P1)
+    """
+    pd = pytest.importorskip("pandas")
+    p = assign_prescription(pd.Series({"OWN_CODE": 4, "FORTYPCD": 161, "DORUC": 54,
+                                       "ACRES": 4000, "stand_age": float("nan")}))
+    assert p.template == "plantation_rotation"
+    assert p.params["clearcut_year"] == 2052          # the offset schedule
+
+
+@pytest.mark.parametrize("age", [float("nan"), float("inf"), -1, -26])
+def test_unusable_stand_ages_are_treated_as_missing(age):
+    from pipeline.s3_management.regime_assignment import _stand_age
+    assert _stand_age({"stand_age": age}) is None
+
+
+def test_a_negative_stand_age_does_not_crash_the_assignment():
+    """Reported reproducer: a negative FIA sentinel dropped clearcut_year but kept
+    thin_year, and the rotation template then asked for the missing key. (review, critical)
+    """
+    p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "DORUC": 54,
+                             "ACRES": 4000, "stand_age": -26})
+    assert p.template == "plantation_rotation"
+
+
+def test_a_rotation_that_keeps_only_its_thin_downgrades_to_a_thin():
+    """The horizon filter can drop either half of the pair, not just the thin."""
+    from pipeline.s3_management.regime_assignment import _template_for
+    spec = {"template": "plantation_rotation"}
+    assert _template_for(spec, {"thin_year": 2037, "clearcut_year": 2052}) == "plantation_rotation"
+    assert _template_for(spec, {"clearcut_year": 2052}) == "clearcut"
+    assert _template_for(spec, {"thin_year": 2037}) == "thin_from_below"
+    assert _template_for(spec, {}) == "no_management"
+
+
+def test_a_long_rotation_past_the_horizon_still_renders():
+    """A prescription whose harvest falls outside the horizon but whose thin does not."""
+    import copy
+
+    from pipeline.s3_management.regime_assignment import load_regimes_config
+
+    config = copy.deepcopy(load_regimes_config())
+    config["prescriptions"]["pine_plantation_short_rotation"]["schedule"]["rotation_years"] = 90
+    p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "DORUC": 54,
+                             "ACRES": 4000, "stand_age": 0}, config=config)
+    assert p.template == "thin_from_below"        # only the thin survived
+    assert p.params["year"] == 2037
+    build_thins(p.template, p.params)              # renders
+
+
+def test_masked_ownership_is_rejected_even_when_the_unit_is_riparian():
+    """Masking must precede every override.
+
+    The riparian branch used to run first, so a water pixel with SMZ_Pct >= 50 returned
+    `no_management` silently — putting water into the growth outputs as an unharvested
+    stand. (review, major)
+    """
+    with pytest.raises(ValueError, match="masked"):
+        assign_prescription({"OWN_CODE": 2, "SMZ_Pct": 80})
+    with pytest.raises(ValueError, match="masked"):
+        assign_prescription({"OWN_CODE": 1, "SMZ_Pct": 95})
+
+
+def test_the_eligible_menu_filters_by_forest_type():
+    """An industrial hardwood stand must not be offered a pine-plantation prescription.
+
+    Selecting one would apply pine thinning parameters and inject a planted-pine
+    regeneration tree list into a hardwood trajectory. (codex P2)
+    """
+    hardwood = eligible_prescriptions("private_industrial", HARDWOOD)
+    assert "pine_plantation_short_rotation" not in hardwood
+    assert "pine_plantation_long_rotation" not in hardwood
+    assert "hardwood_clearcut_regen" in hardwood
+
+    pine = eligible_prescriptions("private_industrial", PINE)
+    assert "pine_plantation_short_rotation" in pine
+    assert "hardwood_clearcut_regen" not in pine
+
+
+def test_state_hardwood_is_not_offered_a_pine_rotation():
+    assert "pine_plantation_long_rotation" not in eligible_prescriptions("state", HARDWOOD)
+    assert "pine_plantation_long_rotation" in eligible_prescriptions("state", PINE)
+
+
+def test_an_unknown_forest_type_gets_only_type_agnostic_prescriptions():
+    """A pine rotation on a stand that may not be pine is a guess, not a policy."""
+    for name in eligible_prescriptions("private_industrial", OTHER):
+        assert name in {"no_management", "hardwood_clearcut_regen"} or "pine" not in name
+
+
+def test_no_management_survives_every_forest_type_filter():
+    for branch in (PINE, HARDWOOD, OTHER):
+        for owner in ("private_industrial", "private_family", "federal", "local"):
+            assert "no_management" in eligible_prescriptions(owner, branch)
+
+
+def test_the_unfiltered_menu_is_still_available_for_describing_policy():
+    assert set(eligible_prescriptions("private_industrial")) >= set(
+        eligible_prescriptions("private_industrial", PINE)
+    )
+
+
+def test_eligible_prescriptions_rejects_an_unknown_forest_branch():
+    with pytest.raises(ValueError, match="unknown forest branch"):
+        eligible_prescriptions("private_industrial", "swamp")
+
+
+def test_every_default_is_eligible_under_its_own_forest_branch():
+    """The filter must not exclude the very prescription the unit is assigned."""
+    from pipeline.s3_management.regime_assignment import load_regimes_config
+
+    config = load_regimes_config()
+    for owner, spec in config["owner_classes"].items():
+        for branch, default in spec["default"].items():
+            assert default in eligible_prescriptions(owner, branch), (
+                f"{owner}/{branch} defaults to {default}, which its own filter excludes"
+            )

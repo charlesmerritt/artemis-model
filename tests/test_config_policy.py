@@ -161,11 +161,42 @@ def test_owner_classes_match_the_ownership_policy(management_regimes, ownership_
     assert set(management_regimes["owner_classes"]) == set(ownership_policy["classes"])
 
 
-def test_riparian_override_is_absolute_and_matches_the_module_constant(management_regimes):
+def test_riparian_override_is_absolute_and_drives_the_module_constant(management_regimes):
+    """The threshold is read from config, not duplicated in code.
+
+    Previously the config carried a `when: "smz_pct >= 50.0"` string that nothing parsed,
+    while the real threshold was a hardcoded constant. They agreed, so nothing failed —
+    but editing the config to change riparian behaviour would have changed nothing.
+    """
     override = management_regimes["overrides"]["riparian"]
     assert override["absolute"] is True
     assert override["prescription"] == "no_management"
-    assert str(RIPARIAN_SMZ_PCT) in override["when"]
+    assert override["field"] == "SMZ_Pct"
+    assert RIPARIAN_SMZ_PCT == override["min_value"]
+
+
+def test_a_non_absolute_riparian_override_is_rejected(management_regimes):
+    """`absolute` is a tripwire, not decoration: there is no non-absolute path to take."""
+    import copy
+
+    from pipeline.s3_management.regime_assignment import _riparian_override
+
+    config = copy.deepcopy(management_regimes)
+    config["overrides"]["riparian"]["absolute"] = False
+    with pytest.raises(ValueError, match="absolute must be true"):
+        _riparian_override(config)
+
+
+def test_editing_the_config_threshold_changes_the_decision(management_regimes):
+    """The drift trap the previous `when:` string created — now closed."""
+    import copy
+
+    from pipeline.s3_management.regime_assignment import _is_riparian
+
+    override = copy.deepcopy(management_regimes["overrides"]["riparian"])
+    assert _is_riparian({"SMZ_Pct": 60.0}, override)
+    override["min_value"] = 75.0
+    assert not _is_riparian({"SMZ_Pct": 60.0}, override)
 
 
 def test_trajectory_library_cost_is_stated_correctly(management_regimes):

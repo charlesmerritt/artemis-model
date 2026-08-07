@@ -295,3 +295,135 @@ def test_summarize_falls_back_to_unit_counts_without_an_area_column():
     trees, _ = _runnable_one()
     report = summarize_tree_sources(trees)
     assert report["by_source"]["units"].sum() == 1.0
+
+
+# ---- PR #14 review regressions ---------------------------------------------------------
+
+def test_ladder_rejects_units_that_are_not_in_the_project_crs():
+    """The 5 km / 2 km bounds are metres.
+
+    A units file in degrees reports every donor as well under a kilometre, so the bound
+    never fires and the stand silently takes a donor from the far side of the state
+    instead of falling through to a fixed list. (review, major)
+    """
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2"]},
+        geometry=[box(-82.0, 30.0, -81.99, 30.01), box(-86.0, 30.0, -85.99, 30.01)],
+        crs="EPSG:4326",
+    )
+    _, runnable = _runnable_one()
+    with pytest.raises(ValueError, match="EPSG:5070"):
+        ladder_decisions(units, runnable)
+
+
+def test_a_units_frame_with_no_crs_is_rejected_rather_than_assumed():
+    units = gpd.GeoDataFrame({"MU_ID": ["1", "2"]},
+                             geometry=[box(0, 0, 100, 100), box(200, 0, 300, 100)])
+    _, runnable = _runnable_one()
+    with pytest.raises(ValueError, match="no CRS"):
+        ladder_decisions(units, runnable)
+
+
+@pytest.mark.parametrize("distance,expected", [
+    (4999.0, "donor_unit_same_type"),
+    (5000.0, "donor_unit_same_type"),      # the bound is inclusive
+    (5000.1, "fixed_slot_by_forest_type"),
+])
+def test_the_same_type_bound_is_inclusive_at_exactly_5km(distance, expected):
+    """`bounded at 5 km` means <=, and the boundary itself was previously untested."""
+    from pipeline.s4_fvs.fallback_treelists import resolve_initialization
+    decision = resolve_initialization(fortypcd=161, donor_distance_m=distance,
+                                      donor_same_forest_type=True)
+    assert decision.rung == expected
+
+
+@pytest.mark.parametrize("distance,expected", [
+    (1999.0, "donor_unit_any_type"),
+    (2000.0, "donor_unit_any_type"),
+    (2000.1, "fixed_slot_by_forest_type"),
+])
+def test_the_any_type_bound_is_inclusive_at_exactly_2km(distance, expected):
+    from pipeline.s4_fvs.fallback_treelists import resolve_initialization
+    decision = resolve_initialization(fortypcd=161, donor_distance_m=distance,
+                                      donor_same_forest_type=False)
+    assert decision.rung == expected
+
+
+def test_a_donor_with_no_tree_rows_falls_through_instead_of_dropping_the_unit(tmp_path):
+    """A dropped unit leaves no row to carry provenance, which this module promises.
+
+    Previously the recipient was dropped with only an aggregate warning — no exception, no
+    fall-through to the fixed-list rungs that exist for exactly this case. (review, minor)
+    """
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2"], "unit_area_ha": [10.0, 20.0]},
+        geometry=[box(0, 0, 100, 100), box(600, 0, 700, 100)],
+        crs=CRS,
+    )
+    empty = pd.DataFrame(columns=["MU_ID", "STAND_ID", "STAND_CN", "TREE_COUNT",
+                                  "TREE_SOURCE", "DONOR_STAND_ID", "NEAR_DIST",
+                                  "FALLBACK_SLOT"])
+    out = impute_nearest_runnable(
+        units, empty, {"1"}, tree_init=_tree_init(), policy=_policy_with_lock(tmp_path)
+    )
+    mu2 = out[out["MU_ID"] == "2"]
+    assert not mu2.empty                                     # not dropped
+    assert (mu2["TREE_SOURCE"] == "FALLBACK_FIXED").all()    # rerouted to a fixed list
+    assert mu2["FALLBACK_SLOT"].notna().all()                # and it says which
+
+
+def test_the_reroute_uses_the_same_slot_the_ladder_would_have_chosen(tmp_path):
+    """A rerouted unit must not land on a rule that can drift from the ladder's own."""
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2"], "FORTYPCD": [607, 607]},
+        geometry=[box(0, 0, 100, 100), box(600, 0, 700, 100)],
+        crs=CRS,
+    )
+    empty = pd.DataFrame(columns=["MU_ID", "STAND_ID", "STAND_CN", "TREE_COUNT",
+                                  "TREE_SOURCE", "DONOR_STAND_ID", "NEAR_DIST",
+                                  "FALLBACK_SLOT"])
+    out = impute_nearest_runnable(
+        units, empty, {"1"}, tree_init=_tree_init(), policy=_policy_with_lock(tmp_path)
+    )
+    mu2 = out[out["MU_ID"] == "2"]
+    assert (mu2["FALLBACK_SLOT"] == "bottomland_hardwood_established").all()
+
+
+def test_ladder_decisions_reports_the_forest_type_it_routed_on():
+    units = gpd.GeoDataFrame(
+        {"MU_ID": ["1", "2"], "FORTYPCD": [161, 607]},
+        geometry=[box(0, 0, 100, 100), box(40_000, 0, 40_100, 100)],
+        crs=CRS,
+    )
+    _, runnable = _runnable_one()
+    decisions = ladder_decisions(units, runnable)
+    assert decisions.loc[0, "fortypcd"] == 607
+
+
+def test_the_per_plot_tree_table_is_normalised_once_not_per_unit(tmp_path, monkeypatch):
+    """Copying the statewide tree table per gap unit is O(units x table rows). (devin)"""
+    import pandas as pd_mod
+
+    copies = {"n": 0}
+    original = pd_mod.DataFrame.copy
+
+    def counting_copy(self, *args, **kwargs):
+        copies["n"] += 1
+        return original(self, *args, **kwargs)
+
+    units = gpd.GeoDataFrame(
+        {"MU_ID": [str(i) for i in range(1, 8)]},
+        geometry=[box(0, 0, 100, 100)] + [box(40_000 + i * 200, 0, 40_100 + i * 200, 100)
+                                          for i in range(6)],
+        crs=CRS,
+    )
+    trees, runnable = _runnable_one()
+    policy = _policy_with_lock(tmp_path)
+
+    monkeypatch.setattr(pd_mod.DataFrame, "copy", counting_copy)
+    impute_nearest_runnable(units, trees, runnable, tree_init=_tree_init(), policy=policy)
+    monkeypatch.undo()
+
+    # 6 gap units. Without the hoist this grows with unit count; with it, the table is
+    # copied once and only the per-unit row blocks are copied after that.
+    assert copies["n"] < 6 * 3, f"{copies['n']} DataFrame copies for 6 gap units"

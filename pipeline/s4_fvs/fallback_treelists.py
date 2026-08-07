@@ -349,7 +349,12 @@ def _load_fia_candidates(fia_db: Path, policy: dict):
     ``FORTYPCD``, ``STDORGCD``, ``STDAGE``, ``BALIVE`` (live basal area per acre). The pool
     is restricted to accessible forest land (``COND_STATUS_CD = 1``) on essentially
     single-condition plots (``CONDPROP_UNADJ >= 0.95``), so a plot's condition attributes
-    describe the whole plot, and to plots that actually have an FVS-ready tree list.
+    describe the whole plot, and to plots that actually have FVS-ready **tree records**.
+
+    The tree-record join is against ``FVS_TREEINIT_PLOT``, not ``FVS_STANDINIT_PLOT``. A
+    stand row without tree rows would pin successfully and then fail at use, because
+    `build_fvs_inputs` looks the pin up in the TreeInit table — a lock file that resolves
+    but cannot be used is worse than one that refuses to resolve.
 
     Duplicate remeasurements are collapsed to the most recent ``INVYR`` per plot location
     in pandas rather than in SQL — the correlated subquery version of that filter is slow
@@ -378,7 +383,7 @@ def _load_fia_candidates(fia_db: Path, policy: dict):
         WHERE p.STATECD IN ({placeholders})
           AND c.COND_STATUS_CD = 1
           AND c.CONDPROP_UNADJ >= 0.95
-          AND c.PLT_CN IN (SELECT STAND_CN FROM FVS_STANDINIT_PLOT)
+          AND c.PLT_CN IN (SELECT STAND_CN FROM FVS_TREEINIT_PLOT)
     """
     with sqlite3.connect(f"file:{fia_db}?mode=ro", uri=True) as con:
         df = pd.read_sql_query(query, con, params=state_codes)

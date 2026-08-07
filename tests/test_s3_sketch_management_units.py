@@ -144,3 +144,40 @@ def test_no_buffers_yields_an_empty_layer_with_the_right_schema():
     buffers = build_buffer_polygons(_streams([]), WIDTHS)
     assert len(buffers) == 0
     assert "buffer_class" in buffers.columns
+
+
+def test_buffer_builder_keeps_only_polygonal_parts_of_a_geometry_collection():
+    """Differencing polygon sets that share boundaries can return a GeometryCollection.
+
+    That type does not start with "Multi", so a naive multipart check passed it through
+    whole — and a collection carrying a LineString is not a stand. (review, minor)
+    """
+    from shapely.geometry import GeometryCollection, Point
+
+    from pipeline.s3_management.sketch_management_units import _polygonal_parts
+
+    collection = GeometryCollection([
+        box(0, 0, 10, 10),
+        LineString([(20, 0), (30, 0)]),      # degenerate remnant
+        Point(40, 40),
+    ])
+    parts = _polygonal_parts(collection)
+    assert len(parts) == 1
+    assert parts[0].geom_type == "Polygon"
+
+
+def test_polygonal_parts_flattens_nested_multipolygons():
+    from shapely.geometry import GeometryCollection, MultiPolygon
+
+    from pipeline.s3_management.sketch_management_units import _polygonal_parts
+
+    nested = GeometryCollection([MultiPolygon([box(0, 0, 1, 1), box(2, 2, 3, 3)])])
+    assert len(_polygonal_parts(nested)) == 2
+
+
+def test_polygonal_parts_drops_zero_area_polygons():
+    from shapely.geometry import Polygon
+
+    from pipeline.s3_management.sketch_management_units import _polygonal_parts
+
+    assert _polygonal_parts(Polygon()) == []

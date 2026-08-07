@@ -54,10 +54,6 @@ CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "management_regim
 FAMILY, CORPORATE, TRIBAL, FEDERAL, STATE, LOCAL = 3, 4, 5, 6, 7, 8
 PUBLIC_OWNERS = {FEDERAL, STATE, TRIBAL, LOCAL}
 
-# A unit with at least this share in a stream-management zone is treated as riparian.
-# Riparian exclusion is absolute — see `overrides.riparian` in the config and
-# notes/methodology-directions.md item 2.
-RIPARIAN_SMZ_PCT = 50.0
 
 # FIA forest-type-group codes that are pine (longleaf-slash 140s, loblolly-shortleaf 160s,
 # other eastern softwoods 170s).
@@ -90,6 +86,34 @@ def load_regimes_config(path: str | None = None) -> dict:
     """Load and cache `config/management_regimes.yaml`."""
     with open(Path(path) if path else CONFIG_PATH) as f:
         return yaml.safe_load(f)
+
+
+def _riparian_override(config: dict | None = None) -> dict:
+    """The riparian override block, validated. Absolute is the only supported mode."""
+    override = (config or load_regimes_config())["overrides"]["riparian"]
+    if not override.get("absolute", False):
+        raise ValueError(
+            "overrides.riparian.absolute must be true — riparian exclusion has no "
+            "non-absolute path to fall back to. See notes/methodology-directions.md item 2."
+        )
+    return override
+
+
+def _is_riparian(unit: Mapping, override: dict) -> bool:
+    """Whether a unit trips the riparian override, per the field and threshold in config."""
+    field = override["field"]
+    value = unit.get(field, unit.get(field.lower(), 0.0)) or 0.0
+    try:
+        return float(value) >= float(override["min_value"])
+    except (TypeError, ValueError):
+        return False
+
+
+# A unit with at least this share in a stream-management zone is treated as riparian.
+# Read from `overrides.riparian.min_value` rather than duplicated here, so editing the
+# config is what changes the behaviour. Kept as a module constant because other modules
+# and the LAMPS scheduler plan import it directly.
+RIPARIAN_SMZ_PCT = float(_riparian_override()["min_value"])
 
 
 # ---- forest type ----------------------------------------------------------------------
@@ -146,12 +170,31 @@ def _snap_to_cycle(years_out: float, cycle_years: int) -> int:
 
 
 def _stand_age(unit: Mapping) -> float | None:
+    """
+    The unit's stand age, or ``None`` when it is missing or unusable.
+
+    Three things count as unusable, and all three arrive from real data rather than from
+    contrived inputs:
+
+      - ``NaN``. A pandas row with no age carries ``NaN``, not ``None``, and ``float(NaN)``
+        succeeds — so without this check the age would flow into ``math.ceil(NaN)`` and
+        abort the whole assignment instead of taking the documented offset fallback.
+      - Infinity, for the same reason.
+      - A negative age, which is an FIA sentinel rather than a measurement. Treating it as
+        a real age puts the rotation harvest before the inventory year.
+
+    All three fall back to the prescription's offsets, which is exactly what a missing age
+    does.
+    """
     for key in ("stand_age", "STDAGE", "unit_age", "AGE"):
         if key in unit and unit[key] is not None:
             try:
-                return float(unit[key])
+                age = float(unit[key])
             except (TypeError, ValueError):
                 continue
+            if not math.isfinite(age) or age < 0:
+                return None
+            return age
     return None
 
 
@@ -224,22 +267,55 @@ _TEMPLATE_PARAMS = {
 }
 
 
+# The entry years each template cannot render without. Checked symmetrically, because the
+# horizon filter can drop either half of a pair: a rotation whose thin lands inside the
+# horizon but whose harvest does not is just as reachable as the reverse.
+_TEMPLATE_REQUIRED_YEARS = {
+    "no_management": set(),
+    "clearcut": {"year"},
+    "thin_from_below": {"year"},
+    "thin_from_below_repeated": {"start_year"},
+    "selection_harvest": {"start_year"},
+    "plantation_rotation": {"thin_year", "clearcut_year"},
+}
+
+
 def _template_for(spec: dict, year_params: dict) -> str:
-    """The template that actually renders, after schedule resolution may have dropped entries."""
+    """
+    The template that actually renders, after schedule resolution may have dropped entries.
+
+    Downgrades rather than rendering a template whose required years are incomplete. A
+    rotation that kept only its final harvest is a clearcut; one that kept only its thin is
+    a thin; one that kept neither is no management. Asking for a missing year instead would
+    raise ``KeyError`` deep in parameter assembly.
+    """
     template = spec["template"]
     if not year_params:
         return "no_management"
-    if template == "plantation_rotation" and "thin_year" not in year_params:
-        # Only the final harvest survived; that is a clearcut, not a rotation.
-        return "clearcut"
+
+    if template == "plantation_rotation":
+        has_thin = "thin_year" in year_params
+        has_clearcut = "clearcut_year" in year_params
+        if has_thin and has_clearcut:
+            return template
+        if has_clearcut:
+            return "clearcut"          # only the final harvest survived
+        if has_thin:
+            return "thin_from_below"   # only the commercial thin survived
+        return "no_management"
+
+    if not _TEMPLATE_REQUIRED_YEARS[template] <= set(year_params):
+        return "no_management"
     return template
 
 
 def _rename_for_template(template: str, year_params: dict) -> dict:
     """Map resolved year keys onto the parameter names each template builder expects."""
     if template == "clearcut":
-        year = year_params.get("year", year_params.get("clearcut_year"))
-        return {"year": year}
+        return {"year": year_params.get("year", year_params.get("clearcut_year"))}
+    if template == "thin_from_below":
+        # A downgraded rotation carries its entry as `thin_year`; a native thin as `year`.
+        return {"year": year_params.get("year", year_params.get("thin_year"))}
     if template == "plantation_rotation":
         return {"thin_year": year_params["thin_year"], "clearcut_year": year_params["clearcut_year"]}
     return dict(year_params)
@@ -247,12 +323,25 @@ def _rename_for_template(template: str, year_params: dict) -> dict:
 
 # ---- assignment -----------------------------------------------------------------------
 
-def eligible_prescriptions(owner_class: str, config: dict | None = None) -> list[str]:
+def eligible_prescriptions(
+    owner_class: str,
+    forest_branch: str | None = None,
+    config: dict | None = None,
+) -> list[str]:
     """
     The prescriptions the scheduler may choose among for an owner class.
 
-    Includes `no_management` when the config marks it universally eligible — declining to
-    harvest is always a legal choice, and for riparian units it is the only one.
+    ``forest_branch`` (``pine`` / ``hardwood`` / ``other``) filters the menu by each
+    prescription's ``forest_types``. Pass it for any stand-level call: without it an
+    industrial *hardwood* stand is offered both pine-plantation prescriptions, and
+    selecting one would apply pine thinning parameters and inject a planted-pine
+    regeneration tree list into a hardwood trajectory. Omitting it returns the owner's
+    whole menu, which is only meaningful for describing the policy rather than scheduling
+    a stand.
+
+    Prescriptions marked ``forest_types: [any]`` survive every branch, and `no_management`
+    is appended when the config marks it universally eligible — declining to harvest is
+    always a legal choice, and for riparian units it is the only one.
     """
     config = config or load_regimes_config()
     spec = config["owner_classes"].get(owner_class)
@@ -260,10 +349,33 @@ def eligible_prescriptions(owner_class: str, config: dict | None = None) -> list
         raise ValueError(
             f"unknown owner class {owner_class!r}; choices: {sorted(config['owner_classes'])}"
         )
+
     eligible = list(spec["eligible"])
+    if forest_branch is not None:
+        if forest_branch not in (PINE, HARDWOOD, OTHER):
+            raise ValueError(
+                f"unknown forest branch {forest_branch!r}; choices: {[PINE, HARDWOOD, OTHER]}"
+            )
+        eligible = [
+            name for name in eligible
+            if _prescription_allows_branch(config["prescriptions"][name], forest_branch)
+        ]
+
     if config.get("no_management_universally_eligible") and "no_management" not in eligible:
         eligible.append("no_management")
     return eligible
+
+
+def _prescription_allows_branch(spec: dict, branch: str) -> bool:
+    """Whether a prescription's declared ``forest_types`` admit a forest branch.
+
+    The ``other`` branch is unknown-or-mixed forest type, so only ``any`` prescriptions
+    admit it — a pine rotation on a stand that may not be pine is a guess, not a policy.
+    """
+    forest_types = spec.get("forest_types", ["any"])
+    if "any" in forest_types:
+        return True
+    return branch in forest_types
 
 
 def assign_prescription(
@@ -288,20 +400,23 @@ def assign_prescription(
     owner_class = assignment.owner_class
     branch = forest_type_branch(unit)
 
-    # Riparian is absolute and geometric: it precedes ownership entirely.
-    smz = unit.get("SMZ_Pct", unit.get("smz_pct", 0.0)) or 0.0
-    override = config["overrides"]["riparian"]
-    if float(smz) >= RIPARIAN_SMZ_PCT:
-        return Prescription(
-            prescription_id=override["prescription"], template="no_management", params={},
-            owner_class=owner_class, forest_type_branch=branch, regen_slot=None,
-            notes=("riparian override: no entry, ever",),
-        )
-
+    # Masking comes first, ahead of every override. Non-forest and water are not land the
+    # model projects at all, so they must never receive an assignment — not even
+    # `no_management`, which would put water in the growth outputs as an unharvested stand.
+    # Riparian is an absolute rule *among forested land*, not a reason to admit masked land.
     if owner_class == MASKED:
         raise ValueError(
             "unit resolves to a masked ownership value (non-forest or water); mask these "
             "out before regime assignment — see config/projection.yaml `ownership.mask_values`"
+        )
+
+    # Riparian is absolute and geometric: among forested land it precedes ownership.
+    override = config["overrides"]["riparian"]
+    if _is_riparian(unit, override):
+        return Prescription(
+            prescription_id=override["prescription"], template="no_management", params={},
+            owner_class=owner_class, forest_type_branch=branch, regen_slot=None,
+            notes=("riparian override: no entry, ever",),
         )
 
     prescription_id = config["owner_classes"][owner_class]["default"][branch]
