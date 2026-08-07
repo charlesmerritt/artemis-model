@@ -38,10 +38,10 @@ in their docstrings and that path does not resolve on this branch — see §5.1.
 |---|---|---|---|
 | 3.1 | Forest mask selects **zero pixels**; every county returns `None` | Blocker | `sketch_management_units.py:339` |
 | 3.2 | Pilot processes **Nassau instead of Suwannee** | Blocker | `sketch_management_units.py:43` |
-| 3.3 | `TimeInt` written into the wrong keyword field → **10-yr cycles, not 5** | Blocker | `regime_templates.py:125` |
-| 3.4 | Keyfile has no `Stop` — diverges from the verified fixture | High | `regime_templates.py:146` |
+| 3.3 | `TimeInt` written into the wrong keyword field → **10-yr cycles, not 5** | Blocker | ~~`regime_templates.py:125`~~ **FIXED 2026-08-07** |
+| 3.4 | Keyfile has no `Stop` — diverges from the verified fixture | High | ~~`regime_templates.py:146`~~ **FIXED 2026-08-07** |
 | 3.5 | Scheduler **silently blocks every unit** on a caps-key mismatch | High | `harvest_scheduler.py:98` |
-| 3.6 | Clearcuts never regenerate — stands stay bare for the rest of the run | High | `regime_templates.py:20`, `regime_assignment.py:85` |
+| 3.6 | Clearcuts never regenerate — stands stay bare for the rest of the run | High | ~~`regime_templates.py:20`~~ **FIXED 2026-08-07** |
 | 3.7 | `FVS_StandInit` is built without any site variables | High | `build_fvs_inputs.py:91` |
 | 3.8 | `perennial_large` (75 ft) is unreachable; waterbody buffer never applied | High | `sketch_management_units.py:51` |
 | 3.9 | Unmapped county → filter silently skipped, all parcels processed | Medium | `sketch_management_units.py:297` |
