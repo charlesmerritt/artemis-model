@@ -138,17 +138,6 @@ LETO_CODE_TO_TYPE = {
 }
 
 
-def _resolve_params(params, inv_year):
-    """Turn `*_offset` config params into the absolute years regime_templates consumes."""
-    resolved = {}
-    for key, value in params.items():
-        if key.endswith("_offset"):
-            resolved[key[: -len("_offset")]] = inv_year + value
-        else:
-            resolved[key] = value
-    return resolved
-
-
 def test_management_regimes_cover_every_leto_owner_class(management_regimes):
     assert set(management_regimes["owner_classes"]) == set(LETO_OWNER_CLASSES)
 
@@ -211,15 +200,27 @@ def test_classes_harris_cannot_express_are_recorded(management_regimes):
     assert "tribal_forest" in absent, "Harris tribal has no LETO counterpart; keep it visible"
 
 
-def test_management_regimes_reference_only_implemented_regimes(management_regimes):
-    """No owner class may point at a regime the template library cannot render."""
-    from pipeline.s4_fvs.regime_templates import REGIMES
+def test_management_regimes_points_at_the_regime_library(management_regimes):
+    """Regime definitions live in config/regimes.yaml; this file only says who gets what.
 
-    assert set(management_regimes["regimes"]) == set(REGIMES)
-    assert management_regimes["riparian_override"]["regime"] in REGIMES
-    for name, block in management_regimes["owner_classes"].items():
-        for regime in block["eligible_regimes"]:
-            assert regime in REGIMES, f"{name}: unknown regime {regime!r}"
+    Coverage of the library itself (every regime renders, offsets land on cycle
+    boundaries, clearcuts are terminal) is tested in tests/test_s4_regime_library.py.
+    """
+    assert management_regimes["regime_library"] == "config/regimes.yaml"
+    assert "regimes" not in management_regimes, (
+        "regime definitions were inlined here again — they belong in config/regimes.yaml"
+    )
+    # Owner blocks name a regime and nothing else; parameters live with the regime.
+    for cls, block in management_regimes["owner_classes"].items():
+        default = block["default"]
+        entries = (
+            list(default["by_forest_type"].values())
+            if "by_forest_type" in default else [default]
+        )
+        for entry in entries:
+            assert set(entry) == {"regime"}, (
+                f"{cls}: owner blocks carry a regime name only, got {sorted(entry)}"
+            )
 
 
 def test_management_regimes_default_is_always_eligible(management_regimes):
@@ -287,45 +288,33 @@ def test_riparian_override_is_unconditional(management_regimes):
         assert assign_regime(unit) == ("no_management", {})
 
 
-def test_config_direction_matches_assignment_code(management_regimes, projection_config):
-    """The config's direction and the executed rule must agree, via the Harris crosswalk.
+def test_config_direction_has_moved_ahead_of_the_assignment_code(management_regimes):
+    """The config now prescribes regimes the code cannot produce. Assert that gap.
 
-    `regime_assignment.py` still speaks Harris codes, so this compares through
-    `harris_raster_value` rather than `leto_own_code` — passing a LETO code straight in
-    is the bug tracked as issue #20, pinned by the test below.
+    `regime_assignment.py` can only emit the five hardcoded names in
+    `regime_templates.REGIMES`. The owner classes here name prescriptions from
+    `config/regimes.yaml` — `public_uneven_aged`, `custodial_light`,
+    `conservation_restoration` and the rest — which the code has no branch for. That is
+    intentional: the direction is set in config and #16 makes the code read it.
 
-    `assignment_status: current` means the code reproduces this regime today. `proposed`
-    means the direction has moved ahead and must name what it `supersedes`.
+    This test fails once the loader lands, which is the signal to delete it.
     """
-    from pipeline.s3_management.regime_assignment import assign_regime
+    from pipeline.s4_fvs.regime_templates import REGIMES
 
-    inv_year = projection_config["projection"]["base_year"]
-    for name, block in management_regimes["owner_classes"].items():
-        status = block["assignment_status"]
-        assert status in ("current", "proposed"), f"{name}: bad assignment_status {status!r}"
-
-        harris = block["harris_raster_value"]
-        expected_block = block["supersedes"] if status == "proposed" else block["default"]
-
-        if "by_forest_type" in expected_block:
-            cases = [
-                ({"FORTYPCD": 161}, expected_block["by_forest_type"]["pine"]),
-                ({"FORTYPCD": 503}, expected_block["by_forest_type"]["other"]),
-            ]
+    named = set()
+    for block in management_regimes["owner_classes"].values():
+        default = block["default"]
+        if "by_forest_type" in default:
+            named.update(b["regime"] for b in default["by_forest_type"].values())
         else:
-            cases = [({}, expected_block)]
+            named.add(default["regime"])
 
-        for extra, expected in cases:
-            # Classes Harris cannot express reach the code's unknown-owner fallback.
-            own_code = harris if harris is not None else None
-            unit = {"OWN_CODE": own_code, "SMZ_Pct": 0.0, **extra}
-            got_regime, got_params = assign_regime(unit, inv_year=inv_year)
-            assert got_regime == expected["regime"], (
-                f"{name}: code gives {got_regime!r}, config says {expected['regime']!r}"
-            )
-            assert got_params == _resolve_params(expected["params"], inv_year), (
-                f"{name}: params disagree with code"
-            )
+    unreachable = named - set(REGIMES)
+    assert unreachable, (
+        "every prescribed regime is now reachable from regime_templates.REGIMES — "
+        "if regime_assignment.py reads config/regimes.yaml, issue #16 is done and this "
+        "test should be replaced by a real config-vs-code agreement check"
+    )
 
 
 def test_leto_own_code_fed_to_assignment_code_gives_the_wrong_regime(management_regimes):

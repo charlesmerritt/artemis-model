@@ -43,20 +43,59 @@ run above is the ownership vocabulary the project actually has.
 ## The direction, in one table
 
 Riparian geometry overrides everything below it. Acreages are **upland** stands only,
-since riparian stands are taken by rank-1 precedence before ownership applies. Year values
-are offsets from the inventory year (2022).
+since riparian stands are taken by rank-1 precedence before ownership applies.
 
-| LETO class | code | Upland acres | Default regime | TPO group | LAMPS MHA |
-|---|---:|---:|---|---|---|
-| `unknown` | 0 | 2,122 | thin_from_below (+10, ≤8″, 35%) | *uncapped* | — |
-| `private` | 1 | 269,312 | thin_from_below (+10, ≤8″, 35%) | Private | — |
-| `corporate` | 2 | 212,814 | pine → plantation_rotation (thin +15, cc +30); else clearcut (+30) | Private | industrial |
-| `federal` | 3 | 213,546 | selection_harvest (+10→+40, every 10 yr, 20%) | Federal (NF) | public |
-| `state` | 4 | 74,398 | selection_harvest | Other public | public |
-| `county` | 5 | 3,875 | selection_harvest | Other public | public |
-| `ngo` | 6 | 15,508 | selection_harvest *(proposed)* | Private | public |
-| `other` | 7 | 234,245 | thin_from_below *(holding position)* | *uncapped* | — |
-| **riparian** | — | 26,485 | **no_management, unconditional** | — | never scheduled |
+| LETO class | code | Upland acres | Regime | What it does (offsets from inventory year) |
+|---|---:|---:|---|---|
+| `unknown` | 0 | 2,122 | `light_default` | one 25% thin ≤8″ at +15 |
+| `private` | 1 | 269,312 | `nipf_light` | 30% ≤8″ at +10, 25% ≤10″ at +30; no regeneration harvest |
+| `corporate` | 2 | 212,814 | `pine_plantation_industrial` (pine) | 40% ≤8″ thin at +10, clearcut at +25 |
+| | | | `hardwood_industrial` (other) | clearcut at +20 |
+| `federal` | 3 | 213,546 | `public_uneven_aged` | 15% selection at +10, +25, +40 |
+| `state` | 4 | 74,398 | `public_active_thinning` | 30% ≤10″ at +5, then 20% selection at +20, +35 |
+| `county` | 5 | 3,875 | `custodial_light` | one 15% thin ≤8″ at +20 |
+| `ngo` | 6 | 15,508 | `conservation_restoration` | 40% ≤6″ at +10, 30% ≤6″ at +30; nothing large ever cut |
+| `other` | 7 | 234,245 | `light_default` | one 25% thin ≤8″ at +15 |
+| **riparian** | — | 26,485 | `no_management` | no entry, unconditional |
+
+Definitions live in [`config/regimes.yaml`](../config/regimes.yaml) as ordered operation
+lists — timing, DBH window, intensity — loaded by
+`pipeline/s4_fvs/regime_library.py` and rendered through the verified `ThinDBH` keyword.
+`config/management_regimes.yaml` names which regime each class gets and nothing more;
+parameters live with the regime, so there is exactly one place to retune one.
+
+### What separates them
+
+The four public and conservation classes now have **four different prescriptions**, which
+is what the earlier shared-parameter version could not express:
+
+- **federal** is the lightest cutting regime in the library — 15% selection, three
+  entries, no regeneration harvest. The federal ownership here is dominated by longleaf
+  systems managed for structure and fire.
+- **state** opens with a heavier thin from below and then settles into 20% selection.
+  Florida state forests carry a real timber program alongside RCW-habitat and longleaf
+  restoration work.
+- **county** gets a single 15% entry over fifty years. Parks and watershed land.
+- **ngo** removes only stems under 6 inches. Restoration structure, never yield — the
+  DBH ceiling is the whole point of the regime.
+
+`tests/test_s4_regime_library.py::test_intensity_ordering_matches_stated_intent` pins
+that ordering, so retuning a number that inverts the intent fails rather than passing
+quietly.
+
+**These are reasoned defaults, not calibrated ones.** The federal/state split is a
+judgement about management intent; the 25-year corporate rotation is the Southeast
+loblolly convention. Each class's `differentiation` and `open` fields name the
+measurement that would confirm or move it — mostly LCMS Tree Removal rates per class over
+the AOI.
+
+### Known approximation
+
+Offsets are relative to the **inventory year**, not stand age, so a corporate stand
+already past rotation age at inventory is treated the same as a young one. Mean stand age
+in the LETO run is 41 years (median 40, max 145), so this matters. Stand-age-triggered
+scheduling is the follow-up and the data is already there — LETO provides `STDAGE_MEAN`
+per stand.
 
 ---
 

@@ -153,6 +153,7 @@ def render_keyfile(
     regime: str,
     params: dict | None = None,
     *,
+    thins: list[ThinDBH] | None = None,
     mgmt_id: str = "A001",
     inv_year: int = DEFAULT_INV_YEAR,
     cycle_years: int = DEFAULT_CYCLE_YEARS,
@@ -163,8 +164,15 @@ def render_keyfile(
     tree_table: str = "FVS_TreeInit_Plot",
     sp_label: str = "ARTEMIS",
 ) -> str:
-    """Render a complete single-stand FVS keyfile for the given regime."""
-    thins = build_thins(regime, params or {})
+    """Render a complete single-stand FVS keyfile for the given regime.
+
+    ``thins`` overrides the built-in builders, so a caller that assembled its operations
+    elsewhere — `pipeline.s4_fvs.regime_library`, which reads them from
+    `config/regimes.yaml` — can reuse this scaffolding without a Python builder per
+    regime. When omitted, ``regime``/``params`` drive the built-in `REGIMES` table.
+    """
+    if thins is None:
+        thins = build_thins(regime, params or {})
     thin_block = "\n".join(t.render() for t in thins)
     return _KEYFILE.format(
         stand_id=stand_id, stand_cn=stand_cn, regime=regime, mgmt_id=mgmt_id,

@@ -93,22 +93,11 @@ riparian_override:
 # ---------------------------------------------------------------------------------
 # Regime library — mechanical templates, plus the PLAN.md 4b policy name each implements.
 # ---------------------------------------------------------------------------------
-regimes:
-  no_management:
-    policy_name: "No management / Riparian"
-    cuts: false
-  thin_from_below:
-    policy_name: "NIPF light"
-    cuts: true
-  selection_harvest:
-    policy_name: "Public conservative management"
-    cuts: true
-  plantation_rotation:
-    policy_name: "Industrial pine plantation"
-    cuts: true
-  clearcut:
-    policy_name: "Industrial hardwood / mixed"
-    cuts: true
+# The regime library itself lives in config/regimes.yaml — each regime is a named
+# prescription with an explicit, ordered operation list (timing, DBH window, intensity).
+# This file only says WHICH regime an owner class gets; regimes.yaml says what it does.
+# Loader: pipeline/s4_fvs/regime_library.py
+regime_library: "config/regimes.yaml"
 
 # ---------------------------------------------------------------------------------
 # Owner classes — keyed by LETO OWN_TYPE, the vocabulary the FVS inputs carry.
@@ -135,11 +124,8 @@ owner_classes:
     observed: {upland_stands: 218, upland_acres: 2122.05}
     tpo_owner_group: null          # deliberately uncapped
     lamps_mha_group: null          # not schedulable
-    assignment_status: current
-    default:
-      regime: thin_from_below
-      params: {year_offset: 10, max_dbh: 8.0, proportion: 0.35}
-    eligible_regimes: [no_management, thin_from_below]
+    default: {regime: light_default}
+    eligible_regimes: [no_management, light_default]
     differentiation: >-
       Not a real owner. Resolve the stands rather than tune the regime. Note 429 of the
       647 Unknown stands are riparian and never reach an ownership rule at all.
@@ -155,11 +141,8 @@ owner_classes:
     observed: {upland_stands: 11567, upland_acres: 269312.28}
     tpo_owner_group: "Private"
     lamps_mha_group: null          # LAMPS maps industrial+public only; family raises
-    assignment_status: current
-    default:
-      regime: thin_from_below
-      params: {year_offset: 10, max_dbh: 8.0, proportion: 0.35}
-    eligible_regimes: [no_management, thin_from_below, selection_harvest, clearcut]
+    default: {regime: nipf_light}
+    eligible_regimes: [no_management, nipf_light, light_default, hardwood_industrial]
     differentiation: >-
       Largest class by upland acreage (269,312 ac, 26%). Harvest is episodic and
       owner-driven rather than rotation-driven; a single deterministic thin is a
@@ -177,21 +160,12 @@ owner_classes:
     observed: {upland_stands: 5709, upland_acres: 212814.42}
     tpo_owner_group: "Private"
     lamps_mha_group: "industrial"
-    assignment_status: current
     default:
       by_forest_type:
-        pine:
-          regime: plantation_rotation
-          params:
-            thin_year_offset: 15
-            thin_proportion: 0.40
-            thin_max_dbh: 8.0
-            clearcut_year_offset: 30
-        other:
-          regime: clearcut
-          params: {year_offset: 30}
+        pine:  {regime: pine_plantation_industrial}
+        other: {regime: hardwood_industrial}
       forest_type_test: "pipeline.s3_management.regime_assignment.is_pine (FORTYPCD 140-179)"
-    eligible_regimes: [thin_from_below, plantation_rotation, clearcut]
+    eligible_regimes: [nipf_light, pine_plantation_industrial, hardwood_industrial]
     differentiation: >-
       The one class whose management is genuinely rotation-driven, so a fixed schedule is
       defensible here in a way it is not elsewhere. 30-year rotation is the Southeast
@@ -213,15 +187,14 @@ owner_classes:
     observed: {upland_stands: 4534, upland_acres: 213545.57}
     tpo_owner_group: "Federal (NF)"
     lamps_mha_group: "public"
-    assignment_status: current
-    default:
-      regime: selection_harvest
-      params: {start_year_offset: 10, end_year_offset: 40, interval: 10, proportion: 0.20}
-    eligible_regimes: [no_management, selection_harvest, thin_from_below]
+    default: {regime: public_uneven_aged}
+    eligible_regimes: [no_management, public_uneven_aged, public_active_thinning]
     differentiation: >-
-      The only class with its own TPO cap (1.77M cuft/yr all-years, 2.02M for 2013-2024),
-      so it is separable on the constraint side even while its regime parameters match
-      the other public classes.
+      Light repeated selection (15% every 15 years), no regeneration harvest — the
+      lightest cutting regime of any class here. The federal ownership in this AOI is
+      dominated by longleaf systems managed for structure and fire, where removals are
+      modest and continuous rather than scheduled around yield. Also the only class with
+      its own TPO cap (1.77M cuft/yr all-years, 2.02M for 2013-2024).
     open:
       - "The TPO 'Federal (NF)' cap is National Forest only; other federal ownership in
          this class has no cap of its own and would consume the NF budget."
@@ -235,17 +208,17 @@ owner_classes:
     observed: {upland_stands: 1958, upland_acres: 74397.91}
     tpo_owner_group: "Other public"
     lamps_mha_group: "public"
-    assignment_status: current
-    default:
-      regime: selection_harvest
-      params: {start_year_offset: 10, end_year_offset: 40, interval: 10, proportion: 0.20}
-    eligible_regimes: [no_management, selection_harvest, thin_from_below, plantation_rotation]
+    default: {regime: public_active_thinning}
+    eligible_regimes: [no_management, public_active_thinning, public_uneven_aged, pine_plantation_industrial]
     differentiation: >-
-      Florida state forests are managed more actively than the federal parameters imply
-      (longleaf restoration, thinning for RCW habitat, some pine production). Diverging
-      needs evidence: LCMS Tree Removal rate on state versus federal stands over the AOI.
-      Until then the shared parameters stand and plantation_rotation stays eligible but
-      unused.
+      Deliberately heavier than federal: an opening thin from below at +5 (30% under 10
+      inches) for longleaf restoration and RCW habitat, then 20% selection entries. State
+      forests here carry a real timber program alongside the restoration mandate, which
+      federal longleaf ground largely does not.
+    open:
+      - "The federal/state split is a judgement about management intent, not a fitted
+         difference. LCMS Tree Removal rates on state versus federal stands would confirm
+         or refute the direction and the magnitude."
 
   county:
     leto_own_code: 5
@@ -256,17 +229,16 @@ owner_classes:
     observed: {upland_stands: 278, upland_acres: 3874.83}
     tpo_owner_group: "Other public"
     lamps_mha_group: "public"
-    assignment_status: current
-    default:
-      regime: selection_harvest
-      params: {start_year_offset: 10, end_year_offset: 40, interval: 10, proportion: 0.20}
-    eligible_regimes: [no_management, selection_harvest]
+    default: {regime: custodial_light}
+    eligible_regimes: [no_management, custodial_light]
     differentiation: >-
       Smallest class (3,875 upland ac, 0.4%), largely parks and watershed land where
-      commercial entry is rare. Testable criterion: if these stands show a Tree Removal
-      rate near zero in LCMS 1985-2024, the default becomes no_management rather than a
-      20% selection cut every decade. Applying the public schedule here is the most
-      likely over-harvest in this table, though the acreage bounds the damage.
+      commercial entry is rare. Given its own custodial regime — a single 15% entry at
+      +20 — rather than the public selection schedule, which would have cut 20% every
+      decade on land that may never be entered.
+    open:
+      - "If these stands show a Tree Removal rate near zero in LCMS 1985-2024, the default
+         should drop to no_management. custodial_light is the conservative middle."
 
   ngo:
     leto_own_code: 6
@@ -277,16 +249,8 @@ owner_classes:
     observed: {upland_stands: 370, upland_acres: 15508.35}
     tpo_owner_group: "Private"     # FIA treats NGO as private ownership
     lamps_mha_group: "public"      # conservation behaviour, not industrial
-    assignment_status: proposed
-    supersedes:
-      # Harris cannot express NGO, so today these stands land in whatever Harris class
-      # the raster gives them — usually family (3) or corporate (4). Code has no NGO branch.
-      regime: thin_from_below
-      params: {year_offset: 10, max_dbh: 8.0, proportion: 0.35}
-    default:
-      regime: selection_harvest
-      params: {start_year_offset: 10, end_year_offset: 40, interval: 10, proportion: 0.20}
-    eligible_regimes: [no_management, selection_harvest, thin_from_below]
+    default: {regime: conservation_restoration}
+    eligible_regimes: [no_management, conservation_restoration, public_uneven_aged]
     differentiation: >-
       A class the Harris raster cannot express at all — this is the clearest single reason
       to key regimes off LETO rather than the raster. Conservation NGOs and land trusts
@@ -306,14 +270,8 @@ owner_classes:
     observed: {upland_stands: 15190, upland_acres: 234245.19}
     tpo_owner_group: null          # uncapped pending decomposition — see below
     lamps_mha_group: null          # not schedulable until decomposed
-    assignment_status: proposed
-    supersedes:
-      regime: thin_from_below
-      params: {year_offset: 10, max_dbh: 8.0, proportion: 0.35}
-    default:
-      regime: thin_from_below
-      params: {year_offset: 10, max_dbh: 8.0, proportion: 0.35}
-    eligible_regimes: [no_management, thin_from_below]
+    default: {regime: light_default}
+    eligible_regimes: [no_management, light_default]
     differentiation: >-
       THE BIGGEST OPEN PROBLEM IN THIS FILE. 15,190 upland stands and 234,245 acres — 22%
       of upland acreage and the second-largest class — sitting in a bucket with no owner
