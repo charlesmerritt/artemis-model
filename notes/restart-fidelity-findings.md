@@ -254,9 +254,19 @@ uv run pytest tests/test_restart_fidelity.py -v   # 9 passed
 
 ## Possible paper
 
-**Reproducible iterative coupling of FVS with spatial management policy.** Contribution: FVS's
-official stop/restart facility preserves growth state exactly but silently drops FFE cover-type
-state, understating total stand carbon by ~8% per barrier — with base metrics bit-identical, so
-the corruption is invisible to any summary-level check. Identifies in-process pause as the exact
+**A silent carbon-accounting defect in FVS stop/restart.** Contribution: FVS's official
+stop/restart facility preserves growth state exactly but silently drops FFE cover-type state,
+understating total stand carbon by ~8% per barrier — with base metrics bit-identical, so the
+corruption is invisible to any summary-level check. Identifies in-process pause as the exact
 alternative. Reviewer concern: results are specific to one FVS version, variant, and extension
 subset.
+
+> **Framing updated 2026-08-06.** This was originally pitched as "reproducible iterative
+> coupling of FVS with spatial management policy," i.e. as the enabling result for an
+> architecture that ran FVS inside the scheduling loop. ARTEMIS no longer does that — it
+> generates barrier-free trajectory libraries and schedules over the precomputed results
+> ([`trajectory-library-and-annealing.md`](trajectory-library-and-annealing.md)). **The
+> measurement is unaffected and arguably lands better on its own**: it is a caution to
+> anyone building a coupled FVS loop, not a component of ours. It is also precisely why
+> ARTEMIS can claim its library carbon is clean — the defect is a property of the barrier,
+> and library runs have none.

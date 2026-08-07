@@ -14,14 +14,20 @@
 
 ARTEMIS is a deterministic, pixel-level (30 m) forward projection of SE-US forest stand
 dynamics using **FVS Southern (SN) variant**, initialized from **TreeMap 2022 + FIA tree
-lists**, management calibrated from **LCMS**. v1 extent: Florida (FIPS 12). CRS **EPSG:5070**,
-50-yr horizon, 5-yr cycles. See repo `README.md`, `PLAN.md`, `notes/management_units.md`.
+lists**, management **selected by a scheduler over a precomputed trajectory library**
+(LCMS provides the observed record the plan is validated against, not the forward schedule).
+v1 extent: Florida (FIPS 12). CRS **EPSG:5070**, 50-yr horizon, 5-yr cycles. See repo
+`README.md`, `PLAN.md`, `notes/trajectory-library-and-annealing.md`,
+`notes/management_units.md`.
 
 **Why management units matter:** FVS simulates *stands*, not pixels. To run FVS across a
 region you must partition forested land into operationally meaningful **management units**
-(roughly: timber stands) that share an initial state and a management regime. The quality,
-size, and shape of these units directly controls (a) how many FVS runs are needed, (b) how
-realistic the simulated silviculture is, and (c) the spatial resolution of outputs.
+(roughly: timber stands) that share an initial state and a set of eligible management
+prescriptions. The quality, size, and shape of these units directly controls (a) how many
+FVS runs are needed — now `units × prescriptions per unit`, since every unit is simulated
+under every alternative in its ownership-class library — (b) how realistic the simulated
+silviculture is, and (c) the spatial resolution of outputs. Unit count matters more under
+this architecture than it did when one regime was assigned per unit.
 
 ## 2. The verified key finding (your starting point — do NOT re-derive from scratch)
 

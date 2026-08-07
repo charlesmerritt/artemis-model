@@ -16,47 +16,29 @@ enumerates what each stand *could* do; the scheduler decides what each stand *wi
 
 ## Guiding references
 
-Two documents are the methodological guides for this architecture; see
-[`docs/references/README.md`](../docs/references/README.md) for full citations, the
-side-by-side mapping onto ARTEMIS, and links to published code.
+Full citations, status, and the detailed side-by-side mapping:
+[`docs/references/README.md`](../docs/references/README.md).
 
 - **`CLIMATE-FVS`** — Diaz, Perry, Tutak, Hodges & Mertens (2015), *Potential climate change
   impacts on management outcomes for western Oregon BLM forestlands simulated using
-  Climate-FVS*, Ecotrust, report to BLM. **This architecture is not novel — Ecotrust built
-  it.** They batch-simulated every eligible prescription (× timing offset × climate
-  scenario) for every stand into a database, then selected among the precomputed results
-  with a simulated-annealing scheduler, and published both halves:
-  `github.com/Ecotrust/growth-yield-batch` and `github.com/Ecotrust/harvest-scheduler`.
-  Read their §"Methods" (pp. 14–28) before implementing §4–6 below.
-- **`LAMPS`** (Bettinger & Lennette et al., Landscape Management Policy Simulator) —
-  eligibility screening (MHA/MHP), adjacency and green-up (URM/ARM), and the heuristic
-  scheduling lineage. It supplies the **spatial constraint machinery Diaz et al. did not
-  need**: their scheduler optimizes global metrics with no adjacency constraint at all.
+  Climate-FVS*, Ecotrust, report to BLM. Committed at `docs/references/`.
+- **`LAMPS`** — Bettinger & Lennette et al., Landscape Management Policy Simulator. PDF not
+  yet in the repo; expected at `docs/references/LAMPS_Bettinger_et_al.pdf`.
 
-The Climate-FVS report is committed. The LAMPS PDF has never been in the repo — it is
-expected at `docs/references/LAMPS_Bettinger_et_al.pdf`.
-
-Three specific things ARTEMIS takes from Diaz et al. beyond the overall shape, each marked
-where it lands below:
-
-1. **Timing offsets are a first-class axis.** They delayed the first activity of each
-   prescription by 5/10/15 years explicitly "to offer choices to the optimization model."
-   Our `*_offset` grids in `config/prescriptions.yaml` are the same device (§4).
-2. **Four objective forms**, not an objective-plus-penalties split: `maximize`, `minimize`,
-   `evenflow`, `evenflow_target`. Adopted in §6.
-3. **Global targets let the scheduler shift harvest between sub-units.** Theirs did,
-   concentrating harvest into one BLM District — a departure from practice they flag in
-   their own footnotes. This is why ARTEMIS keeps county and owner-group dimensions on its
-   caps (§6).
+**Neither reference alone gives us the architecture. The composition does**, and §1.2 below
+is the statement of exactly how. Read that before anything else in this note.
 
 ---
 
-## 1. The architecture
+## 1. The architecture, and where it comes from
+
+### 1.1 The pipeline
 
 ```text
   ownership class (Harris 2025)  ──▶  eligible prescription set  ──┐
   riparian geometry (BMP)        ──▶  {no_management} (override)  ──┤
-  forest type / stand age        ──▶  parameter grid              ──┤
+  eligibility screens (MHA/MHP)  ──▶  shrink the set              ──┤
+  parameter grid (intensity × timing offset)                      ──┤
                                                                    ▼
                                             enumerate (stand × prescription)
                                                                    │
@@ -71,8 +53,10 @@ where it lands below:
                                         └──────────────┬───────────────────┘
                                                        │
                                     simulated annealing over one choice per stand
-                                    subject to TPO caps, even flow, adjacency,
-                                    green-up, budget; riparian fixed by construction
+                                    objectives: maximize / minimize / evenflow /
+                                    evenflow_target, dimensioned by county × owner
+                                    penalties: adjacency, green-up, opening size
+                                    absolutes: unrepresentable by construction
                                                        │
                                                        ▼
                                     SELECTED PLAN: stand_id → trajectory_id
@@ -80,6 +64,52 @@ where it lands below:
                                                        ▼
                               painting → rasters, schedules, regional summaries
 ```
+
+### 1.2 The synthesis: `CLIMATE-FVS` gives the pipeline, `LAMPS` gives the constraints
+
+The two references divide cleanly, and the division is the design. Diaz et al. built a
+working two-stage system but deliberately left out spatial constraints; LAMPS is built
+around exactly those constraints. ARTEMIS is their composition plus an ownership-keyed
+decision space that is our own.
+
+| Component | From `CLIMATE-FVS` | From `LAMPS` | ARTEMIS |
+|---|---|---|---|
+| **Overall decomposition** | Batch-simulate every eligible alternative per stand, then select among precomputed results | Heuristic selection over a landscape of stands | Adopted wholesale — §2 |
+| **What restricts a stand's options** | Land classification ("prescription zones"): Critical Habitat, wilderness, stream buffers | Industrial vs. public owner behaviour | **Ownership class** (Harris 2025, seven forest classes) — §3 |
+| **Absolutes** | Structural: excluded classes simply have no active prescriptions | — | Structural, same device: riparian library = `{no_management}` — §3 |
+| **Eligibility screens** | — | Minimum harvest age (MHA), minimum harvestable percentage (MHP) | Applied at library-build time, so ineligible options never reach the scheduler — §3 |
+| **Timing as a decision** | "Offsets" delaying first activity 5/10/15 yr, explicitly to give the optimizer choices | — | `*_offset` parameter grids — §4 |
+| **Simulation engine** | Distributed, fault-tolerant, parallel FVS batch → database | — | Barrier-free parallel FVS → DuckDB — §4, §5 |
+| **Search** | Simulated annealing over prescriptions × timing for every stand | Simulated annealing / tabu / genetic for spatially constrained scheduling | Simulated annealing, seeded from greedy — §6 |
+| **Objective structure** | Four forms: `maximize`, `minimize`, `evenflow`, `evenflow_target`; weights set priority | — | Adopted verbatim — §6 |
+| **Spatial constraints** | **None** — no adjacency, no green-up, no opening size | ARM / URM adjacency, green-up, maximum opening size, blocks | Priced as penalties; blocks drive the block move — §6 |
+| **Solution quality** | Reports the chosen prescription mix as a headline result | Heuristics give no optimality guarantee | Both: mix is a result (§8), quality report is mandatory (§6) |
+
+**What is ARTEMIS's own**, and therefore what has no precedent to lean on:
+
+1. **Ownership class as the library-defining key.** Diaz et al. keyed eligibility to land
+   *designation* on a single federal ownership; LAMPS distinguishes industrial from public
+   behaviour. Neither keys a prescription library to a national, 30 m, seven-class
+   ownership raster across a mixed-ownership landscape. That is the move this project is
+   making, and `config/prescriptions.yaml` is where it lives.
+2. **Imputed tree lists composed to units.** TreeMap → FIA plots → weighted union per
+   management unit (§4). Diaz et al. had the analogous problem and solved it with GNN
+   imputation, but our composition rule is ours to defend.
+3. **State BMP geometry as the absolute.** Their exclusions were federal designations; ours
+   are Florida BMP stream-management zones derived from hydrography (§3).
+4. **TPO-derived targets dimensioned by county × owner group** (§6) — chosen specifically
+   *against* the global-target artifact Diaz et al. documented.
+5. **Barrier-free generation justified by measurement.** The restart-fidelity work
+   (`restart-fidelity-findings.md`) is why we can assert library trajectories are clean
+   where an iteratively coupled run would not be (§2).
+
+**Where the two references disagree, and how it is resolved.** Diaz et al. optimize global
+metrics and accept whatever spatial pattern falls out; LAMPS exists because that pattern
+matters. ARTEMIS follows LAMPS here — adjacency and green-up are real constraints on a
+working forest, and a plan that clearcuts a contiguous block because nothing forbade it is
+not a plan we can defend. The cost is that the Ecotrust scheduler code cannot be used
+as-is: it has no notion of a spatial neighbour. Expect to reimplement the search with the
+block move, using their objective structure.
 
 ## 2. Why this replaces iterative coupling
 

@@ -883,7 +883,7 @@ Create `notes/restart-fidelity-findings.md` with these sections:
 Add one line to the `## Index` list in `notes/README.md`, matching the existing style (link + em-dash + hook):
 
 ```markdown
-- [Restart fidelity findings](restart-fidelity-findings.md) — measured whether FVS stop/restart preserves FFE carbon state; four-arm spike (continuous / in-process pause / stop-restart / tree-list rebuild) and the architecture decision it selects.
+- [Restart fidelity findings](../../../notes/restart-fidelity-findings.md) — measured whether FVS stop/restart preserves FFE carbon state; four-arm spike (continuous / in-process pause / stop-restart / tree-list rebuild) and the architecture decision it selects.
 ```
 
 - [ ] **Step 3: Verify the full test suite still passes**
