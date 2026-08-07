@@ -1,5 +1,13 @@
 # Pipeline review — `pipeline/`, 2026-08-06
 
+> **Follow-up (2026-08-07).** PR #21 adopted the trajectory-library + simulated-annealing
+> architecture in documentation and config. It changes no executable code, so every bug in
+> §3 is still open. Two conclusions here are superseded: §1.2 argued for keying trajectories
+> on `(plot, regime, SI bin)`; the PR keys them on `(management unit, prescription)` and its
+> reasoning is better. §1.3's scheduler critique is resolved — greedy is retained
+> deliberately as the annealer's seed and reported baseline. See
+> [`pr21-review-2026-08-07.md`](pr21-review-2026-08-07.md) for the full status table.
+
 Full read of all nine modules in `pipeline/s3_management/` and `pipeline/s4_fvs/`,
 checked against (a) the stated project direction, (b) the LETO prototype scripts, and
 (c) what the code actually does when run.
