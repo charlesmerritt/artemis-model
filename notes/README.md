@@ -4,6 +4,8 @@ Durable context for future agents and collaborators.
 
 ## Index
 
+- [Claude Code cloud environment](claude-code-web-environment.md) — why the environment setup script does what it does: which hosts the egress policy denies (`rclone.org`, `astral.sh`, the PPAs, and `extensions.duckdb.org`, the last of which costs 9 tests and needs an admin), the rclone `AWS_CA_BUNDLE` shim without which every S3 call fails, and the three-file split between machine setup, repo bootstrap, and the Dockerfile.
+
 - [FVS restart fidelity findings](restart-fidelity-findings.md) — **measured**: in-process pause reproduces a continuous run exactly (0.0 delta incl. carbon), but `--restart` silently collapses `Forest_Shrub_Herb` to 0.02 and understates total stand carbon ~8% per barrier while BA/Tpa/SDI stay bit-identical. `putstd` omits the FFE commons; `COVTYP` is the likely culprit. Also: a negative FVS restart code is a *signal* — `fvsRun()` must be called again or the store file is empty.
 - [Notebooks index](notebooks.md) — what every notebook + helper in `notebooks/` does, what each needs to run (GEE / `/mnt/d` drive / network), links to the per-group deep-dive notes, and the 2026-07-14 test results (incl. the broken FVS notebook and the stored-error prototype).
 - [Management unit pilot workflow](management_units.md) — decisions, inputs, missing data, and first-notebook scope for Florida timber management units.

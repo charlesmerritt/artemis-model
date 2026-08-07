@@ -48,18 +48,24 @@ Detailed findings, run history, unresolved decisions, and environment-specific g
 ARTEMIS currently requires Python 3.14 and uses [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-# Create the environment and install locked dependencies
-uv sync
+# Dependencies, git hooks, the DuckDB sqlite extension, and a report of which data
+# source is reachable. Idempotent; --check reports without changing anything.
+./scripts/setup-env.sh
 
 # Run the tracked test suite. The explicit path avoids scanning external data links.
 uv run pytest tests/
 
-# Enable the tracked hook that rejects accidentally staged files larger than 99 MiB
-git config core.hooksPath .githooks
-
 # Start Jupyter for exploratory workflows
 uv run jupyter lab
 ```
+
+The same bootstrap runs in the two other environments, so all three agree on what
+"configured" means: [`Dockerfile`](Dockerfile) builds a portable image around it
+(`docker build -t artemis . && docker run --rm -it artemis uv run pytest tests/ -q`),
+and [`scripts/claude-code-env-setup.sh`](scripts/claude-code-env-setup.sh) is the
+version-controlled copy of the Claude Code cloud environment's setup script. See
+[`notes/claude-code-web-environment.md`](notes/claude-code-web-environment.md) for the
+sandbox-specific constraints behind it.
 
 For Earth Engine workflows, authenticate separately:
 

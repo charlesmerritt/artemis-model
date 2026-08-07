@@ -18,10 +18,10 @@ The second exists because the bucket also mirrors the repository's gitignored
 Directories whose bucket name differs from their drive name are listed under
 ``r2.renames`` rather than hardcoded here.
 
-Credentials come from the preconfigured ``RCLONE_CONFIG_R2_*`` environment
-variables; nothing here reads, stores, or logs a secret. Where rclone or those
-variables are absent — a bare CI runner, a fresh clone — every lookup reports
-"unavailable" and callers fall back to what they did before (tests skip).
+Credentials come from the ``RCLONE_CONFIG_R2_*`` environment variables or from an
+``rclone.conf`` remote; nothing here reads, stores, or logs a secret. Where rclone
+and both of those are absent — a bare CI runner, a fresh clone — every lookup
+reports "unavailable" and callers fall back to what they did before (tests skip).
 
 Environment:
     ARTEMIS_R2_FALLBACK=0       disable remote lookups entirely
@@ -47,7 +47,8 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-# rclone builds its remote from these; all three must be set for the fallback to work.
+# One of the two ways rclone learns the remote: all three set, or an rclone.conf
+# section named for it (see r2_available).
 REQUIRED_ENV_VARS = (
     "RCLONE_CONFIG_R2_ACCESS_KEY_ID",
     "RCLONE_CONFIG_R2_SECRET_ACCESS_KEY",
@@ -93,11 +94,18 @@ def r2_available() -> bool:
     if shutil.which("rclone") is None:
         logger.debug("R2 fallback off: rclone not on PATH")
         return False
-    missing = [name for name in REQUIRED_ENV_VARS if not os.environ.get(name)]
-    if missing:
-        logger.debug("R2 fallback off: unset %s", ", ".join(missing))
+    cfg = data_paths().get("r2")
+    if cfg is None:
         return False
-    return "r2" in data_paths()
+    if all(os.environ.get(name) for name in REQUIRED_ENV_VARS):
+        return True
+    # The environment variables are one way to define the remote; an rclone.conf
+    # section is the other, and a workstation is likelier to use that.
+    proc = _run(["rclone", "listremotes"], _STAT_TIMEOUT_S)
+    configured = proc is not None and f"{cfg['remote']}:" in proc.stdout.split()
+    if not configured:
+        logger.debug("R2 fallback off: no '%s' remote in env or rclone.conf", cfg["remote"])
+    return configured
 
 
 def _as_path(path) -> Path:
@@ -303,4 +311,9 @@ def unavailable_reason(path) -> str:
     url = remote_url(path)
     if url is None:
         return f"{path} not present, and it is under neither the data drive nor the repo's data/"
-    return f"{path} not on the data drive and not in R2 ({url})"
+    reason = f"{path} not on the data drive and not in R2 ({url})"
+    # A remote can exist with only RCLONE_CONFIG_R2_TYPE/PROVIDER set — as it does in
+    # the Docker image — so a lookup can fail for want of keys rather than data.
+    if not all(os.environ.get(n) for n in REQUIRED_ENV_VARS):
+        reason += "; no R2 keys in the environment, so this may be an auth failure rather than a miss"
+    return reason
