@@ -93,25 +93,58 @@ def test_proportions_and_dbh_windows_are_valid(names, library):
             assert 0.0 <= op["min_dbh"] < op["max_dbh"], f"{name}: bad DBH window"
 
 
-def test_regeneration_harvest_is_terminal(names, library):
-    """Nothing can be scheduled after a clearcut — the stand is gone, and without a
-    regeneration keyword (issue #17) FVS has no planted stand to cut next."""
+TERMINAL_KINDS = ("regeneration_harvest", "retention_harvest")
+
+
+def test_regeneration_and_retention_harvests_are_terminal(names, library):
+    """Nothing can be scheduled after a stand-replacing entry.
+
+    Without a regeneration keyword (issue #17) FVS has no planted cohort to cut next, so
+    a later operation would be applied to whatever grew back by default — meaningless.
+    Retention harvests count: the residual is a seed source, not a merchantable stand.
+    """
     for name in names:
         ops = get_regime(name, library)["operations"]
         for i, op in enumerate(ops):
+            if op["kind"] in TERMINAL_KINDS:
+                assert i == len(ops) - 1, (
+                    f"{name}: operations scheduled after a {op['kind']}"
+                )
+
+
+def test_harvest_kinds_have_the_proportion_their_name_implies(names, library):
+    """A clearcut removes everything; a retention harvest must actually retain."""
+    for name in names:
+        for op in get_regime(name, library)["operations"]:
             if op["kind"] == "regeneration_harvest":
-                assert op["proportion"] == 1.0, f"{name}: regeneration harvest must remove all"
-                assert i == len(ops) - 1, f"{name}: operations scheduled after a clearcut"
+                assert op["proportion"] == 1.0, (
+                    f"{name}: regeneration_harvest removes {op['proportion']} — "
+                    f"if it retains trees it should be kind: retention_harvest"
+                )
+            elif op["kind"] == "retention_harvest":
+                assert 0.5 <= op["proportion"] < 1.0, (
+                    f"{name}: retention_harvest proportion {op['proportion']} is not a "
+                    f"regeneration harvest with a residual"
+                )
+                assert op["max_dbh"] >= 999.0, (
+                    f"{name}: a retention harvest spans the full diameter range; a "
+                    f"bounded window is a thin, not a regeneration entry"
+                )
 
 
-def test_regimes_with_a_clearcut_declare_the_regeneration_gap(names, library):
-    """A regime that clearcuts without replanting understates the next rotation. Say so."""
+def test_retention_pct_matches_the_rendered_proportion(names, library):
+    """`retention_pct: 15` and `proportion: 0.85` must not drift apart."""
     for name in names:
         block = get_regime(name, library)
-        if any(op["kind"] == "regeneration_harvest" for op in block["operations"]):
-            assert "regeneration_gap" in block, (
-                f"{name} clearcuts but does not document the missing PLANT/NATREGEN "
-                f"keyword — see issue #18"
+        if "retention_pct" not in block:
+            continue
+        harvests = [op for op in block["operations"] if op["kind"] == "retention_harvest"]
+        assert harvests, f"{name}: declares retention_pct but has no retention harvest"
+        for op in harvests:
+            expected = round(1.0 - block["retention_pct"] / 100.0, 4)
+            assert op["proportion"] == expected, (
+                f"{name}: retention_pct {block['retention_pct']}% implies proportion "
+                f"{expected}, got {op['proportion']}"
             )
 
 

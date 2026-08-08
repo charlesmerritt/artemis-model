@@ -36,6 +36,9 @@ constraints:
 #   thin_from_below      — bounded DBH window, removes small stems
 #   selection            — proportional removal across the whole diameter distribution
 #   regeneration_harvest — proportion 1.0 across the full window (a clearcut)
+#   retention_harvest    — regeneration harvest that leaves standing green trees
+#                          (proportion < 1.0 across the full window). The residual is
+#                          the retention level: proportion 0.85 leaves 15% of TPA.
 
 regimes:
 
@@ -167,3 +170,93 @@ regimes:
     cuts: true
     operations:
       - {year_offset: 15, kind: thin_from_below, min_dbh: 0.0, max_dbh: 8.0, proportion: 0.25, species: 0}
+
+  # --- Scenario variants -------------------------------------------------------------
+  # These exist to populate the rotation-length x retention factorial in
+  # config/scenarios.yaml. They are the same silviculture as the regimes above with one
+  # axis moved, so a tradeoff comparison isolates that axis.
+
+  pine_plantation_extended:
+    label: "Extended-rotation pine plantation"
+    policy_name: "Industrial pine plantation"
+    intent: >-
+      Corporate pine managed for sustained yield rather than earliest financial maturity:
+      a second commercial thin and a regeneration harvest at 40 years instead of 25. The
+      long-rotation arm of the scenario factorial.
+    cuts: true
+    rotation_years: 40
+    regeneration_gap: >-
+      No PLANT/NATREGEN keyword (issue #18); the post-harvest stand regenerates by FVS
+      default. Because the harvest is later, less of the horizon is affected than in the
+      25-year rotation.
+    operations:
+      - {year_offset: 10, kind: thin_from_below, min_dbh: 0.0, max_dbh: 8.0, proportion: 0.40, species: 0,
+         note: "first commercial thin"}
+      - {year_offset: 25, kind: thin_from_below, min_dbh: 0.0, max_dbh: 12.0, proportion: 0.25, species: 0,
+         note: "second thin, wider merchantable window as the stand ages"}
+      - {year_offset: 40, kind: regeneration_harvest, min_dbh: 0.0, max_dbh: 999.0, proportion: 1.0, species: 0,
+         note: "final harvest at extended rotation age"}
+
+  pine_plantation_retention:
+    label: "Pine plantation with green-tree retention"
+    policy_name: "Industrial pine plantation"
+    intent: >-
+      The 25-year rotation with 15% of TPA left standing through the regeneration
+      harvest. Retention is the certification arm of the factorial — it is what
+      separates a minimum-compliance harvest from a certified one, and it is directly
+      expressible as a ThinDBH proportion below 1.0.
+    cuts: true
+    rotation_years: 25
+    retention_pct: 15
+    regeneration_gap: >-
+      No PLANT/NATREGEN keyword (issue #18). Retained trees do persist in the FVS stand,
+      so this regime is less dependent on the missing regeneration keyword than a full
+      clearcut is — the residual is real, the planted cohort is not.
+    operations:
+      - {year_offset: 10, kind: thin_from_below, min_dbh: 0.0, max_dbh: 8.0, proportion: 0.40, species: 0}
+      - {year_offset: 25, kind: retention_harvest, min_dbh: 0.0, max_dbh: 999.0, proportion: 0.85, species: 0,
+         note: "regeneration harvest leaving 15% of TPA as green-tree retention"}
+
+  pine_plantation_extended_retention:
+    label: "Extended-rotation pine plantation with retention"
+    policy_name: "Industrial pine plantation"
+    intent: >-
+      Both axes moved: 40-year rotation and 15% green-tree retention. The
+      most-conservative corporate arm of the factorial.
+    cuts: true
+    rotation_years: 40
+    retention_pct: 15
+    regeneration_gap: "No PLANT/NATREGEN keyword (issue #18)."
+    operations:
+      - {year_offset: 10, kind: thin_from_below, min_dbh: 0.0, max_dbh: 8.0, proportion: 0.40, species: 0}
+      - {year_offset: 25, kind: thin_from_below, min_dbh: 0.0, max_dbh: 12.0, proportion: 0.25, species: 0}
+      - {year_offset: 40, kind: retention_harvest, min_dbh: 0.0, max_dbh: 999.0, proportion: 0.85, species: 0}
+
+  hardwood_extended:
+    label: "Extended-rotation hardwood"
+    policy_name: "Industrial hardwood / mixed"
+    intent: "Corporate non-pine on the long-rotation arm: regeneration harvest at 40 rather than 20."
+    cuts: true
+    regeneration_gap: "No NATREGEN keyword (issue #17)."
+    operations:
+      - {year_offset: 40, kind: regeneration_harvest, min_dbh: 0.0, max_dbh: 999.0, proportion: 1.0, species: 0}
+
+  hardwood_retention:
+    label: "Hardwood with green-tree retention"
+    policy_name: "Industrial hardwood / mixed"
+    intent: "Corporate non-pine, certification arm: 15% of TPA retained through the harvest."
+    cuts: true
+    retention_pct: 15
+    regeneration_gap: "No NATREGEN keyword (issue #17)."
+    operations:
+      - {year_offset: 20, kind: retention_harvest, min_dbh: 0.0, max_dbh: 999.0, proportion: 0.85, species: 0}
+
+  hardwood_extended_retention:
+    label: "Extended-rotation hardwood with retention"
+    policy_name: "Industrial hardwood / mixed"
+    intent: "Corporate non-pine with both axes moved: harvest at 40, 15% retained."
+    cuts: true
+    retention_pct: 15
+    regeneration_gap: "No NATREGEN keyword (issue #17)."
+    operations:
+      - {year_offset: 40, kind: retention_harvest, min_dbh: 0.0, max_dbh: 999.0, proportion: 0.85, species: 0}

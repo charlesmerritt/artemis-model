@@ -1,0 +1,210 @@
+# Landscape management scenarios — the tradeoff factorial
+#
+# Modelled on Diaz, Loreno, Ettl & Davies (2018), "Tradeoffs in Timber, Carbon, and Cash
+# Flow under Alternative Management Systems for Douglas-Fir in the Pacific Northwest",
+# Forests 9(8):447, doi:10.3390/f9080447 (Ecotrust). See notes/scenario-framework.md.
+#
+# THE STRUCTURAL POINT. Diaz et al. do not assign one regime per owner and project a
+# single future. They define alternative management systems on two design axes, run
+# EVERY parcel under EVERY scenario, and report where the scenarios trade off against
+# each other. Ownership is not the organising principle; the scenario is.
+#
+# `config/management_regimes.yaml` answers "what would this owner plausibly do?" — that
+# is the BAU scenario below, and it stays useful as the reference case. This file adds
+# the counterfactuals that make it a comparison rather than a single projection.
+#
+# Their 2x2 was management objective (maximise NPV -> short rotation, vs maximise
+# sustained yield -> long rotation) x forest-practice constraint (Oregon/Washington
+# Forest Practices Act minimum, vs FSC certification: more green-tree retention and
+# wider riparian buffers). Four scenarios: BAU, SHORT~FSC, LONG~FPA, LONG~FSC.
+#
+# The Florida translation keeps both axes and swaps the constraint vocabulary: Florida
+# Forest Service BMP minimums (config/bmp_rules.yaml as it stands) versus a certified
+# arm with retention and wider streamside management zones.
+
+version: 1
+
+reference:
+  citation: >-
+    Diaz, D.D., Loreno, S., Ettl, G.J., Davies, B. (2018). Tradeoffs in Timber, Carbon,
+    and Cash Flow under Alternative Management Systems for Douglas-Fir in the Pacific
+    Northwest. Forests 9(8), 447. doi:10.3390/f9080447
+  what_we_take: >-
+    The 2x2 design (objective x practice constraint), running every stand under every
+    scenario, and reporting KPIs as tradeoffs rather than picking a winner.
+  what_differs: >-
+    They studied 64 parcels of one forest type under one owner archetype in western
+    OR/WA. We have 57,527 stands across eight ownership classes in north Florida, plus a
+    TPO volume constraint they did not have. So our scenarios must vary regimes PER OWNER
+    CLASS rather than swapping one prescription, and BAU is ownership-differentiated
+    rather than a single industrial default.
+
+# ---------------------------------------------------------------------------------
+# Design axes
+# ---------------------------------------------------------------------------------
+axes:
+  objective:
+    short:
+      label: "Earliest financial maturity"
+      detail: "Corporate rotations at 25 (pine) / 20 (hardwood). Diaz's NPV-maximising arm."
+    long:
+      label: "Sustained yield"
+      detail: >-
+        Corporate rotations extended to 40 with a second commercial thin. Diaz's
+        sustained-yield arm, and the one their results associate with higher carbon.
+  practice_constraint:
+    bmp_minimum:
+      label: "Florida BMP minimum"
+      detail: >-
+        Streamside management zones at the Florida Forest Service 2020 minimum widths
+        already in config/bmp_rules.yaml (35 / 50 / 75 ft). Regeneration harvests remove
+        the full stand. The legal floor.
+      buffer_widths_ft: {ephemeral_intermittent: 35, perennial_small: 50, perennial_large: 75, waterbody: 75}
+      green_tree_retention_pct: 0
+    certified:
+      label: "Certification-style constraint"
+      detail: >-
+        The FSC arm, translated. Green-tree retention on every regeneration harvest, and
+        SMZ widths roughly doubled. Both are the levers Diaz et al. found move carbon.
+      buffer_widths_ft: {ephemeral_intermittent: 70, perennial_small: 100, perennial_large: 150, waterbody: 150}
+      green_tree_retention_pct: 15
+      buffer_caveat: >-
+        UNLIKE THE REGIME SWAP, THIS CANNOT BE EVALUATED FROM THE EXISTING TRAJECTORY
+        LIBRARY. Widening SMZs changes which acres are riparian, so it changes the stand
+        polygons themselves — sketch_management_units.py has to re-run and LETO has to
+        re-segment before this arm means anything. Wider buffers move area from a managed
+        owner class into unconditional no_management, which is a large part of why the
+        certified arm stores more carbon. Costed honestly, this is the expensive axis.
+
+# ---------------------------------------------------------------------------------
+# Scenarios — the 2x2. `regimes` overrides config/management_regimes.yaml per owner
+# class; anything not listed keeps its default from that file.
+# ---------------------------------------------------------------------------------
+scenarios:
+
+  bau:
+    label: "Business as usual"
+    objective: short
+    practice_constraint: bmp_minimum
+    is_reference: true
+    detail: >-
+      Every owner class on the default regime from config/management_regimes.yaml. This
+      is the ownership-differentiated reference case, and the only scenario claiming to
+      describe what is actually happening on the landscape.
+    regimes: {}          # no overrides — management_regimes.yaml defaults apply
+
+  short_certified:
+    label: "Short rotation, certified practice"
+    objective: short
+    practice_constraint: certified
+    detail: >-
+      BAU timing with retention on regeneration harvests. Isolates the retention axis:
+      any difference from BAU is retention plus the wider buffers, with rotation length
+      held constant.
+    regimes:
+      corporate:
+        by_forest_type:
+          pine:  {regime: pine_plantation_retention}
+          other: {regime: hardwood_retention}
+
+  long_bmp:
+    label: "Extended rotation, BMP minimum"
+    objective: long
+    practice_constraint: bmp_minimum
+    detail: >-
+      Rotations extended to 40 with a second thin, at the legal minimum for practice.
+      Isolates the rotation-length axis against BAU.
+    regimes:
+      corporate:
+        by_forest_type:
+          pine:  {regime: pine_plantation_extended}
+          other: {regime: hardwood_extended}
+
+  long_certified:
+    label: "Extended rotation, certified practice"
+    objective: long
+    practice_constraint: certified
+    detail: >-
+      Both axes moved — Diaz's LONG~FSC. Expected to be highest carbon and lowest NPV if
+      their result carries over to Southeast pine.
+    regimes:
+      corporate:
+        by_forest_type:
+          pine:  {regime: pine_plantation_extended_retention}
+          other: {regime: hardwood_extended_retention}
+
+# ---------------------------------------------------------------------------------
+# Key performance indicators.
+#
+# Diaz et al. used three: average carbon storage (forest + harvested wood products),
+# cumulative timber output, and discounted cash flow. Only one of the three is
+# computable in this pipeline today; `status` says so per indicator rather than
+# implying a comparison we cannot yet make.
+# ---------------------------------------------------------------------------------
+kpis:
+
+  cumulative_timber_output:
+    label: "Cumulative timber output"
+    status: available
+    unit: cubic_feet
+    computed_as: >-
+      Sum of removed volume across all cycles and stands, area-weighted by stand acres.
+      Comes straight out of the FVS cut list; the harvest scheduler already tracks it as
+      `volume_removed`.
+    cross_check: >-
+      Compare the BAU total against the TPO caps in config/tpo_targets.yaml. If BAU
+      materially exceeds observed TPO harvest, the regimes are too aggressive and the
+      scenario comparison is measuring the wrong baseline.
+
+  average_carbon_storage:
+    label: "Average carbon storage (forest + wood products)"
+    status: blocked
+    unit: metric_tons_C_per_acre
+    blocked_by:
+      - >-
+        IN-FOREST CARBON IS DISABLED. config/projection.yaml sets carbon_extension: false
+        as a deliberate tripwire — FVS stop/restart silently resets FFE live-fuel state
+        and understates total stand carbon by ~8% per barrier
+        (notes/restart-fidelity-findings.md). Iteratively coupled runs cannot report
+        carbon until that is resolved. Continuous single-pass runs are unaffected, which
+        may be the way to get this KPI first.
+      - >-
+        NO HARVESTED WOOD PRODUCTS POOL EXISTS. Diaz et al. count carbon in products and
+        landfill with decay over time, which is what keeps a harvest scenario from
+        looking like pure loss. We model none of it. Without an HWP pool the carbon
+        comparison is systematically biased against every harvesting scenario, so
+        reporting in-forest carbon alone would not reproduce their finding — it would
+        overstate it.
+
+  discounted_cash_flow:
+    label: "Discounted cash flow (NPV)"
+    status: blocked
+    unit: usd_per_acre
+    blocked_by:
+      - "No stumpage prices by product class for the AOI."
+      - "No harvest or management cost model."
+      - "No agreed discount rate. Diaz et al. report sensitivity across rates; we would need to do the same rather than pick one."
+    note: >-
+      docs/superpowers/specs/2026-07-17-orchestrator-sketch.md already raises NPV as a
+      candidate scheduler objective, so this KPI and the scheduler objective are the same
+      missing input.
+
+# ---------------------------------------------------------------------------------
+# Run cost. Every scenario multiplies the trajectory library.
+#
+# Library is keyed on unique(donor plot x regime x site-index bin) (PLAN.md 4c). The
+# LETO run resolves 57,527 stands from 529 donor plots. The four scenarios reference 15
+# distinct regimes between them, so the ceiling is 529 x 15 = 7,935 runs — but only the
+# regimes actually reachable from some owner class in some scenario need running.
+#
+# The buffer axis is NOT in this count: it changes stand delineation, not prescriptions,
+# so it needs a re-segmented landscape rather than more FVS runs.
+# ---------------------------------------------------------------------------------
+run_cost:
+  donor_plots: 529
+  distinct_regimes_referenced: 15
+  upper_bound_runs: 7935
+  baseline_runs: 693
+  note: >-
+    Compare against the no-management baseline's 693 runs. Adding a fifth scenario, or a
+    treatment-timing offset axis of the kind artemis.txt sketches, multiplies this again.
