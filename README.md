@@ -34,6 +34,10 @@ every stage is implemented.
   trajectories back to TreeMap pixels for initial and final snapshots. It requires external
   five-county trajectory, crosswalk, and raster files.
 - **GEE acquisition:** `gee/scripts/` exports LCMS, POLARIS, PRISM, and terrain inputs.
+- **Imagery and embeddings:** `pipeline/s5_imagery/` pulls NAIP over an extent vector layer,
+  verifying per year that the mosaic actually covers it, and clusters Earth Engine embeddings
+  inside versus outside an area of interest. `viewer/` publishes both to the PERSEUS map viewer
+  through a collapsible side panel.
 - **Exploratory workflows:** `notebooks/` contains TreeMap summaries, clearcut-versus-
   agriculture investigations, embedding-based AOI search, and an experimental FVS smoke
   workflow.
@@ -115,6 +119,33 @@ known data-version traps.
 
 See [`gee/README.md`](gee/README.md) for commands and authentication requirements.
 
+### Pull NAIP imagery and cluster embeddings for an area of interest
+
+```bash
+# NAIP for every requested year, with per-year coverage of the extent verified
+uv run python -m pipeline.s5_imagery.naip_acquire \
+  --extent config/study_extent.geojson --aoi config/stands.geojson \
+  --years 2019,2021,2023
+
+# Embeddings across the extent, clustered and split inside vs outside the AOI
+uv run python -m pipeline.s5_imagery.embeddings \
+  --extent config/study_extent.geojson --aoi config/stands.geojson --year 2024 --k 6
+
+# Publish to the map viewer and open it
+uv run python -m pipeline.s5_imagery.viewer_catalog \
+  --naip-manifest data/interim/naip/stands/naip_manifest.json \
+  --clusters data/interim/embeddings/stands/clusters.json
+uv run python viewer/serve_viewer.py
+```
+
+This stage takes two vector layers by design: `--extent` is the footprint imagery must cover,
+`--aoi` is the ground features under study, and the area between them is the control the
+clustering is compared against. Requires Earth Engine authentication. See
+[`pipeline/s5_imagery/README.md`](pipeline/s5_imagery/README.md) for coverage modes and outputs,
+[`viewer/README.md`](viewer/README.md) for the viewer connection, and
+[`notes/naip-imagery-embeddings-viewer.md`](notes/naip-imagery-embeddings-viewer.md) for current
+status and open questions.
+
 ### Explore notebooks
 
 See [`notebooks/README.md`](notebooks/README.md) for purpose, prerequisites, and the maintained
@@ -130,9 +161,11 @@ notebooks/                 Exploratory analyses and reusable notebook helpers
 pipeline/
   s3_management/           Draft management-unit generation
   s4_fvs/                  FVS trajectory-to-raster painting
+  s5_imagery/              NAIP acquisition, embedding clustering, viewer catalog
 research/mgmt_units/       Segmentation research, state, and next steps
 scripts/                    Repository utility scripts
 tests/                      Pytest suite
+viewer/                     Map-viewer side panel and its build/serve script
 notes/                      Durable findings, decisions, run status, and open questions
 PLAN.md                    Target v1 architecture and build sequence
 pyproject.toml             Python metadata and dependencies
