@@ -214,6 +214,23 @@ The general lesson is not about lockfiles: **verifying a merge by running comman
 the working tree does not verify what you are about to push.** For anything a hook may
 have touched, check out the committed tree and test that instead.
 
+## Deleted branches, for recovery
+
+Deleting a branch on GitHub makes its commits unreachable. The nine merged branches
+are recoverable trivially — their commits are permanently in `main`'s history. Only
+one branch was deleted while holding commits that never landed:
+
+| Branch | Tip | Why it was safe |
+|---|---|---|
+| `scripts/leto-workflow` | `7b7b485ad201c5d7b39c81e4d82e37b2d00459f6` | Its five unique `scripts/*.txt` files were rescued to `main` as byte-identical blobs; every other change on it was already on `main` or actively stale. |
+
+GitHub keeps unreachable commits addressable by SHA for a limited window, so
+`git fetch origin 7b7b485` still works for now if anything was missed.
+
+Merged-branch tips, for the record: `753c90d` (#12), `105650f` (harvest-scheduling-1),
+`2effb49` (#13), `2cea223` (naip-viewer), `08229bd` (#25), `7cf842e` (#15),
+`815322d` (#22), `aed471a` (#23), `53b7837` (#8).
+
 ## What is left
 
 1. ~~Land the merge train.~~ Done — nine branches, `main` green.
