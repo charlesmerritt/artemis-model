@@ -58,7 +58,9 @@ uv sync
 # Run the tracked test suite. The explicit path avoids scanning external data links.
 uv run pytest tests/
 
-# Enable the tracked hook that rejects accidentally staged files larger than 99 MiB
+# Enable the tracked git hooks: reject staged files larger than 99 MiB (pre-commit),
+# re-resolve uv.lock after a merge (post-merge), and refuse to push a uv.lock that
+# does not match pyproject.toml (pre-push).
 git config core.hooksPath .githooks
 
 # Enable the uv.lock merge driver declared in .gitattributes, which regenerates
