@@ -183,6 +183,79 @@ two polygons with unrelated IDs.
 
 ---
 
+## 2a. Item 2 status — implemented 2026-08-03
+
+`sketch_management_units.py` now retains BMP buffers as `unit_class = "riparian"` units with their
+own `rb_*` IDs, `buffer_class` attribute, and their own summary rows; managed units keep
+`unit_class = "managed"` and `mu_*` IDs. Waterbodies and the road buffer stay erase-only and are
+reported on their own `area_accounting.csv` lines. The stated identity is checked per county and
+closes to machine precision. Fishnet splitting is restricted to managed units. Implementation
+details, plus three pre-existing bugs the accounting check exposed, are in [[management_units]].
+
+Two follow-ups this created, both recorded in [[management_units]]:
+
+- `sliver_merge.py` is not `unit_class`-aware and will dissolve riparian polygons into managed
+  neighbours, undoing requirement 3. Sliver policy must be applied within a class, never across.
+- No stream currently classifies as `perennial_large`, so the 75 ft buffer is never applied — the
+  stream-order gap noted in [[management_units]] under "Missing or not yet verified" is what blocks
+  it, not the buffer code.
+
+---
+
+## 5. NHD "waterbody" is 93% swamp/marsh, and swamp is forest
+
+**Found while implementing item 2**, by the accounting line that item 2 asked for. Reported here
+because it is the same defect class — the erase layer deleting forest we must grow — but a larger
+number and a decision that has not been made.
+
+**The finding.** The erase layer takes every polygon in `NHDWaterbody_DissolveBoundaries1`. In the
+Union County AOI that layer is:
+
+| FCode | Meaning | Polygons | Area (ha) |
+|---|---|---:|---:|
+| 46600 | **Swamp/Marsh** | 4,032 | 24,200 |
+| 39009 | Lake/Pond — perennial | 7 | 1,596 |
+| 39004 | Lake/Pond — perennial | 641 | 178 |
+| 436xx | Reservoir | ~500 | 97 |
+| other 390xx | Lake/Pond | 58 | 15 |
+
+Swamp/marsh is **93% of the layer**. In north Florida FCode 46600 is largely cypress and gum swamp:
+forested wetland, not open water. LANDFIRE agrees — those pixels are already `EVT_LF == "Tree"`,
+which is exactly why they show up inside `forest ∩ parcels` and then get erased. Union County alone
+excludes **13,148 ha of forested area** as "waterbody", 29% of its forested parcel area.
+
+**Why this is not what the config says.** `config/bmp_rules.yaml` already documents the intended
+definition: `waterbody: FCodes 39000-39012 (lakes, ponds, reservoirs)`. The code never implemented
+that filter — it erases the whole layer. So the repo's stated intent and its behaviour disagree, and
+the behaviour is the one that deletes forest.
+
+**Why it was left in place.** Item 2 decided riparian buffers. It did not decide swamp, and the two
+are not the same question. Filtering the waterbody layer to true open water would return ~12,700 ha
+per county to the modelled landscape, which is a methodological change with its own consequences, so
+it needs a decision rather than a silent patch.
+
+**Options.**
+- **A — erase only open water** (FCodes 39000–39012, 436xx). Swamp rejoins the landscape and falls
+  into `managed` or `riparian` by the normal geometry rules. Matches `bmp_rules.yaml` as written.
+  Implies forested swamp is harvestable wherever it is not in a stream buffer.
+- **B — swamp becomes a third unit class** (`unit_class = "wetland"`, grow-only, never harvested),
+  parallel to riparian. Keeps the acres in the growth outputs and in carbon totals without asserting
+  they are operable. Adds a class to the regime library and to every summary.
+- **C — status quo**, erase all NHD waterbody polygons. Simplest, and the current pilot numbers
+  reflect it, but it under-counts standing volume and carbon by roughly a quarter of the forested
+  area — the same objection item 2 raised against erasing buffers.
+
+**Lean:** B for anything reported as carbon, since Florida silviculture BMPs treat wetland harvest
+as constrained rather than prohibited and lumping swamp into `managed` overstates operability.
+A is defensible if the model only needs an operable-area figure. C is not defensible now that the
+number is visible.
+
+**Note the pilot outputs in `data/interim/management_units_5co/` were produced under option C.**
+Read `excluded_waterbody` in `area_accounting.csv` as "open water **plus forested swamp**" until
+this is decided.
+
+---
+
 ## 3. Hex-bin overlay for cartography at the end of the pipeline
 
 **Idea.** After projection and painting, overlay a hexagonal tessellation and
@@ -247,7 +320,8 @@ statewide.
 
 | Item | Status |
 |---|---|
-| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Decided.** Needs implementation in `sketch_management_units.py`; `PLAN.md` §4b updated |
+| Riparian buffers grow freely, are never harvested, and are reported as unique buffer polygons | **Decided and implemented** 2026-08-03 (item 2a). Downstream: `sliver_merge.py` is not yet `unit_class`-aware |
+| NHD swamp/marsh (FCode 46600) erased as "waterbody" — 29% of forested area in Union County | **Open, and the largest number in the pilot.** Options in item 5; current outputs use status quo |
 | Keep per-plot tree lists, area-weight to units | **Leaning B.** Needs the unit×stand crosswalk + a partial-harvest distribution rule |
 | Pixel-first growth with per-pixel regime + `(plot, regime, SI)` trajectory keys | **Compatible with the above.** Adopt as the scaling design |
 | Hex-bin overlay | **Cartographic post-process only.** Size and denominator undecided |

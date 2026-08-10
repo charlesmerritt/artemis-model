@@ -81,7 +81,9 @@ pixels are equal-area in EPSG:5070). Example: a 40-ac unit = plot A (15 ac) + pl
   ID of the FIA plot imputed to it. `notes/treemap-methodology.md`.
 - **Sliver** — a management-unit polygon below the minimum operational size (**5 ac ≈ 2 ha**);
   87% of raw Union County polygons. **Sliver-merge** dissolves each into its best neighbor
-  (`sliver_merge.py`), conserving area.
+  (`sliver_merge.py`), conserving area. "Best" = highest `(same parcel, shared boundary length)`
+  among candidates of the *same* `unit_class`, then nearest same-class unit for isolated
+  fragments. Merging never crosses managed/riparian.
 - **BMP erase** — cutting the required no-harvest buffers (Florida BMP: 35–75 ft around
   streams/water/roads) out of the units; this fragmentation is what *creates* slivers.
 - **State-zero** — the clean management-unit map at year 0, before any simulated harvest.
