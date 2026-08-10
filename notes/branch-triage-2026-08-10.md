@@ -86,10 +86,18 @@ Additive, isolated, CI green, nothing else depends on them.
   `notebooks/FVS_5county_growth_smoke.ipynb` to `.old` — a file that no longer exists
   on `main`, so the rename is dead on arrival.
 
-  Do not delete blind: the four `scripts/*.txt` LETO ArcGIS files
-  (`LETO.V1.1.txt`, `Create_FVS_Database.txt`, `LETO_CSV_PIPELINE.txt`,
-  `Join_FVS_output_to_arc.txt`) exist **nowhere else in the repo**. Cherry-pick those
-  onto a fresh branch, then delete this one. Everything else on it has been overtaken.
+  Do not delete blind: **five** `scripts/*.txt` LETO ArcGIS files (`LETO.V1.1.txt`,
+  `LETO_CSV_PIPELINE.txt`, `Create_FVS_Database.txt`, `Join_FVS_output_to_arc.txt`,
+  and `README.txt`, which is the run-order guide for the other four) exist **nowhere
+  else in the repo**. Rescue those, then delete the branch. Everything else on it has
+  been overtaken — all four of its note edits are already byte-identical on `main`,
+  and `main` is one line *ahead* on `treemap-cog-county-summary.md`.
+
+  Rescued 2026-08-10. This mattered more than "keep a copy": `pipeline/s3_management/
+  assign_plt_cn.py` and `sliver_merge.py` both cite `scripts/LETO.V1.1.txt` in their
+  docstrings for the procedure they reimplement, and that path did not resolve
+  anywhere on `main`. The rescue fixes two live dangling references, and
+  `notes/pipeline-review-2026-08-06.md` no longer points at a deleted branch.
 
 ## Rebase, don't merge
 
@@ -209,8 +217,9 @@ have touched, check out the committed tree and test that instead.
 ## What is left
 
 1. ~~Land the merge train.~~ Done — nine branches, `main` green.
-2. Delete the nine merged branches. Their commits are permanently in `main`.
-3. `scripts/leto-workflow`: cherry-pick the four LETO `.txt` files, then delete it.
+2. ~~Delete the nine merged branches.~~ Done — their commits are permanently in `main`.
+3. ~~`scripts/leto-workflow`: rescue the LETO files, then delete it.~~ Done — five
+   files, byte-identical, under `scripts/`.
 4. Rebase #24 onto `main` and drop the duplicate `notes/claude-code-web-environment.md`.
    It re-adds a file that landed via PR #10, which is why it collided with eleven
    branches. (#8 no longer needs its rebase — it landed in the train.)

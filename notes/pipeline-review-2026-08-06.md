@@ -24,11 +24,13 @@ checked against (a) the stated project direction, (b) the LETO prototype scripts
 Both are *changes* from what the committed code assumes, so a lot of what follows is
 "this was right for the old design" rather than "this was always wrong."
 
-**Verification note.** LETO is not on `main` or this branch. It lives on
-`origin/scripts/leto-workflow` (`scripts/LETO.V1.1.txt`, `scripts/LETO_CSV_PIPELINE.txt`,
-`scripts/Create_FVS_Database.txt`, `scripts/Join_FVS_output_to_arc.txt`,
-`scripts/README.txt`). I read it there. Three pipeline modules cite `scripts/LETO.V1.1.txt`
-in their docstrings and that path does not resolve on this branch — see §5.1.
+**Verification note.** When this review was written LETO was not on `main` — it lived
+only on `origin/scripts/leto-workflow`, and the `scripts/LETO.V1.1.txt` path cited in
+several pipeline docstrings did not resolve (see §5.1). That was fixed on 2026-08-10:
+the five prototype files (`LETO.V1.1.txt`, `LETO_CSV_PIPELINE.txt`,
+`Create_FVS_Database.txt`, `Join_FVS_output_to_arc.txt`, `README.txt`) were rescued
+onto `main` under `scripts/` before that branch was deleted, so the citations resolve
+now. See notes/branch-triage-2026-08-10.md.
 
 ---
 
