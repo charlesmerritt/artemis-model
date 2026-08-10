@@ -1,0 +1,189 @@
+# FVS keyword register — the assumptions ledger for everything ARTEMIS writes into a keyfile
+#
+# Two jobs:
+#
+#   1. `keyword_fields` records the PARAMETER FIELD LAYOUT of every keyword we emit, and
+#      `verification` records where each layout was checked. FVS reads keyword records in
+#      fixed 10-column fields and accepts a value in the wrong field silently — it just
+#      applies a different parameter — so a layout nobody verified is a silent wrong
+#      answer, not a crash. `TimeInt` was exactly this: the cycle length sat in field 1
+#      (the cycle *number*), leaving the interval at FVS's 10-year default, so a 10-cycle
+#      run projected 100 years instead of 50 and said nothing.
+#
+#   2. `defaults` holds the numbers those keywords are filled with. These are the magic
+#      numbers — the silvicultural and operational assumptions behind every trajectory in
+#      the library. They belong in one reviewable place, not scattered through
+#      `pipeline/s4_fvs/regime_templates.py` as inline literals.
+#
+# `pipeline/s4_fvs/regime_templates.py` READS this file; it does not carry its own copies.
+# `tests/test_config.py` and `tests/test_s4_regime_templates.py` pin both halves.
+#
+# Anything still needing a decision is listed under `open_questions` at the bottom. Grep
+# that list before publishing any result that depends on these numbers.
+
+version: 1
+
+# --------------------------------------------------------------------------------
+# Field layouts. Position N in each list is FVS parameter field N (columns 11-20 for
+# field 1, 21-30 for field 2, ...). `null` marks a field we deliberately leave blank so
+# FVS applies its own default — which is NOT the same as passing 0.
+# --------------------------------------------------------------------------------
+keyword_fields:
+  InvYear:  [inventory_year]
+  TimeInt:  [cycle_number, interval_years]   # cycle_number blank/0 = every cycle
+  NumCycle: [n_cycles]
+  ThinDBH:  [year, min_dbh, max_dbh, proportion, species]
+  Estab:    [disturbance_year]
+  Plant:    [date, species, trees_per_acre, survival_pct, age, height_ft, shade_code]
+  Natural:  [date, species, trees_per_acre, survival_pct, age, height_ft, shade_code]
+  NoInGrow: []                               # no parameters
+  NoAutAly: []                               # no parameters
+
+# Trailing fields we deliberately do not write, so FVS applies its own default. Recorded
+# rather than just absent, so the difference between "we chose the FVS default" and "we
+# forgot a field" stays visible. Only trailing fields may be omitted — FVS reads by column,
+# so a gap in the middle would shift every field after it.
+omitted_fields:
+  Plant: [shade_code]
+  Natural: [shade_code]
+
+verification:
+  ThinDBH: >-
+    Open-FVS base keyword option 29 (base/keywds.f TABLE). Field 4 is "PROPORTION OF
+    SELECTED TREES REMOVED". Exercised against real FVS runs in
+    research/restart_fidelity/make_cut_keyfiles.py.
+  TimeInt: >-
+    Field 1 is the CYCLE NUMBER the interval applies to (blank or 0 = all cycles); field 2
+    is the interval length in years. Three in-repo confirmations: the verified fixture
+    research/restart_fidelity/make_keyfiles.py, whose real FVS output
+    (outputs/arm_c_vs_a.txt) reports 1999/2004/2009/2014/2019; the explicit "TimeInt 0 5"
+    in notes/fvs-smoke-rerun-plan.md; and notes/treemap-fvs-workflow.md recording that
+    FVS's default interval is 10 years.
+  InvYear:  "Single-field keyword; matches the verified restart-fidelity fixture."
+  NumCycle: "Single-field keyword; matches the verified restart-fidelity fixture."
+  Estab: >-
+    Open-FVS base keyword option 47 (base/keywds.f). Opens the establishment packet;
+    field 1 is the date of disturbance (estb/esin.f, IDSDAT=IFIX(ARRAY(1))). Closed by END.
+  Plant: >-
+    Open-FVS estb/esin.f option 2 (PLANT, IACTK=430). Field order confirmed by the echo
+    FORMAT 1220: DATE/CYCLE, SPECIES, TREES/ACRE, % SURVIVAL, AGE, AVE. HEIGHT, SHADE CODE.
+    Two silent-substitution traps the renderer raises on instead: trees_per_acre <= 0 makes
+    FVS reject the record (ERRGRO 4), and a survival_pct outside [0.001, 100] is quietly
+    reset to 100.0.
+  Natural: >-
+    Open-FVS estb/esin.f option 3 (NATURAL, IACTK=431). Jumps to statement 1205 INSIDE the
+    PLANT handler, before the date is read, so the field layout is identical to PLANT.
+    Side effect stated by FORMAT 1230: NATURAL implies STOCKADJ = 0.0, NOAUTALY and
+    NOINGROW.
+  NoInGrow: "Open-FVS estb/esin.f option 22. NOT independently smoke-tested — see open_questions."
+  NoAutAly: "Open-FVS estb/esin.f option 23. NOT independently smoke-tested — see open_questions."
+
+# --------------------------------------------------------------------------------
+# The magic numbers.
+# --------------------------------------------------------------------------------
+defaults:
+
+  # Silvicultural intensity per prescription family. Used when a regime's params do not
+  # override them; config/prescriptions.yaml grids normally do.
+  # STATUS: conventional working values, not calibrated against Florida practice.
+  regimes:
+    thin_from_below:
+      proportion: 0.35        # fraction of TPA removed below max_dbh
+      max_dbh: 8.0            # inches; upper bound of the thinned DBH window
+    selection_harvest:
+      proportion: 0.20        # light proportional entry, repeated
+      interval: 10            # years between entries
+      window_years: 30        # default end_year offset when none is given
+    plantation_rotation:
+      thin_proportion: 0.40   # commercial thin intensity
+      thin_max_dbh: 8.0       # inches
+
+  regeneration:
+    # Species regeneration follows Diaz et al. (2015) — docs/references/. They replaced the
+    # default automatic regeneration with custom keyfile logic that limits NATURAL
+    # regeneration to species ALREADY PRESENT in the stand, with density set by "the
+    # proportion of SDI occupied by each species in the stand" (report p. 27). Planting is
+    # treated separately in that same work: "planting focused on commercial timber species
+    # following regeneration harvests" (p. 40) — i.e. planted species is a management
+    # decision, not a property of the prior stand.
+    #
+    # So: natural regeneration is apportioned across the stand's own species by SDI share;
+    # planting uses `plant_species` regardless of what stood there before.
+    natural_follows_stand_composition: true
+
+    # Species below this share of stand SDI are dropped, and the remaining shares
+    # renormalised, so a trace species does not generate a near-zero-TPA record.
+    # STATUS: OURS, not Diaz's. Mirrors the 5% floor LETO uses for plot weights
+    # (pipeline/s4_fvs/build_fvs_inputs.py MIN_PLT_WEIGHT) for consistency.
+    min_species_share: 0.05
+
+    # Fallback species when natural regeneration is requested but no stand composition was
+    # supplied. The renderer warns when it uses this — it means the Diaz rule was skipped.
+    # SN variant alpha code (sn/blkdat.f DATA JSP): LP = loblolly pine.
+    fallback_species: LP
+
+    # Planted species for plantation_rotation. SN alpha codes: LP loblolly (13),
+    # SA slash (6), LL longleaf (8), SP shortleaf (5).
+    # STATUS: single statewide value. North Florida flatwoods are as often slash as
+    # loblolly, so this should become an attribute of the unit.
+    plant_species: LP
+
+    plant_tpa: 605.0          # trees/acre. ~8x9 ft spacing, a conventional SE planting
+                              # density. STATUS: convention, not a Florida-specific figure.
+    natural_tpa: 400.0        # total trees/acre across all regenerating species, before
+                              # SDI apportionment. STATUS: placeholder, needs a source.
+
+    # FVS's OWN default (estb/esin.f resets out-of-range values to 100.0). Deliberately not
+    # replaced with an invented figure. Operational southern pine plantings run nearer
+    # 80-90%, so trajectories currently carry optimistic post-clearcut stocking.
+    # STATUS: knowingly optimistic — see open_questions.
+    survival_pct: 100.0
+
+    age: 1.0                  # years, at establishment
+    height_ft: 0.5            # average height of the regenerating cohort
+    delay_years: 1            # years after the harvest. Lands in the same 5-year FVS cycle.
+
+    # Emit NoInGrow + NoAutAly alongside a Plant record. NATURAL already forces both
+    # (esin.f FORMAT 1230); setting this makes planted stands behave the same way, so
+    # clearcut and plantation_rotation trajectories stay comparable instead of differing
+    # by a side effect nobody chose. This is also the plain-FVS analogue of Diaz et al.
+    # turning the default regeneration process off.
+    suppress_automatic_regeneration: true
+
+# --------------------------------------------------------------------------------
+# Assumptions that are not yet settled. Every entry here is a number or behaviour that
+# could move a published result. Resolve or state them before publication.
+# --------------------------------------------------------------------------------
+open_questions:
+  - id: survival_pct
+    question: >-
+      100% seedling survival is FVS's default, not a measurement. Real southern pine
+      plantings run 80-90%. Adopting a real figure lowers post-clearcut stocking across
+      every clearcut and plantation trajectory in the library.
+  - id: plant_species
+    question: >-
+      Planted species is one statewide value (LP). It should follow the unit's forest type
+      — slash pine dominates much of the north Florida flatwoods in the pilot AOI.
+  - id: natural_tpa
+    question: >-
+      400 trees/acre of total natural regeneration is a placeholder with no source. It
+      should come from FIA regeneration data or the SN variant's own establishment defaults.
+  - id: min_species_share
+    question: >-
+      The 5% SDI floor is ours, borrowed from LETO's plot-weight floor. Diaz et al. state
+      no threshold. Check how much regenerating composition the floor actually discards.
+  - id: suppress_automatic_regeneration
+    question: >-
+      NoInGrow/NoAutAly are emitted with Plant records but have not been smoke-tested
+      against a real FVS run, and the SN variant uses the partial establishment model, so
+      they may be no-ops. Confirm in the same run that gates library generation.
+  - id: regime_defaults
+    question: >-
+      The thinning intensities under `defaults.regimes` are conventional values, not
+      calibrated to Florida practice or to observed LCMS removals.
+  - id: smoke_run
+    question: >-
+      No regeneration keyword has been exercised against a real FVS binary yet — none is
+      available in the web container. One clearcut keyfile, checking that TPA recovers
+      after the harvest cycle, is the gate before library generation. This is the standard
+      ThinDBH was held to.

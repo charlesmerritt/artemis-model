@@ -67,6 +67,107 @@ def test_projection_config_harvest_seed_is_locked(projection_config):
     assert projection_config["harvest"]["forward_method"] == "pseudo_deterministic"
 
 
+# --- FVS keyword register (config/fvs_keywords.yaml) ---------------------------------
+#
+# The register is the assumptions ledger: the parameter field layout of every keyword we
+# emit, plus the silvicultural numbers filling them. It is only worth having if it cannot
+# drift from the renderer, so these tests tie the two together.
+
+def _keyword_config():
+    from pipeline.s4_fvs.regime_templates import KEYWORD_CONFIG
+    return KEYWORD_CONFIG
+
+
+def test_keyword_register_field_order_matches_what_is_rendered():
+    """Each keyword's rendered fields must land in the positions the register documents."""
+    from pipeline.s4_fvs.regime_templates import Regeneration, ThinDBH, render_schedule_block
+
+    config = _keyword_config()
+    fields = config["keyword_fields"]
+    omitted = config["omitted_fields"]
+    rendered = {
+        "ThinDBH": ThinDBH(year=2052, proportion=1.0).render(),
+        "Plant": Regeneration(year=2053, species="LP", trees_per_acre=605).render(),
+        "Natural": Regeneration(year=2053, species="LP", trees_per_acre=400,
+                                natural=True).render(),
+    }
+    for keyword, line in rendered.items():
+        # keyword occupies cols 1-10, then one 10-column slot per field we actually write
+        written = len(fields[keyword]) - len(omitted.get(keyword, []))
+        assert len(line) == 10 * (1 + written), (
+            f"{keyword} renders {len(line) // 10 - 1} fields; register documents "
+            f"{len(fields[keyword])} ({fields[keyword]}) less "
+            f"{omitted.get(keyword, [])} omitted"
+        )
+
+    for line in render_schedule_block(2022, 5, 10).splitlines():
+        keyword = line[:10].strip()
+        assert keyword in fields, f"{keyword} is rendered but missing from the register"
+
+
+def test_only_trailing_fields_are_omitted():
+    """FVS reads keyword parameters by column, so skipping a field in the middle would
+    shift every field after it into the wrong slot."""
+    config = _keyword_config()
+    for keyword, skipped in config["omitted_fields"].items():
+        declared = config["keyword_fields"][keyword]
+        assert declared[len(declared) - len(skipped):] == skipped, (
+            f"{keyword} omits {skipped}, which is not the tail of {declared}"
+        )
+
+
+def test_timeint_register_names_field_2_as_the_interval():
+    """The bug the register exists to prevent: the interval belongs in field 2, not field 1."""
+    assert _keyword_config()["keyword_fields"]["TimeInt"] == ["cycle_number", "interval_years"]
+
+
+def test_every_registered_keyword_has_a_verification_source():
+    config = _keyword_config()
+    missing = set(config["keyword_fields"]) - set(config["verification"])
+    assert not missing, f"keywords with no recorded verification: {sorted(missing)}"
+    for keyword, source in config["verification"].items():
+        assert source and source.strip(), f"{keyword} has an empty verification note"
+
+
+def test_regime_defaults_cover_every_parameterized_family():
+    """A family whose defaults are not in the register would carry hidden magic numbers."""
+    from pipeline.s4_fvs.regime_templates import REGIMES
+
+    registered = set(_keyword_config()["defaults"]["regimes"])
+    # no_management takes no parameters; clearcut's only parameter is its year.
+    assert registered == set(REGIMES) - {"no_management", "clearcut"}
+
+
+def test_regeneration_defaults_are_complete():
+    regen = _keyword_config()["defaults"]["regeneration"]
+    required = {
+        "natural_follows_stand_composition", "min_species_share", "fallback_species",
+        "plant_species", "plant_tpa", "natural_tpa", "survival_pct", "age", "height_ft",
+        "delay_years", "suppress_automatic_regeneration",
+    }
+    assert required <= set(regen)
+    assert 0.0 < regen["min_species_share"] < 1.0
+    assert 0.001 <= regen["survival_pct"] <= 100.0
+    assert regen["plant_tpa"] > 0 and regen["natural_tpa"] > 0
+
+
+def test_natural_regeneration_follows_diaz_stand_composition_rule():
+    """Diaz et al. (2015) limit natural regeneration to species present in the stand,
+    weighted by SDI share. Turning this off silently reverts to one species landscape-wide."""
+    assert _keyword_config()["defaults"]["regeneration"]["natural_follows_stand_composition"]
+
+
+def test_unresolved_assumptions_are_listed_with_a_question():
+    """Placeholders are allowed; unrecorded placeholders are not."""
+    questions = _keyword_config()["open_questions"]
+    assert questions, "the register should name what is still unresolved"
+    for entry in questions:
+        assert entry["id"] and entry["question"].strip()
+    # The two values known to be optimistic/unsourced must stay on the list until fixed.
+    ids = {entry["id"] for entry in questions}
+    assert {"survival_pct", "natural_tpa"} <= ids
+
+
 def test_bmp_rules_florida_exists(bmp_rules):
     assert "12" in bmp_rules["states"]
     fl = bmp_rules["states"]["12"]
