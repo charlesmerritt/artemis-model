@@ -69,13 +69,12 @@ Additive, isolated, CI green, nothing else depends on them.
 
 ## Open with no PR — open one or delete
 
-- `claude/harvest-scheduling-1` — tip `105650f` is byte-identical to the head of
-  **PR #26, which was closed unmerged today** with no review comments and no CI
-  failure. The PR branch (`claude/gifted-ritchie-0fpgkk`) was deleted; this ref is
-  the same commit surviving under a different name. Either #26 was closed by mistake
-  and this should be reopened as a fresh PR, or it was closed deliberately and this
-  branch should be deleted. **This is the one item that needs a human answer** — the
-  content merges clean and passes tests, so nothing in the repo explains the closure.
+- `claude/harvest-scheduling-1` — the branch was **renamed** from
+  `claude/gifted-ritchie-0fpgkk`. GitHub reports PR #26 as `closed`, but that is an
+  artifact of the rename: deleting a PR's head branch auto-closes it, and a closed
+  PR cannot be reopened once its head is gone. The work was never abandoned — tip
+  `105650f` is the same commit, it merges clean, and it passes the suite. Open a
+  fresh PR for it under the new name; #26 is just a dead reference.
 - `claude/naip-imagery-embeddings-viewer-exzd38` — two commits, 20 files, a whole new
   `pipeline/s5_imagery/` stage plus a JS viewer, with tests. Substantial work sitting
   entirely unreviewed. Open a PR.
@@ -179,11 +178,56 @@ train and lands clean; #14 rebases onto it. Smaller of the two problems on #14.
 After steps 1–5 the backlog is sixteen refs down to five, and every remaining one is a
 single deliberate decision rather than a merge puzzle.
 
-## Convention worth adopting
+## The `.gitattributes` fix — implemented
 
-`notes/README.md` caused 8 of 50 conflicts and `uv.lock` another 8, for the same reason
-each time: every branch appends one line to a shared index, or regenerates a lockfile.
-Both are avoidable — set `uv.lock` to `merge=binary` with a regenerate-on-conflict rule,
-and either split the notes index by section or accept that it is append-only and merge
-with `union`. That single `.gitattributes` change would have made 16 of these 50
-conflicts disappear.
+`notes/README.md` caused 8 of the 50 conflicts and `uv.lock` another 8, for the same
+reason each time: every branch appends one line to a shared index, or regenerates a
+lockfile. Neither was ever a real disagreement. Both are now handled in
+`.gitattributes`.
+
+`notes/README.md merge=union` is the easy half — entries are independent, so taking
+both sides is always right.
+
+`uv.lock` needed two pieces, and the reason is a genuine constraint rather than a
+design preference. The obvious implementation — a merge driver that runs `uv lock` —
+does not work, and fails *silently*, which is worse than not working:
+
+> At the moment a merge driver runs, git has not yet written the merged files to the
+> working tree, and `MERGE_HEAD` does not yet exist. Both were verified directly with
+> a probe driver. So the driver cannot see the merged `pyproject.toml` and cannot
+> reconstruct it — the only inputs it gets are the three versions of `uv.lock`.
+
+The first version of this fix did exactly that, and produced a lockfile that merged
+cleanly, parsed as valid TOML, passed the test suite — and was stale by four packages,
+because it had resolved against the pre-merge manifest. `uv lock --check` caught it.
+
+So the work is split:
+
+- `scripts/merge-uv-lock.sh` (merge driver) takes HEAD's lockfile verbatim, after
+  checking it parses. The result is always a resolution some branch really produced,
+  never an interleave of two.
+- `.githooks/post-merge` re-resolves against the merged `pyproject.toml`, which it
+  *can* see because it runs after the working tree is updated. Advisory: it reports
+  and leaves the change unstaged rather than amending your merge commit.
+
+Both need per-clone registration (git will not take a driver command from a tracked
+file — that would let a fetched branch run code on merge). `.claude/hooks/session-start.sh`
+does it automatically; the README quickstart lists it for fresh clones. Without
+registration git falls back to the ordinary 3-way merge, so this is a cleanup, never
+a correctness dependency.
+
+### Measured effect
+
+Re-ran the full sequential merge of all fifteen branches with the fix active:
+
+- `notes/README.md` and `uv.lock` disappeared from **every** conflict list.
+- The clean merge train grew from **8 branches to 10** — `r2-harvest-scheduling-viz`
+  (#8) and `scripts/leto-workflow` now merge with no intervention, since their only
+  collisions were those two files.
+- Final state: **368 passed, 22 skipped**, zero conflict markers, and `uv lock --check`
+  clean.
+
+The remaining conflicts are all real: `tests/conftest.py`, `regime_templates.py`,
+`build_fvs_inputs.py`, the riparian pair, and genuine prose disagreements in
+`README.md` / `methodology-directions.md`. Those are the four combine decisions above,
+and they should conflict.

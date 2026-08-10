@@ -59,4 +59,15 @@ fi
 log "enabling tracked git hooks"
 git config core.hooksPath .githooks
 
+# 4. Merge driver for uv.lock, declared in .gitattributes. Git deliberately
+# refuses to take a driver command from a tracked file — that would let a
+# fetched branch run arbitrary code on merge — so the name in .gitattributes
+# only resolves once the clone maps it to a command here. Same fresh-clone gap
+# as the hooks above, same fix, and listed in the README quickstart alongside
+# it. Without this, .gitattributes is inert and git falls back to the ordinary
+# 3-way merge, so this is a convenience, not a correctness requirement.
+log "registering the uv.lock merge driver"
+git config merge.uv-lock.name "regenerate uv.lock from the merged pyproject.toml"
+git config merge.uv-lock.driver "scripts/merge-uv-lock.sh %O %A %B"
+
 log "ready"

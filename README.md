@@ -57,6 +57,13 @@ uv run pytest tests/
 # Enable the tracked hook that rejects accidentally staged files larger than 99 MiB
 git config core.hooksPath .githooks
 
+# Enable the uv.lock merge driver declared in .gitattributes, which regenerates
+# the lockfile from the merged pyproject.toml instead of merging it line by line.
+# Git will not take a driver command from a tracked file, so each clone maps the
+# name itself. Skipping this only costs you the occasional uv.lock conflict.
+git config merge.uv-lock.name "regenerate uv.lock from the merged pyproject.toml"
+git config merge.uv-lock.driver "scripts/merge-uv-lock.sh %O %A %B"
+
 # Start Jupyter for exploratory workflows
 uv run jupyter lab
 ```

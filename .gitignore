@@ -54,5 +54,11 @@ Thumbs.db
 !.claude/environment-setup.sh
 worktrees/
 
-# External Scripts
+# External Scripts — this directory is a drop zone for one-off local scripts, so
+# it is ignored wholesale and the few tracked, shared ones are named back in.
+# check-staged-large-files.sh was already tracked despite matching `scripts/*`:
+# git keeps honouring a file it is already tracking, so the omission was
+# invisible until someone re-added it from a fresh clone. Named explicitly now.
 scripts/*
+!scripts/check-staged-large-files.sh
+!scripts/merge-uv-lock.sh
