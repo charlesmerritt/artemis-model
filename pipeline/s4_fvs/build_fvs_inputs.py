@@ -34,6 +34,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from pipeline.ids import as_id_series, read_id_csv, report_key_overlap
+
 logger = logging.getLogger(__name__)
 
 MIN_PLT_WEIGHT = 0.05          # LETO: keep PLT_CNs contributing >= 5% of a unit
@@ -45,8 +47,9 @@ TREE_COUNT_COL = "TREE_COUNT"  # FVS trees-per-acre column scaled by plot weight
 def filter_and_renormalize_weights(weights: pd.DataFrame, min_weight: float = MIN_PLT_WEIGHT) -> pd.DataFrame:
     """Drop PLT_CNs below ``min_weight`` within a unit, then renormalise weights to sum to 1."""
     w = weights.copy()
-    w["MU_ID"] = w["MU_ID"].astype(str)
-    w["PLT_CN"] = w["PLT_CN"].astype(str)
+    # Both are join keys; see ``pipeline.ids`` for why ``.astype(str)`` is wrong here.
+    w["MU_ID"] = as_id_series(w["MU_ID"], column="MU_ID")
+    w["PLT_CN"] = as_id_series(w["PLT_CN"], column="PLT_CN")
     w["WEIGHT"] = pd.to_numeric(w["WEIGHT"], errors="coerce")
     w = w[w["WEIGHT"] >= min_weight].copy()
     totals = w.groupby("MU_ID")["WEIGHT"].transform("sum")
@@ -71,19 +74,25 @@ def build_tree_init(
     """
     w = filter_and_renormalize_weights(weights, min_weight)
     trees = tree_init.copy()
-    trees[stand_key] = trees[stand_key].astype(str)
+    # STAND_CN is a FIA control number. If the tree list was read without a pinned dtype it
+    # arrives as float64 and ``.astype(str)`` would yield "2.36048879010661e+14", matching
+    # no PLT_CN at all — a join that returns zero rows and looks like a clean run.
+    trees[stand_key] = as_id_series(trees[stand_key], column=stand_key)
+
+    report_key_overlap(w["PLT_CN"], trees[stand_key],
+                       left_name="weighted PLT_CN", right_name=f"tree-list {stand_key}")
 
     merged = w.merge(trees, left_on="PLT_CN", right_on=stand_key, how="inner")
     if count_col in merged.columns:
         merged[count_col] = pd.to_numeric(merged[count_col], errors="coerce") * merged["WEIGHT"]
         merged = merged[merged[count_col] > 0]
 
-    merged["STAND_ID"] = stand_prefix + merged["MU_ID"].astype(str)
+    merged["STAND_ID"] = stand_prefix + merged["MU_ID"]
     merged["TREE_SOURCE"] = "FIA_WEIGHTED_DIRECT"
     merged["DONOR_STAND_ID"] = ""
     merged["NEAR_DIST"] = pd.NA
 
-    runnable = set(merged["MU_ID"].astype(str))
+    runnable = set(merged["MU_ID"].dropna())
     logger.info("TreeInit: %d units runnable, %d tree rows", len(runnable), len(merged))
     return merged.reset_index(drop=True), runnable
 
@@ -98,8 +107,8 @@ def build_stand_init(
 ) -> pd.DataFrame:
     """One StandInit row per runnable unit, carrying FVS bookkeeping + unit attributes."""
     df = unit_attrs.copy()
-    df["MU_ID"] = df["MU_ID"].astype(str)
-    df = df[df["MU_ID"].isin({str(m) for m in runnable_mu_ids})].copy()
+    df["MU_ID"] = as_id_series(df["MU_ID"], column="MU_ID")
+    df = df[df["MU_ID"].isin(set(as_id_series(list(runnable_mu_ids), column="MU_ID")))].copy()
     df["STAND_ID"] = stand_prefix + df["MU_ID"]
     df["VARIANT"] = variant
     df["INV_YEAR"] = inv_year
@@ -124,8 +133,8 @@ def impute_nearest_runnable(
     import shapely
 
     gdf = units_gdf.copy()
-    gdf[id_field] = gdf[id_field].astype(str)
-    runnable = {str(m) for m in runnable_mu_ids}
+    gdf[id_field] = as_id_series(gdf[id_field], column=id_field)
+    runnable = set(as_id_series(list(runnable_mu_ids), column=id_field))
 
     is_runnable = gdf[id_field].isin(runnable).to_numpy()
     missing_pos = np.where(~is_runnable)[0]
@@ -171,12 +180,20 @@ def build_fvs_inputs(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """End-to-end: weighted trees → StandInit + TreeInit (with nearest imputation)."""
     units = units_gdf.copy()
-    units[id_field] = units[id_field].astype(str)
+    # The units layer is the other side of the MU_ID join. A GeoPackage stores this field
+    # as REAL whenever any row is NULL, so reading it back can hand us 1.0 where the
+    # weights table holds "1"; normalising both sides is what keeps them joinable.
+    units[id_field] = as_id_series(units[id_field], column=id_field)
 
     tree_final, runnable = build_tree_init(weights, tree_init, min_weight=min_weight)
+    # Compare against the normalised MU_ID, not the caller's raw column: the join itself
+    # runs on the normalised copy inside filter_and_renormalize_weights, so diffing the raw
+    # one here would manufacture a "no key matched" warning for a join that is fine.
+    report_key_overlap(units[id_field], as_id_series(weights["MU_ID"], column="MU_ID"),
+                       left_name=f"units {id_field}", right_name="weights MU_ID")
     if impute:
         tree_final = impute_nearest_runnable(units, tree_final, runnable, id_field=id_field)
-    covered = set(tree_final["MU_ID"].astype(str))
+    covered = set(as_id_series(tree_final["MU_ID"], column="MU_ID").dropna())
 
     attrs = pd.DataFrame(units.drop(columns=units.geometry.name))
     stand_final = build_stand_init(attrs, covered)
@@ -200,8 +217,11 @@ def main() -> None:
     import geopandas as gpd
 
     units = gpd.read_file(args.units)
-    weights = pd.read_csv(args.weights, dtype={"MU_ID": str, "PLT_CN": str})
-    tree_init = pd.read_csv(args.tree_init, dtype={TREE_STAND_KEY: str}, low_memory=False)
+    # read_id_csv pins every identifier column to text and validates it at the read, so a
+    # control number that a producing step wrote from a double fails here rather than
+    # quietly dropping stands out of the join.
+    weights = read_id_csv(args.weights)
+    tree_init = read_id_csv(args.tree_init, low_memory=False)
 
     stand_final, tree_final = build_fvs_inputs(
         units, weights, tree_init, id_field=args.id_field,

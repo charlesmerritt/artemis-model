@@ -12,6 +12,36 @@ are planned work rather than missing directories.
 | `s4_fvs/paint_fvs_to_raster.py` | Join FVS stand trajectories through a TreeMap crosswalk and paint stand metrics onto TreeMap pixels | Five-county prototype; external inputs required |
 | `s5_imagery/` | Pull NAIP over an extent vector with a real coverage check, cluster Earth Engine embeddings inside versus outside an area of interest, and publish both to the map viewer | Working; Earth Engine paths not covered by tests |
 
+## Identifier precision (`ids.py`)
+
+Every join in this pipeline runs on a FIA control number — `PLT_CN`, `STAND_CN`, `COND.CN`,
+`PLOT.CN` — or on a `TM_ID`/`MU_ID` derived from one. These are integers up to 19 digits wide;
+a float64 holds 15–17. Any trip through a float damages them in one of two ways, and neither
+one raises at the point it happens:
+
+- **Truncation** above `2**53`: `int(float("1234567890123456789")) == 1234567890123456768`.
+  Two distinct plots can collapse onto one key.
+- **Reformatting**: a value that survives the double intact stops being a usable key once
+  it is printed from one. pandas writes `236048879010661.0`; R's `write.csv` writes
+  `1.7498047010478e+13`. The join then silently matches nothing.
+
+Rules:
+
+1. Read identifier columns as text — `read_id_csv(path)` in Python, `colClasses = c(PLT_CN =
+   "character")` in R — and keep them as text.
+2. Pull them out of SQLite with `CAST(... AS TEXT)`, on the stored integer, rather than
+   converting whatever the driver hands back.
+3. Never call `.astype(str)` on an ID column; use `pipeline.ids.as_id_series`. On a float
+   column `.astype(str)` produces `"1.0"` where the other side of the join holds `"1"`.
+4. Never cast an ID to numeric to make a join typecheck. That is what
+   `r/02_subset_FIA_SQLite_multistateR.R` used to do, and it put re-rendered control
+   numbers into the TM_ID→PLT_CN crosswalk every later stage reads.
+
+`as_id_series` repairs values that provably survived a double (below `2**53`) and logs a
+warning naming the column; it raises `IdPrecisionError` on anything that lost digits.
+`report_key_overlap` logs a warning when two ID columns share no keys at all, which is the
+signature of a formatting mismatch rather than genuinely disjoint data.
+
 ## Management-unit sketch
 
 ```bash
