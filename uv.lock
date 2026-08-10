@@ -552,6 +552,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rasterio" },
     { name = "scikit-image" },
+    { name = "scikit-learn" },
     { name = "seaborn" },
     { name = "shapely" },
 ]
@@ -582,6 +583,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rasterio", specifier = ">=1.5.0" },
     { name = "scikit-image", specifier = ">=0.26.0" },
+    { name = "scikit-learn", specifier = ">=1.9.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "shapely", specifier = ">=2.1.2" },
 ]

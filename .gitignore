@@ -46,6 +46,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Git worktrees
+worktrees/
+.worktrees/
 # Agents — local agent state stays untracked, but the shared session-start hook
 # and its settings must be committed or Claude Code on the web cannot run it.
 .claude/*

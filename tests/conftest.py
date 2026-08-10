@@ -9,8 +9,10 @@ from pathlib import Path
 # Project root — all tests resolve paths relative to this
 PROJECT_ROOT = Path(__file__).parent.parent
 
-# Make the `pipeline` package importable regardless of which test runs first; modules
-# loaded by file path (e.g. paint_fvs_to_raster) still import `pipeline.ids` normally.
+# Make `pipeline.*` importable regardless of which test runs first. Modules loaded by
+# file path (importlib — e.g. paint_fvs_to_raster) still execute their own absolute
+# imports such as `pipeline.ids`, which fail without the repo root on the path even
+# though `python -m pipeline...` works fine.
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
