@@ -112,16 +112,16 @@ assert.deepEqual(empty.datasets[0].backgroundColor, ["#999999"]);
 
 assert.deepEqual(Core.clusterShareChartData(undefined).labels, []);
 
-const scatter = Core.scatterChartData(
-  {
-    points: [
-      { x: 1, y: 2, cluster: 0, inside: true },
-      { x: 3, y: 4, cluster: 1, inside: false },
-      { x: 5, y: 6, cluster: 0, inside: false },
-    ],
-  },
-  ["#e69f00", "#56b4e9"]
-);
+// Scatter geometry is shared across methods; cluster ids arrive separately and
+// are index-aligned with the points.
+const scatterPoints = {
+  points: [
+    { x: 1, y: 2, inside: true },
+    { x: 3, y: 4, inside: false },
+    { x: 5, y: 6, inside: false },
+  ],
+};
+const scatter = Core.scatterChartData(scatterPoints, ["#e69f00", "#56b4e9"], [0, 1, 0]);
 assert.equal(scatter.datasets.length, 2);
 assert.equal(scatter.datasets[0].label, "Inside AOI (1)");
 assert.equal(scatter.datasets[1].label, "Outside AOI (2)");
@@ -130,30 +130,118 @@ assert.deepEqual(scatter.datasets[0].data, [{ x: 1, y: 2 }]);
 assert.equal(scatter.datasets[1].backgroundColor, "transparent");
 assert.deepEqual(scatter.datasets[1].borderColor, ["#56b4e9", "#e69f00"]);
 
-// Palette shorter than k must wrap rather than yield undefined colors.
+// Switching methods recolors the same points; the coordinates must not move,
+// which is what makes two methods visually comparable.
+const recolored = Core.scatterChartData(scatterPoints, ["#e69f00", "#56b4e9"], [1, 0, 1]);
+assert.deepEqual(recolored.datasets[0].data, scatter.datasets[0].data);
+assert.deepEqual(recolored.datasets[1].data, scatter.datasets[1].data);
+assert.deepEqual(recolored.datasets[0].backgroundColor, ["#56b4e9"]);
+
+// Palette shorter than the cluster count must wrap rather than yield undefined.
 const wrapped = Core.scatterChartData(
-  { points: [{ x: 0, y: 0, cluster: 3, inside: true }] },
-  ["#111111", "#222222"]
+  { points: [{ x: 0, y: 0, inside: true }] },
+  ["#111111", "#222222"],
+  [3]
 );
 assert.equal(wrapped.datasets[0].backgroundColor[0], "#222222");
 
-assert.equal(Core.scatterChartData(undefined, []).datasets[0].data.length, 0);
+// Missing labels fall back to grey instead of crashing.
+const unlabelled = Core.scatterChartData(scatterPoints, ["#e69f00"], []);
+assert.equal(unlabelled.datasets[0].backgroundColor[0], "#999999");
+
+assert.equal(Core.scatterChartData(undefined, [], []).datasets[0].data.length, 0);
 
 // ---- separability summary ----
 
-const summary = Core.summarizeSeparability({
-  separability: { jensen_shannon_divergence: 0.4231, interpretation: "Strong separation" },
-  sample: { inside: 1500, outside: 1500, total: 3000 },
-  scatter: { explained_variance_ratio: [0.42, 0.19] },
-});
+// Sample counts and PCA variance belong to the embedding run; divergence
+// belongs to the selected clustering method.
+const summary = Core.summarizeSeparability(
+  {
+    sample: { inside: 1500, outside: 1500, total: 3000 },
+    scatter: { explained_variance_ratio: [0.42, 0.19] },
+  },
+  { separability: { jensen_shannon_divergence: 0.4231, interpretation: "Strong separation" } }
+);
 assert.equal(summary.divergenceLabel, "0.423");
 assert.equal(summary.insideCount, 1500);
 assert.equal(summary.varianceLabel, "PC1 42% · PC2 19%");
+assert.equal(summary.interpretation, "Strong separation");
 
-const missing = Core.summarizeSeparability({});
+const missing = Core.summarizeSeparability({}, {});
 assert.equal(missing.divergence, null);
 assert.equal(missing.divergenceLabel, "—");
 assert.equal(missing.varianceLabel, "");
+
+// ---- run selection ----
+
+const embeddingsPayload = {
+  default_method: "xmeans",
+  runs: [
+    {
+      method: "kmeans",
+      label: "k-means (Euclidean)",
+      auto_k: false,
+      k_observed: 6,
+      separability: { jensen_shannon_divergence: 0.21 },
+    },
+    {
+      method: "xmeans",
+      label: "X-means (auto k, BIC)",
+      auto_k: true,
+      k_observed: 9,
+      separability: { jensen_shannon_divergence: 0.44 },
+    },
+    {
+      method: "lvq",
+      label: "Learning vector quantization",
+      auto_k: false,
+      k_observed: 6,
+      separability: { jensen_shannon_divergence: 0.33 },
+    },
+  ],
+};
+
+assert.equal(Core.selectRun(embeddingsPayload, "lvq").method, "lvq");
+// An unknown or stale saved method falls back to the declared default.
+assert.equal(Core.selectRun(embeddingsPayload, "cobweb").method, "xmeans");
+assert.equal(Core.selectRun(embeddingsPayload, undefined).method, "xmeans");
+// With no default either, the first run wins rather than rendering nothing.
+assert.equal(
+  Core.selectRun({ runs: [{ method: "lvq" }] }, "nope").method,
+  "lvq"
+);
+assert.equal(Core.selectRun({ runs: [] }, "kmeans"), null);
+assert.equal(Core.selectRun(null, "kmeans"), null);
+
+// ---- method comparison ----
+
+const methods = Core.methodSummaries(embeddingsPayload);
+assert.equal(methods.length, 3);
+assert.deepEqual(
+  methods.map((row) => row.method),
+  ["kmeans", "xmeans", "lvq"]
+);
+assert.equal(methods[1].divergenceLabel, "0.440");
+assert.equal(methods[1].autoK, true);
+assert.equal(methods[1].k, 9);
+// Exactly one method is flagged strongest, and it is the highest divergence.
+assert.deepEqual(
+  methods.map((row) => row.best),
+  [false, true, false]
+);
+
+// A lone method is not "strongest" — there is nothing to be stronger than.
+const single = Core.methodSummaries({
+  runs: [{ method: "kmeans", separability: { jensen_shannon_divergence: 0.5 } }],
+});
+assert.equal(single[0].best, false);
+
+assert.deepEqual(Core.methodSummaries(null), []);
+assert.deepEqual(Core.methodSummaries({ runs: [] }), []);
+
+// A run missing its separability block must not produce NaN in the list.
+const partial = Core.methodSummaries({ runs: [{ method: "kmeans" }] });
+assert.equal(partial[0].divergenceLabel, "0.000");
 
 // ---- catalog normalization ----
 
@@ -176,8 +264,12 @@ assert.equal(bare.name, "ARTEMIS");
 assert.equal(bare.naip, null);
 assert.deepEqual(bare.vectors, { extent: null, aoi: null });
 
-const withEmbeddings = Core.normalizeCatalog({ embeddings: { k: 4 } });
-assert.deepEqual(withEmbeddings.embeddings.clusters, []);
+const withEmbeddings = Core.normalizeCatalog({ embeddings: { default_method: "kmeans" } });
+assert.deepEqual(withEmbeddings.embeddings.runs, []);
 assert.deepEqual(withEmbeddings.embeddings.scatter.points, []);
+
+const withRuns = Core.normalizeCatalog({ embeddings: embeddingsPayload });
+assert.equal(withRuns.embeddings.runs.length, 3);
+assert.equal(withRuns.embeddings.default_method, "xmeans");
 
 console.log("artemis-panel-core: all assertions passed");

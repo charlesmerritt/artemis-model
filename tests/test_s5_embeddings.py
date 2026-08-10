@@ -162,95 +162,216 @@ def test_pca_2d_rejects_degenerate_input():
         emb.pca_2d(np.array([1.0, 2.0, 3.0]))
 
 
-# ---- build_chart_payload ----
+# ---- clustering method registry ----
 
 
-def _payload(records, k=2, coords=None):
-    matrix = coords if coords is not None else np.zeros((len(records), 2))
-    return emb.build_chart_payload(
+def test_every_method_declares_the_fields_the_panel_reads():
+    for name, spec in emb.CLUSTER_METHODS.items():
+        assert spec["label"], name
+        assert spec["description"], name
+        assert isinstance(spec["auto_k"], bool), name
+        assert isinstance(spec["uses_k"], bool), name
+        # A method cannot both take k and choose it.
+        assert not (spec["auto_k"] and spec["uses_k"]), name
+
+
+def test_default_method_is_registered():
+    assert emb.DEFAULT_METHOD in emb.CLUSTER_METHODS
+
+
+def test_resolve_methods_defaults_to_kmeans():
+    assert emb.resolve_methods(None) == [emb.DEFAULT_METHOD]
+    assert emb.resolve_methods("") == [emb.DEFAULT_METHOD]
+
+
+def test_resolve_methods_preserves_order_and_dedupes():
+    assert emb.resolve_methods("xmeans,kmeans,xmeans") == ["xmeans", "kmeans"]
+
+
+def test_resolve_methods_tolerates_whitespace():
+    assert emb.resolve_methods(" kmeans , lvq ") == ["kmeans", "lvq"]
+
+
+def test_resolve_methods_rejects_unknown_name():
+    # A typo must fail loudly rather than silently omit the requested method.
+    with pytest.raises(ValueError, match="Unknown clustering method"):
+        emb.resolve_methods("kmeans,kmeanz")
+
+
+# ---- observed_cluster_count ----
+
+
+def test_observed_cluster_count_from_labels():
+    assert emb.observed_cluster_count([0, 1, 2, 1, 0]) == 3
+
+
+def test_observed_cluster_count_counts_empty_trailing_cluster():
+    # Fixed-k methods can leave a cluster unused; auto-k methods never report k.
+    assert emb.observed_cluster_count([0, 0, 3]) == 4
+
+
+def test_observed_cluster_count_rejects_empty():
+    with pytest.raises(ValueError):
+        emb.observed_cluster_count([])
+
+
+def test_observed_cluster_count_rejects_negative():
+    with pytest.raises(ValueError):
+        emb.observed_cluster_count([-1, 0])
+
+
+# ---- build_run ----
+
+
+def test_build_run_shape():
+    run = emb.build_run(
+        method="kmeans",
+        inside_flags=[True, True, False, False],
+        cluster_ids=[0, 0, 1, 1],
+        layer_info={"cluster_tile_url": None},
+        k_requested=2,
+    )
+
+    assert run["method"] == "kmeans"
+    assert run["label"] == emb.CLUSTER_METHODS["kmeans"]["label"]
+    assert run["k_observed"] == 2
+    assert run["k_requested"] == 2
+    assert run["auto_k"] is False
+    assert run["cluster_by_point"] == [0, 0, 1, 1]
+    assert len(run["palette"]) == 2
+    assert run["separability"]["jensen_shannon_divergence"] == pytest.approx(1.0)
+
+
+def test_build_run_omits_k_requested_for_auto_k_methods():
+    # X-means chooses its own k, so echoing --k back would be misleading.
+    run = emb.build_run(
+        method="xmeans",
+        inside_flags=[True, False, True],
+        cluster_ids=[0, 1, 2],
+        layer_info={},
+        k_requested=6,
+    )
+    assert run["auto_k"] is True
+    assert run["k_requested"] is None
+    assert run["k_observed"] == 3
+
+
+def test_build_run_rejects_length_mismatch():
+    with pytest.raises(ValueError, match="same length"):
+        emb.build_run("kmeans", [True, False], [0], {}, 2)
+
+
+def test_build_run_rejects_unknown_method():
+    with pytest.raises(ValueError, match="Unknown clustering method"):
+        emb.build_run("dbscan", [True], [0], {}, 2)
+
+
+def test_build_run_labels_are_parallel_to_points():
+    # cluster_by_point must stay index-aligned with the shared scatter points.
+    inside = [True, False, True, False]
+    ids = [2, 0, 1, 0]
+    run = emb.build_run("kmeans", inside, ids, {}, 3)
+    assert run["cluster_by_point"] == ids
+    assert run["clusters"][0]["outside_count"] == 2
+
+
+# ---- build_clusters_payload ----
+
+
+def _run(method="kmeans", inside_flags=None, cluster_ids=None):
+    inside_flags = inside_flags if inside_flags is not None else [True, True, False, False]
+    cluster_ids = cluster_ids if cluster_ids is not None else [0, 0, 1, 1]
+    return emb.build_run(method, inside_flags, cluster_ids, {}, 2)
+
+
+def _payload(runs=None, inside_flags=None, coords=None, default_method=None):
+    inside_flags = inside_flags if inside_flags is not None else [True, True, False, False]
+    runs = runs if runs is not None else [_run()]
+    matrix = coords if coords is not None else np.zeros((len(inside_flags), 2))
+    return emb.build_clusters_payload(
         name="Test Stands",
         slug="test_stands",
         year=2024,
-        k=k,
         scale_m=10,
         seed=42,
-        records=records,
+        inside_flags=inside_flags,
         coords=matrix,
         variance_ratios=[0.6, 0.2],
         extent_geom=EXTENT_BOX,
         aoi_geom=AOI_BOX,
-        layer_info={"cluster_tile_url": None, "export": None},
+        runs=runs,
+        default_method=default_method,
     )
 
 
-def test_build_chart_payload_shape():
-    records = [
-        {"cluster": 0, "inside": True},
-        {"cluster": 1, "inside": False},
-    ]
-    payload = _payload(records)
+def test_payload_shape():
+    payload = _payload()
 
     assert payload["schema"] == emb.CLUSTERS_SCHEMA
     assert payload["collection"] == emb.EMBEDDING_COLLECTION
-    assert payload["k"] == 2
-    assert payload["sample"] == {"inside": 1, "outside": 1, "total": 2}
-    assert len(payload["clusters"]) == 2
-    assert len(payload["palette"]) == 2
+    assert payload["sample"] == {"inside": 2, "outside": 2, "total": 4}
+    assert payload["default_method"] == "kmeans"
+    assert len(payload["runs"]) == 1
     assert payload["extent"]["area_ha"] > payload["aoi"]["area_ha"]
 
 
-def test_build_chart_payload_scatter_points_pair_with_records():
-    records = [
-        {"cluster": 0, "inside": True},
-        {"cluster": 1, "inside": False},
-    ]
-    coords = np.array([[1.5, -2.5], [3.0, 4.0]])
-    payload = _payload(records, coords=coords)
+def test_payload_stores_scatter_geometry_once_without_cluster_ids():
+    # Geometry is shared across methods; only cluster_by_point differs per run.
+    coords = np.array([[1.5, -2.5], [3.0, 4.0], [0.0, 0.0], [1.0, 1.0]])
+    payload = _payload(coords=coords)
 
     points = payload["scatter"]["points"]
-    assert points[0] == {"x": 1.5, "y": -2.5, "cluster": 0, "inside": True}
-    assert points[1]["inside"] is False
+    assert points[0] == {"x": 1.5, "y": -2.5, "inside": True}
+    assert all("cluster" not in point for point in points)
     assert payload["scatter"]["explained_variance_ratio"] == [0.6, 0.2]
 
 
-def test_build_chart_payload_separability_for_perfect_split():
-    records = [
-        {"cluster": 0, "inside": True},
-        {"cluster": 0, "inside": True},
-        {"cluster": 1, "inside": False},
-        {"cluster": 1, "inside": False},
-    ]
-    payload = _payload(records)
-    assert payload["separability"]["jensen_shannon_divergence"] == pytest.approx(1.0)
-    assert "Near-complete" in payload["separability"]["interpretation"]
+def test_payload_point_count_matches_every_run_label_count():
+    runs = [_run("kmeans"), _run("lvq", cluster_ids=[0, 1, 1, 0])]
+    payload = _payload(runs=runs)
+
+    point_count = len(payload["scatter"]["points"])
+    for run in payload["runs"]:
+        assert len(run["cluster_by_point"]) == point_count
 
 
-def test_build_chart_payload_separability_for_no_split():
-    records = [
-        {"cluster": 0, "inside": True},
-        {"cluster": 1, "inside": True},
-        {"cluster": 0, "inside": False},
-        {"cluster": 1, "inside": False},
-    ]
-    payload = _payload(records)
-    assert payload["separability"]["jensen_shannon_divergence"] == pytest.approx(0.0)
-    assert "same population" in payload["separability"]["interpretation"]
+def test_payload_holds_multiple_methods_with_independent_divergence():
+    perfect = _run("kmeans", cluster_ids=[0, 0, 1, 1])
+    none = _run("lvq", cluster_ids=[0, 1, 0, 1])
+    payload = _payload(runs=[perfect, none])
+
+    by_method = {run["method"]: run for run in payload["runs"]}
+    assert by_method["kmeans"]["separability"]["jensen_shannon_divergence"] == pytest.approx(1.0)
+    assert by_method["lvq"]["separability"]["jensen_shannon_divergence"] == pytest.approx(0.0)
 
 
-def test_build_chart_payload_without_coords_omits_scatter_points():
-    records = [{"cluster": 0, "inside": True}, {"cluster": 1, "inside": False}]
-    payload = emb.build_chart_payload(
+def test_payload_default_method_can_be_chosen():
+    payload = _payload(runs=[_run("kmeans"), _run("xmeans")], default_method="xmeans")
+    assert payload["default_method"] == "xmeans"
+
+
+def test_payload_rejects_default_method_not_among_runs():
+    with pytest.raises(ValueError, match="not among the runs"):
+        _payload(runs=[_run("kmeans")], default_method="cobweb")
+
+
+def test_payload_rejects_no_runs():
+    with pytest.raises(ValueError, match="At least one"):
+        _payload(runs=[])
+
+
+def test_payload_without_coords_omits_scatter_points():
+    payload = emb.build_clusters_payload(
         name="n",
         slug="s",
         year=2024,
-        k=2,
         scale_m=10,
         seed=42,
-        records=records,
+        inside_flags=[True, False],
         coords=None,
         variance_ratios=[],
         extent_geom=EXTENT_BOX,
         aoi_geom=AOI_BOX,
-        layer_info={},
+        runs=[_run(inside_flags=[True, False], cluster_ids=[0, 1])],
     )
     assert payload["scatter"]["points"] == []

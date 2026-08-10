@@ -162,6 +162,92 @@
   cursor: not-allowed;
 }
 
+/* ---------- Method selector ---------- */
+
+.artemis-field {
+  display: block;
+  margin-bottom: 8px;
+}
+.artemis-field > span {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.artemis-select {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+.artemis-select:focus {
+  outline: none;
+  border-color: var(--accent-2);
+}
+.artemis-method-desc {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.artemis-method-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.artemis-method-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.artemis-method-row:hover {
+  border-color: var(--accent-2);
+}
+.artemis-method-row:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 1px;
+}
+/* The selected method is the one the charts below are showing, so it has to be
+   readable at a glance against rows that merely rank higher. */
+.artemis-method-row.active {
+  border-left-color: var(--accent-2);
+  background: var(--bg);
+}
+.artemis-method-row.active .artemis-method-name,
+.artemis-method-row.active .artemis-method-value {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+.artemis-method-meta {
+  min-width: 0;
+}
+.artemis-method-name {
+  font-size: 12px;
+}
+.artemis-method-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+.artemis-method-value {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Facts ---------- */
 
 .artemis-facts {

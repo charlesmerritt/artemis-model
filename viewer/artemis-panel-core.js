@@ -14,8 +14,10 @@
      tileAge(isoString, now)
      clusterShareChartData(clusters)
      insideFractionChartData(clusters)
-     scatterChartData(scatter, palette)
-     summarizeSeparability(embeddings)
+     scatterChartData(scatter, palette, clusterIds)
+     summarizeSeparability(embeddings, run)
+     selectRun(embeddings, method)
+     methodSummaries(embeddings)
    ---------------------------------------------------------------- */
 
 (function (root) {
@@ -168,25 +170,35 @@
    * hollow triangles, and cluster identity rides on the per-point color. That
    * keeps the legend to the comparison being made while still showing where the
    * clusters fall.
+   *
+   * Point geometry is shared across clustering methods (same samples, same
+   * embeddings, so the same PCA), and `clusterIds` supplies the selected run's
+   * labels. Switching methods therefore only recolors — the cloud does not move,
+   * which is what makes two methods visually comparable.
    */
-  function scatterChartData(scatter, palette) {
+  function scatterChartData(scatter, palette, clusterIds) {
     const points = (scatter && scatter.points) || [];
     const colors = palette || [];
-    const colorFor = (cluster) => colors[cluster % (colors.length || 1)] || "#999999";
+    const labels = clusterIds || [];
+    const colorFor = (cluster) =>
+      cluster === undefined || cluster === null
+        ? "#999999"
+        : colors[cluster % (colors.length || 1)] || "#999999";
 
     const inside = [];
     const insideColors = [];
     const outside = [];
     const outsideColors = [];
 
-    points.forEach((point) => {
+    points.forEach((point, index) => {
       const coordinate = { x: Number(point.x), y: Number(point.y) };
+      const color = colorFor(labels[index]);
       if (point.inside) {
         inside.push(coordinate);
-        insideColors.push(colorFor(point.cluster));
+        insideColors.push(color);
       } else {
         outside.push(coordinate);
-        outsideColors.push(colorFor(point.cluster));
+        outsideColors.push(color);
       }
     });
 
@@ -215,9 +227,16 @@
 
   // ---- Summaries ----
 
-  function summarizeSeparability(embeddings) {
+  /**
+   * Combine the shared sample/scatter facts with the selected run's separability.
+   *
+   * Sample counts and PCA variance belong to the whole embedding run and do not
+   * change when the method changes; divergence and interpretation do.
+   */
+  function summarizeSeparability(embeddings, run) {
     const payload = embeddings || {};
-    const separability = payload.separability || {};
+    const selected = run || {};
+    const separability = selected.separability || {};
     const sample = payload.sample || {};
     const variance = (payload.scatter && payload.scatter.explained_variance_ratio) || [];
 
@@ -237,6 +256,57 @@
         ? `PC1 ${formatPercent(variance[0], 0)} · PC2 ${formatPercent(variance[1], 0)}`
         : "",
     };
+  }
+
+  /**
+   * Pick a run out of an embeddings payload by method name.
+   *
+   * Falls back to the declared default, then to the first run, so a stale saved
+   * method preference never leaves the panel with nothing to show.
+   */
+  function selectRun(embeddings, method) {
+    const runs = (embeddings && embeddings.runs) || [];
+    if (!runs.length) return null;
+    return (
+      runs.find((run) => run.method === method) ||
+      runs.find((run) => run.method === (embeddings || {}).default_method) ||
+      runs[0]
+    );
+  }
+
+  /**
+   * One row per method for the comparison list, ranked by how strongly each
+   * separates inside from outside.
+   *
+   * This is the answer to "which clustering technique should we use" — a method
+   * that finds a sharper inside/outside split on the same samples is the one
+   * responding to whatever the AOI boundary actually marks.
+   */
+  function methodSummaries(embeddings) {
+    const runs = (embeddings && embeddings.runs) || [];
+    const rows = runs.map((run) => {
+      const divergence = Number(
+        (run.separability || {}).jensen_shannon_divergence ?? 0
+      );
+      return {
+        method: run.method,
+        label: run.label || run.method,
+        description: run.description || "",
+        autoK: !!run.auto_k,
+        k: run.k_observed ?? null,
+        divergence,
+        divergenceLabel: divergence.toFixed(3),
+      };
+    });
+
+    const best = rows.reduce(
+      (top, row) => (top === null || row.divergence > top.divergence ? row : top),
+      null
+    );
+    rows.forEach((row) => {
+      row.best = best !== null && row.method === best.method && rows.length > 1;
+    });
+    return rows;
   }
 
   // ---- Catalog ----
@@ -274,9 +344,7 @@
       embeddings: embeddings
         ? {
             ...embeddings,
-            clusters: embeddings.clusters || [],
-            palette: embeddings.palette || [],
-            layers: embeddings.layers || {},
+            runs: embeddings.runs || [],
             scatter: embeddings.scatter || { points: [], explained_variance_ratio: [] },
           }
         : null,
@@ -296,6 +364,8 @@
     insideFractionChartData,
     scatterChartData,
     summarizeSeparability,
+    selectRun,
+    methodSummaries,
   };
 
   if (typeof module !== "undefined" && module.exports) {

@@ -87,6 +87,20 @@ The headline number is the Jensen-Shannon divergence between the inside and outs
 distributions, bounded 0 to 1. Zero means the two sides are the same population in embedding
 space; one means they share no cluster at all.
 
+## Switching clustering methods
+
+When `embeddings.py` is run with more than one `--methods` entry, the panel gets a **Clustering
+method** dropdown and a **Method comparison** list ranking each method by divergence. Selecting a
+method — from the dropdown or by clicking a row — updates the charts, the cluster table, and the
+"Add cluster layer" button, and the choice is remembered across reloads.
+
+Every method clustered the same sample, so the scatter plot's geometry is identical between them
+and only the coloring changes; that is what makes two methods visually comparable. Cluster **ids
+do not carry across methods** — cluster 2 under k-means is unrelated to cluster 2 under X-means.
+
+The panel flags the highest-divergence method as "strongest". Treat that as a starting heuristic,
+not a verdict: a method free to choose its own k can raise divergence just by cutting finer.
+
 ## Layer sources and their lifetimes
 
 NAIP years and the cluster raster reach the map two ways:

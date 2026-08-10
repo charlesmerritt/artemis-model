@@ -42,19 +42,34 @@ def _manifest(years):
     }
 
 
-def _clusters(export=None):
+def _run(method="kmeans", label="k-means (Euclidean)", k=4, auto_k=False, export=None):
     return {
-        "schema": "artemis.embeddings.clusters/1",
+        "method": method,
+        "label": label,
+        "description": "…",
+        "auto_k": auto_k,
+        "k_requested": None if auto_k else k,
+        "k_observed": k,
+        "palette": ["#e69f00", "#56b4e9", "#009e73", "#f0e442"],
+        "clusters": [],
+        "separability": {"jensen_shannon_divergence": 0.3, "interpretation": "…"},
+        "cluster_by_point": [],
+        "layers": {"cluster_tile_url": "https://ee.example/c/{z}/{x}/{y}", "export": export},
+    }
+
+
+def _clusters(export=None, runs=None):
+    return {
+        "schema": "artemis.embeddings.clusters/2",
         "name": "Test Stands",
         "slug": "test_stands",
         "collection": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
         "year": 2024,
-        "k": 4,
-        "palette": ["#e69f00", "#56b4e9", "#009e73", "#f0e442"],
-        "clusters": [],
+        "default_method": "kmeans",
+        "runs": runs if runs is not None else [_run(export=export)],
+        "scatter": {"points": [], "explained_variance_ratio": []},
         "extent": {"bounds": [-82.62, 30.08, -82.57, 30.13]},
         "aoi": {"bounds": [-82.60, 30.10, -82.59, 30.11]},
-        "layers": {"cluster_tile_url": "https://ee.example/c/{z}/{x}/{y}", "export": export},
     }
 
 
@@ -160,6 +175,35 @@ def test_layers_json_cluster_base_overrides_public_base():
     assert cluster_layer["url"] == "https://clusters.example/clusters.tif"
 
 
+def test_layers_json_gives_each_clustering_method_its_own_layer():
+    # Separate rasters, not timesteps — they should be toggleable against each other.
+    runs = [
+        _run("kmeans", "k-means (Euclidean)", k=4,
+             export={"target": "gcs", "filename": "k.tif", "bucket": "b", "object": "e/k.tif"}),
+        _run("xmeans", "X-means (auto k, BIC)", k=7, auto_k=True,
+             export={"target": "gcs", "filename": "x.tif", "bucket": "b", "object": "e/x.tif"}),
+    ]
+    catalog = vc.build_layers_json(None, _clusters(runs=runs), None, None, "Test Stands")
+
+    cog_layers = [layer for layer in catalog["layers"] if layer["type"] == "cog"]
+    assert len(cog_layers) == 2
+    assert "k-means" in cog_layers[0]["name"]
+    assert "X-means" in cog_layers[1]["name"]
+    assert cog_layers[1]["style"]["max"] == 6
+    assert "(auto)" in cog_layers[1]["description"]
+
+
+def test_layers_json_skips_methods_without_an_export():
+    runs = [
+        _run("kmeans", export={"target": "gcs", "filename": "k.tif", "bucket": "b",
+                               "object": "e/k.tif"}),
+        _run("lvq", "Learning vector quantization", export=None),
+    ]
+    catalog = vc.build_layers_json(None, _clusters(runs=runs), None, None, "Test Stands")
+    cog_layers = [layer for layer in catalog["layers"] if layer["type"] == "cog"]
+    assert len(cog_layers) == 1
+
+
 # ---- build_catalog ----
 
 
@@ -191,9 +235,29 @@ def test_catalog_copies_vector_geometry_facts():
 
 def test_catalog_embeds_the_cluster_payload():
     catalog = vc.build_catalog(None, _clusters(), None, None, "Test Stands")
-    assert catalog["embeddings"]["k"] == 4
-    assert catalog["embeddings"]["layers"]["cluster_cog_url"] is None
+    assert catalog["embeddings"]["default_method"] == "kmeans"
+    assert catalog["embeddings"]["runs"][0]["k_observed"] == 4
+    assert catalog["embeddings"]["runs"][0]["layers"]["cluster_cog_url"] is None
     assert catalog["naip"] is None
+
+
+def test_catalog_resolves_a_cog_url_per_method():
+    runs = [
+        _run("kmeans", export={"target": "gcs", "filename": "k.tif", "bucket": "b",
+                               "object": "e/k.tif"}),
+        _run("cobweb", "Cobweb (hierarchical, emergent k)", k=9, auto_k=True, export=None),
+    ]
+    catalog = vc.build_catalog(None, _clusters(runs=runs), None, None, "Test Stands")
+
+    resolved = {run["method"]: run["layers"]["cluster_cog_url"] for run in catalog["embeddings"]["runs"]}
+    assert resolved["kmeans"] == "https://storage.googleapis.com/b/e/k.tif"
+    assert resolved["cobweb"] is None
+
+
+def test_catalog_preserves_every_method_run():
+    runs = [_run("kmeans"), _run("xmeans", "X-means", k=7, auto_k=True), _run("lvq", "LVQ")]
+    catalog = vc.build_catalog(None, _clusters(runs=runs), None, None, "Test Stands")
+    assert [run["method"] for run in catalog["embeddings"]["runs"]] == ["kmeans", "xmeans", "lvq"]
 
 
 def test_catalog_falls_back_to_cluster_bounds_without_a_manifest():

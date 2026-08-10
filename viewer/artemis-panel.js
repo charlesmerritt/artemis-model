@@ -26,6 +26,7 @@
 
   const DEFAULT_CATALOG_URL = "artemis/catalog.json";
   const COLLAPSE_KEY = "artemis.panel.collapsed";
+  const METHOD_KEY = "artemis.panel.method";
 
   let catalog = null;
   const charts = Object.create(null);
@@ -399,64 +400,77 @@
       return;
     }
 
-    const summary = Core.summarizeSeparability(embeddings);
+    const runs = embeddings.runs || [];
+    if (!runs.length) {
+      const element = section("Embedding clusters");
+      element.appendChild(
+        note(
+          "warn",
+          "This catalog has an embeddings block but no clustering runs. It was probably " +
+            "written by an older embeddings.py — regenerate it."
+        )
+      );
+      container.appendChild(element);
+      return;
+    }
+
+    const summary = Core.summarizeSeparability(embeddings, runs[0]);
     const element = section(
       "Embedding clusters",
-      `${embeddings.collection} ${embeddings.year} · k=${embeddings.k} · ` +
+      `${embeddings.collection} ${embeddings.year} · ` +
         `${summary.insideCount} inside / ${summary.outsideCount} outside samples`
     );
 
-    const layers = embeddings.layers || {};
-    if (layers.cluster_cog_url || layers.cluster_tile_url) {
-      const row = document.createElement("div");
-      row.className = "artemis-row";
-      row.appendChild(
-        button("Add cluster layer", "Add the clustered embedding raster", (btn) =>
-          withBusy(btn, "Adding…", async () => {
-            const name = `Embedding clusters ${embeddings.year} (k=${embeddings.k})`;
-            if (layers.cluster_cog_url) {
-              await requireLayers().addLayerFromConfig({
-                name,
-                type: "cog",
-                source: { kind: "builtin", url: layers.cluster_cog_url },
-                style: { colormap: "viridis", min: 0, max: embeddings.k - 1 },
-              });
-            } else {
-              await addTileLayer(
-                name,
-                layers.cluster_tile_url,
-                (embeddings.extent || {}).bounds,
-                "Earth Engine · k-means"
-              );
-            }
-          })
-        )
-      );
-      element.appendChild(row);
+    // ---- Method selector ----
 
-      if (!layers.cluster_cog_url && layers.cluster_tile_url) {
-        const age = Core.tileAge(layers.tile_url_generated_utc);
-        if (age.stale) {
-          element.appendChild(
-            note("warn", `Cluster tiles ${age.label} — the Earth Engine URL may have expired.`)
-          );
-        }
-      }
-    }
+    const field = document.createElement("label");
+    field.className = "artemis-field";
+    const fieldLabel = document.createElement("span");
+    fieldLabel.textContent = "Clustering method";
+    const select = document.createElement("select");
+    select.id = "artemis-method";
+    select.className = "artemis-select";
+    runs.forEach((run) => {
+      const option = document.createElement("option");
+      option.value = run.method;
+      option.textContent = `${run.label} · k=${run.k_observed}`;
+      select.appendChild(option);
+    });
+    field.appendChild(fieldLabel);
+    field.appendChild(select);
+    element.appendChild(field);
+
+    const methodNote = document.createElement("p");
+    methodNote.className = "artemis-method-desc";
+    element.appendChild(methodNote);
+
+    // ---- Layer button ----
+
+    const layerRow = document.createElement("div");
+    layerRow.className = "artemis-row";
+    element.appendChild(layerRow);
+
+    const layerNote = document.createElement("div");
+    element.appendChild(layerNote);
+
+    // ---- Separability readout ----
 
     const readout = document.createElement("div");
     readout.className = "artemis-readout";
-    readout.innerHTML = `
-      <div class="artemis-metric">
-        <div class="artemis-metric-value">${summary.divergenceLabel}</div>
-        <div class="artemis-metric-label">Inside vs outside divergence</div>
-      </div>
-    `;
+    const metric = document.createElement("div");
+    metric.className = "artemis-metric";
+    const metricValue = document.createElement("div");
+    metricValue.className = "artemis-metric-value";
+    const metricLabel = document.createElement("div");
+    metricLabel.className = "artemis-metric-label";
+    metricLabel.textContent = "Inside vs outside divergence";
+    metric.appendChild(metricValue);
+    metric.appendChild(metricLabel);
+    readout.appendChild(metric);
     element.appendChild(readout);
 
     const interpretation = document.createElement("p");
     interpretation.className = "artemis-interpretation";
-    interpretation.textContent = summary.interpretation;
     element.appendChild(interpretation);
 
     element.appendChild(
@@ -469,8 +483,175 @@
     );
 
     container.appendChild(element);
-    renderCharts(container, embeddings, summary);
-    renderClusterTable(container, embeddings);
+
+    if (runs.length > 1) renderMethodComparison(container, embeddings, select);
+
+    const chartRefs = renderCharts(container, embeddings, summary);
+    const tableBody = renderClusterTable(container);
+
+    // ---- Method switching ----
+
+    function applyRun(method) {
+      const run = Core.selectRun(embeddings, method);
+      if (!run) return;
+
+      select.value = run.method;
+      methodNote.textContent = run.description || "";
+      metricValue.textContent = (run.separability || {}).jensen_shannon_divergence !== undefined
+        ? Number(run.separability.jensen_shannon_divergence).toFixed(3)
+        : "—";
+      interpretation.textContent = (run.separability || {}).interpretation || "";
+
+      updateLayerRow(layerRow, layerNote, embeddings, run);
+      updateCharts(chartRefs, embeddings, run);
+      updateClusterTable(tableBody, run);
+
+      document
+        .querySelectorAll(".artemis-method-row")
+        .forEach((row) => row.classList.toggle("active", row.dataset.method === run.method));
+    }
+
+    select.addEventListener("change", () => {
+      applyRun(select.value);
+      try {
+        localStorage.setItem(METHOD_KEY, select.value);
+      } catch (_) {
+        /* preference is best-effort */
+      }
+    });
+
+    let initial = embeddings.default_method;
+    try {
+      const saved = localStorage.getItem(METHOD_KEY);
+      if (saved && runs.some((run) => run.method === saved)) initial = saved;
+    } catch (_) {
+      /* fall back to the catalog's default */
+    }
+    applyRun(initial);
+  }
+
+  /**
+   * A ranked list of every method that was run, by how strongly it separates
+   * inside from outside on the same samples.
+   *
+   * This is the point of running more than one: the rows are directly comparable
+   * because every method clustered an identical sample.
+   */
+  function renderMethodComparison(container, embeddings, select) {
+    const rows = Core.methodSummaries(embeddings);
+    const element = section(
+      "Method comparison",
+      "Same samples, same embeddings — only the clustering differs. Higher divergence " +
+        "means that method found a sharper inside/outside split."
+    );
+
+    const list = document.createElement("ul");
+    list.className = "artemis-method-list";
+
+    rows
+      .slice()
+      .sort((a, b) => b.divergence - a.divergence)
+      .forEach((row) => {
+        const item = document.createElement("li");
+        item.className = "artemis-method-row";
+        item.dataset.method = row.method;
+        item.tabIndex = 0;
+        item.title = row.description;
+
+        const meta = document.createElement("div");
+        meta.className = "artemis-method-meta";
+        const name = document.createElement("div");
+        name.className = "artemis-method-name";
+        name.textContent = row.label;
+        const detail = document.createElement("div");
+        detail.className = "artemis-method-detail";
+        detail.textContent = `k=${row.k}${row.autoK ? " (auto)" : ""}`;
+        meta.appendChild(name);
+        meta.appendChild(detail);
+
+        const value = document.createElement("div");
+        value.className = "artemis-method-value";
+        value.textContent = row.divergenceLabel;
+        if (row.best) {
+          const badge = document.createElement("span");
+          badge.className = "artemis-chip artemis-chip-complete";
+          badge.textContent = "strongest";
+          detail.appendChild(document.createTextNode(" "));
+          detail.appendChild(badge);
+        }
+
+        item.appendChild(meta);
+        item.appendChild(value);
+
+        const choose = () => {
+          select.value = row.method;
+          select.dispatchEvent(new Event("change"));
+        };
+        item.addEventListener("click", choose);
+        item.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            choose();
+          }
+        });
+
+        list.appendChild(item);
+      });
+
+    element.appendChild(list);
+    element.appendChild(
+      note(
+        "info",
+        "A stronger split is not automatically the right answer — it says the method is " +
+          "responding to something that lines up with the boundary, not what that something is."
+      )
+    );
+    container.appendChild(element);
+  }
+
+  function updateLayerRow(row, noteHost, embeddings, run) {
+    row.innerHTML = "";
+    noteHost.innerHTML = "";
+
+    const layers = run.layers || {};
+    if (!layers.cluster_cog_url && !layers.cluster_tile_url) {
+      noteHost.appendChild(
+        note("info", `No cluster raster for ${run.label}. Re-run with --export-clusters to add one.`)
+      );
+      return;
+    }
+
+    row.appendChild(
+      button("Add cluster layer", `Add the ${run.label} raster`, (btn) =>
+        withBusy(btn, "Adding…", async () => {
+          const name = `Clusters ${embeddings.year} · ${run.label}`;
+          if (layers.cluster_cog_url) {
+            await requireLayers().addLayerFromConfig({
+              name,
+              type: "cog",
+              source: { kind: "builtin", url: layers.cluster_cog_url },
+              style: { colormap: "viridis", min: 0, max: Math.max(0, run.k_observed - 1) },
+            });
+          } else {
+            await addTileLayer(
+              name,
+              layers.cluster_tile_url,
+              (embeddings.extent || {}).bounds,
+              `Earth Engine · ${run.label}`
+            );
+          }
+        })
+      )
+    );
+
+    if (!layers.cluster_cog_url && layers.cluster_tile_url) {
+      const age = Core.tileAge(layers.tile_url_generated_utc);
+      if (age.stale) {
+        noteHost.appendChild(
+          note("warn", `Cluster tiles ${age.label} — the Earth Engine URL may have expired.`)
+        );
+      }
+    }
   }
 
   function chartBlock(container, title, subtitle, canvasId) {
@@ -485,10 +666,17 @@
     return canvas;
   }
 
+  /**
+   * Build the three chart shells once.
+   *
+   * They are created empty and filled by updateCharts, so switching methods
+   * mutates data in place rather than tearing down and rebuilding canvases —
+   * no flicker, and the scatter's zoom/axis scale stays put between methods.
+   */
   function renderCharts(container, embeddings, summary) {
     if (typeof Chart === "undefined") {
       container.appendChild(note("warn", "Chart.js is not loaded; charts unavailable."));
-      return;
+      return null;
     }
 
     const gridColor = "rgba(154, 164, 178, 0.15)";
@@ -508,10 +696,11 @@
     );
     charts.share = new Chart(shareCanvas, {
       type: "bar",
-      data: Core.clusterShareChartData(embeddings.clusters),
+      data: { labels: [], datasets: [] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         plugins: { legend },
         scales: {
           ...baseScales,
@@ -533,10 +722,11 @@
     );
     charts.fraction = new Chart(fractionCanvas, {
       type: "bar",
-      data: Core.insideFractionChartData(embeddings.clusters),
+      data: { labels: [], datasets: [] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         plugins: { legend: { display: false } },
         scales: {
           ...baseScales,
@@ -557,16 +747,17 @@
         "Embedding space (PCA)",
         `Sampled embeddings on their first two principal components${
           summary.varianceLabel ? ` · ${summary.varianceLabel}` : ""
-        }. Color is cluster; filled circles are inside the AOI, outlined triangles outside.`,
+        }. Color is cluster; filled circles are inside the AOI, outlined triangles outside. ` +
+          "The cloud is identical across methods — only the coloring changes.",
         "artemis-chart-scatter"
       );
-      const scatterData = Core.scatterChartData(embeddings.scatter, embeddings.palette);
       charts.scatter = new Chart(scatterCanvas, {
         type: "scatter",
-        data: scatterData,
+        data: { datasets: [] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: false,
           plugins: {
             legend: {
               ...legend,
@@ -596,9 +787,32 @@
         },
       });
     }
+
+    return charts;
   }
 
-  function renderClusterTable(container, embeddings) {
+  function updateCharts(chartRefs, embeddings, run) {
+    if (!chartRefs) return;
+
+    if (chartRefs.share) {
+      chartRefs.share.data = Core.clusterShareChartData(run.clusters);
+      chartRefs.share.update();
+    }
+    if (chartRefs.fraction) {
+      chartRefs.fraction.data = Core.insideFractionChartData(run.clusters);
+      chartRefs.fraction.update();
+    }
+    if (chartRefs.scatter) {
+      chartRefs.scatter.data = Core.scatterChartData(
+        embeddings.scatter,
+        run.palette,
+        run.cluster_by_point
+      );
+      chartRefs.scatter.update();
+    }
+  }
+
+  function renderClusterTable(container) {
     const element = section("Cluster detail");
     const table = document.createElement("table");
     table.className = "artemis-table";
@@ -609,9 +823,18 @@
         </tr>
       </thead>
     `;
-
     const body = document.createElement("tbody");
-    (embeddings.clusters || []).forEach((cluster) => {
+    table.appendChild(body);
+    element.appendChild(table);
+    container.appendChild(element);
+    return body;
+  }
+
+  function updateClusterTable(body, run) {
+    if (!body) return;
+    body.innerHTML = "";
+
+    (run.clusters || []).forEach((cluster) => {
       const row = document.createElement("tr");
 
       const idCell = document.createElement("td");
@@ -631,10 +854,6 @@
       [idCell, insideCell, outsideCell, fractionCell].forEach((cell) => row.appendChild(cell));
       body.appendChild(row);
     });
-
-    table.appendChild(body);
-    element.appendChild(table);
-    container.appendChild(element);
   }
 
   // ---- Render ----

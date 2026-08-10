@@ -27,7 +27,7 @@ single-layer workflow still works. Supplying only `--extent` skips the inside/ou
 |---|---|
 | `vectors.py` | Shared layer loading, extent derivation, area/containment math. Geometry leaves in EPSG:4326; area and buffers route through EPSG:5070. |
 | `naip_acquire.py` | NAIP mosaics per year, with an explicit extent-coverage check and gap filling. |
-| `embeddings.py` | AlphaEarth embeddings, balanced inside/outside sampling, k-means, separability statistics. |
+| `embeddings.py` | AlphaEarth embeddings, balanced inside/outside sampling, six selectable clusterers, separability statistics. |
 | `viewer_catalog.py` | Turns the above into viewer catalog files. |
 
 ## Coverage is checked, not assumed
@@ -98,8 +98,9 @@ data/interim/naip/<slug>/
   aoi.geojson             Area of interest, dissolved, EPSG:4326
 
 data/interim/embeddings/<slug>/
-  clusters.json           Chart payload: per-cluster inside/outside counts, divergence, PCA
-  samples.csv             One row per sample: lon, lat, inside, cluster, pc1, pc2
+  clusters.json           Chart payload: one run per clustering method, each with per-cluster
+                          inside/outside counts and divergence, plus shared PCA geometry
+  samples.csv             One row per sample: lon, lat, inside, pc1, pc2, cluster_<method>…
   extent.geojson, aoi.geojson
 
 data/interim/viewer/<slug>/
@@ -113,10 +114,48 @@ data/interim/viewer/<slug>/
 1. Take the AlphaEarth annual embedding (64 bands, 10 m) across the whole extent.
 2. Draw a stratified sample balanced between inside and outside, so the clustering is not
    dominated by whichever side is larger.
-3. Fit k-means in Earth Engine on **embedding bands only** — the inside/outside flag is withheld
-   from training, so the clusterer is not handed the boundary it is being evaluated against.
-4. Apply the clusterer to the sample and to the full extent, then compare cluster composition
+3. Fit each requested clusterer in Earth Engine on **embedding bands only** — the inside/outside
+   flag is withheld from training, so no clusterer is handed the boundary it is being evaluated
+   against.
+4. Apply each clusterer to the sample and to the full extent, then compare cluster composition
    across the boundary.
+
+## Clustering methods
+
+`--methods` takes a comma-separated list; each becomes an option in the viewer's method dropdown.
+`--list-methods` prints the set with descriptions.
+
+| Method | k | What makes it different |
+|---|---|---|
+| `kmeans` (default) | `--k` | Spherical clusters, squared-Euclidean distance. |
+| `kmeans_manhattan` | `--k` | L1 distance, so medians rather than means. Worth comparing at 64 dimensions, where Euclidean distance concentrates and everything starts looking equidistant. |
+| `xmeans` | auto | Splits clusters while the Bayesian information criterion improves, within `--k-min`/`--k-max`. |
+| `cascade_kmeans` | auto | Sweeps the same range and keeps the best Calinski-Harabasz score — a second opinion on k that does not share X-means' BIC assumptions. |
+| `lvq` | `--k` | Competitive learning; prototypes move toward the samples that win them. Order-sensitive and non-deterministic, but follows elongated structure that centroid methods cut through. |
+| `cobweb` | emergent | Incremental hierarchical clustering; k falls out of `--cobweb-cutoff` rather than being set. Can produce many small clusters — raise the cutoff to merge harder. |
+
+```bash
+# One run, four methods, all selectable in the viewer
+uv run python -m pipeline.s5_imagery.embeddings \
+  --extent config/study_extent.geojson --aoi config/stands.geojson --year 2024 \
+  --methods kmeans,kmeans_manhattan,xmeans,cascade_kmeans --k 6 --k-min 3 --k-max 12
+```
+
+Every method is an Earth Engine clusterer, deliberately. A server-side clusterer can be applied
+back to the extent image to produce a cluster raster, so each method gets a map layer as well as
+charts; a locally fit scikit-learn model would label the sampled points fine but could not paint
+the extent without a round trip.
+
+All methods in one run cluster the **same** sample, so their divergences are directly comparable
+and the viewer's scatter plot keeps identical geometry as you switch — only the coloring changes.
+Cluster **ids are not comparable across methods** (or across runs); cluster 2 under k-means has
+nothing to do with cluster 2 under X-means.
+
+Picking a method by highest divergence is a reasonable starting heuristic and a bad stopping
+point. A method that splits inside from outside more sharply is responding to something that
+lines up with the boundary — but a method free to choose its own k can raise divergence simply by
+cutting finer, and a fine enough partition separates almost anything. Compare at similar k before
+concluding one method sees more than another.
 
 The headline statistic is the Jensen-Shannon divergence between the two cluster distributions,
 bounded 0 to 1. It is symmetric and finite even when one side has no mass in a cluster, which is

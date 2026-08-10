@@ -45,11 +45,29 @@ year-over-year change read across it will be wrong in exactly the filled areas.
   deliberately so embedding-space results stay comparable across the project.
 - Sampling is `stratifiedSample` on a painted 0/1 inside-AOI band, so the inside/outside balance
   is guaranteed by construction rather than by luck of the draw.
-- **k-means trains on embedding bands only.** The inside/outside flag is withheld from training.
-  Handing the clusterer the boundary it is being evaluated against would make the result
+- **Clusterers train on embedding bands only.** The inside/outside flag is withheld from
+  training. Handing a clusterer the boundary it is being evaluated against would make the result
   circular — the same trap documented for featsets B and C in
   [`clearcut-vs-agriculture-embeddings.md`](clearcut-vs-agriculture-embeddings.md), where
   AUC ≈ 1.0 turned out to be true by construction.
+- **Six methods, all Earth Engine clusterers** (`--methods`, `--list-methods`): k-means with
+  Euclidean and with Manhattan distance, X-means (auto k by BIC), cascade k-means (auto k by
+  Calinski-Harabasz), LVQ, and Cobweb. Staying server-side is the constraint that earns each
+  method a cluster *raster* as well as charts — a locally fit scikit-learn model could label the
+  sample but not paint the extent. GMM and density methods (DBSCAN/HDBSCAN) are the notable gap
+  and would be charts-only; deferred rather than half-built.
+- Manhattan distance is in the set for a specific reason: at 64 dimensions Euclidean distances
+  concentrate, and L1 degrades more slowly. Whether that matters on unit-norm AlphaEarth vectors
+  is an empirical question the dropdown now makes cheap to answer.
+- All methods in a run cluster the **same** sample and are fitted in one pass, with each method's
+  labels attached to the same FeatureCollection under its own property name. One paged fetch
+  returns everything, so adding a method costs training time, not another round trip.
+- Divergences are therefore directly comparable across methods, and the panel ranks them. **A
+  higher divergence is a starting heuristic, not a verdict:** an auto-k method can raise
+  divergence simply by cutting finer, and a fine enough partition separates almost anything.
+  Compare at similar k before concluding one method sees more than another.
+- Cluster ids are not comparable across methods, the same way they are not comparable across
+  runs. Cluster 2 under k-means is unrelated to cluster 2 under X-means.
 - Separability is Jensen-Shannon divergence (base 2, bounded 0–1) between the inside and outside
   cluster distributions. Symmetric and finite when one side has zero mass in a cluster, which KL
   is not.
@@ -114,8 +132,13 @@ viewer layers. GCS exports resolve themselves from bucket and object.
 - **Export CRS.** Defaults to EPSG:4326 rather than the project's EPSG:5070, since NAIP is
   reference imagery, not a 30 m analysis raster. If NAIP ever feeds analysis rather than viewing,
   revisit.
-- **k selection** is a user parameter with no guidance. A silhouette sweep over k would make the
-  choice defensible rather than arbitrary.
+- **Clusterer signatures are unverified against live Earth Engine.** `build_clusterer()` maps
+  parameters onto `ee.Clusterer.weka*` by keyword, and these wrappers use different names for the
+  same idea (`nClusters` vs `numClusters` vs `minClusters`/`maxClusters`). Training is wrapped so
+  a rejection names the offending method and suggests running the others, but the first real run
+  with credentials should exercise **every** method, not just the default.
+- **Cobweb cluster counts** are unpredictable; `--cobweb-cutoff` is the control and the default
+  (0.002) is Weka's, not a tuned value. Runs above 20 clusters warn and cycle the palette.
 - **Sample size vs. cost.** `--n-samples` defaults to 1500 per side; samples are pulled to the
   client in 500-feature pages because `getInfo` fails outright on large collections. Very large
   extents may want a coarser `--scale` instead of more samples.

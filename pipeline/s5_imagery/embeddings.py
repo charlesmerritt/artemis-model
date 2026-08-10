@@ -76,7 +76,11 @@ MIN_OUTSIDE_FRACTION = 0.05
 # Earth Engine getInfo chokes on large feature collections; page through instead.
 FETCH_CHUNK = 500
 
-CLUSTERS_SCHEMA = "artemis.embeddings.clusters/1"
+# Above this the charts stop being readable and the palette starts cycling. Cobweb
+# in particular can emit dozens of clusters on a large sample.
+CLUSTER_COUNT_WARN = 20
+
+CLUSTERS_SCHEMA = "artemis.embeddings.clusters/2"
 
 # Categorical palette for cluster identity. Okabe-Ito extended — chosen because
 # cluster IDs are nominal and must stay distinguishable for colorblind viewers.
@@ -101,6 +105,150 @@ def cluster_palette(k: int) -> list[str]:
     if k < 1:
         raise ValueError("k must be >= 1")
     return [CLUSTER_PALETTE[i % len(CLUSTER_PALETTE)] for i in range(k)]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Clustering methods
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# All of these are Earth Engine clusterers, which is a deliberate constraint: a
+# server-side clusterer can be applied back to the full extent image to produce a
+# cluster raster, so every method in the dropdown gets a map layer as well as
+# charts. A locally-fit model (scikit-learn) would label the sampled points fine
+# but could not paint the extent without a round trip, leaving half a feature.
+#
+# The set spans genuinely different assumptions rather than variations on one:
+# fixed-k centroids, two different automatic-k criteria, competitive learning, and
+# incremental hierarchical clustering.
+
+CLUSTER_METHODS: dict[str, dict[str, Any]] = {
+    "kmeans": {
+        "label": "k-means (Euclidean)",
+        "description": "Fixed k, spherical clusters, squared-Euclidean distance.",
+        "auto_k": False,
+        "uses_k": True,
+    },
+    "kmeans_manhattan": {
+        "label": "k-means (Manhattan)",
+        "description": (
+            "Fixed k with L1 distance. Medians rather than means, so it is less "
+            "swayed by a few extreme bands — worth comparing at 64 dimensions, where "
+            "Euclidean distance concentrates."
+        ),
+        "auto_k": False,
+        "uses_k": True,
+    },
+    "xmeans": {
+        "label": "X-means (auto k, BIC)",
+        "description": (
+            "Searches k between --k-min and --k-max, splitting clusters while the "
+            "Bayesian information criterion improves. Use when k is not known."
+        ),
+        "auto_k": True,
+        "uses_k": False,
+    },
+    "cascade_kmeans": {
+        "label": "Cascade k-means (auto k, Calinski-Harabasz)",
+        "description": (
+            "Runs k-means across --k-min to --k-max and keeps the k with the best "
+            "Calinski-Harabasz score. A second opinion on k that does not share "
+            "X-means' BIC assumptions."
+        ),
+        "auto_k": True,
+        "uses_k": False,
+    },
+    "lvq": {
+        "label": "Learning vector quantization",
+        "description": (
+            "Competitive learning: prototypes move toward the samples that win them. "
+            "Order-sensitive and non-deterministic, but can follow elongated "
+            "structure that centroid methods cut through."
+        ),
+        "auto_k": False,
+        "uses_k": True,
+    },
+    "cobweb": {
+        "label": "Cobweb (hierarchical, emergent k)",
+        "description": (
+            "Incremental hierarchical clustering; k emerges from --cobweb-cutoff "
+            "rather than being set. Can produce many small clusters — raise the "
+            "cutoff to merge more aggressively."
+        ),
+        "auto_k": True,
+        "uses_k": False,
+    },
+}
+
+DEFAULT_METHOD = "kmeans"
+
+
+def resolve_methods(methods: str | None) -> list[str]:
+    """
+    Parse the --methods list, preserving order and dropping duplicates.
+
+    Unknown names fail loudly with the valid set rather than being skipped, since a
+    typo would otherwise silently produce a run without the method asked for.
+    """
+    if not methods:
+        return [DEFAULT_METHOD]
+
+    resolved: list[str] = []
+    for token in str(methods).replace(" ", "").split(","):
+        if not token:
+            continue
+        if token not in CLUSTER_METHODS:
+            raise ValueError(
+                f"Unknown clustering method {token!r}. Available: "
+                f"{', '.join(sorted(CLUSTER_METHODS))}"
+            )
+        if token not in resolved:
+            resolved.append(token)
+
+    if not resolved:
+        raise ValueError("--methods resolved to nothing")
+    return resolved
+
+
+def build_clusterer(ee, method: str, k: int, k_min: int, k_max: int, seed: int,
+                    cobweb_acuity: float, cobweb_cutoff: float):
+    """
+    Construct an untrained Earth Engine clusterer for one method.
+
+    Kept separate from training so the parameter mapping is inspectable in one
+    place — these Weka wrappers take different argument names for the same idea
+    (nClusters vs numClusters vs minClusters/maxClusters).
+    """
+    if method == "kmeans":
+        return ee.Clusterer.wekaKMeans(nClusters=k, distanceFunction="Euclidean", seed=seed)
+    if method == "kmeans_manhattan":
+        return ee.Clusterer.wekaKMeans(nClusters=k, distanceFunction="Manhattan", seed=seed)
+    if method == "xmeans":
+        return ee.Clusterer.wekaXMeans(minClusters=k_min, maxClusters=k_max, seed=seed)
+    if method == "cascade_kmeans":
+        return ee.Clusterer.wekaCascadeKMeans(minClusters=k_min, maxClusters=k_max)
+    if method == "lvq":
+        return ee.Clusterer.wekaLVQ(numClusters=k)
+    if method == "cobweb":
+        return ee.Clusterer.wekaCobweb(acuity=cobweb_acuity, cutoff=cobweb_cutoff, seed=seed)
+    raise ValueError(f"Unknown clustering method {method!r}")
+
+
+def observed_cluster_count(cluster_ids: list[int]) -> int:
+    """
+    Number of clusters actually produced.
+
+    Auto-k methods do not report their k up front, and even fixed-k methods can
+    leave a cluster empty, so the count comes from the labels rather than from the
+    parameter that was requested.
+    """
+    if not cluster_ids:
+        raise ValueError("No cluster labels to count")
+    if min(cluster_ids) < 0:
+        # Checked on the minimum, not the maximum: a single negative label among
+        # valid ones is still a broken labelling, and cluster_distribution would
+        # index a list with it.
+        raise ValueError("Cluster labels must be non-negative")
+    return max(cluster_ids) + 1
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -229,39 +377,92 @@ def pca_2d(matrix: np.ndarray) -> tuple[np.ndarray, list[float]]:
     return coords, ratios
 
 
-def build_chart_payload(
+def build_run(
+    method: str,
+    inside_flags: list[bool],
+    cluster_ids: list[int],
+    layer_info: dict[str, Any],
+    k_requested: int | None = None,
+) -> dict[str, Any]:
+    """
+    Assemble one clustering run: its distribution, separability, and per-point labels.
+
+    ``cluster_ids`` is parallel to ``inside_flags`` and to the shared scatter points,
+    which is what lets the panel switch methods without re-plotting geometry — only
+    the colors change.
+    """
+    if len(inside_flags) != len(cluster_ids):
+        raise ValueError("inside flags and cluster ids must be the same length")
+
+    spec = CLUSTER_METHODS.get(method)
+    if spec is None:
+        raise ValueError(f"Unknown clustering method {method!r}")
+
+    k_observed = observed_cluster_count(cluster_ids)
+    records = [
+        {"cluster": cluster, "inside": inside}
+        for cluster, inside in zip(cluster_ids, inside_flags, strict=True)
+    ]
+    distribution = cluster_distribution(records, k_observed)
+
+    inside_counts = [float(entry["inside_count"]) for entry in distribution]
+    outside_counts = [float(entry["outside_count"]) for entry in distribution]
+    divergence = jensen_shannon_divergence(inside_counts, outside_counts)
+
+    return {
+        "method": method,
+        "label": spec["label"],
+        "description": spec["description"],
+        "auto_k": spec["auto_k"],
+        "k_requested": k_requested if spec["uses_k"] else None,
+        "k_observed": k_observed,
+        "palette": cluster_palette(k_observed),
+        "clusters": distribution,
+        "separability": {
+            "jensen_shannon_divergence": round(divergence, 6),
+            "interpretation": interpret_divergence(divergence),
+        },
+        "cluster_by_point": [int(value) for value in cluster_ids],
+        "layers": layer_info,
+    }
+
+
+def build_clusters_payload(
     name: str,
     slug: str,
     year: int,
-    k: int,
     scale_m: float,
     seed: int,
-    records: list[dict[str, Any]],
+    inside_flags: list[bool],
     coords: np.ndarray | None,
     variance_ratios: list[float],
     extent_geom: BaseGeometry,
     aoi_geom: BaseGeometry,
-    layer_info: dict[str, Any],
+    runs: list[dict[str, Any]],
+    default_method: str | None = None,
 ) -> dict[str, Any]:
-    """Assemble the payload the viewer side panel renders. Pure."""
-    distribution = cluster_distribution(records, k)
-    inside_counts = [entry["inside_count"] for entry in distribution]
-    outside_counts = [entry["outside_count"] for entry in distribution]
-    divergence = jensen_shannon_divergence(
-        [float(value) for value in inside_counts], [float(value) for value in outside_counts]
-    )
+    """
+    Assemble the payload the viewer side panel renders. Pure.
+
+    Scatter geometry is stored once, not per run. Every method clusters the same
+    sampled embeddings, so the PCA coordinates are identical across methods and only
+    the cluster assignment differs — duplicating 1500 points per method would bloat
+    the catalog for no information.
+    """
+    if not runs:
+        raise ValueError("At least one clustering run is required")
 
     points = []
     if coords is not None:
-        for record, (x, y) in zip(records, coords, strict=True):
+        for inside, (x, y) in zip(inside_flags, coords, strict=True):
             points.append(
-                {
-                    "x": round(float(x), 4),
-                    "y": round(float(y), 4),
-                    "cluster": int(record["cluster"]),
-                    "inside": bool(record["inside"]),
-                }
+                {"x": round(float(x), 4), "y": round(float(y), 4), "inside": bool(inside)}
             )
+
+    inside_total = sum(1 for flag in inside_flags if flag)
+    chosen = default_method or runs[0]["method"]
+    if all(run["method"] != chosen for run in runs):
+        raise ValueError(f"default_method {chosen!r} is not among the runs")
 
     return {
         "schema": CLUSTERS_SCHEMA,
@@ -270,14 +471,12 @@ def build_chart_payload(
         "slug": slug,
         "collection": EMBEDDING_COLLECTION,
         "year": year,
-        "k": k,
         "scale_m": scale_m,
         "seed": seed,
-        "palette": cluster_palette(k),
         "sample": {
-            "inside": sum(inside_counts),
-            "outside": sum(outside_counts),
-            "total": len(records),
+            "inside": inside_total,
+            "outside": len(inside_flags) - inside_total,
+            "total": len(inside_flags),
         },
         "extent": {
             "bounds": vectors.bounds_list(extent_geom),
@@ -287,16 +486,12 @@ def build_chart_payload(
             "bounds": vectors.bounds_list(aoi_geom),
             "area_ha": round(vectors.area_ha(aoi_geom), 2),
         },
-        "clusters": distribution,
-        "separability": {
-            "jensen_shannon_divergence": round(divergence, 6),
-            "interpretation": interpret_divergence(divergence),
-        },
+        "default_method": chosen,
+        "runs": runs,
         "scatter": {
             "explained_variance_ratio": [round(value, 6) for value in variance_ratios],
             "points": points,
         },
-        "layers": layer_info,
     }
 
 
@@ -419,7 +614,39 @@ def build_parser() -> argparse.ArgumentParser:
 
     clustering = parser.add_argument_group("clustering")
     clustering.add_argument("--year", type=int, required=True, help="Embedding year")
+    clustering.add_argument(
+        "--methods",
+        default=DEFAULT_METHOD,
+        help=(
+            "Comma-separated clustering methods to run; each becomes an option in the "
+            "viewer's method dropdown. Available: " + ", ".join(sorted(CLUSTER_METHODS))
+        ),
+    )
+    clustering.add_argument(
+        "--list-methods",
+        action="store_true",
+        help="Print the available clustering methods and exit",
+    )
+    clustering.add_argument(
+        "--default-method",
+        help="Method the viewer selects on load (defaults to the first in --methods)",
+    )
     clustering.add_argument("--k", type=int, default=DEFAULT_K, help="Number of clusters")
+    clustering.add_argument(
+        "--k-min", type=int, default=2, help="Lower bound for automatic-k methods"
+    )
+    clustering.add_argument(
+        "--k-max", type=int, default=12, help="Upper bound for automatic-k methods"
+    )
+    clustering.add_argument(
+        "--cobweb-acuity", type=float, default=1.0, help="Cobweb minimum cluster variance"
+    )
+    clustering.add_argument(
+        "--cobweb-cutoff",
+        type=float,
+        default=0.002,
+        help="Cobweb merge threshold; raise it to produce fewer, larger clusters",
+    )
     clustering.add_argument(
         "--n-samples",
         type=int,
@@ -443,11 +670,43 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_methods() -> int:
+    print("Available clustering methods (--methods):\n")
+    for name, spec in CLUSTER_METHODS.items():
+        marker = "auto k" if spec["auto_k"] else "uses --k"
+        print(f"  {name:<16} {spec['label']}  [{marker}]")
+        print(f"                   {spec['description']}\n")
+    print(f"Default: {DEFAULT_METHOD}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    # --list-methods is informational, so it must not trip the required arguments.
+    if argv is not None and "--list-methods" in argv:
+        return _print_methods()
+    if argv is None and "--list-methods" in sys.argv[1:]:
+        return _print_methods()
+
+    args = parser.parse_args(argv)
+
+    try:
+        methods = resolve_methods(args.methods)
+    except ValueError as err:
+        raise SystemExit(str(err)) from err
+
+    default_method = args.default_method or methods[0]
+    if default_method not in methods:
+        raise SystemExit(
+            f"--default-method {default_method!r} is not in --methods ({', '.join(methods)})"
+        )
 
     if args.k < 2:
         raise SystemExit("--k must be at least 2; one cluster cannot separate anything")
+    if args.k_min < 2:
+        raise SystemExit("--k-min must be at least 2")
+    if args.k_max < args.k_min:
+        raise SystemExit("--k-max must be >= --k-min")
     if args.year < EMBEDDING_FIRST_YEAR:
         raise SystemExit(f"AlphaEarth embeddings start in {EMBEDDING_FIRST_YEAR}")
     if args.export_clusters == "gcs" and not args.gcs_bucket:
@@ -524,43 +783,69 @@ def main(argv: list[str] | None = None) -> int:
         )
     logger.info("Sample returned %d points", sample_size)
 
-    # Train on embedding bands only. The inside flag stays out of training so the
-    # clustering is not handed the boundary it is being evaluated against.
-    logger.info("Training k-means (k=%d) in Earth Engine", args.k)
-    clusterer = ee.Clusterer.wekaKMeans(args.k).train(
-        features=sample, inputProperties=EMBEDDING_BANDS
-    )
+    # Train every method on embedding bands only. The inside flag stays out of
+    # training so no clusterer is handed the boundary it is being evaluated against.
+    #
+    # Each method's labels are attached to the *same* FeatureCollection under its own
+    # property name, so all methods come back in a single paged fetch rather than one
+    # fetch per method.
+    trained: dict[str, Any] = {}
+    labelled = sample
+    for method in methods:
+        spec = CLUSTER_METHODS[method]
+        logger.info("Training %s", spec["label"])
+        try:
+            clusterer = build_clusterer(
+                ee,
+                method,
+                k=args.k,
+                k_min=args.k_min,
+                k_max=args.k_max,
+                seed=args.seed,
+                cobweb_acuity=args.cobweb_acuity,
+                cobweb_cutoff=args.cobweb_cutoff,
+            )
+            trained[method] = clusterer.train(features=sample, inputProperties=EMBEDDING_BANDS)
+        except Exception as err:  # noqa: BLE001 — report which method, then stop
+            raise SystemExit(
+                f"Earth Engine rejected the {method!r} clusterer: {err}\n"
+                "If this is a parameter-name mismatch, check the signature against the "
+                "current ee.Clusterer docs and adjust build_clusterer(); the other "
+                "methods can still be run with --methods."
+            ) from err
+        labelled = labelled.cluster(trained[method], f"cluster_{method}")
 
-    clustered_sample = sample.cluster(clusterer)
-    logger.info("Fetching clustered samples")
-    features = fetch_features(ee, clustered_sample, sample_size)
+    logger.info("Fetching labelled samples")
+    features = fetch_features(ee, labelled, sample_size)
 
-    records: list[dict[str, Any]] = []
+    inside_flags: list[bool] = []
+    coordinates_list: list[list[float | None]] = []
+    labels_by_method: dict[str, list[int]] = {method: [] for method in methods}
     embedding_rows: list[list[float]] = []
+
     for feature in features:
         properties = feature.get("properties", {})
-        if properties.get("cluster") is None or properties.get("inside") is None:
+        if properties.get("inside") is None:
+            continue
+        if any(properties.get(f"cluster_{method}") is None for method in methods):
             continue
         row = [properties.get(band) for band in EMBEDDING_BANDS]
         if any(value is None for value in row):
             continue
+
         coordinates = (feature.get("geometry") or {}).get("coordinates") or [None, None]
-        records.append(
-            {
-                "cluster": int(properties["cluster"]),
-                "inside": bool(int(properties["inside"])),
-                "lon": coordinates[0],
-                "lat": coordinates[1],
-            }
-        )
+        inside_flags.append(bool(int(properties["inside"])))
+        coordinates_list.append([coordinates[0], coordinates[1]])
+        for method in methods:
+            labels_by_method[method].append(int(properties[f"cluster_{method}"]))
         embedding_rows.append([float(value) for value in row])
 
-    if not records:
+    if not inside_flags:
         raise SystemExit("No usable samples returned from Earth Engine.")
 
-    inside_n = sum(1 for record in records if record["inside"])
-    logger.info("Usable samples: %d inside, %d outside", inside_n, len(records) - inside_n)
-    if inside_n == 0 or inside_n == len(records):
+    inside_n = sum(inside_flags)
+    logger.info("Usable samples: %d inside, %d outside", inside_n, len(inside_flags) - inside_n)
+    if inside_n == 0 or inside_n == len(inside_flags):
         raise SystemExit(
             "Sampling produced points on only one side of the AOI boundary. Check that the "
             "AOI falls inside the extent and is large enough to hold sample points."
@@ -568,54 +853,77 @@ def main(argv: list[str] | None = None) -> int:
 
     coords, variance_ratios = pca_2d(np.array(embedding_rows))
 
-    logger.info("Applying clusterer across the full extent")
-    cluster_image = image.cluster(clusterer).rename("cluster")
+    runs: list[dict[str, Any]] = []
+    for method in methods:
+        cluster_ids = labels_by_method[method]
+        k_observed = observed_cluster_count(cluster_ids)
+        spec = CLUSTER_METHODS[method]
+        logger.info("%s produced %d clusters", spec["label"], k_observed)
+        if k_observed > CLUSTER_COUNT_WARN:
+            logger.warning(
+                "  %d clusters is a lot to read; the palette will cycle. For cobweb, raise "
+                "--cobweb-cutoff to merge more aggressively.",
+                k_observed,
+            )
 
-    layer_info: dict[str, Any] = {
-        "cluster_tile_url": None,
-        "tile_url_generated_utc": None,
-        "export": None,
-    }
-    try:
-        mapid = cluster_image.getMapId(
-            {"min": 0, "max": args.k - 1, "palette": cluster_palette(args.k)}
-        )
-        fetcher = mapid.get("tile_fetcher")
-        layer_info["cluster_tile_url"] = (
-            fetcher.url_format if fetcher is not None else mapid.get("tile_url")
-        )
-        layer_info["tile_url_generated_utc"] = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
-    except Exception as err:  # noqa: BLE001 — tile preview is best-effort
-        logger.warning("Could not build cluster tile URL: %s", err)
+        cluster_image = image.cluster(trained[method]).rename("cluster")
+        layer_info: dict[str, Any] = {
+            "cluster_tile_url": None,
+            "tile_url_generated_utc": None,
+            "export": None,
+        }
+        try:
+            mapid = cluster_image.getMapId(
+                {"min": 0, "max": max(0, k_observed - 1), "palette": cluster_palette(k_observed)}
+            )
+            fetcher = mapid.get("tile_fetcher")
+            layer_info["cluster_tile_url"] = (
+                fetcher.url_format if fetcher is not None else mapid.get("tile_url")
+            )
+            layer_info["tile_url_generated_utc"] = dt.datetime.now(dt.UTC).isoformat(
+                timespec="seconds"
+            )
+        except Exception as err:  # noqa: BLE001 — tile preview is best-effort
+            logger.warning("  could not build cluster tile URL for %s: %s", method, err)
 
-    if args.export_clusters != "none":
-        layer_info["export"] = submit_cluster_export(
-            ee,
-            cluster_image,
-            extent_ee,
-            f"embed_clusters_{slug}_{args.year}_k{args.k}",
-            args.export_clusters,
-            args.scale,
-            args.crs,
-            args.folder,
-            args.gcs_bucket,
-            args.gcs_prefix,
-            args.dry_run,
+        if args.export_clusters != "none":
+            layer_info["export"] = submit_cluster_export(
+                ee,
+                cluster_image,
+                extent_ee,
+                f"embed_clusters_{slug}_{args.year}_{method}_k{k_observed}",
+                args.export_clusters,
+                args.scale,
+                args.crs,
+                args.folder,
+                args.gcs_bucket,
+                args.gcs_prefix,
+                args.dry_run,
+            )
+
+        runs.append(
+            build_run(
+                method=method,
+                inside_flags=inside_flags,
+                cluster_ids=cluster_ids,
+                layer_info=layer_info,
+                k_requested=args.k,
+            )
         )
 
-    payload = build_chart_payload(
+    payload = build_clusters_payload(
         name=name,
         slug=slug,
         year=args.year,
-        k=args.k,
         scale_m=args.scale,
         seed=args.seed,
-        records=records,
+        inside_flags=inside_flags,
         coords=coords,
         variance_ratios=variance_ratios,
         extent_geom=extent_geom,
         aoi_geom=aoi_geom,
-        layer_info=layer_info,
+        runs=runs,
+        default_method=default_method,
     )
     payload["extent"]["source"] = extent_source
     payload["aoi"]["source"] = str(args.aoi)
@@ -626,16 +934,18 @@ def main(argv: list[str] | None = None) -> int:
     samples_path = out_dir / "samples.csv"
     with samples_path.open("w", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["lon", "lat", "inside", "cluster", "pc1", "pc2"])
-        for record, (pc1, pc2) in zip(records, coords, strict=True):
+        writer.writerow(
+            ["lon", "lat", "inside", "pc1", "pc2", *[f"cluster_{method}" for method in methods]]
+        )
+        for index, (lon, lat) in enumerate(coordinates_list):
             writer.writerow(
                 [
-                    record["lon"],
-                    record["lat"],
-                    int(record["inside"]),
-                    record["cluster"],
-                    round(float(pc1), 6),
-                    round(float(pc2), 6),
+                    lon,
+                    lat,
+                    int(inside_flags[index]),
+                    round(float(coords[index][0]), 6),
+                    round(float(coords[index][1]), 6),
+                    *[labels_by_method[method][index] for method in methods],
                 ]
             )
 
@@ -646,11 +956,24 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(vectors.feature_collection(aoi_geom, {"role": "area_of_interest"}), indent=2)
     )
 
-    divergence = payload["separability"]["jensen_shannon_divergence"]
     logger.info("─" * 60)
-    logger.info("Inside/outside Jensen-Shannon divergence: %.4f", divergence)
-    logger.info("%s", payload["separability"]["interpretation"])
-    for entry in payload["clusters"]:
+    logger.info("Inside/outside separability by method (Jensen-Shannon divergence):")
+    for run in sorted(
+        payload["runs"],
+        key=lambda item: item["separability"]["jensen_shannon_divergence"],
+        reverse=True,
+    ):
+        logger.info(
+            "  %-42s k=%-3d JSD %.4f%s",
+            run["label"],
+            run["k_observed"],
+            run["separability"]["jensen_shannon_divergence"],
+            "   <- viewer default" if run["method"] == default_method else "",
+        )
+    logger.info("")
+    logger.info("Cluster detail for the default method (%s):", default_method)
+    default_run = next(run for run in payload["runs"] if run["method"] == default_method)
+    for entry in default_run["clusters"]:
         logger.info(
             "  cluster %d: inside %5.1f%% / outside %5.1f%% (%.0f%% of its pixels inside)",
             entry["cluster"],
@@ -658,6 +981,7 @@ def main(argv: list[str] | None = None) -> int:
             entry["outside_share"] * 100,
             (entry["inside_fraction"] or 0) * 100,
         )
+    logger.info("%s", default_run["separability"]["interpretation"])
     logger.info("Chart payload: %s", clusters_path)
     logger.info("Samples: %s", samples_path)
     return 0

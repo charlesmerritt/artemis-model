@@ -47,7 +47,9 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-CATALOG_SCHEMA = "artemis.viewer.catalog/1"
+# Bumped to /2 when the embeddings block became multi-run (one entry per clustering
+# method) rather than a single flat clustering result.
+CATALOG_SCHEMA = "artemis.viewer.catalog/2"
 
 # Where the overlay files sit relative to the viewer's document root. The panel
 # fetches "artemis/catalog.json", so this has to agree with artemis-panel.js.
@@ -159,17 +161,26 @@ def build_layers_json(
             )
 
     if clusters is not None:
-        cluster_url = resolve_cog_url(
-            (clusters.get("layers") or {}).get("export"), cluster_base or public_base
-        )
-        if cluster_url:
+        # One entry per clustering method that was exported. They are separate
+        # rasters, not timesteps of one layer, so they get separate catalog entries
+        # and can be toggled against each other on the map.
+        for run in clusters.get("runs", []):
+            cluster_url = resolve_cog_url(
+                (run.get("layers") or {}).get("export"), cluster_base or public_base
+            )
+            if not cluster_url:
+                continue
+            k_observed = run.get("k_observed", 1)
             layers.append(
                 {
-                    "name": f"Embedding clusters — {name} ({clusters.get('year')})",
-                    "description": f"k={clusters.get('k')} on {clusters.get('collection')}",
+                    "name": f"Clusters — {name} {clusters.get('year')} · {run.get('label')}",
+                    "description": (
+                        f"k={k_observed}"
+                        f"{' (auto)' if run.get('auto_k') else ''} on {clusters.get('collection')}"
+                    ),
                     "type": "cog",
                     "url": cluster_url,
-                    "style": {"colormap": "viridis", "min": 0, "max": max(0, clusters.get("k", 1) - 1)},
+                    "style": {"colormap": "viridis", "min": 0, "max": max(0, k_observed - 1)},
                 }
             )
 
@@ -243,11 +254,16 @@ def build_catalog(
 
     if clusters is not None:
         embeddings = dict(clusters)
-        layer_info = dict(embeddings.get("layers") or {})
-        layer_info["cluster_cog_url"] = resolve_cog_url(
-            layer_info.get("export"), cluster_base or public_base
-        )
-        embeddings["layers"] = layer_info
+        resolved_runs = []
+        for run in embeddings.get("runs", []):
+            resolved = dict(run)
+            layer_info = dict(resolved.get("layers") or {})
+            layer_info["cluster_cog_url"] = resolve_cog_url(
+                layer_info.get("export"), cluster_base or public_base
+            )
+            resolved["layers"] = layer_info
+            resolved_runs.append(resolved)
+        embeddings["runs"] = resolved_runs
         catalog["embeddings"] = embeddings
 
         if catalog["vectors"]["extent"].get("bounds") is None:
