@@ -52,8 +52,9 @@ Detailed findings, run history, unresolved decisions, and environment-specific g
 ARTEMIS currently requires Python 3.14 and uses [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-# Create the environment and install locked dependencies
-uv sync
+# Dependencies, git hooks, the DuckDB sqlite extension, and a report of which data
+# source is reachable. Idempotent; --check reports without changing anything.
+./scripts/setup-env.sh
 
 # Run the tracked test suite. The explicit path avoids scanning external data links.
 uv run pytest tests/
@@ -74,6 +75,14 @@ git config merge.uv-lock.driver "scripts/merge-uv-lock.sh %O %A %B"
 uv run jupyter lab
 ```
 
+The same bootstrap runs in the two other environments, so all three agree on what
+"configured" means: [`Dockerfile`](Dockerfile) builds a portable image around it
+(`docker build -t artemis . && docker run --rm -it artemis uv run pytest tests/ -q`),
+and [`scripts/claude-code-env-setup.sh`](scripts/claude-code-env-setup.sh) is the
+version-controlled copy of the Claude Code cloud environment's setup script. See
+[`notes/claude-code-web-environment.md`](notes/claude-code-web-environment.md) for the
+sandbox-specific constraints behind it.
+
 For Earth Engine workflows, authenticate separately:
 
 ```bash
@@ -83,6 +92,22 @@ uv run earthengine authenticate
 Most production data is intentionally not stored in Git. Local paths are declared in
 [`config/data_paths.yaml`](config/data_paths.yaml) and currently assume an external `/mnt/d`
 mount. Update that configuration for another workstation or HPC environment.
+
+Where that drive is not mounted, the same data is available from the Cloudflare R2 bucket
+`artemis-r2`, which holds it under a `data/` prefix — `/mnt/d/<path>` is
+`r2:artemis-r2/data/<path>`. `rclone` takes its credentials from the `RCLONE_CONFIG_R2_*`
+environment variables, so neither an `rclone.conf` nor a committed secret is involved:
+
+```bash
+rclone copyto r2:artemis-r2/data/<path> /mnt/d/<path>
+```
+
+[`pipeline/data_access.py`](pipeline/data_access.py) resolves a declared path against the
+drive first and the bucket second, fetching on demand, which is how the data-dependent tests
+run without the mount. Pipeline modules still open their declared paths directly, so stage
+those files before running. [`data/index.md`](data/index.md) catalogs every folder in the
+bucket — size, contents, and the config key that points at it — and the header of
+[`config/data_paths.yaml`](config/data_paths.yaml) documents the layout and access commands.
 
 ## Runnable workflows
 
@@ -176,8 +201,10 @@ uv.lock                    Locked Python environment
 
 ## Known constraints and open decisions
 
-- The local `/mnt/d` data mount and interactive Earth Engine credentials are required for many
-  workflows; notebook availability can therefore be environment-dependent.
+- Many workflows need both the project data and interactive Earth Engine credentials, so
+  notebook availability is environment-dependent. The data can come from the local `/mnt/d`
+  mount or, on a machine without it, from the `artemis-r2` bucket; Earth Engine has no such
+  substitute.
 - FIA inventory years differ among stands. The common trajectory anchors are the initial cycle
   and shared final year; arbitrary calendar years do not form complete synchronized snapshots.
 - TreeMap raster, crosswalk, and FIA/FVS outputs must use the same TreeMap vintage.
