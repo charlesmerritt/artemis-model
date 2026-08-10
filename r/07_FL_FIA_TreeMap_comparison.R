@@ -55,7 +55,6 @@ balive_tpa <- tpa(
   db,
   treeDomain = STATUSCD == 1,
   landType   = "forest",
-  variance   = FALSE,
   totals     = TRUE
 )
 
@@ -69,7 +68,6 @@ print(balive_tpa)
 carbon_est <- carbon(
   db,
   landType = "forest",
-  variance = FALSE,
   totals   = TRUE
 )
 
@@ -97,23 +95,20 @@ fia_type_ba <- tpa(
   db,
   grpBy      = FORTYPCD,
   treeDomain = STATUSCD == 1,
-  landType   = "forest",
-  variance   = TRUE
-)
+  landType   = "forest"
+) %>% filter(YEAR == max(YEAR))
 
 fia_type_carb <- carbon(
   db,
   grpBy    = FORTYPCD,
-  landType = "forest",
-  variance = TRUE
-) %>% filter(POOL == "AG_LIVE")
+  landType = "forest"
+) %>% filter(POOL == "AG_LIVE") %>% filter(YEAR == max(YEAR))
 
-fia_area <- area(
+fia_area <- rFIA::area(
   db,
   grpBy    = FORTYPCD,
-  landType = "forest",
-  variance = TRUE
-)
+  landType = "forest"
+) %>% filter(YEAR == max(YEAR))
 
 write.csv(fia_type_ba,   "output/FL_FIA_ForestType_tpa.csv",    row.names = FALSE)
 write.csv(fia_type_carb, "output/FL_FIA_ForestType_carbon.csv", row.names = FALSE)
@@ -175,7 +170,7 @@ print(tm_fl)
 cat("\nCalculating pixel frequencies (may take several minutes)...\n")
 tm_fl_int  <- as.int(tm_fl)
 pixel_freq <- freq(tm_fl_int, bylayer = FALSE)
-names(pixel_freq) <- c("layer", "Value", "pixel_count")
+names(pixel_freq) <- c("Value", "pixel_count")
 pixel_freq <- pixel_freq %>% select(Value, pixel_count)
 
 cat(paste0("Unique TM_ID values in Florida: ", nrow(pixel_freq), "\n"))
@@ -266,8 +261,8 @@ fia_compare <- fia_summary %>%
          BAA_sqft_ac     = BAA,
          TPA_live_ac     = TPA,
          Carbon_tons_ac  = CARB_ACRE,
-         BA_Total_sqft   = BAA_TOTAL,
-         TPA_Total_trees = TPA_TOTAL,
+         BA_Total_sqft   = BA_TOTAL,
+         TPA_Total_trees = TREE_TOTAL,
          Carbon_Total_tons = CARB_TOTAL)
 
 tm_compare <- summary_treemap %>%
