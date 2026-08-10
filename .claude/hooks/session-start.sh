@@ -54,8 +54,10 @@ else
   log "staged sqlite_scanner ${duckdb_version} for ${duckdb_platform}"
 fi
 
-# 3. Tracked git hook that rejects accidentally staged files over 99 MiB. Part
-# of the README quickstart; a fresh clone does not pick it up on its own.
+# 3. Tracked git hooks: the pre-commit guard against files over 99 MiB, the
+# post-merge uv.lock re-resolve, and the pre-push check that the committed
+# lockfile matches pyproject.toml. Part of the README quickstart; a fresh clone
+# does not pick them up on its own.
 log "enabling tracked git hooks"
 git config core.hooksPath .githooks
 

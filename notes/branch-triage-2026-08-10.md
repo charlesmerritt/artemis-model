@@ -86,10 +86,18 @@ Additive, isolated, CI green, nothing else depends on them.
   `notebooks/FVS_5county_growth_smoke.ipynb` to `.old` — a file that no longer exists
   on `main`, so the rename is dead on arrival.
 
-  Do not delete blind: the four `scripts/*.txt` LETO ArcGIS files
-  (`LETO.V1.1.txt`, `Create_FVS_Database.txt`, `LETO_CSV_PIPELINE.txt`,
-  `Join_FVS_output_to_arc.txt`) exist **nowhere else in the repo**. Cherry-pick those
-  onto a fresh branch, then delete this one. Everything else on it has been overtaken.
+  Do not delete blind: **five** `scripts/*.txt` LETO ArcGIS files (`LETO.V1.1.txt`,
+  `LETO_CSV_PIPELINE.txt`, `Create_FVS_Database.txt`, `Join_FVS_output_to_arc.txt`,
+  and `README.txt`, which is the run-order guide for the other four) exist **nowhere
+  else in the repo**. Rescue those, then delete the branch. Everything else on it has
+  been overtaken — all four of its note edits are already byte-identical on `main`,
+  and `main` is one line *ahead* on `treemap-cog-county-summary.md`.
+
+  Rescued 2026-08-10. This mattered more than "keep a copy": `pipeline/s3_management/
+  assign_plt_cn.py` and `sliver_merge.py` both cite `scripts/LETO.V1.1.txt` in their
+  docstrings for the procedure they reimplement, and that path did not resolve
+  anywhere on `main`. The rescue fixes two live dangling references, and
+  `notes/pipeline-review-2026-08-06.md` no longer points at a deleted branch.
 
 ## Rebase, don't merge
 
@@ -164,19 +172,64 @@ these two are already entangled by intent, not just by file.
 Single-file conflict, both editing the FVS input builder. #15 is in the verified merge
 train and lands clean; #14 rebases onto it. Smaller of the two problems on #14.
 
-## Recommended sequence
+## Executed — 2026-08-10
 
-1. Land the eight-branch merge train above. Verified green, no resolution needed.
-2. Delete `scripts/leto-workflow` after cherry-picking the four LETO `.txt` files.
-3. Decide PR #26 / `claude/harvest-scheduling-1`: reopen or delete.
-4. Open a PR for `claude/naip-imagery-embeddings-viewer-exzd38`.
-5. Rebase #24 (drop the duplicate note), #8 (regenerate `uv.lock`), un-draft #9.
+The train ran. Nine branches landed on `main` as `--no-ff` merges (each one
+individually revertable), plus the `.gitattributes` fix that had to go first for the
+train to behave as tested:
+
+`stoic-feynman` (#12) → `harvest-scheduling-1` → `treemap-raster-correction` (#13) →
+`naip-imagery-viewer` → `fia-treemap-fortype` (#25) → `join-key-rounding` (#15) →
+`review-main-pipeline` (#22) → `riparian-accounting` (#23) → `r2-harvest-scheduling-viz` (#8)
+
+All seven PRs among them auto-closed as **merged** (GitHub marks a PR merged once its
+head is reachable from the base). Sixteen refs are now five open PRs: #24, #21, #19,
+#14, #9.
+
+`scripts/leto-workflow` was deliberately **left out** despite merging clean in the
+regression. Its disposition is delete-after-rescue, not merge — it still renames a
+notebook that no longer exists on `main`, and merging it would resurrect the file as
+`.ipynb.old`. The four LETO `.txt` files still need cherry-picking first.
+
+### Postmortem: CI went red on the first push
+
+Worth recording, because every local check passed and the failure was still real.
+
+`uv sync --locked` failed on `main` immediately. Cause: `.githooks/post-merge` did its
+job — it re-resolved `uv.lock` after the `r2-harvest-scheduling-viz` merge — but the
+hook is *advisory* and leaves the result unstaged. So the regeneration existed on
+disk and in no commit.
+
+Every verification then passed while checking the wrong thing. `uv sync --locked`,
+`uv lock --check`, `ruff`, and `pytest` all read the **working tree**, where the fix
+was sitting. The **committed** lockfile was still HEAD's, and that is what got pushed.
+Working tree green, committed tree red, and nothing local disagreed.
+
+Fixed by committing the regeneration (`973f432`). Guarded by `.githooks/pre-push`,
+which refuses to push when `uv.lock` has uncommitted changes, or when `uv lock --check`
+reports it stale — the first condition is precisely this bug. Bypass with
+`ARTEMIS_SKIP_LOCK_CHECK=1`.
+
+The general lesson is not about lockfiles: **verifying a merge by running commands in
+the working tree does not verify what you are about to push.** For anything a hook may
+have touched, check out the committed tree and test that instead.
+
+## What is left
+
+1. ~~Land the merge train.~~ Done — nine branches, `main` green.
+2. ~~Delete the nine merged branches.~~ Done — their commits are permanently in `main`.
+3. ~~`scripts/leto-workflow`: rescue the LETO files, then delete it.~~ Done — five
+   files, byte-identical, under `scripts/`.
+4. Rebase #24 onto `main` and drop the duplicate `notes/claude-code-web-environment.md`.
+   It re-adds a file that landed via PR #10, which is why it collided with eleven
+   branches. (#8 no longer needs its rebase — it landed in the train.)
+5. Un-draft #9. Its only remaining collision is `tests/conftest.py`.
 6. Resolve the `management_regimes.yaml` schema question — it blocks both #14 and #19
    and is the only decision here that needs a modelling judgement rather than a merge.
-7. Rebase #14 onto #23 + #15; rebase #19 and #21 onto #22.
+7. Rebase #14 onto #15 + the landed #23; rebase #19 and #21 onto the landed #22.
 
-After steps 1–5 the backlog is sixteen refs down to five, and every remaining one is a
-single deliberate decision rather than a merge puzzle.
+The backlog is sixteen refs down to five open PRs, and every remaining one is a single
+deliberate decision rather than a merge puzzle.
 
 ## The `.gitattributes` fix — implemented
 

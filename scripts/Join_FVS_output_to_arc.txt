@@ -1,0 +1,136 @@
+import os
+import sqlite3
+import pandas as pd
+import arcpy
+
+# -------------------------------------------------------
+# USER INPUTS
+# -------------------------------------------------------
+
+#link your gdb
+
+gdb = r"D:\forest_condition_2026\Stand_delineation\Attempt3\Attempt3.gdb"
+
+#Make sure this matches the feature class created from the first script
+
+mu_fc = os.path.join(gdb, "ManagementUnits_Final")
+
+#This piece is the .db you download after running FVS. I would recommend adding a unique name for every run (Manage Projects-> Downloads -> output data base(.db))
+
+fvs_out_db = r"D:\forest_condition_2026\FVS\LETO_10yr_07082026.db"
+
+scenario_name = os.path.splitext(os.path.basename(fvs_out_db))[0]
+
+out_folder = r"D:\forest_condition_2026\FVS\FVS_Outputs"
+os.makedirs(out_folder, exist_ok=True)
+
+summary_csv = os.path.join(out_folder, "FVS_Summary2_AllYears.csv")
+
+# -------------------------------------------------------
+# READ FVS SUMMARY TABLE
+# -------------------------------------------------------
+
+conn = sqlite3.connect(fvs_out_db)
+
+summary = pd.read_sql("""
+    SELECT
+        StandID,
+        Year,
+        Tpa,
+        BA,
+        SDI,
+        RDSDI,
+        CCF,
+        TopHt,
+        QMD,
+        GMD,
+        TCuFt,
+        MCuFt,
+        SCuFt,
+        BdFt,
+        Acc,
+        Mort,
+        MAI,
+        ForTyp,
+        SizeCls,
+        StkCls
+    FROM FVS_Summary2
+""", conn)
+
+conn.close()
+
+summary["MU_ID"] = (
+    summary["StandID"]
+    .str.replace("MU_", "", regex=False)
+    .astype(int)
+)
+
+summary.to_csv(summary_csv, index=False)
+
+print("Exported full FVS summary:")
+print(summary_csv)
+print("Years:", sorted(summary["Year"].unique()))
+print("Records:", len(summary))
+
+# -------------------------------------------------------
+# CREATE GIS OUTPUT FOR EACH YEAR
+# -------------------------------------------------------
+
+for year in sorted(summary["Year"].unique()):
+
+    print(f"Processing year {year}...")
+
+    year_summary = summary[summary["Year"] == year].copy()
+
+    year_csv = os.path.join(out_folder, f"FVS_Summary_{year}.csv")
+    year_summary.to_csv(year_csv, index=False)
+
+    table_name = f"FVS_Summary_{year}"
+    table_gdb = os.path.join(gdb, table_name)
+
+    if arcpy.Exists(table_gdb):
+        arcpy.management.Delete(table_gdb)
+
+    arcpy.conversion.TableToTable(
+        year_csv,
+        gdb,
+        table_name
+    )
+
+    out_fc = os.path.join(gdb, f"{scenario_name}_{year}")
+
+    if arcpy.Exists(out_fc):
+        arcpy.management.Delete(out_fc)
+
+    arcpy.management.CopyFeatures(mu_fc, out_fc)
+
+    arcpy.management.JoinField(
+        in_data=out_fc,
+        in_field="MU_ID",
+        join_table=table_gdb,
+        join_field="MU_ID",
+        fields=[
+            "Tpa",
+            "BA",
+            "SDI",
+            "RDSDI",
+            "CCF",
+            "TopHt",
+            "QMD",
+            "GMD",
+            "TCuFt",
+            "MCuFt",
+            "SCuFt",
+            "BdFt",
+            "Acc",
+            "Mort",
+            "MAI",
+            "ForTyp",
+            "SizeCls",
+            "StkCls"
+        ]
+    )
+
+    print("Created:", out_fc)
+
+print("Done.")

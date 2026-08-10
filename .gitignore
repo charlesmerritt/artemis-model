@@ -62,3 +62,14 @@ worktrees/
 scripts/*
 !scripts/check-staged-large-files.sh
 !scripts/merge-uv-lock.sh
+
+# The LETO ArcGIS prototype: the workflow ARTEMIS is a reimplementation of, kept
+# as reference text rather than runnable code (it is arcpy, and there is no
+# ArcGIS here). Tracked because pipeline modules cite these paths in their
+# docstrings — assign_plt_cn.py and sliver_merge.py both point at LETO.V1.1.txt
+# for the procedure they reimplement, and those citations should resolve.
+!scripts/LETO.V1.1.txt
+!scripts/LETO_CSV_PIPELINE.txt
+!scripts/Create_FVS_Database.txt
+!scripts/Join_FVS_output_to_arc.txt
+!scripts/README.txt
