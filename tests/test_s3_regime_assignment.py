@@ -224,7 +224,7 @@ def test_every_assignment_renders_a_valid_keyfile(owner, fortypcd, stand_age):
     template, params = assign_regime(unit)
     build_thins(template, params)                   # raises on a bad parameter set
     key = render_keyfile("MU_1", "MU_1", template, params)
-    assert key.rstrip().endswith("Process")
+    assert key.rstrip().endswith("Stop")
 
 
 def test_every_scheduled_entry_falls_inside_the_projection_horizon():

@@ -5,22 +5,31 @@ import sys
 
 import geopandas as gpd
 import pytest
-from shapely.geometry import LineString, Polygon, box
+import shapely
+from shapely.geometry import GeometryCollection, LineString, MultiPolygon, Point, Polygon, box
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipeline.s3_management.sketch_management_units import (
-    BUFFER_CLASS_PRIORITY,
-    build_buffer_polygons,
+    SQ_M_PER_ACRE,
+    area_accounting_table,
+    build_exclusion_layer,
+    build_riparian_buffer_layer,
     classify_stream_fcode,
     classify_unit_size,
     clean_geometries,
+    erase,
     feet_to_meters,
+    polygon_parts,
     split_large_geometry,
     target_grid_cell_size_m,
 )
 
-CRS = "EPSG:5070"
+BUFFER_WIDTHS = {
+    "ephemeral_intermittent": feet_to_meters(35),
+    "perennial_small": feet_to_meters(50),
+    "perennial_large": feet_to_meters(75),
+}
 
 
 def test_feet_to_meters_converts_florida_bmp_width():
@@ -65,6 +74,57 @@ def test_clean_geometries_preserves_line_features_for_buffer_inputs():
 
 
 
+def test_clean_geometries_keeps_area_of_valid_clockwise_multipolygon():
+    # Regression, taken from the Union County managed layer (translated to the origin and
+    # rounded). Two disjoint parts, both exterior rings wound clockwise. The MultiPolygon
+    # is valid -- OGC validity does not constrain ring orientation -- but buffer(0) reads
+    # the smaller part as a hole of the larger one and erases it, losing 2,186 m2. That
+    # single polygon accounted for the entire county-level area-balance residual.
+    notched = Polygon(
+        [(160.6, 172), (158.98, 156.93), (107, 0.16), (107, 47), (77, 47), (77, 77),
+         (107, 77), (107, 308.99), (140.79, 313.47), (141.26, 311.87)]
+    )
+    detached = Polygon(
+        [(0.96, 77), (17, 77), (17, 96.6), (25.5, 107), (47, 107), (47, 47),
+         (4.56, 47), (0.77, 76.77)]
+    )
+    geometry = MultiPolygon([notched, detached])
+    assert geometry.is_valid
+    assert not shapely.is_ccw(notched.exterior)
+    # Guard the premise: this is the operation the old implementation performed.
+    assert geometry.buffer(0).area < geometry.area
+
+    gdf = gpd.GeoDataFrame({"a": [1]}, geometry=[geometry], crs="EPSG:5070")
+
+    cleaned = clean_geometries(gdf)
+
+    assert len(cleaned) == 1
+    assert cleaned.geometry.area.sum() == pytest.approx(geometry.area)
+
+
+def test_clean_geometries_repairs_self_intersecting_polygon():
+    bowtie = Polygon([(0, 0), (10, 10), (10, 0), (0, 10)])
+    assert not bowtie.is_valid
+    gdf = gpd.GeoDataFrame({"a": [1]}, geometry=[bowtie], crs="EPSG:5070")
+
+    cleaned = clean_geometries(gdf)
+
+    assert len(cleaned) == 1
+    assert cleaned.geometry.iloc[0].is_valid
+
+
+def test_clean_geometries_drops_empty_geometries():
+    gdf = gpd.GeoDataFrame(
+        {"a": [1, 2]},
+        geometry=[box(0, 0, 10, 10), Polygon()],
+        crs="EPSG:5070",
+    )
+
+    cleaned = clean_geometries(gdf)
+
+    assert list(cleaned["a"]) == [1]
+
+
 def test_split_large_geometry_keeps_parts_at_or_below_target_area():
     # 1,000 m x 1,000 m = 100 ha, so a 40 ha target should split it.
     geometry = box(0, 0, 1_000, 1_000)
@@ -76,108 +136,205 @@ def test_split_large_geometry_keeps_parts_at_or_below_target_area():
     assert max(part.area for part in parts) <= 40.0 * 10_000 + 1e-6
 
 
-# ---- riparian buffers as retained units ------------------------------------------------
+def test_split_large_geometry_keeps_polygons_from_geometry_collection_results():
+    # Regression: a fishnet cell that fully contains one part of a multipart polygon while
+    # only *touching* a detached part returns GeometryCollection([Polygon, Point]). The old
+    # geom_type check matched neither "Polygon" nor "MultiPolygon" and dropped the whole
+    # result, taking the contained polygon with it — 23 ha of Columbia County forest.
+    side = target_grid_cell_size_m(40.0)
+    contained = box(0, 0, side - 10, side - 10)  # inside the first cell, clear of its corner
+    touching = box(side, side, side + 400, side + 400)  # touches that cell only at (side, side)
+    geometry = MultiPolygon([contained, touching])
+    assert geometry.is_valid
+    # Guard the premise: the cell-0 clip really is a mixed collection.
+    clipped = geometry.intersection(box(0, 0, side, side))
+    assert clipped.geom_type == "GeometryCollection"
 
-WIDTHS = {"ephemeral_intermittent": 10.0, "perennial_small": 20.0, "perennial_large": 30.0}
+    parts = split_large_geometry(geometry, target_max_area_ha=40.0)
+
+    assert sum(part.area for part in parts) == pytest.approx(geometry.area)
+    assert all(part.geom_type == "Polygon" for part in parts)
 
 
-def _streams(classes_and_lines):
+def test_polygon_parts_recurses_and_drops_zero_area_debris():
+    collection = GeometryCollection(
+        [box(0, 0, 10, 10), Point(50, 50), LineString([(0, 20), (10, 20)])]
+    )
+
+    parts = polygon_parts(collection)
+
+    assert [p.geom_type for p in parts] == ["Polygon"]
+    assert parts[0].area == pytest.approx(100.0)
+
+
+def test_polygon_parts_returns_empty_for_geometry_without_area():
+    assert polygon_parts(LineString([(0, 0), (1, 1)])) == []
+    assert polygon_parts(Polygon()) == []
+
+
+def _streams(rows):
     return gpd.GeoDataFrame(
-        {"buffer_class": [c for c, _ in classes_and_lines]},
-        geometry=[line for _, line in classes_and_lines],
-        crs=CRS,
+        {"fcode": [fcode for fcode, _ in rows]},
+        geometry=[geom for _, geom in rows],
+        crs="EPSG:5070",
     )
 
 
-def test_buffer_polygons_carry_their_class():
-    streams = _streams([("perennial_small", LineString([(0, 0), (100, 0)]))])
-    buffers = build_buffer_polygons(streams, WIDTHS)
-    assert list(buffers["buffer_class"]) == ["perennial_small"]
-    assert buffers.geometry.area.sum() > 0
-
-
-def test_overlapping_buffer_classes_do_not_double_count_area():
-    """Buffers must partition, so overlap has to resolve to exactly one class."""
-    streams = _streams([
-        ("perennial_large", LineString([(0, 0), (100, 0)])),
-        ("ephemeral_intermittent", LineString([(0, 5), (100, 5)])),   # overlaps the above
-    ])
-    buffers = build_buffer_polygons(streams, WIDTHS)
-    summed = buffers.geometry.area.sum()
-    unioned = buffers.geometry.union_all().area
-    assert summed == pytest.approx(unioned, rel=1e-9)
-
-
-def test_the_widest_class_wins_contested_ground():
-    """The conservative direction: more protection, not less, where buffers disagree."""
-    streams = _streams([
-        ("perennial_large", LineString([(0, 0), (100, 0)])),
-        ("ephemeral_intermittent", LineString([(0, 5), (100, 5)])),
-    ])
-    buffers = build_buffer_polygons(streams, WIDTHS)
-    by_class = buffers.groupby("buffer_class").apply(
-        lambda g: g.geometry.area.sum(), include_groups=False
+def test_build_riparian_buffer_layer_carries_class_without_merging_classes():
+    # Ephemeral reach runs the full length; the perennial reach covers only the first half.
+    streams = _streams(
+        [
+            (46000, LineString([(0, 0), (200, 0)])),  # ephemeral, 35 ft
+            (46006, LineString([(0, 0), (100, 0)])),  # perennial small, 50 ft
+        ]
     )
-    alone = build_buffer_polygons(
-        _streams([("perennial_large", LineString([(0, 0), (100, 0)]))]), WIDTHS
-    ).geometry.area.sum()
-    assert by_class["perennial_large"] == pytest.approx(alone)   # kept whole
-    assert by_class.get("ephemeral_intermittent", 0.0) < alone   # yielded the overlap
+
+    layer = build_riparian_buffer_layer(streams, BUFFER_WIDTHS)
+
+    assert set(layer["buffer_class"]) == {"ephemeral_intermittent", "perennial_small"}
+    assert layer.crs == "EPSG:5070"
 
 
-def test_buffer_class_priority_is_widest_first():
-    assert BUFFER_CLASS_PRIORITY.index("perennial_large") < \
-           BUFFER_CLASS_PRIORITY.index("perennial_small") < \
-           BUFFER_CLASS_PRIORITY.index("ephemeral_intermittent")
+def test_build_riparian_buffer_layer_rows_are_disjoint_with_wider_class_winning():
+    streams = _streams(
+        [
+            (46000, LineString([(0, 0), (200, 0)])),
+            (46006, LineString([(0, 0), (100, 0)])),
+        ]
+    )
+
+    layer = build_riparian_buffer_layer(streams, BUFFER_WIDTHS)
+    by_class = dict(zip(layer["buffer_class"], layer.geometry))
+
+    # The more protective class keeps its full buffer; the narrower one is what got cut.
+    expected_perennial = LineString([(0, 0), (100, 0)]).buffer(BUFFER_WIDTHS["perennial_small"])
+    assert by_class["perennial_small"].area == pytest.approx(expected_perennial.area)
+
+    overlap = by_class["perennial_small"].intersection(by_class["ephemeral_intermittent"])
+    assert overlap.area == pytest.approx(0.0, abs=1e-9)
 
 
-def test_waterbody_buffer_is_the_ring_not_the_water():
-    """Open water is non-forest; the SMZ around it is forest under a no-entry rule."""
-    water = gpd.GeoDataFrame(geometry=[Polygon([(0, 0), (50, 0), (50, 50), (0, 50)])], crs=CRS)
-    streams = _streams([])
-    buffers = build_buffer_polygons(streams, WIDTHS, waterbodies=water, waterbody_width_m=10.0)
-    assert list(buffers["buffer_class"]) == ["waterbody"]
-    assert not buffers.geometry.iloc[0].intersection(water.geometry.iloc[0]).area > 1e-9
+def test_build_riparian_buffer_layer_returns_empty_layer_when_no_classified_streams():
+    layer = build_riparian_buffer_layer(_streams([(55800, LineString([(0, 0), (100, 0)]))]), BUFFER_WIDTHS)
+
+    assert len(layer) == 0
+    assert "buffer_class" in layer.columns
 
 
-def test_no_buffers_yields_an_empty_layer_with_the_right_schema():
-    buffers = build_buffer_polygons(_streams([]), WIDTHS)
-    assert len(buffers) == 0
-    assert "buffer_class" in buffers.columns
+def test_build_exclusion_layer_tags_both_classes():
+    waterbodies = gpd.GeoDataFrame(geometry=[box(0, -50, 100, 50)], crs="EPSG:5070")
+    roads = gpd.GeoDataFrame(geometry=[LineString([(0, 0), (200, 0)])], crs="EPSG:5070")
+
+    layer = build_exclusion_layer(waterbodies, roads, road_buffer_m=3.0)
+
+    assert list(layer["exclusion_class"]) == ["waterbody", "road_buffer"]
+    assert layer.crs == "EPSG:5070"
 
 
-def test_buffer_builder_keeps_only_polygonal_parts_of_a_geometry_collection():
-    """Differencing polygon sets that share boundaries can return a GeometryCollection.
+def test_build_exclusion_layer_leaves_rows_undissolved():
+    # A county-wide union_all over NHD swamp polygons segfaults GEOS, so every input
+    # feature must survive as its own row.
+    waterbodies = gpd.GeoDataFrame(
+        geometry=[box(0, 0, 10, 10), box(5, 5, 15, 15), box(40, 40, 50, 50)],
+        crs="EPSG:5070",
+    )
+    roads = gpd.GeoDataFrame(
+        geometry=[LineString([(0, 0), (100, 0)]), LineString([(0, 20), (100, 20)])],
+        crs="EPSG:5070",
+    )
 
-    That type does not start with "Multi", so a naive multipart check passed it through
-    whole — and a collection carrying a LineString is not a stand. (review, minor)
-    """
-    from shapely.geometry import GeometryCollection, Point
+    layer = build_exclusion_layer(waterbodies, roads, road_buffer_m=3.0)
 
-    from pipeline.s3_management.sketch_management_units import _polygonal_parts
-
-    collection = GeometryCollection([
-        box(0, 0, 10, 10),
-        LineString([(20, 0), (30, 0)]),      # degenerate remnant
-        Point(40, 40),
-    ])
-    parts = _polygonal_parts(collection)
-    assert len(parts) == 1
-    assert parts[0].geom_type == "Polygon"
-
-
-def test_polygonal_parts_flattens_nested_multipolygons():
-    from shapely.geometry import GeometryCollection, MultiPolygon
-
-    from pipeline.s3_management.sketch_management_units import _polygonal_parts
-
-    nested = GeometryCollection([MultiPolygon([box(0, 0, 1, 1), box(2, 2, 3, 3)])])
-    assert len(_polygonal_parts(nested)) == 2
+    assert len(layer) == 5
+    assert (layer["exclusion_class"] == "waterbody").sum() == 3
+    assert (layer["exclusion_class"] == "road_buffer").sum() == 2
 
 
-def test_polygonal_parts_drops_zero_area_polygons():
-    from shapely.geometry import Polygon
+def test_erase_handles_overlapping_erase_rows_without_double_counting():
+    # Overlapping erase rows are applied successively, so the remainder is the difference
+    # against their union even though no union is ever built.
+    gdf = gpd.GeoDataFrame({"a": [1]}, geometry=[box(0, 0, 10, 10)], crs="EPSG:5070")
+    overlapping = gpd.GeoDataFrame(
+        {"exclusion_class": ["waterbody", "waterbody"]},
+        geometry=[box(0, 0, 4, 10), box(2, 0, 6, 10)],
+        crs="EPSG:5070",
+    )
 
-    from pipeline.s3_management.sketch_management_units import _polygonal_parts
+    result = erase(gdf, overlapping)
 
-    assert _polygonal_parts(Polygon()) == []
+    assert result.geometry.area.sum() == pytest.approx(40.0)
+
+
+def test_build_exclusion_layer_handles_missing_inputs():
+    empty = gpd.GeoDataFrame(geometry=[], crs="EPSG:5070")
+
+    layer = build_exclusion_layer(empty, empty)
+
+    assert len(layer) == 0
+    assert "exclusion_class" in layer.columns
+
+
+def test_erase_passes_input_through_when_nothing_to_erase():
+    gdf = gpd.GeoDataFrame({"a": [1]}, geometry=[box(0, 0, 10, 10)], crs="EPSG:5070")
+
+    result = erase(gdf, gpd.GeoDataFrame(geometry=[], crs="EPSG:5070"))
+
+    assert len(result) == 1
+    assert result.geometry.iloc[0].area == pytest.approx(100.0)
+
+
+def test_erase_removes_every_row_of_the_erase_layer():
+    gdf = gpd.GeoDataFrame({"a": [1]}, geometry=[box(0, 0, 10, 10)], crs="EPSG:5070")
+    erase_gdf = gpd.GeoDataFrame(
+        {"exclusion_class": ["waterbody", "road_buffer"]},
+        geometry=[box(0, 0, 2, 10), box(8, 0, 10, 10)],
+        crs="EPSG:5070",
+    )
+
+    result = erase(gdf, erase_gdf)
+
+    assert result.geometry.area.sum() == pytest.approx(60.0)
+
+
+def test_area_accounting_table_balances_managed_plus_riparian_against_eligible():
+    # Forest 100 ha; 4 ha excluded; the rest splits 76/20 managed/riparian.
+    table = area_accounting_table(
+        forest_in_parcels_m2=1_000_000,
+        waterbody_excluded_m2=10_000,
+        road_excluded_m2=30_000,
+        managed_m2=760_000,
+        riparian_m2=200_000,
+    )
+    by_line = dict(zip(table["line"], table["area_ha"]))
+
+    assert by_line["excluded_total"] == pytest.approx(4.0)
+    assert by_line["eligible_forest"] == pytest.approx(96.0)
+    assert by_line["managed"] + by_line["riparian"] == pytest.approx(by_line["eligible_forest"])
+    assert by_line["balance_residual"] == pytest.approx(0.0)
+
+
+def test_area_accounting_table_surfaces_a_broken_balance_as_residual():
+    # Riparian acres silently dropped: the residual must expose them, not hide them.
+    table = area_accounting_table(
+        forest_in_parcels_m2=1_000_000,
+        waterbody_excluded_m2=0,
+        road_excluded_m2=0,
+        managed_m2=760_000,
+        riparian_m2=0,
+    )
+    by_line = dict(zip(table["line"], table["area_ha"]))
+
+    assert by_line["balance_residual"] == pytest.approx(24.0)
+
+
+def test_area_accounting_table_reports_acres_alongside_hectares():
+    table = area_accounting_table(
+        forest_in_parcels_m2=1_000_000,
+        waterbody_excluded_m2=0,
+        road_excluded_m2=0,
+        managed_m2=1_000_000,
+        riparian_m2=0,
+    )
+    row = table[table["line"] == "forest_in_parcels"].iloc[0]
+
+    assert row["area_acres"] == pytest.approx(1_000_000 / SQ_M_PER_ACRE)

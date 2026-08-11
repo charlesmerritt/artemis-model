@@ -100,6 +100,50 @@ def test_impute_nearest_runnable_copies_from_nearest_unit():
     assert (mu2["STAND_ID"] == "MU_2").all()
 
 
+def test_join_survives_a_float_mu_id_on_the_units_side():
+    # A GeoPackage stores MU_ID as REAL as soon as one row is NULL, so reading the
+    # units back can hand us 1.0 where the weights table holds "1". Under the old
+    # .astype(str) that produced "1.0" and the join matched nothing at all.
+    units = gpd.GeoDataFrame(
+        {"MU_ID": [1.0, 2.0]},
+        geometry=[box(0, 0, 100, 100), box(100, 0, 200, 100)],
+        crs=CRS,
+    )
+    weights = pd.DataFrame({"MU_ID": ["1", "2"], "PLT_CN": ["p1", "p3"], "WEIGHT": [1.0, 1.0]})
+    stands, trees = build_fvs_inputs(units, weights, _tree_init())
+    assert set(stands["STAND_ID"]) == {"MU_1", "MU_2"}
+    assert set(trees["MU_ID"]) == {"1", "2"}
+
+
+def test_join_survives_a_float_stand_cn_on_the_tree_list_side():
+    # FIA control numbers read without a pinned dtype arrive as float64; .astype(str)
+    # then yields "2.36048879010661e+14" and matches no PLT_CN.
+    cn = "236048879010661"
+    weights = pd.DataFrame({"MU_ID": ["1"], "PLT_CN": [cn], "WEIGHT": [1.0]})
+    tree_init = pd.DataFrame({
+        "STAND_CN": [float(cn)],
+        "TREE_ID": [1],
+        "TREE_COUNT": [10.0],
+    })
+    trees, runnable = build_tree_init(weights, tree_init)
+    assert runnable == {"1"}
+    assert trees["STAND_CN"].tolist() == [cn]
+
+
+def test_wide_control_number_survives_the_whole_builder():
+    # 19 digits: wider than a double holds, so it must never be routed through one.
+    wide = "1234567890123456789"
+    weights = pd.DataFrame({"MU_ID": ["1"], "PLT_CN": [wide], "WEIGHT": [1.0]})
+    tree_init = pd.DataFrame({
+        "STAND_CN": pd.Series([wide], dtype="string"),
+        "TREE_ID": [1],
+        "TREE_COUNT": [10.0],
+    })
+    trees, runnable = build_tree_init(weights, tree_init)
+    assert runnable == {"1"}
+    assert trees["PLT_CN"].tolist() == [wide]
+
+
 def test_build_fvs_inputs_end_to_end_covers_all_units():
     units = gpd.GeoDataFrame(
         {"MU_ID": ["1", "2", "3"], "ACRES": [10.0, 20.0, 5.0]},

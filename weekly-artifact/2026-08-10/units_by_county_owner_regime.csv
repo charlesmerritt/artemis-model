@@ -1,0 +1,30 @@
+county,owner_name,regime,units,acres
+Baker,Corporate/Other Private,clearcut,201,15978.62
+Baker,Corporate/Other Private,plantation_rotation,144,29181.54
+Baker,Family Forest,thin_from_below,362,171814.03
+Baker,Federal,selection_harvest,128,37530.46
+Baker,Local,selection_harvest,170,2422.10
+Baker,State,selection_harvest,79,298.68
+Columbia,Corporate/Other Private,clearcut,217,19347.46
+Columbia,Corporate/Other Private,plantation_rotation,163,28111.60
+Columbia,Family Forest,thin_from_below,405,108894.52
+Columbia,Federal,selection_harvest,251,102135.28
+Columbia,Local,selection_harvest,307,21843.18
+Columbia,State,selection_harvest,150,979.20
+Hamilton,Corporate/Other Private,clearcut,186,24249.27
+Hamilton,Corporate/Other Private,plantation_rotation,137,30858.40
+Hamilton,Family Forest,thin_from_below,350,96024.76
+Hamilton,Federal,selection_harvest,76,463.92
+Hamilton,Local,selection_harvest,101,959.86
+Hamilton,State,selection_harvest,132,1669.07
+Suwannee,Corporate/Other Private,clearcut,178,11887.00
+Suwannee,Corporate/Other Private,plantation_rotation,117,14458.33
+Suwannee,Family Forest,thin_from_below,354,114533.57
+Suwannee,Federal,selection_harvest,48,288.22
+Suwannee,Local,selection_harvest,141,920.27
+Suwannee,State,selection_harvest,114,708.77
+Union,Corporate/Other Private,clearcut,130,4871.56
+Union,Corporate/Other Private,plantation_rotation,77,4310.46
+Union,Family Forest,thin_from_below,316,75249.74
+Union,Local,selection_harvest,83,208.38
+Union,State,selection_harvest,123,4899.58

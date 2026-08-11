@@ -18,6 +18,52 @@ For your workflow, I would make `fvs_cycle_change` the core state table.
 
 ---
 
+## Identifier typing — read before running any cell
+
+Every join below runs on a FIA control number: `stand_cn`, `plot_cn`, `cond_cn`, and the
+`Stand_CN` / `StandID` columns in the attached `FVSOut.db`. These are integers up to 19
+digits; a double holds 15–17. DuckDB will happily infer a CSV column of control numbers as
+`BIGINT` or `DOUBLE`, and will then implicitly cast across a `VARCHAR = DOUBLE` join — which
+matches nothing and reports zero rows rather than an error. See
+[`pipeline/ids.py`](../pipeline/ids.py) for the same rule on the Python side.
+
+So type them as `VARCHAR` at ingest, not at query time:
+
+```sql
+-- CSV sources: name the identifier columns explicitly rather than letting the sniffer type them.
+CREATE OR REPLACE TABLE fvs_trajectory AS
+SELECT * FROM read_csv('fvs_trajectory.csv',
+                       types = {'stand_cn': 'VARCHAR', 'stand_id': 'VARCHAR'});
+
+CREATE OR REPLACE TABLE treemap_assignments AS
+SELECT * FROM read_csv('FL_5county_TMID_PLT_lookup.csv',
+                       types = {'PLT_CN': 'VARCHAR'});
+```
+
+The views below `CAST(... AS VARCHAR)` at the two points where identifiers first enter the
+stack (cells 3 and 6); every later cell just passes them through. The cast is on the stored
+value, so no digit is lost — but it only protects the view's own output. If a source table
+was loaded with a control number already sitting in a `DOUBLE`, the digits are gone before
+these cells ever run.
+
+**`case_id` and `cycle` are deliberately left numeric.** `CaseID` is an FVS run-sequence
+integer — small, generated per run, and not a FIA control number — so it is not exposed to
+this failure. Casting it would be worse than useless: `fvs_trajectory` arrives from CSV with
+`case_id` as `BIGINT`, so a `VARCHAR` `case_id` in cells 3 and 6 would mismatch the joins in
+cells 5 (`cc.case_id = rs.case_id`) and 8 (`x.case_id = l.case_id`) and reintroduce the exact
+zero-row failure this section is about. Cast the control numbers; leave the counters alone.
+The rule is about which columns are *identifiers of record*, not about casting everything in
+sight.
+
+Sanity check after loading, before trusting any join:
+
+```sql
+SELECT typeof(stand_cn) AS stand_cn_type, COUNT(*) FROM fvs_trajectory GROUP BY 1;
+-- expect VARCHAR; BIGINT is survivable, DOUBLE means reload the source.
+```
+
+---
+
 ## Cell 1: cycle-to-cycle change view
 
 ```sql
@@ -178,8 +224,11 @@ burn if fuel/fire outputs exceed threshold
 ```sql
 CREATE OR REPLACE VIEW fvs_removals AS
 SELECT
-  c.Stand_CN AS stand_cn,
-  s.StandID AS stand_id,
+  -- Identifiers enter the view stack here, straight out of the attached FVSOut.db.
+  -- CAST on the stored value so every digit survives; cells 2, 4, 5 and 8 pass
+  -- these through unchanged.
+  CAST(c.Stand_CN AS VARCHAR) AS stand_cn,
+  CAST(s.StandID  AS VARCHAR) AS stand_id,
   s.CaseID AS case_id,
   c.MgmtID AS management_id,
   c.RunTitle AS run_title,
@@ -307,29 +356,33 @@ This one depends on your actual table names, but structurally it should look lik
 ```sql
 CREATE OR REPLACE VIEW fvs_spatial_crosswalk AS
 SELECT DISTINCT
-  tm.treemap_id,
+  CAST(tm.treemap_id AS VARCHAR) AS treemap_id,
   tm.pixel_value AS treemap_pixel_value,
 
-  fia.plot_cn,
-  fia.cond_cn,
-  fia.stand_cn,
+  CAST(fia.plot_cn  AS VARCHAR) AS plot_cn,
+  CAST(fia.cond_cn  AS VARCHAR) AS cond_cn,
+  CAST(fia.stand_cn AS VARCHAR) AS stand_cn,
 
-  stands.management_unit_id,
-  stands.stand_polygon_id,
-  stands.stand_id AS spatial_stand_id,
+  CAST(stands.management_unit_id AS VARCHAR) AS management_unit_id,
+  CAST(stands.stand_polygon_id   AS VARCHAR) AS stand_polygon_id,
+  CAST(stands.stand_id           AS VARCHAR) AS spatial_stand_id,
 
-  c.StandID AS fvs_stand_id,
+  CAST(c.StandID AS VARCHAR) AS fvs_stand_id,
   c.CaseID AS case_id,
   c.MgmtID AS management_id,
   c.SamplingWt AS sampling_weight
 FROM
   treemap_assignments tm
+  -- These three joins span sources typed independently (CSV sniffer, attached
+  -- SQLite, GeoPackage export), which is exactly where a VARCHAR = DOUBLE
+  -- comparison silently matches nothing. The casts make the comparison explicit;
+  -- they are a backstop, not a substitute for typing the sources at ingest.
   LEFT JOIN fia_plot_assignments fia
-    ON tm.plot_cn = fia.plot_cn
+    ON CAST(tm.plot_cn AS VARCHAR) = CAST(fia.plot_cn AS VARCHAR)
   LEFT JOIN management_stands stands
-    ON fia.stand_cn = stands.stand_cn
+    ON CAST(fia.stand_cn AS VARCHAR) = CAST(stands.stand_cn AS VARCHAR)
   LEFT JOIN FVSout.FVS_Cases c
-    ON fia.stand_cn = c.Stand_CN;
+    ON CAST(fia.stand_cn AS VARCHAR) = CAST(c.Stand_CN AS VARCHAR);
 ```
 
 Creates the conceptual bridge from TreeMap raster IDs to FIA plots, management stands, and FVS cases. You will need to replace `treemap_assignments`, `fia_plot_assignments`, and `management_stands` with your real imported table names.

@@ -10,7 +10,7 @@ traces to one of them, not to a code bug.
 
 | Prerequisite | State on 2026-07-14 | Who needs it |
 |---|---|---|
-| **`/mnt/d` external drive** (PERSEUS_DAT) | **Unmounted** — stale mount, reads fail with "No such device". `data/raw → /mnt/d` symlink is dead. | FVS, all three Clearcut notebooks (LF2022 EVT tif), Similarity-Embeddings |
+| **`/mnt/d` external drive** (PERSEUS_DAT) | **Unmounted** — stale mount, reads fail with "No such device". `data/raw → /mnt/d` symlink is dead. **No longer fatal (2026-07-31):** notebooks resolve declared paths through `cac.resolve`/`cac.resolve_dir`, which fall back to the R2 mirror. Only the 3 GB LF2022 EVT tif needs a deliberate fetch. | FVS, all three Clearcut notebooks (LF2022 EVT tif), Similarity-Embeddings |
 | **Earth Engine auth** | Credentials file exists, but `ee.Initialize()` fails asking for re-auth; `cac.init_ee()` falls back to interactive `ee.Authenticate()`, so **no headless run**. | All 5 GEE notebooks |
 | **Network egress** | **Working** (remote COG + Census download reachable). | TreeMap COG |
 | **PyPI deps** (`geemap`, `geopandas`, `rasterio`, `sklearn`, …) | **All present** in `.venv` (py 3.14). | all |
@@ -21,10 +21,10 @@ traces to one of them, not to a code bug.
 |---|---|---|---|
 | [`TreeMap_COG_County_Summary.ipynb`](#treemap_cog_county_summaryipynb) | Clip a remote COG (URL or STAC) and compute zonal stats per polygon (default: TreeMap-like raster × Southeast counties) | network | **Yes** (only one needing neither drive nor GEE) |
 | [`Embedding-Similarity-AOI-Finder.ipynb`](#embedding-similarity-aoi-finderipynb) | Pick reference clearcut points → vector layer of all AlphaEarth-similar land in an AOI | GEE | Blocked by GEE re-auth only (no drive needed) |
-| [`Clearcut-vs-Agriculture-Embeddings.ipynb`](#the-clearcut-vs-agriculture-investigation) | Method 1: AlphaEarth embedding separability of clearcut vs farmland | GEE + `/mnt/d` | No (GEE + drive) |
-| [`Clearcut-vs-Agriculture-EVT-Change.ipynb`](#the-clearcut-vs-agriculture-investigation) | Method 2: LANDFIRE EVT 2016→2022 forest→ag/grass change detector + cross-method comparison | GEE + `/mnt/d` | No (GEE + drive) |
-| [`Clearcut-Grassland-Feature-Engineering.ipynb`](#the-clearcut-vs-agriculture-investigation) | Build the model-ready feature table + baseline spatial-CV model to score "is this grassland pixel actually clearcut forest?" | GEE + `/mnt/d` | No (GEE + drive) |
-| [`Similarity-Embeddings.ipynb`](#similarity-embeddingsipynb-prototype) | Original bare-bones AlphaEarth similarity prototype (superseded by the AOI finder) | GEE + `/mnt/d` | No — **superseded / stored error** |
+| [`Clearcut-vs-Agriculture-Embeddings.ipynb`](#the-clearcut-vs-agriculture-investigation) | Method 1: AlphaEarth embedding separability of clearcut vs farmland | GEE + LF2022 EVT tif | No (GEE; EVT tif needs staging) |
+| [`Clearcut-vs-Agriculture-EVT-Change.ipynb`](#the-clearcut-vs-agriculture-investigation) | Method 2: LANDFIRE EVT 2016→2022 forest→ag/grass change detector + cross-method comparison | GEE + LF2022 EVT tif | No (GEE; EVT tif needs staging) |
+| [`Clearcut-Grassland-Feature-Engineering.ipynb`](#the-clearcut-vs-agriculture-investigation) | Build the model-ready feature table + baseline spatial-CV model to score "is this grassland pixel actually clearcut forest?" | GEE + LF2022 EVT tif | No (GEE; EVT tif needs staging) |
+| [`Similarity-Embeddings.ipynb`](#similarity-embeddingsipynb-prototype) | Original bare-bones AlphaEarth similarity prototype (superseded by the AOI finder) | GEE | No — **superseded**; GEE auth only |
 | [`FVS_5county_growth_smoke.ipynb.old`](#fvs_5county_growth_smokeipynbold) | Grow 10 TreeMap/FIA stands with FVS Southern (SN); write keyfiles; summarize output into DuckDB | missing modules + `/mnt/d` | **No — broken; renamed `.old`** |
 | `clearcut_ag_common.py` | Shared helpers for the 4 clearcut/similarity notebooks (constants, GEE/rasterio sampling, labeling, similarity, vectorization) | — | Imports OK; pure helpers covered by `tests/test_clearcut_ag_common.py` (pass) |
 
@@ -74,9 +74,11 @@ committing. Details in [clearcut-vs-agriculture-embeddings.md](clearcut-vs-agric
 
 The original scratch notebook that first demonstrated AlphaEarth cosine similarity to a single
 Ocala reference point — **superseded by the AOI finder and not maintained.** Uses inline
-`ee.Authenticate()`/`ee.Initialize()` and a brittle hardcoded relative path
-`data/raw/tl_2022_us_state/tl_2022_us_state.shp` (the dead `data/raw → /mnt/d` symlink); its
-committed output already carries a stored `DataSourceError: ... No such file or directory` and its
+`ee.Authenticate()`/`ee.Initialize()`. Its hardcoded
+`data/raw/tl_2022_us_state/tl_2022_us_state.shp` was replaced on 2026-07-31 with
+`cac.resolve_dir(...["raw"]["states"]["tl_2022_dir"])`, which reads the drive or the R2 mirror
+(the directory, so the shapefile sidecars come too), and the stale `DataSourceError` output was
+cleared — the cell has not been re-run, since that still needs GEE auth. Its
 last cell is empty. Kept for reference only — use the AOI finder for real work.
 
 ## `FVS_5county_growth_smoke.ipynb.old`
@@ -130,12 +132,15 @@ static + dependency/resource verification, plus a live check of the one network-
    `.probe_libraries`, `.run_smoke`, `.summarize_smoke`, none of which exist (never committed; only
    `paint_fvs_to_raster.py` is present). Also `tests/test_s4_fvs_keyword_builder.py` (referenced in
    the note) is absent. Fails at cell 1. → recover/rewrite those four modules.
-2. **`Similarity-Embeddings.ipynb` — stored error + brittle path.** Hardcoded
+2. ~~**`Similarity-Embeddings.ipynb` — stored error + brittle path.** Hardcoded
    `data/raw/tl_2022_us_state/tl_2022_us_state.shp` on the dead symlink; committed output holds a
-   `DataSourceError`. Superseded by the AOI finder; low priority.
+   `DataSourceError`.~~ **Fixed 2026-07-31:** the path is declared in `data_paths.yaml`
+   (`raw.states.tl_2022_dir`) and resolved through `cac.resolve_dir`, so it reads from the drive or
+   R2; the stored error output was cleared. Still superseded by the AOI finder.
 3. **Environmental (not code bugs):** the three Clearcut notebooks + AOI finder + Similarity can't
-   run headless because GEE needs re-auth, and everything except TreeMap COG additionally needs the
-   `/mnt/d` drive remounted.
+   run headless because GEE needs re-auth. The `/mnt/d` dependency is no longer blocking — those
+   paths now fall back to R2 — except for the 3 GB LF2022 EVT tif, which is over the fetch cap and
+   has to be staged deliberately.
 
 **No code errors** were found in the four Clearcut/AOI notebooks or TreeMap COG — they are blocked
 only by the environment, not by defects.
