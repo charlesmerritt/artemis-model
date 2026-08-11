@@ -505,6 +505,8 @@ def render_keyfile(
     regime: str,
     params: dict | None = None,
     *,
+    thins: list[ThinDBH] | None = None,
+    regen: list[Regeneration] | None = None,
     mgmt_id: str = "A001",
     inv_year: int = DEFAULT_INV_YEAR,
     cycle_years: int = DEFAULT_CYCLE_YEARS,
@@ -515,10 +517,23 @@ def render_keyfile(
     tree_table: str = "FVS_TreeInit_Plot",
     sp_label: str = "ARTEMIS",
 ) -> str:
-    """Render a complete single-stand FVS keyfile for the given regime."""
+    """Render a complete single-stand FVS keyfile for the given regime.
+
+    ``thins`` overrides the built-in builders, so a caller that assembled its operations
+    elsewhere — `pipeline.s4_fvs.regime_library`, which reads them from
+    `config/regimes.yaml` — can reuse this scaffolding without a Python builder per
+    regime. When omitted, ``regime``/``params`` drive the built-in `REGIMES` table.
+
+    A caller supplying its own ``thins`` also owns regeneration: the regime name is then
+    a label from another library, so there is no `REGEN_BUILDERS` entry to consult and
+    nothing is guessed. Pass ``regen`` to attach an `Estab` packet in that case.
+    """
     params = params or {}
-    blocks = [t.render() for t in build_thins(regime, params)]
-    estab = render_estab_block(build_regeneration(regime, params))
+    if thins is None:
+        thins = build_thins(regime, params)
+        regen = build_regeneration(regime, params) if regen is None else regen
+    blocks = [t.render() for t in thins]
+    estab = render_estab_block(regen or [])
     if estab:
         blocks.append(estab)
     return _KEYFILE.format(

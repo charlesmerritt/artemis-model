@@ -9,7 +9,12 @@ skip only where neither is reachable (see `_data_paths_or_skip`) — so this fil
 is CI-safe.
 """
 
+from pathlib import Path
+import sys
+
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def test_extent_has_florida_fips(extent_geojson):
@@ -217,6 +222,87 @@ def test_ownership_mask_values(projection_config):
     mask = projection_config["ownership"]["mask_values"]
     assert 1 in mask  # non_forest
     assert 2 in mask  # water
+
+
+# --- ownership_policy.yaml: the two OWN_CODE vocabularies must stay distinct ----------
+# See notes/management-regimes-by-owner.md and GitHub issue #20. `OWN_CODE` names two
+# different code systems in this project: the Harris raster values the ARTEMIS owner
+# classes are built on, and the LETO codes the FVS inputs actually carry.
+
+# LETO OWN_CODE -> OWN_TYPE, verified against the 2026-08-04 Hard_Ownership_Boundaries
+# run (57,527 stands).
+LETO_CODE_TO_TYPE = {
+    0: "Unknown", 1: "Private", 2: "Corporate", 3: "Federal",
+    4: "State", 5: "County", 6: "NGO", 7: "Other",
+}
+
+
+def test_leto_own_code_vocabulary_matches_the_observed_run(ownership_policy):
+    assert ownership_policy["leto_own_code_to_type"] == LETO_CODE_TO_TYPE
+
+
+def test_every_owner_class_names_both_vocabularies(ownership_policy):
+    """A class that names only one code system is the bug this file exists to prevent."""
+    for name, block in ownership_policy["classes"].items():
+        assert "harris_values" in block, f"{name}: no harris_values"
+        assert "leto_own_codes" in block, f"{name}: no leto_own_codes"
+
+
+def test_leto_and_harris_code_systems_are_never_conflated(ownership_policy):
+    """The two OWN_CODE vocabularies collide. Assert they are kept distinct.
+
+    LETO 3 is Federal but Harris 3 is family; LETO 4 is State but Harris 4 is corporate.
+    Treating one as the other assigns the wrong regime to every stand in the AOI. The
+    config must therefore never claim the integers agree.
+    """
+    crosswalk = ownership_policy["leto_own_code_to_harris_value"]
+    assert set(crosswalk) == set(LETO_CODE_TO_TYPE), "every LETO code needs a crosswalk entry"
+    assert crosswalk[0] == 0, "Unknown is the one code that means the same in both systems"
+    moved = sum(1 for k, v in crosswalk.items() if v is not None and v != k)
+    assert moved >= 5, (
+        "expected the LETO and Harris numbering to diverge for most classes; "
+        "if this fails, one of the two vocabularies has been silently rewritten"
+    )
+
+
+def test_the_crosswalk_agrees_with_the_class_blocks(ownership_policy):
+    """`leto_own_codes` on a class must land on that class's Harris values."""
+    crosswalk = ownership_policy["leto_own_code_to_harris_value"]
+    for name, block in ownership_policy["classes"].items():
+        for code in block["leto_own_codes"]:
+            assert crosswalk[code] in block["harris_values"], (
+                f"{name}: LETO {code} crosswalks to Harris {crosswalk[code]}, "
+                f"not in {block['harris_values']}"
+            )
+
+
+def test_classes_neither_vocabulary_can_express_are_recorded(ownership_policy):
+    """NGO and Other have no Harris class; tribal has no LETO code. Keep both visible."""
+    gaps = ownership_policy["vocabulary_gaps"]
+    assert "tribal" in gaps["harris_absent_from_leto"]
+    assert set(gaps["leto_absent_from_harris"]) == {"ngo", "other"}
+    crosswalk = ownership_policy["leto_own_code_to_harris_value"]
+    for name, block in gaps["leto_absent_from_harris"].items():
+        assert crosswalk[block["leto_own_code"]] is None, f"{name}: claims a Harris value"
+    assert ownership_policy["classes"]["tribal"]["leto_own_codes"] == []
+
+
+def test_issue_20_is_still_open_in_the_assignment_code():
+    """`classify_owner` reads OWN_CODE as a *Harris* value; LETO stands carry LETO codes.
+
+    This asserts the bug rather than the fix, so the tripwire fires the day someone
+    resolves issue #20 and forgets this call site. Delete it then.
+    """
+    from pipeline.s3_management.owner_classes import classify_owner
+
+    # LETO 3 = Federal. Harris 3 = family, so a federal stand is classified private.
+    assert classify_owner({"OWN_CODE": 3}).owner_class == "private_family", (
+        "if this no longer returns private_family, issue #20 is fixed — delete this test"
+    )
+    # LETO 4 = State. Harris 4 = corporate, so a state stand is classified corporate.
+    assert classify_owner({"OWN_CODE": 4}).owner_class in (
+        "private_industrial", "private_corporate_other",
+    ), "if this no longer returns a corporate class, issue #20 is fixed — delete this test"
 
 
 def _data_paths_or_skip(config_dir, data_access):

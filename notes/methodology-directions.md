@@ -360,5 +360,12 @@ statewide.
 | Pixel-first growth with per-pixel regime + `(plot, regime, SI)` trajectory keys | **Compatible with the above.** Adopt as the scaling design |
 | Hex-bin overlay | **Cartographic post-process only.** Size and denominator undecided |
 
-Related: [[management_units]], [[management-pipeline-plan]], [[treemap-methodology]],
-[[fvs-to-raster-painting]].
+The per-owner-class side of item 4's "regime is assigned per pixel" is now written down:
+[[management-regimes-by-owner]] and `config/management_regimes.yaml` give each Harris
+ownership class one default regime and one eligible regime set, and state the run-count
+consequence of adding parameterizations (5 distinct today → 3,465 pilot runs against the
+baseline's 693). Item 2's riparian rule sits above ownership in that config's precedence
+ladder, unconditional as decided here.
+
+Related: [[management_units]], [[management-pipeline-plan]], [[management-regimes-by-owner]],
+[[treemap-methodology]], [[fvs-to-raster-painting]].

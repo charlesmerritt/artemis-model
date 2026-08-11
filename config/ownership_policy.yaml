@@ -43,6 +43,80 @@ version: 1
 verified: false          # flip to true only after the --audit-parcels check above passes
 
 # ---------------------------------------------------------------------------------------
+# VOCABULARY WARNING — two ownership code systems share the column name `OWN_CODE`
+# ---------------------------------------------------------------------------------------
+# There is a third ownership vocabulary in this project, and it collides with the Harris
+# raster values above in the worst possible way: the same column name, different meanings,
+# overlapping integers.
+#
+#   Harris RDS-2025-0045 raster value  (this file's `harris_values`, config/projection.yaml)
+#       0 unknown  1 non_forest  2 water  3 family  4 corporate  5 tribal
+#       6 federal  7 state       8 local
+#
+#   LETO OWN_CODE  (the column the FVS inputs actually carry, FVS_StandInit.csv)
+#       0 Unknown  1 Private     2 Corporate  3 Federal  4 State  5 County
+#       6 NGO      7 Other
+#
+# Every shared integer above 0 means something different. **LETO 3 is Federal; Harris 3 is
+# family. LETO 4 is State; Harris 4 is corporate.** Reading one as the other assigns the
+# wrong regime to every stand in the AOI, silently, with no error anywhere. See GitHub
+# issue #20.
+#
+# Each class below therefore names BOTH vocabularies explicitly — `harris_values` and
+# `leto_own_codes` — so a consumer can always tell which system a value came from, and
+# `leto_own_code_to_harris_value` is the only sanctioned way to move between them. The
+# classes each vocabulary cannot express are recorded in `vocabulary_gaps` rather than
+# quietly folded into a neighbour.
+
+leto_own_code_to_harris_value:
+  0: 0        # Unknown   -> unknown
+  1: 3        # Private   -> family
+  2: 4        # Corporate -> corporate
+  3: 6        # Federal   -> federal
+  4: 7        # State     -> state
+  5: 8        # County    -> local
+  6: null     # NGO       -> no Harris equivalent
+  7: null     # Other     -> no Harris equivalent
+
+leto_own_code_to_type:
+  0: Unknown
+  1: Private
+  2: Corporate
+  3: Federal
+  4: State
+  5: County
+  6: NGO
+  7: Other
+
+vocabulary_gaps:
+  # Harris classes with no LETO counterpart.
+  harris_absent_from_leto:
+    tribal:
+      harris_value: 5
+      note: >-
+        No tribal ownership appears in the 5-county AOI's LETO run. The class is kept
+        because config/projection.yaml already requires a pooled fallback below 500
+        training events, and it will matter when the pipeline expands beyond Florida.
+    non_forest:
+      harris_value: 1
+      note: "Masked from the pipeline (see masked_harris_values below)."
+    water:
+      harris_value: 2
+      note: "Masked from the pipeline (see masked_harris_values below)."
+  # LETO classes with no Harris counterpart, and therefore no ARTEMIS class: the raster
+  # is what assigns the class, so these acres resolve to whatever Harris calls them.
+  leto_absent_from_harris:
+    ngo:
+      leto_own_code: 6
+      note: >-
+        NGO forest (conservancies, land trusts) lands in whichever Harris class covers the
+        pixel — usually `unknown` or a public class. Recorded so the loss is visible; the
+        pilot has no NGO-specific result to report either way.
+    other:
+      leto_own_code: 7
+      note: "LETO's residual class. Same treatment as `ngo`."
+
+# ---------------------------------------------------------------------------------------
 # The ARTEMIS owner classes
 # ---------------------------------------------------------------------------------------
 # Seven classes plus `unknown`. This is the Harris seven-class scheme with its single
@@ -57,6 +131,7 @@ classes:
   private_industrial:
     label: "Private — industrial timberland (TIMO / REIT / forest products)"
     harris_values: [4]
+    leto_own_codes: [2]        # LETO Corporate — split with private_corporate_other
     tpo_group: "Private"
     description: >
       Corporate forest held as a timber-producing asset. Short-rotation planted pine
@@ -66,6 +141,7 @@ classes:
   private_corporate_other:
     label: "Private — other corporate / non-industrial"
     harris_values: [4]        # same raster value; separated only by parcel refinement
+    leto_own_codes: [2]        # LETO Corporate — split with private_industrial
     tpo_group: "Private"
     description: >
       Corporate-titled forest that is not a timber asset — small LLCs, hunting and
@@ -75,6 +151,7 @@ classes:
   private_family:
     label: "Private — family / small private (NIPF)"
     harris_values: [3]
+    leto_own_codes: [1]        # LETO Private
     tpo_group: "Private"
     description: >
       Individuals, families, trusts, and estates. Large in aggregate area, small per
@@ -85,6 +162,7 @@ classes:
   tribal:
     label: "Tribal"
     harris_values: [5]
+    leto_own_codes: []         # no LETO counterpart (vocabulary_gaps.harris_absent_from_leto)
     tpo_group: "Private"      # FIA places Native American land in owner group 40 (private)
     description: >
       Tribal forest. Tiny sample in the five-county pilot; config/projection.yaml already
@@ -94,6 +172,7 @@ classes:
   federal:
     label: "Federal"
     harris_values: [6]
+    leto_own_codes: [3]        # LETO Federal — NOT Harris 3, which is family
     tpo_group: "Federal (NF)"
     description: >
       Federal forest. In the pilot this is effectively Osceola National Forest
@@ -104,6 +183,7 @@ classes:
   state:
     label: "State"
     harris_values: [7]
+    leto_own_codes: [4]        # LETO State — NOT Harris 4, which is corporate
     tpo_group: "Other public"
     description: >
       State forest and other state land, largely Florida Forest Service managed. State
@@ -112,6 +192,7 @@ classes:
   local:
     label: "County / municipal"
     harris_values: [8]
+    leto_own_codes: [5]        # LETO County
     tpo_group: "Other public"
     description: >
       County and municipal forest — parks, watershed land, and school-board holdings.
@@ -120,6 +201,7 @@ classes:
   unknown:
     label: "Unknown ownership"
     harris_values: [0]
+    leto_own_codes: [0]        # LETO Unknown
     tpo_group: "Private"      # the dominant class by area; flagged, never silently assumed
     description: >
       Harris `unknown_forest`. Assigned to the private TPO group because private is the

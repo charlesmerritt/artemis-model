@@ -63,6 +63,13 @@ def management_regimes(config_dir):
 
 
 @pytest.fixture
+def tpo_targets(config_dir):
+    import yaml
+    with open(config_dir / "tpo_targets.yaml") as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture
 def fallback_treelists(config_dir):
     import yaml
     with open(config_dir / "fallback_treelists.yaml") as f:
