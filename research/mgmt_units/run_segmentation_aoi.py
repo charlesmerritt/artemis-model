@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 from pathlib import Path
 
@@ -38,7 +39,11 @@ import numpy as np
 import rasterio
 from shapely.ops import unary_union
 
-import research.mgmt_units.segmentation_delineation as seg
+# Run as a file (`uv run python research/mgmt_units/run_segmentation_aoi.py`), so the repo
+# root is not on sys.path and neither `research` nor `pipeline` is importable without this.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+import research.mgmt_units.segmentation_delineation as seg  # noqa: E402
 
 
 def build_erase(aoi_dir: Path, crs) -> gpd.GeoDataFrame | None:

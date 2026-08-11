@@ -91,7 +91,11 @@ pixels are equal-area in EPSG:5070). Example: a 40-ac unit = plot A (15 ac) + pl
 - **Stand metrics** — **BA** basal area (trunk cross-section per acre, sq ft/ac); **TPA**
   trees per acre; **SDI** stand density index; **QMD** quadratic mean diameter. These are the
   "stand values" the restart-fidelity work proved exact across pause/restart.
-- **EPSG:5070** — CONUS Albers Equal-Area, the project CRS; equal-area so acres/hectares are
+- **EPSG:5070** — **NAD83 / Conus Albers** (ArcGIS: `NAD_1983_Contiguous_USA_Albers`), the
+  project CRS for everything. Declared in `config/projection.yaml`, read via
+  `pipeline/spatial_ref.py`. Not `ESRI:102008` "North America Albers" (parallels 20/60) and
+  not `EPSG:6350` NAD83(2011) — both are different grids that still look correct on a map.
+  CONUS Albers Equal-Area; equal-area so acres/hectares are
   correct.
 
 ## Usage rules (do this going forward)

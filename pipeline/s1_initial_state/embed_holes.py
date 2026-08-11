@@ -35,6 +35,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from pipeline.spatial_ref import project_crs
+
 REPO = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO / "data/interim/treemap_holes"
 
@@ -92,7 +94,7 @@ def init_ee():
 
 def aoi_region(ee):
     """The 5-county AOI bbox as an EE geometry, in the raster's own projection."""
-    return ee.Geometry.Rectangle(list(AOI_BOUNDS_5070), proj="EPSG:5070", geodesic=False)
+    return ee.Geometry.Rectangle(list(AOI_BOUNDS_5070), proj=project_crs(), geodesic=False)
 
 
 def annual_embedding(ee, year: int):
@@ -227,7 +229,7 @@ def tile_download_params(bounds: tuple[float, float, float, float]) -> dict:
         raise ValueError(f"tile bounds {bounds} do not span whole TreeMap pixels")
 
     return {
-        "crs": "EPSG:5070",
+        "crs": project_crs(),
         "crs_transform": [
             OUTPUT_SCALE_M, 0, left, 0, -OUTPUT_SCALE_M, top,
         ],

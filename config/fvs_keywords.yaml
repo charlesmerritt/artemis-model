@@ -90,6 +90,11 @@ defaults:
     thin_from_below:
       proportion: 0.35        # fraction of TPA removed below max_dbh
       max_dbh: 8.0            # inches; upper bound of the thinned DBH window
+    thin_from_below_repeated:
+      proportion: 0.30        # lighter than the single entry — it comes back around
+      max_dbh: 10.0           # inches
+      interval: 15            # years between entries
+      window_years: 30        # default end_year offset when none is given
     selection_harvest:
       proportion: 0.20        # light proportional entry, repeated
       interval: 10            # years between entries

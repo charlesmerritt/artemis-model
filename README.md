@@ -12,8 +12,8 @@ on a five-county north Florida pilot before statewide and eastern-US expansion.
 
 | Dimension | Current direction |
 |---|---|
-| Spatial reference | EPSG:5070 (CONUS Albers Equal Area) |
-| Working grid | 30 m, aligned to TreeMap 2022 |
+| Spatial reference | **EPSG:5070 — NAD83 / Conus Albers** (ArcGIS: `NAD_1983_Contiguous_USA_Albers`). Everywhere, for every raster and vector. |
+| Working grid | 30 m, snapped to the TreeMap 2022 affine `[30, 0, -2361585, 0, -30, 3177435]` |
 | Growth model | FVS Southern (`SN`) variant |
 | Projection horizon | Approximately 50 years, using FVS cycles |
 | Initial forest state | TreeMap 2022 linked to FIA/FVS-ready tree lists |
@@ -24,12 +24,43 @@ on a five-county north Florida pilot before statewide and eastern-US expansion.
 See [`PLAN.md`](PLAN.md) for the target architecture. It is a build plan, not a claim that
 every stage is implemented.
 
+### Coordinate reference system
+
+**Everything is EPSG:5070, NAD83 / Conus Albers.** Equal-area, metres, standard parallels
+29.5/45.5, latitude of origin 23, central meridian −96. It is declared once in
+[`config/projection.yaml`](config/projection.yaml) and read through
+[`pipeline/spatial_ref.py`](pipeline/spatial_ref.py); no module hardcodes it, and a test
+enforces that.
+
+It is the native CRS of TreeMap 2022, LANDFIRE EVT, and the Harris ownership raster — all
+30 m, pixel-co-registered, and carrying categorical values. Staying on 5070 makes the
+raster work reproject-and-snap only: nothing categorical is ever resampled.
+
+Do not substitute a similarly named Albers. `ESRI:102008` (North America Albers) uses
+standard parallels 20/60 and is off by kilometres; `EPSG:6350` (NAD83(2011) Conus Albers)
+is off by less than a metre and still breaks a 30 m snap grid. Both still render as a
+recognisable map, which is why `spatial_ref.assert_project_crs` names them explicitly when
+it catches one. The full list is under `spatial.crs_not` in the config.
+
+```bash
+uv run python -m pipeline.spatial_ref     # print the declaration and the confusables
+```
+
 ## Current implementation
 
-- **Management-unit sketching:** `pipeline/s3_management/sketch_management_units.py`
-  processes Florida county-by-county and can create draft units from parcels, forest cover,
-  roads, water, and BMP exclusions. A Union County smoke run has completed; segmentation,
-  sliver merging, road-buffer policy, and terrain integration remain under review.
+- **Config and policy:** ownership classes, the management-regime library, and the fixed
+  fallback tree lists are declared in `config/ownership_policy.yaml`,
+  `config/management_regimes.yaml`, and `config/fallback_treelists.yaml`, and resolved by
+  `pipeline/s3_management/owner_classes.py`, `regime_assignment.py`, and
+  `pipeline/s4_fvs/fallback_treelists.py`. See [`docs/config-policy.md`](docs/config-policy.md)
+  for what each decides and what is still an assumption.
+- **Management-unit delineation:** two steps, in order —
+  `sketch_management_units.py` (parcels ∩ forest, minus water and road artefacts, then
+  partitioned into `managed` and grow-only `riparian` units by the BMP buffer layer) →
+  `sliver_merge.py` (resolve sub-5-acre stands, with `unit_class` as a hard constraint so
+  buffer acres are never absorbed into a harvest unit). Buffers are retained rather than
+  erased, so their acres stay in the projected landscape and keep their own polygon
+  identity. Segmentation, road-buffer policy, and terrain integration remain under review.
 - **FVS raster painting:** `pipeline/s4_fvs/paint_fvs_to_raster.py` maps stand-level FVS
   trajectories back to TreeMap pixels for initial and final snapshots. It requires external
   five-county trajectory, crosswalk, and raster files.
@@ -123,6 +154,18 @@ uv run python -m pipeline.s3_management.sketch_management_units \
   --county-fips 125 --save-qa --overwrite
 ```
 
+Then resolve slivers:
+
+```bash
+uv run python -m pipeline.s3_management.sliver_merge \
+  --input  data/interim/management_units/12125/candidate_management_units.gpkg \
+  --output data/interim/management_units/12125/management_units_state0.gpkg
+```
+
+`sliver_merge` merges within `unit_class`. A BMP buffer is 35–75 ft wide, so riparian units
+are almost all below the 5-acre minimum stand size; letting them merge across the line would
+put unharvestable acres inside a harvest unit and destroy the managed/riparian partition.
+
 Statewide `--all-florida` processing is not implemented; it currently exits with status 1.
 Use `--pilot-five-county` or run supported counties individually.
 
@@ -181,7 +224,8 @@ entry point for each notebook group.
 ## Repository map
 
 ```text
-config/                    Spatial, BMP, projection, and local data-path configuration
+config/                    Spatial, BMP, projection, ownership/regime/treelist policy,
+                           and local data-path configuration
 data/                      Gitignored raw/interim/processed data products
 gee/                       Google Earth Engine export scripts
 notebooks/                 Exploratory analyses and reusable notebook helpers
@@ -199,6 +243,16 @@ pyproject.toml             Python metadata and dependencies
 uv.lock                    Locked Python environment
 ```
 
+### Inspect the ownership and regime policy
+
+```bash
+# Owner classes and the TPO budget each charges against
+uv run python -m pipeline.s3_management.owner_classes
+
+# Fixed fallback tree lists and whether their donor plots are pinned yet
+uv run python -m pipeline.s4_fvs.fallback_treelists
+```
+
 ## Known constraints and open decisions
 
 - Many workflows need both the project data and interactive Earth Engine credentials, so
@@ -212,6 +266,10 @@ uv.lock                    Locked Python environment
   large-unit splitting, terrain, and sub-2 ha sliver handling.
 - The committed repository paints existing FVS output but does not yet provide a complete,
   automated FVS trajectory-generation pipeline.
+- The DOR use-code table in `config/ownership_policy.yaml` is transcribed, not yet verified
+  against the parcel layer (`--audit-parcels`), and the fallback tree lists have no pinned
+  donor plots until `fallback_treelists --resolve` runs against the FIA database. Both need
+  the local data mount.
 - Natural disturbances, climate-modified growth, stochastic replicates, and formal uncertainty
   quantification remain outside v1 scope.
 

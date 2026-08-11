@@ -33,12 +33,14 @@ from shapely.geometry import mapping, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
+from pipeline.spatial_ref import project_crs
+
 # Earth Engine and the viewer both speak lon/lat.
 WGS84 = "EPSG:4326"
 
 # CONUS Albers Equal Area — the project CRS (config/projection.yaml). Used only
 # for area and buffer math, never for output geometry.
-EQUAL_AREA_CRS = "EPSG:5070"
+EQUAL_AREA_CRS = project_crs()
 
 # Modes for turning an AOI into an imagery extent.
 EXTENT_MODES = ("bbox", "buffer", "hull")

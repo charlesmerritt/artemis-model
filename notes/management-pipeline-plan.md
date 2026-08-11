@@ -85,6 +85,16 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
   - Riparian buffer units → **no harvest, ever** (no entry of any kind, no buffer class exempted). Assigned by geometry, so it overrides any ownership/forest-type rule above it. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
 - **Output**: `pipeline/s3_management/regime_assignment.py` with `assign_regime(unit_attrs) -> (regime_name, params)`.
 
+**Superseded by config, 2026-08-03.** The mapping above is now declared in
+[`config/management_regimes.yaml`](../config/management_regimes.yaml) rather than written into the module, and
+it carries two things this step did not: an **owner class** resolved from the Harris raster
+against the parcel layer (`config/ownership_policy.yaml`, seven classes — the corporate
+class is split into industrial vs. other-corporate), and an **eligible menu** of 2-3
+prescriptions per owner class alongside the single default, so the Phase 4 scheduler has
+something to choose among. State pine now defaults to a restoration thin and local
+government to no management; federal and family are unchanged. See
+[`docs/config-policy.md`](../docs/config-policy.md).
+
 ---
 
 ## Phase 4: Constrained harvest scheduling prototype

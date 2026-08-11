@@ -73,6 +73,8 @@ import geopandas as gpd
 import pandas as pd
 from shapely.ops import unary_union
 
+from pipeline.spatial_ref import project_crs
+
 logger = logging.getLogger(__name__)
 
 # 1 international acre in square metres. Matches LETO's ACRES_US area unit.
@@ -419,8 +421,9 @@ def main() -> None:
     parser.add_argument("--parcel-col", type=str, default=None,
                         help=f"Parcel/owner column to prefer when merging "
                              f"(default: first of {', '.join(PARCEL_ID_COLUMNS)} present)")
-    parser.add_argument("--target-crs", type=str, default="EPSG:5070",
-                        help="Reproject to this CRS before resolving (default EPSG:5070)")
+    parser.add_argument("--target-crs", type=str, default=project_crs(),
+                        help=f"Reproject to this CRS before resolving "
+                             f"(default {project_crs()})")
     args = parser.parse_args()
 
     gdf = gpd.read_file(args.input, layer=args.layer)

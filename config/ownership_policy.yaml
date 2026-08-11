@@ -1,0 +1,266 @@
+# ARTEMIS owner classes — the policy layer between raw ownership data and management regimes.
+#
+# Two independent sources describe who owns a forested acre in the pilot AOI, and they
+# answer different questions. This file states which source wins for which question, so
+# ownership never gets decided ad hoc inside a script.
+#
+#   1. Harris, Caputo & Butler (2025) ownership raster (RDS-2025-0045), 30 m, circa 2022.
+#      Nine pixel values, co-registered with TreeMap 2022 (see config/projection.yaml).
+#      AUTHORITATIVE for: public vs. private, and which level of government.
+#
+#   2. Florida county parcels (`FL_5_Co_Parcels.gdb`, statewide `All_FL_Parcels`).
+#      AUTHORITATIVE for: nothing about ownership class on its own — see the finding
+#      below. Used only to REFINE the private classes and to raise disagreement flags.
+#
+# ---------------------------------------------------------------------------------------
+# Finding: the parcel layer has no ownership-class column
+# ---------------------------------------------------------------------------------------
+# The parcel attributes carried through `sketch_management_units.py` are
+# `CNTYNAME, PARCELID, NPARNO, DORUC, PARUSEDESC, ACRES` (see that module's column
+# ordering and research/mgmt_units/BRIEF.md §2). None of those is an owner class. The
+# only ownership signal is `DORUC` — the Florida Department of Revenue *land use* code —
+# plus its text twin `PARUSEDESC`. A use code is not an owner: DOR_UC 82
+# ("forest, parks, recreational areas") is assigned to federal, state, county, and
+# municipal conservation land alike, so it identifies public conservation land without
+# identifying the level of government.
+#
+# That asymmetry is the whole reason for the precedence rule below: the raster supplies
+# the class, the parcel supplies the within-private detail the raster cannot see
+# (the raster's single `corporate_forest` class mixes industrial timberland with small
+# corporate holdings), and any conflict is recorded rather than silently resolved.
+#
+# STATUS: the DOR_UC code meanings below are transcribed from the published FDOR land-use
+# code table and are `verified: false` — the data drive was not mounted when this file was
+# written. Verify before the numbers are used in a reported result:
+#
+#     uv run python -m pipeline.s3_management.owner_classes --audit-parcels \
+#         --parcels data/raw/FL_5_Co_Parcels.gdb --layer FL_5_Co_Parcels
+#
+# That prints the observed DORUC/PARUSEDESC pairs and their acreage, which is what has to
+# match this table. Anything unmatched lands in `unmatched_doruc` and stays `unknown`.
+
+version: 1
+verified: false          # flip to true only after the --audit-parcels check above passes
+
+# ---------------------------------------------------------------------------------------
+# The ARTEMIS owner classes
+# ---------------------------------------------------------------------------------------
+# Seven classes plus `unknown`. This is the Harris seven-class scheme with its single
+# `corporate_forest` class split in two, because industrial timberland and other corporate
+# forest behave nothing alike under management and the split is the one thing the parcel
+# layer can actually tell us.
+#
+# `tpo_group` maps each class onto the three owner groups in config/tpo_targets.yaml,
+# which is the only owner dimension the harvest scheduler's volume caps are expressed in.
+
+classes:
+  private_industrial:
+    label: "Private — industrial timberland (TIMO / REIT / forest products)"
+    harris_values: [4]
+    tpo_group: "Private"
+    description: >
+      Corporate forest held as a timber-producing asset. Short-rotation planted pine
+      dominates in the north Florida pilot. This is the most actively managed class and
+      the largest single source of the private TPO volume.
+
+  private_corporate_other:
+    label: "Private — other corporate / non-industrial"
+    harris_values: [4]        # same raster value; separated only by parcel refinement
+    tpo_group: "Private"
+    description: >
+      Corporate-titled forest that is not a timber asset — small LLCs, hunting and
+      recreation clubs, land held for development, utility and mining holdings. Harvest
+      is occasional and opportunistic rather than scheduled.
+
+  private_family:
+    label: "Private — family / small private (NIPF)"
+    harris_values: [3]
+    tpo_group: "Private"
+    description: >
+      Individuals, families, trusts, and estates. Large in aggregate area, small per
+      holding, and harvest is irregular: most family-forest acres see no entry in a
+      given decade, which the scheduler expresses through low harvest probability
+      rather than through a no-management regime.
+
+  tribal:
+    label: "Tribal"
+    harris_values: [5]
+    tpo_group: "Private"      # FIA places Native American land in owner group 40 (private)
+    description: >
+      Tribal forest. Tiny sample in the five-county pilot; config/projection.yaml already
+      flags that a fitted harvest model must fall back to a pooled estimate below 500
+      training events. Treat any tribal-specific result as unreportable at pilot scale.
+
+  federal:
+    label: "Federal"
+    harris_values: [6]
+    tpo_group: "Federal (NF)"
+    description: >
+      Federal forest. In the pilot this is effectively Osceola National Forest
+      (Baker and Columbia counties). The TPO group name is "Federal (NF)", so mapping
+      non-NF federal land here overstates the National Forest cap — see
+      `known_limitations.federal_non_nf`.
+
+  state:
+    label: "State"
+    harris_values: [7]
+    tpo_group: "Other public"
+    description: >
+      State forest and other state land, largely Florida Forest Service managed. State
+      forests do sell timber, so this class is not conservation-only.
+
+  local:
+    label: "County / municipal"
+    harris_values: [8]
+    tpo_group: "Other public"
+    description: >
+      County and municipal forest — parks, watershed land, and school-board holdings.
+      Predominantly non-commercial.
+
+  unknown:
+    label: "Unknown ownership"
+    harris_values: [0]
+    tpo_group: "Private"      # the dominant class by area; flagged, never silently assumed
+    description: >
+      Harris `unknown_forest`. Assigned to the private TPO group because private is the
+      dominant owner by area in the AOI, but every unit resolved this way carries the
+      `unknown_ownership` flag so its area can be reported separately.
+
+# Raster values excluded from the FVS pipeline entirely (mirrors
+# config/projection.yaml `ownership.mask_values`; kept here so this file is readable alone).
+masked_harris_values: [1, 2]      # 1 = non_forest, 2 = water
+
+# ---------------------------------------------------------------------------------------
+# Precedence
+# ---------------------------------------------------------------------------------------
+# Evaluated in order. Later rules never overturn an earlier one; they only refine within
+# it or attach a flag.
+
+precedence:
+  - step: raster_class
+    rule: >
+      The Harris pixel value assigns the base class. For a management unit spanning many
+      pixels, take the area-majority class over the unit's forested pixels (not the
+      centroid — units are irregular and a centroid can land on a road or a hole).
+    authoritative_for: [public_vs_private, government_level]
+
+  - step: private_refinement
+    rule: >
+      Only where the base class is `private_industrial` (Harris `corporate_forest`), the
+      parcel evidence below may demote the unit to `private_corporate_other`. Nothing
+      here may promote a family, tribal, or public unit.
+    authoritative_for: [industrial_vs_other_corporate]
+
+  - step: disagreement_flags
+    rule: >
+      Where the parcel DOR_UC says government and the raster says private (or the
+      reverse), keep the raster class and set `owner_conflict = true`. Conflicts are a
+      QA signal about parcel vintage and raster misregistration, not a correction.
+    authoritative_for: []
+
+# Why `corporate_forest` defaults to industrial rather than to other-corporate:
+# in the five-county pilot the corporate forest class is dominated by managed pine
+# plantation, so defaulting to industrial and demoting on evidence misclassifies less
+# area than the reverse. This is a stated assumption, not a measurement — the audit
+# command above reports the demoted fraction so it can be checked against the actual
+# parcel mix.
+corporate_default_class: private_industrial
+
+# ---------------------------------------------------------------------------------------
+# Parcel refinement rules (private only)
+# ---------------------------------------------------------------------------------------
+# A corporate unit stays `private_industrial` if ANY industrial signal fires; it is
+# demoted to `private_corporate_other` only when no signal fires and at least one
+# non-industrial signal does. With no parcel attributes at all the unit keeps the
+# raster default and is flagged `unrefined`.
+
+private_refinement:
+  # Signal 1 — DOR_UC timberland codes. Codes 54-59 are the FDOR timberland classes
+  # (54-58 by site index, 59 unclassified), i.e. land assessed as growing timber.
+  timberland_doruc: [54, 55, 56, 57, 58, 59]
+
+  # Signal 2 — parcel size. A holding threshold, not a measured constant: it is the
+  # policy knob that decides where "industrial" starts, and it should be sensitivity-
+  # tested (see docs/config-policy.md) rather than treated as a fact.
+  industrial_min_acres: 1000
+  industrial_min_acres_basis: parcel      # `parcel` = the source parcel's ACRES field.
+                                          # `owner` = acreage summed per owner name;
+                                          # only valid when owner_name.enabled is true.
+
+  # Signal 3 — owner name matching. Disabled by default: no owner-name column is
+  # confirmed present in FL_5_Co_Parcels. Enable only after --audit-parcels shows the
+  # field, and set `field` to its real name.
+  owner_name:
+    enabled: false
+    field: null                           # e.g. "OWN_NAME" in the FDOR NAL extract
+    industrial_patterns:                  # case-insensitive substring match
+      - "TIMBER"
+      - "TIMBERLAND"
+      - "FOREST PRODUCTS"
+      - "FORESTRY"
+      - "PULP"
+      - "PAPER CO"
+      - "RAYONIER"
+      - "WEYERHAEUSER"
+      - "POTLATCH"
+    verified: false
+
+  # Non-industrial signals: fire the demotion when no industrial signal fired.
+  non_industrial_doruc: [70, 71, 72, 73, 74, 75, 76, 77, 78, 79,   # institutional
+                         90, 91, 92, 93, 94,                        # leasehold/utility/mining/ROW
+                         96, 97]                                    # waste land, outdoor recreation
+
+# ---------------------------------------------------------------------------------------
+# DOR_UC → ownership signal (Florida Department of Revenue land use codes)
+# ---------------------------------------------------------------------------------------
+# `government` codes identify public land WITHOUT identifying the level of government,
+# so they are used for conflict flagging only — never to assign federal/state/local.
+# Code 82 is the clearest example: it covers federal, state, county, and municipal
+# forest and park land in one value.
+
+doruc_signals:
+  government: [81, 82, 83, 84, 85, 86, 87, 88, 89]
+  timberland: [54, 55, 56, 57, 58, 59]
+  agricultural: [50, 51, 52, 53, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69]
+  vacant_acreage: [99]
+
+doruc_labels:      # transcription for readability; verify with --audit-parcels
+  54: "Timberland — site index 90 and above"
+  55: "Timberland — site index 80 to 89"
+  56: "Timberland — site index 70 to 79"
+  57: "Timberland — site index 60 to 69"
+  58: "Timberland — site index 50 to 59"
+  59: "Timberland — not classified by site index"
+  81: "Military"
+  82: "Forest, parks, recreational areas (any level of government)"
+  83: "Public county schools"
+  84: "Colleges"
+  85: "Hospitals"
+  86: "Counties, other than schools/colleges/hospitals"
+  87: "State, other than military/forest/parks/colleges/hospitals"
+  88: "Federal, other than military/forest/parks/schools/colleges/hospitals"
+  89: "Municipal, other than parks/colleges/hospitals"
+  99: "Acreage not zoned agricultural"
+
+# ---------------------------------------------------------------------------------------
+# Known limitations — carry these into the methods writeup
+# ---------------------------------------------------------------------------------------
+known_limitations:
+  federal_non_nf: >
+    config/tpo_targets.yaml only reports a "Federal (NF)" group, so any non-National-Forest
+    federal ownership in the AOI is charged against the National Forest volume cap. In the
+    five-county pilot federal forest is effectively Osceola NF, so the error is small here
+    and grows on expansion. Revisit when the extent leaves the pilot.
+  tribal_in_private_tpo: >
+    Tribal land is mapped to the "Private" TPO group to match FIA's owner grouping
+    (OWNGRPCD 40). Tribal acreage in the pilot is small enough that this is immaterial,
+    but the mapping is a convention, not a measurement.
+  parcel_vintage: >
+    Parcel and raster vintages differ. The raster is circa 2022; parcel extracts carry
+    their own assessment-year vintage. Ownership that changed between the two shows up as
+    `owner_conflict` rather than as a correction to either source.
+  unrefined_corporate: >
+    Units whose pixels carry `corporate_forest` but that inherited no parcel attributes
+    (e.g. segmentation-derived units) stay `private_industrial` and are flagged
+    `unrefined`. Report that area separately before drawing industrial-vs-other
+    conclusions.

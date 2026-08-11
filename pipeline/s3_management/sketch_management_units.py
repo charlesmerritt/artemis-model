@@ -40,12 +40,14 @@ from rasterio.mask import mask as rio_mask
 from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
+from pipeline.spatial_ref import project_crs
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Constants
-PROJECT_CRS = "EPSG:5070"  # CONUS Albers Equal Area
+PROJECT_CRS = project_crs()  # CONUS Albers Equal Area, from config/projection.yaml
 FLORIDA_FIPS = "12"
 FEET_TO_METERS_CONVERSION = 0.3048
 MIN_UNIT_AREA_HA = 2.0
