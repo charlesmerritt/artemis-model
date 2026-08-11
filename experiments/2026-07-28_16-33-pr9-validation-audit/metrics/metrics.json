@@ -1,0 +1,36 @@
+{
+  "old_global_prefilter": {
+    "auc": 0.8833854831843337,
+    "accuracy": 0.926509186351706,
+    "n_duplicated_anchor_year_rows": 3048,
+    "positive": 2700,
+    "negative": 348
+  },
+  "fold_local_operational_pipeline": {
+    "pipeline_accuracy": 0.9033333333333333,
+    "pipeline_balanced_accuracy": 0.9033333333333333,
+    "pipeline_sensitivity": 0.8573333333333333,
+    "pipeline_specificity": 0.9493333333333334,
+    "pipeline_precision": 0.9441997063142438,
+    "pipeline_f1": 0.8986722571628232,
+    "pipeline_true_positive": 1286,
+    "pipeline_false_negative": 214,
+    "pipeline_false_positive": 76,
+    "pipeline_true_negative": 1424,
+    "stage_b_survivor_auc": 0.9117801130592035,
+    "stage_b_survivor_accuracy": 0.9393732970027248,
+    "n_stage_b_survivors": 1468,
+    "n_stage_b_survivor_positive": 1299,
+    "n_stage_b_survivor_negative": 169,
+    "stage_a_clearcut_pass_rate": 0.866,
+    "stage_a_nonforest_pass_rate": 0.11266666666666666
+  },
+  "fold_local_conditional_refit_both_years": {
+    "auc": 0.8886512610975215,
+    "accuracy": 0.9243869209809265,
+    "n_duplicated_anchor_year_rows": 2936,
+    "positive": 2598,
+    "negative": 338
+  },
+  "delta_survivor_auc_new_minus_old": 0.028394629874869737
+}

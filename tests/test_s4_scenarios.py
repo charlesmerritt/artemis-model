@@ -57,9 +57,14 @@ def test_exactly_one_reference_scenario(scenarios):
     """BAU is the case that claims to describe reality; the others are counterfactuals."""
     refs = [n for n, s in scenarios["scenarios"].items() if s.get("is_reference")]
     assert refs == ["bau"]
-    assert scenarios["scenarios"]["bau"]["regimes"] == {}, (
-        "BAU must inherit management_regimes.yaml defaults, not override them"
-    )
+    # BAU names its regimes rather than inheriting them: config/management_regimes.yaml
+    # carries a second, independently-keyed prescription library, and a factorial that
+    # resolved BAU from one library and its counterfactuals from the other would not be
+    # comparing like with like. See the note on `bau` in config/scenarios.yaml.
+    bau = scenarios["scenarios"]["bau"]["regimes"]["private_industrial"]["by_forest_type"]
+    assert {v["regime"] for v in bau.values()} == {
+        "pine_plantation_industrial", "hardwood_industrial",
+    }, "BAU must name the current-practice regimes, which are the shortest rotations"
 
 
 def test_every_scenario_regime_exists_in_the_library(scenarios, library):
@@ -83,11 +88,14 @@ def test_overridden_owner_classes_exist(scenarios, management_regimes):
             assert owner in owners, f"{name}: overrides unknown owner class {owner!r}"
 
 
-def _corporate_regimes(scenario, management_regimes):
-    """Resolve corporate pine/other regimes for a scenario, applying overrides."""
-    override = scenario["regimes"].get("corporate")
-    source = override if override else management_regimes["owner_classes"]["corporate"]["default"]
-    return {k: v["regime"] for k, v in source["by_forest_type"].items()}
+def _corporate_regimes(scenario, management_regimes=None):
+    """Resolve the corporate pine/other regimes a scenario declares.
+
+    Every scenario names them, BAU included, so this never falls back to the prescription
+    library in management_regimes.yaml — see that file's note in config/scenarios.yaml.
+    """
+    override = scenario["regimes"]["private_industrial"]
+    return {k: v["regime"] for k, v in override["by_forest_type"].items()}
 
 
 def test_long_arms_extend_the_rotation(scenarios, management_regimes, library):

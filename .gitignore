@@ -18,6 +18,8 @@ data/raw
 data/interim/
 data/processed/
 data/build/
+# Local copies pulled from R2 by pipeline/data_access.py
+data/r2_cache/
 
 # GEE credentials
 .config/earthengine/
@@ -46,6 +48,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Git worktrees
+worktrees/
+.worktrees/
 # Agents — local agent state stays untracked, but the shared session-start hook
 # and its settings must be committed or Claude Code on the web cannot run it.
 .claude/*
@@ -54,5 +59,28 @@ Thumbs.db
 !.claude/environment-setup.sh
 worktrees/
 
-# External Scripts
+# External Scripts — this directory is a drop zone for one-off local scripts, so
+# it is ignored wholesale and the few tracked, shared ones are named back in.
+# check-staged-large-files.sh was already tracked despite matching `scripts/*`:
+# git keeps honouring a file it is already tracking, so the omission was
+# invisible until someone re-added it from a fresh clone. Named explicitly now.
 scripts/*
+!scripts/check-staged-large-files.sh
+!scripts/merge-uv-lock.sh
+
+# Environment bootstrap. setup-env.sh is the README quickstart's first command, so
+# a fresh clone that silently dropped it would break the documented setup path.
+!scripts/setup-env.sh
+!scripts/claude-code-env-setup.sh
+!scripts/r2_index.py
+
+# The LETO ArcGIS prototype: the workflow ARTEMIS is a reimplementation of, kept
+# as reference text rather than runnable code (it is arcpy, and there is no
+# ArcGIS here). Tracked because pipeline modules cite these paths in their
+# docstrings — assign_plt_cn.py and sliver_merge.py both point at LETO.V1.1.txt
+# for the procedure they reimplement, and those citations should resolve.
+!scripts/LETO.V1.1.txt
+!scripts/LETO_CSV_PIPELINE.txt
+!scripts/Create_FVS_Database.txt
+!scripts/Join_FVS_output_to_arc.txt
+!scripts/README.txt

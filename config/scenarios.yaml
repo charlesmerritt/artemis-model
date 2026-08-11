@@ -88,10 +88,21 @@ scenarios:
     practice_constraint: bmp_minimum
     is_reference: true
     detail: >-
-      Every owner class on the default regime from config/management_regimes.yaml. This
-      is the ownership-differentiated reference case, and the only scenario claiming to
-      describe what is actually happening on the landscape.
-    regimes: {}          # no overrides — management_regimes.yaml defaults apply
+      Every owner class on its current-practice regime. This is the ownership-
+      differentiated reference case, and the only scenario claiming to describe what is
+      actually happening on the landscape.
+
+      The corporate arm is named explicitly rather than inherited from
+      config/management_regimes.yaml: that file carries its own prescription library
+      (keyed by owner class and forest type), and a scenario that resolved half its
+      regimes from one library and half from the other could not be compared against
+      itself. Every scenario below, BAU included, resolves entirely against
+      config/regimes.yaml. Reconciling the two libraries is issue-tracked, not resolved.
+    regimes:
+      private_industrial:
+        by_forest_type:
+          pine:  {regime: pine_plantation_industrial}
+          other: {regime: hardwood_industrial}
 
   short_certified:
     label: "Short rotation, certified practice"
@@ -102,7 +113,7 @@ scenarios:
       any difference from BAU is retention plus the wider buffers, with rotation length
       held constant.
     regimes:
-      corporate:
+      private_industrial:
         by_forest_type:
           pine:  {regime: pine_plantation_retention}
           other: {regime: hardwood_retention}
@@ -115,7 +126,7 @@ scenarios:
       Rotations extended to 40 with a second thin, at the legal minimum for practice.
       Isolates the rotation-length axis against BAU.
     regimes:
-      corporate:
+      private_industrial:
         by_forest_type:
           pine:  {regime: pine_plantation_extended}
           other: {regime: hardwood_extended}
@@ -128,7 +139,7 @@ scenarios:
       Both axes moved — Diaz's LONG~FSC. Expected to be highest carbon and lowest NPV if
       their result carries over to Southeast pine.
     regimes:
-      corporate:
+      private_industrial:
         by_forest_type:
           pine:  {regime: pine_plantation_extended_retention}
           other: {regime: hardwood_extended_retention}

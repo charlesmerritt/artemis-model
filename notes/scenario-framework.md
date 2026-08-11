@@ -59,7 +59,7 @@ The good news is that the repo was already heading here and the pieces line up:
   every stand under every regime
 - `artemis.txt` — "stand × eligible management prescription × treatment timing/offset ×
   climate scenario", then a landscape policy layer selects one trajectory per stand
-- `config/management_regimes.yaml` already carries `eligible_regimes` per owner class,
+- `config/management_regimes.yaml` already carries an `eligible` set per owner class,
   which is exactly "which prescriptions may this stand consider"
 
 So the owner-class work is not wasted, and it does not become the wrong abstraction. It

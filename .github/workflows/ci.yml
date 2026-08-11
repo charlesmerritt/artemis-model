@@ -44,10 +44,11 @@ jobs:
 
 # Scope notes
 #
-# Runs the host-independent suite. Tests needing the external data drive (/mnt/d)
-# skip automatically via `_data_paths_or_skip` in tests/test_config.py, and the
-# clearcut/ag tests skip when their generated CSVs are absent. Nothing here needs
-# that drive, so CI is green on a bare runner.
+# Runs the host-independent suite. Data-dependent tests resolve their inputs through
+# pipeline/data_access.py, which tries the external drive (/mnt/d) first and the R2
+# mirror second. This runner has neither -- no mount, and no RCLONE_CONFIG_R2_*
+# secrets -- so those tests skip exactly as they did before and CI stays green on a
+# bare runner. Grant the job those secrets and they run against real data instead.
 #
 # Lint config lives in pyproject.toml [tool.ruff]: ruff's default rules (E4/E7/E9
 # + F -- correctness and unused code, no style churn), notebooks excluded because

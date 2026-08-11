@@ -30,8 +30,11 @@ functions are covered by `tests/test_clearcut_ag_common.py`; optional output che
 1. Check `git status --short -- notes/` and read the
    [full notebook status](../notes/notebooks.md). Notebook findings and environmental blockers
    change more frequently than this overview.
-2. Confirm the `/mnt/d` external data mount for workflows using local TreeMap, FIA, or LANDFIRE
-   files. Paths are configured in [`../config/data_paths.yaml`](../config/data_paths.yaml).
+2. Stage the local TreeMap, FIA, or LANDFIRE files these workflows read. Paths are configured in
+   [`../config/data_paths.yaml`](../config/data_paths.yaml); with the `/mnt/d` mount absent,
+   `cac.resolve(declared_path)` — `cac.resolve_dir` for shapefiles and geodatabases — fetches from
+   the R2 mirror instead. Anything over the 512 MB cap, notably the 3 GB LF2022 EVT raster, raises
+   with the one `rclone` command that stages it rather than pulling it mid-cell.
 3. Authenticate Earth Engine interactively when required:
 
    ```bash

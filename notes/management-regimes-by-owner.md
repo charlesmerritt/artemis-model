@@ -1,15 +1,26 @@
 # Management Regimes by Ownership Class — Unified Direction
 
 One statement of which silvicultural regime each ownership class gets, why, and what
-would have to be measured to change it. The machine-readable form is
-[`config/management_regimes.yaml`](../config/management_regimes.yaml); this note is the
-reasoning behind it.
+would have to be measured to change it. This note is the reasoning; the machine-readable
+forms are [`config/ownership_policy.yaml`](../config/ownership_policy.yaml) (the classes)
+and [`config/management_regimes.yaml`](../config/management_regimes.yaml) (the
+prescription library and who is eligible for what).
 
-**Vocabulary: LETO, not Harris.** The config is keyed on the **LETO ownership classes**
-carried by `FVS_StandInit.csv` — the table the FVS runs actually consume — not on the
-Harris RDS-2025-0045 raster values. The two systems use the same column name (`OWN_CODE`)
-with different meanings, which is a live bug ([#20](#the-own_code-collision)). The Harris
-raster remains the per-pixel ownership source and is crosswalked, never substituted.
+**Vocabulary: two systems, and they collide.** The ARTEMIS owner classes are keyed on the
+**Harris RDS-2025-0045 raster values**, because the raster is what assigns a class to a
+pixel. But `FVS_StandInit.csv` — the table the FVS runs actually consume — carries the
+**LETO ownership codes**, a different vocabulary under the same column name (`OWN_CODE`)
+with different meanings. That is a live bug ([#20](#the-own_code-collision)):
+`classify_owner` reads `OWN_CODE` as Harris, so a LETO federal stand (code 3) classifies
+as family forest (Harris 3). `config/ownership_policy.yaml` names both vocabularies on
+every class and carries the only sanctioned crosswalk between them; the collision is
+pinned by a tripwire test that asserts the bug is still present, so fixing #20 will fail
+that test rather than pass silently.
+
+**This note argued for keying the config on LETO instead.** That was not the direction
+taken — the classes stay Harris-keyed (see `ownership_policy.yaml`), and the LETO axis is
+recorded alongside rather than substituted for it. The class-by-class reasoning below
+still holds; read the LETO class names in it as the LETO half of that crosswalk.
 
 ---
 
@@ -224,8 +235,9 @@ its own numbers, multiplies this directly.
 - **Shelterwood is absent** — listed in `management-pipeline-plan.md` Step 3.1, unimplemented, same blocker.
 - **Fixed entry years are a placeholder** for the fitted harvest model (`PLAN.md` §3c).
 - **No tribal class in this AOI.** Harris carries one (value 5); LETO's FL 5-county run has
-  none. Kept visible in `harris_classes_absent_from_leto` so the crosswalk is total in both
-  directions rather than quietly lossy — it matters when the pipeline expands.
+  none. Kept visible in `config/ownership_policy.yaml`'s `vocabulary_gaps` so the crosswalk
+  is total in both directions rather than quietly lossy — it matters when the pipeline
+  expands.
 
 ---
 

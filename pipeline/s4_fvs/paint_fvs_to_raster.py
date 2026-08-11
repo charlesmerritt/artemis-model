@@ -24,6 +24,8 @@ import numpy as np
 import pandas as pd
 import rasterio
 
+from pipeline.ids import as_id_series, report_key_overlap
+
 REPO = Path(__file__).resolve().parents[2]
 TREEMAP_CHAZ = Path("/mnt/d/TreeMap_Chaz")
 
@@ -48,19 +50,29 @@ NODATA = -9999.0
 
 
 def load_crosswalk(path: Path) -> pd.DataFrame:
-    """TM_ID -> PLT_CN map. PLT_CN kept as string to preserve 15-digit precision."""
-    df = pd.read_csv(path, usecols=["Value", "PLT_CN"], dtype={"PLT_CN": "string"})
+    """TM_ID -> PLT_CN map. PLT_CN kept as an exact string to preserve every digit.
+
+    ``dtype="string"`` alone is not enough here. This crosswalk is written by
+    ``r/02_subset_FIA_SQLite_multistateR.R``, so a PLT_CN that R held in a double arrives
+    as the *text* ``"1.7498047010478e+13"`` — which ``dtype="string"`` preserves perfectly
+    and which then matches no FVS stand. ``as_id_series`` normalises that back to digits,
+    and rejects anything that lost digits outright.
+    """
+    df = pd.read_csv(path, usecols=["Value", "PLT_CN"], dtype={"PLT_CN": "string", "Value": "string"})
     df = df.rename(columns={"Value": "tm_id"})
-    df["tm_id"] = df["tm_id"].astype("int64")
-    return df.dropna(subset=["PLT_CN"]).drop_duplicates("tm_id")
+    df = df.dropna(subset=["PLT_CN", "tm_id"])
+    df["PLT_CN"] = as_id_series(df["PLT_CN"], column="PLT_CN")
+    df["tm_id"] = as_id_series(df["tm_id"], column="Value").astype("int64")
+    return df.drop_duplicates("tm_id")
 
 
 def load_trajectory() -> pd.DataFrame:
-    """One row per stand x cycle. stand_cn kept as string (== PLT_CN)."""
+    """One row per stand x cycle. stand_cn kept as an exact string (== PLT_CN)."""
     df = pd.read_csv(
         FVS_TRAJECTORY,
         dtype={"stand_cn": "string", "stand_id": "string"},
     )
+    df["stand_cn"] = as_id_series(df["stand_cn"], column="stand_cn")
     return df
 
 
@@ -123,9 +135,19 @@ def paint(metric: str, sel_col: str, sel_val: int, label: str,
         .groupby("stand_cn", as_index=False)[metric].first()
     )
     # TM_ID -> PLT_CN -> metric
+    report_key_overlap(crosswalk["PLT_CN"], snap["stand_cn"],
+                       left_name="crosswalk PLT_CN", right_name="trajectory stand_cn")
     merged = crosswalk.merge(
         snap.rename(columns={"stand_cn": "PLT_CN"}), on="PLT_CN", how="inner"
     )
+    if merged.empty:
+        # Without this the run writes an all-nodata GeoTIFF (or dies inside vals.min())
+        # and reports success. An empty PLT_CN join is a key mismatch, not "no data".
+        raise ValueError(
+            f"no crosswalk PLT_CN matched a trajectory stand_cn for {label}: the "
+            f"crosswalk and the FVS run do not share a key. Check that both come from the "
+            f"same TreeMap vintage and that neither PLT_CN column was written from a float."
+        )
     keys = merged["tm_id"].to_numpy()
     order = np.argsort(keys)
     keys = keys[order]

@@ -1,358 +1,399 @@
-# Management regimes by ownership class — the unified direction
+# ARTEMIS management regimes — the prescription library and who is eligible for what.
 #
-# Single source of truth for "which silvicultural regime does each owner class get?".
-# See notes/management-regimes-by-owner.md for the reasoning and open questions.
+# Two things live here, and keeping them apart is the point:
 #
-# ############################ VOCABULARY WARNING ############################
-# There are TWO ownership code systems in this project and they use the SAME
-# column name (`OWN_CODE`) with COMPLETELY DIFFERENT meanings:
+#   `prescriptions` — the LIBRARY. Eight distinct silvicultural prescriptions, each one
+#     renderable through the verified keyword templates in pipeline/s4_fvs/regime_templates.py.
+#     Library size is the cost driver: the FVS trajectory library is keyed by
+#     `(plot_id, prescription, site_index_bin)` (PLAN.md §4c, notes/methodology-directions.md
+#     item 4), so every prescription added multiplies the run count. Eight is deliberate.
 #
-#   LETO OWN_CODE (this file's primary key, from FVS_StandInit.csv):
-#       0 Unknown  1 Private  2 Corporate  3 Federal  4 State  5 County  6 NGO  7 Other
-#   Harris RDS-2025-0045 raster value (config/projection.yaml: ownership.classes):
-#       0 unknown  1 non_forest  2 water  3 family  4 corporate  5 tribal
-#       6 federal  7 state  8 local
+#   `owner_classes` — the POLICY. For each owner class from config/ownership_policy.yaml:
+#     two or three eligible prescriptions and one declared default. Prescriptions are
+#     SHARED across owner classes — `public_selection_light` is eligible for four classes
+#     and still costs one column in the trajectory library. That is how each owner gets a
+#     real menu without the library growing owner-by-owner.
 #
-# Every shared integer means something different. LETO 3 is Federal; Harris 3 is
-# Family. LETO 4 is State; Harris 4 is Corporate. Mixing them silently assigns the
-# wrong regime to every stand — see GitHub issue #20 and the `harris_*` fields below,
-# which exist so a consumer can always tell which system a value came from.
-# ############################################################################
+# The default is what pipeline/s3_management/regime_assignment.py assigns deterministically
+# today. The eligible set is what the landscape scheduler is allowed to choose among once
+# the trajectory library exists (see artemis.txt: "stand × eligible management
+# prescription"). Building both now means the scheduler does not have to invent a menu
+# later, and the trajectory library can be generated for the right set from the start.
 
-version: 2
+version: 1
 
-sources:
-  # PRIMARY: the ownership vocabulary the FVS inputs actually carry.
-  leto_stand_init:
-    path: "r2://artemis-r2/data/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv"
-    run: "LETO FVS DATABASE RUN — Hard_Ownership_Boundaries, 2026-08-04 09:58"
-    fields: "OWN_CODE, OWN_TYPE (owner axis); MGMT_CLASS, MGMT_TYPE (management axis); DB_GROUP"
-    totals: "57,527 stands; 1,052,305.90 acres; 9,199,539 tree records; variant SN; FIPS 12; inv year 2022"
-  # SECONDARY: the 30 m raster. Different vocabulary — crosswalked, never substituted.
-  ownership_raster: "Harris, Caputo & Butler (2025), doi:10.2737/RDS-2025-0045 — 30 m, circa 2022"
-  ownership_classes: "config/projection.yaml: ownership.classes"
-  # Finer parcel taxonomy upstream of LETO's OWN_TYPE (REIT / TIMO / Company split out).
-  parcel_summary: "r2://artemis-r2/data/Owner_Summaries_FL5Co_Parcels.txt"
-  regime_library: "pipeline/s4_fvs/regime_templates.py: REGIMES"
-  assignment_code: "pipeline/s3_management/regime_assignment.py: assign_regime"
-  volume_caps: "config/tpo_targets.yaml: by_owner_group"
-  buffer_rules: "config/bmp_rules.yaml"
+# Offsets and rotation ages resolve against these. Kept in sync with config/projection.yaml
+# (`projection.base_year`, `projection.cycle_years`); the loader asserts they match.
+inventory_year: 2022
+cycle_years: 5
+horizon_years: 50
 
-# Year-valued params below are OFFSETS from the inventory year
-# (config/projection.yaml: projection.base_year, 2022). A `*_offset` key of 10 means
-# the absolute FVS keyword year is inv_year + 10 = 2032.
-inventory_year_source: "config/projection.yaml: projection.base_year"
+# Entries scheduled past `inventory_year + horizon_years` are dropped — the keyfile only
+# runs ten 5-year cycles, so a later entry is noise in the keyfile and a lie in the
+# schedule. A prescription whose every entry falls outside the horizon resolves to
+# `no_management` for that stand and says so in the assignment's notes.
 
-# ---------------------------------------------------------------------------------
-# Precedence — evaluated top to bottom, first match wins.
-#
-# LETO carries ownership and management as two independent columns, which is exactly
-# this ladder: MGMT_CLASS/MGMT_TYPE (geometry) is orthogonal to OWN_CODE/OWN_TYPE
-# (owner). The 9 FVS DB_GROUPs flatten the two axes into one grouping key for database
-# splitting; that flattening is a run-packaging convenience and must not be read as
-# "Riparian is an ownership class".
-# ---------------------------------------------------------------------------------
-precedence:
-  - rank: 1
-    rule: riparian_override
-    keyed_by: management_class
-    detail: >-
-      MGMT_CLASS == 1 (MGMT_TYPE "Riparian") gets `no_management` unconditionally — no
-      entry of any kind, no buffer class exempted, no ownership able to override it.
-      Still grown and reported as its own polygon. notes/methodology-directions.md item 2.
-  - rank: 2
-    rule: owner_class_default
-    keyed_by: leto_own_type
-    detail: "The per-class `default` block below."
-  - rank: 3
-    rule: forest_type_split
-    keyed_by: forest_type_group
-    detail: >-
-      Only inside a class that declares `default.by_forest_type` (corporate today).
-      Pine test is FORTYPCD 140-179 per regime_assignment.is_pine.
+# ---------------------------------------------------------------------------------------
+# Overrides — evaluated before owner class, and they win
+# ---------------------------------------------------------------------------------------
+overrides:
+  riparian:
+    # Executable, not descriptive. `regime_assignment.py` reads `field` and `min_value` to
+    # decide, and derives its RIPARIAN_SMZ_PCT constant from `min_value` — editing the
+    # number here changes the behaviour. `absolute` is a tripwire: the code asserts it is
+    # true, because no non-absolute riparian path exists to fall back to.
+    field: SMZ_Pct
+    min_value: 50.0
+    prescription: no_management
+    absolute: true
+    rationale: >
+      No entry of any kind, no buffer class exempted. Assigned by geometry, so it
+      overrides every ownership and forest-type rule. Riparian units are still grown
+      through FVS on the same cycles and still reported as their own polygons — see
+      notes/methodology-directions.md item 2 and PLAN.md §4b. `absolute: true` means no
+      later rule, and no scheduler decision, may reinstate an entry.
 
-riparian_override:
-  regime: no_management
-  params: {}
-  # PRIMARY test — the LETO management axis.
-  mgmt_class_value: 1
-  mgmt_type_value: "Riparian"
-  # FALLBACK test for units that predate LETO segmentation and carry only a percentage.
-  smz_pct_threshold: 50.0
-  applies_to: all_owner_classes
-  observed:
-    stands: 17703
-    acres: 26485.31
-    mean_stand_acres: 1.50
-    note: >-
-      Riparian stands are slivers — 1.50 ac mean against 25.76 ac for upland. 17,703 of
-      57,527 stands (31%) carry 2.5% of the acreage. That is a delineation artifact worth
-      watching (see pipeline/s3_management/sliver_merge.py), not a modelling decision, and
-      it must not be resolved by dissolving buffers into neighbours.
+# ---------------------------------------------------------------------------------------
+# The prescription library
+# ---------------------------------------------------------------------------------------
+# `template`   — the builder in pipeline/s4_fvs/regime_templates.py that renders it.
+# `schedule`   — how entry years are chosen:
+#                  age_based    : entry at (target_age - stand_age), snapped up to the next
+#                                 cycle boundary, floored at one cycle out. Preferred: a
+#                                 22-year-old plantation on a 25-year rotation is cut in
+#                                 3 years, not 30.
+#                  offset_based : fixed offsets from inventory_year. Used when stand_age is
+#                                 unavailable, and it is what reproduces the pre-config
+#                                 behaviour exactly.
+#                `offsets` is therefore required on every prescription — it is the fallback,
+#                not an alternative.
+# `regen`      — what re-initializes the stand after a stand-replacing entry. Regeneration
+#                is NOT expressed with FVS PLANT/NATREGEN keywords: those field layouts are
+#                unverified in this project (regime_templates.py docstring). Instead the
+#                coupling loop restarts the stand from a fixed tree list — the slot named
+#                here, defined in config/fallback_treelists.yaml. External cut injection and
+#                restart are verified exact on stand values
+#                (research/restart_fidelity/outputs/gate_cut_injection.txt).
+# `repeats`    — whether the coupling loop starts the next rotation after regeneration.
+#                A 25-year rotation fits twice in the 50-year horizon; the keyfile only
+#                ever expresses the first rotation.
 
-# ---------------------------------------------------------------------------------
-# Regime library — mechanical templates, plus the PLAN.md 4b policy name each implements.
-# ---------------------------------------------------------------------------------
-# The regime library itself lives in config/regimes.yaml — each regime is a named
-# prescription with an explicit, ordered operation list (timing, DBH window, intensity).
-# This file only says WHICH regime an owner class gets; regimes.yaml says what it does.
-# Loader: pipeline/s4_fvs/regime_library.py
-regime_library: "config/regimes.yaml"
+prescriptions:
 
-# ---------------------------------------------------------------------------------
-# Owner classes — keyed by LETO OWN_TYPE, the vocabulary the FVS inputs carry.
-#
-# `observed` counts are upland stands/acres from the 2026-08-04 LETO run (riparian
-# stands are excluded because rank-1 precedence takes them before ownership applies).
-#
-# `harris_class` / `harris_raster_value` give the Harris equivalent where one exists,
-# and are explicitly null where it does not. NEVER assume leto_own_code and
-# harris_raster_value are interchangeable — they are not.
-#
-# `assignment_status`:
-#   current  — regime_assignment.py produces this regime today (via the Harris code).
-#   proposed — the direction differs from code; `supersedes` names what code does now.
-# ---------------------------------------------------------------------------------
+  no_management:
+    label: "Grow only — no entry"
+    template: no_management
+    forest_types: [any]
+    schedule:
+      mode: none
+      offsets: {}
+    entries_per_horizon: 0
+    regen: null
+    repeats: false
+    rationale: >
+      The baseline, and a real management choice rather than only a control: it is the
+      mandatory riparian regime, the dominant outcome on county/municipal conservation
+      land, and the honest representation of family forest that is never entered.
+
+  pine_plantation_short_rotation:
+    label: "Industrial pine plantation — pulpwood rotation"
+    template: plantation_rotation
+    forest_types: [pine]
+    schedule:
+      mode: age_based
+      first_thin_age: 15
+      rotation_years: 25
+      offsets:
+        thin_year: 15
+        clearcut_year: 30
+    params:
+      thin_proportion: 0.40
+      thin_max_dbh: 8.0
+    entries_per_horizon: 2
+    regen:
+      treelist_slot: planted_pine_regen
+      delay_years: 1
+    repeats: true
+    rationale: >
+      Short-rotation planted pine on industrial ownership: one commercial thin from below,
+      then a clearcut at rotation age, replanted. The dominant north Florida industrial
+      practice and the largest single contributor to private TPO volume.
+
+  pine_plantation_long_rotation:
+    label: "Pine plantation — sawtimber rotation"
+    template: plantation_rotation
+    forest_types: [pine]
+    schedule:
+      mode: age_based
+      first_thin_age: 18
+      rotation_years: 35
+      offsets:
+        thin_year: 18
+        clearcut_year: 35
+    params:
+      thin_proportion: 0.35
+      thin_max_dbh: 9.0
+    entries_per_horizon: 2
+    regen:
+      treelist_slot: planted_pine_regen
+      delay_years: 1
+    repeats: true
+    rationale: >
+      A longer rotation carried to sawtimber. Held by owners who are less
+      capital-constrained than a pulpwood-driven industrial rotation — state forests,
+      non-industrial corporate, and the managed share of family pine.
+
+  hardwood_clearcut_regen:
+    label: "Hardwood / mixed clearcut with natural regeneration"
+    template: clearcut
+    # Also covers `other` — the oak/pine group and stands whose type is unknown. A
+    # stand-replacing harvest regenerating naturally is the type-agnostic option; planting
+    # pine on a stand that may not be pine is the guess the forest-type filter exists to
+    # prevent.
+    forest_types: [hardwood, other]
+    schedule:
+      mode: age_based
+      rotation_years: 50
+      offsets:
+        year: 30
+    entries_per_horizon: 1
+    regen:
+      treelist_slot: hardwood_regen
+      delay_years: 3
+    repeats: false
+    rationale: >
+      Stand-replacing harvest of a hardwood type, regenerating naturally rather than
+      planted. Longer delay before the regeneration tree list is injected because
+      hardwood sprout and seedling establishment is slower to reach a measurable list
+      than planted pine.
+
+  family_light_thin:
+    label: "Family forest — single light thin from below"
+    template: thin_from_below
+    forest_types: [any]
+    schedule:
+      mode: offset_based
+      offsets:
+        year: 10
+    params:
+      max_dbh: 8.0
+      proportion: 0.35
+    entries_per_horizon: 1
+    regen: null
+    repeats: false
+    rationale: >
+      One partial entry across the horizon and no regeneration harvest. Matches the
+      irregular, income-driven pattern of small private harvest better than a scheduled
+      rotation does. Offset-based because family harvest timing tracks the owner's
+      circumstances, not the stand's age.
+
+  family_uneven_aged_selection:
+    label: "Family / small private — periodic selection"
+    template: selection_harvest
+    forest_types: [any]
+    schedule:
+      mode: offset_based
+      offsets:
+        start_year: 15
+        end_year: 45
+    params:
+      interval: 15
+      proportion: 0.15
+    entries_per_horizon: 3
+    regen: null
+    repeats: false
+    rationale: >
+      Light repeated removals maintaining continuous cover. The uneven-aged alternative
+      for owners managing for amenity, wildlife, or periodic income rather than rotation
+      yield.
+
+  public_selection_light:
+    label: "Public — conservative periodic selection"
+    template: selection_harvest
+    forest_types: [any]
+    schedule:
+      mode: offset_based
+      offsets:
+        start_year: 10
+        end_year: 40
+    params:
+      interval: 10
+      proportion: 0.20
+    entries_per_horizon: 4
+    regen: null
+    repeats: false
+    rationale: >
+      The conservative public default: light removals on a decadal interval, no
+      stand-replacing entry. Offset-based, because public entry is driven by planning
+      cycles rather than by stand age.
+
+  public_thin_restore:
+    label: "Public — repeated restoration thinning from below"
+    template: thin_from_below_repeated
+    forest_types: [any]
+    schedule:
+      mode: offset_based
+      offsets:
+        start_year: 5
+        end_year: 45
+    params:
+      interval: 15
+      proportion: 0.30
+      max_dbh: 10.0
+    entries_per_horizon: 3
+    regen: null
+    repeats: false
+    rationale: >
+      Repeated thinning from below on a long interval — the density-reduction half of the
+      thin-and-burn regime used on southern pine public land. Prescribed fire is NOT
+      modelled here: the FVS fire keywords are unverified in this project and the FFE
+      state is known to be corrupted across restart barriers
+      (notes/restart-fidelity-findings.md). This prescription is the mechanical thinning
+      only, and the writeup must say so.
+
+# ---------------------------------------------------------------------------------------
+# Eligibility and defaults, by owner class
+# ---------------------------------------------------------------------------------------
+# `default` — one prescription per forest-type branch; what regime_assignment.py assigns.
+# `eligible` — the menu the landscape scheduler may choose from. Two or three per class
+#              beyond `no_management`, which is universally eligible (`no_management` is
+#              always a legal choice: any owner may decline to harvest).
+
+no_management_universally_eligible: true
+
 owner_classes:
 
-  unknown:
-    leto_own_code: 0
-    leto_own_type: "Unknown"
-    harris_class: unknown_forest
-    harris_raster_value: 0
-    label: "Forested, ownership unresolved"
-    observed: {upland_stands: 218, upland_acres: 2122.05}
-    tpo_owner_group: null          # deliberately uncapped
-    lamps_mha_group: null          # not schedulable
-    default: {regime: light_default}
-    eligible_regimes: [no_management, light_default]
-    differentiation: >-
-      Not a real owner. Resolve the stands rather than tune the regime. Note 429 of the
-      647 Unknown stands are riparian and never reach an ownership rule at all.
-    reporting: >-
-      Report as its own row, never folded into Private.
-
-  private:
-    leto_own_code: 1
-    leto_own_type: "Private"
-    harris_class: family_forest
-    harris_raster_value: 3
-    label: "Private / family forest (NIPF)"
-    observed: {upland_stands: 11567, upland_acres: 269312.28}
-    tpo_owner_group: "Private"
-    lamps_mha_group: null          # LAMPS maps industrial+public only; family raises
-    default: {regime: nipf_light}
-    eligible_regimes: [no_management, nipf_light, light_default, hardwood_industrial]
-    differentiation: >-
-      Largest class by upland acreage (269,312 ac, 26%). Harvest is episodic and
-      owner-driven rather than rotation-driven; a single deterministic thin is a
-      placeholder for the fitted harvest model (PLAN.md 3c).
-    open:
-      - "No LAMPS minimum-harvest-age group. Scheduler must degrade to schedulable=false
-         rather than crash — LAMPS integration plan, Task 4."
-
-  corporate:
-    leto_own_code: 2
-    leto_own_type: "Corporate"
-    harris_class: corporate_forest
-    harris_raster_value: 4
-    label: "Corporate forest (REIT / TIMO / operating company)"
-    observed: {upland_stands: 5709, upland_acres: 212814.42}
-    tpo_owner_group: "Private"
-    lamps_mha_group: "industrial"
+  private_industrial:
     default:
-      by_forest_type:
-        pine:  {regime: pine_plantation_industrial}
-        other: {regime: hardwood_industrial}
-      forest_type_test: "pipeline.s3_management.regime_assignment.is_pine (FORTYPCD 140-179)"
-    eligible_regimes: [nipf_light, pine_plantation_industrial, hardwood_industrial]
-    differentiation: >-
-      The one class whose management is genuinely rotation-driven, so a fixed schedule is
-      defensible here in a way it is not elsewhere. 30-year rotation is the Southeast
-      loblolly convention, not a fitted value.
-    open:
-      - "LETO collapses REIT, TIMO, and operating company into one class. The parcel
-         summary keeps them apart (Forest-REIT 179,723 ac; Forest-TIMO 45,848 ac;
-         Forest-Company 45,235 ac) and they do not manage alike — REIT/TIMO are the most
-         rotation-driven owners in the AOI. Splitting this class is the highest-value
-         refinement available, and the data to do it already exists upstream."
-      - "plantation_rotation emits no PLANT/NATREGEN keyword — issue #18."
+      pine: pine_plantation_short_rotation
+      hardwood: hardwood_clearcut_regen
+      other: hardwood_clearcut_regen     # unknown/mixed type: harvest, but do not plant pine
+    eligible:
+      - pine_plantation_short_rotation
+      - pine_plantation_long_rotation
+      - hardwood_clearcut_regen
+    rationale: >
+      Rotation forestry, with the pulpwood and sawtimber rotations as the real economic
+      choice the scheduler makes per stand, and a hardwood path for the non-pine share.
+
+  private_corporate_other:
+    default:
+      pine: pine_plantation_long_rotation
+      hardwood: family_light_thin
+      other: family_light_thin
+    eligible:
+      - pine_plantation_long_rotation
+      - family_light_thin
+      - family_uneven_aged_selection
+    rationale: >
+      Corporate title without a timber-asset objective. Managed, but on a longer and
+      lighter footing than industrial — closer to family forest in behaviour than to a
+      TIMO's rotation schedule.
+
+  private_family:
+    default:
+      pine: family_light_thin
+      hardwood: family_light_thin
+      other: family_light_thin
+    eligible:
+      - family_light_thin
+      - family_uneven_aged_selection
+      - pine_plantation_long_rotation
+    rationale: >
+      Light entries by default. `pine_plantation_long_rotation` stays eligible because a
+      real minority of family pine is managed on rotation, and the scheduler needs that
+      option to reach the private TPO volume without over-cutting the industrial class.
+
+  tribal:
+    default:
+      pine: public_selection_light
+      hardwood: public_selection_light
+      other: public_selection_light
+    eligible:
+      - public_selection_light
+      - family_light_thin
+    rationale: >
+      Conservative by default. Pilot-scale tribal area is too small to support a
+      class-specific behaviour estimate (config/projection.yaml flags the same 500-event
+      floor), so this is a placeholder policy, not a finding.
 
   federal:
-    leto_own_code: 3
-    leto_own_type: "Federal"
-    harris_class: federal_forest
-    harris_raster_value: 6
-    label: "Federal forest (National Forest and other federal)"
-    observed: {upland_stands: 4534, upland_acres: 213545.57}
-    tpo_owner_group: "Federal (NF)"
-    lamps_mha_group: "public"
-    default: {regime: public_uneven_aged}
-    eligible_regimes: [no_management, public_uneven_aged, public_active_thinning]
-    differentiation: >-
-      Light repeated selection (15% every 15 years), no regeneration harvest — the
-      lightest cutting regime of any class here. The federal ownership in this AOI is
-      dominated by longleaf systems managed for structure and fire, where removals are
-      modest and continuous rather than scheduled around yield. Also the only class with
-      its own TPO cap (1.77M cuft/yr all-years, 2.02M for 2013-2024).
-    open:
-      - "The TPO 'Federal (NF)' cap is National Forest only; other federal ownership in
-         this class has no cap of its own and would consume the NF budget."
+    default:
+      pine: public_selection_light
+      hardwood: public_selection_light
+      other: public_selection_light
+    eligible:
+      - public_selection_light
+      - public_thin_restore
+    rationale: >
+      National Forest land under a conservative selection default, with restoration
+      thinning as the alternative — the pilot's federal land is Osceola NF, where
+      density reduction in pine is the characteristic treatment.
 
   state:
-    leto_own_code: 4
-    leto_own_type: "State"
-    harris_class: state_forest
-    harris_raster_value: 7
-    label: "State forest"
-    observed: {upland_stands: 1958, upland_acres: 74397.91}
-    tpo_owner_group: "Other public"
-    lamps_mha_group: "public"
-    default: {regime: public_active_thinning}
-    eligible_regimes: [no_management, public_active_thinning, public_uneven_aged, pine_plantation_industrial]
-    differentiation: >-
-      Deliberately heavier than federal: an opening thin from below at +5 (30% under 10
-      inches) for longleaf restoration and RCW habitat, then 20% selection entries. State
-      forests here carry a real timber program alongside the restoration mandate, which
-      federal longleaf ground largely does not.
-    open:
-      - "The federal/state split is a judgement about management intent, not a fitted
-         difference. LCMS Tree Removal rates on state versus federal stands would confirm
-         or refute the direction and the magnitude."
+    default:
+      pine: public_thin_restore
+      hardwood: public_selection_light
+      other: public_selection_light
+    eligible:
+      - public_thin_restore
+      - public_selection_light
+      - pine_plantation_long_rotation
+    rationale: >
+      State forests carry an active timber program alongside conservation objectives, so
+      the pine default is the thinning regime rather than light selection, and a
+      sawtimber rotation stays on the menu.
 
-  county:
-    leto_own_code: 5
-    leto_own_type: "County"
-    harris_class: local_forest
-    harris_raster_value: 8
-    label: "County / municipal forest"
-    observed: {upland_stands: 278, upland_acres: 3874.83}
-    tpo_owner_group: "Other public"
-    lamps_mha_group: "public"
-    default: {regime: custodial_light}
-    eligible_regimes: [no_management, custodial_light]
-    differentiation: >-
-      Smallest class (3,875 upland ac, 0.4%), largely parks and watershed land where
-      commercial entry is rare. Given its own custodial regime — a single 15% entry at
-      +20 — rather than the public selection schedule, which would have cut 20% every
-      decade on land that may never be entered.
-    open:
-      - "If these stands show a Tree Removal rate near zero in LCMS 1985-2024, the default
-         should drop to no_management. custodial_light is the conservative middle."
+  local:
+    default:
+      pine: no_management
+      hardwood: no_management
+      other: no_management
+    eligible:
+      - public_selection_light
+      - public_thin_restore
+    rationale: >
+      County and municipal forest is predominantly parks, watershed, and school land
+      where commercial harvest is the exception. Default to no entry — which stays on the
+      menu through `no_management_universally_eligible` — and let the scheduler opt in to
+      light selection or a density-reduction thin where a county does manage its forest.
 
-  ngo:
-    leto_own_code: 6
-    leto_own_type: "NGO"
-    harris_class: null             # Harris has no NGO class — folded into family/corporate
-    harris_raster_value: null
-    label: "NGO / land trust forest"
-    observed: {upland_stands: 370, upland_acres: 15508.35}
-    tpo_owner_group: "Private"     # FIA treats NGO as private ownership
-    lamps_mha_group: "public"      # conservation behaviour, not industrial
-    default: {regime: conservation_restoration}
-    eligible_regimes: [no_management, conservation_restoration, public_uneven_aged]
-    differentiation: >-
-      A class the Harris raster cannot express at all — this is the clearest single reason
-      to key regimes off LETO rather than the raster. Conservation NGOs and land trusts
-      (TNC and similar in this AOI) manage for restoration and habitat, not yield, so the
-      public conservative schedule is a closer fit than the private light thin they
-      currently receive by accident.
-    open:
-      - "no_management may be the better default for easement-encumbered NGO land.
-         Needs the easement layer, which the pipeline does not have."
+  unknown:
+    menu_policy: minimal      # deliberately narrower than the 2-3 every real owner gets
+    default:
+      pine: family_light_thin
+      hardwood: family_light_thin
+      other: family_light_thin
+    eligible:
+      - family_light_thin
+    rationale: >
+      Harris `unknown_forest`, which is not an owner type — it is missing information.
+      One light entry or nothing: with no owner known, letting the scheduler place a
+      rotation clearcut here would be inventing behaviour to hit a volume target. The
+      shortfall lands on known private units instead, where it is attributable. Every
+      unit here carries the `unknown_ownership` flag so the area stays reportable.
 
-  other:
-    leto_own_code: 7
-    leto_own_type: "Other"
-    harris_class: null             # no clean Harris equivalent
-    harris_raster_value: null
-    label: "Other / unclassified ownership"
-    observed: {upland_stands: 15190, upland_acres: 234245.19}
-    tpo_owner_group: null          # uncapped pending decomposition — see below
-    lamps_mha_group: null          # not schedulable until decomposed
-    default: {regime: light_default}
-    eligible_regimes: [no_management, light_default]
-    differentiation: >-
-      THE BIGGEST OPEN PROBLEM IN THIS FILE. 15,190 upland stands and 234,245 acres — 22%
-      of upland acreage and the second-largest class — sitting in a bucket with no owner
-      semantics at all. Every harvest total this pipeline produces is sensitive to what
-      "Other" turns out to be, and the light-thin default is a holding position chosen to
-      keep the class from dominating a total, not a claim about how the land is managed.
-    open:
-      - "Decompose it. The parcel summary shows the likely constituents — Other-Misc
-         (702,605 parcel ac, 7.99 ac mean, 1.61 ac median), Other-State, Other-Private,
-         Other-County, Other-Federal — which suggests 'Other' is mostly small non-industrial
-         parcels plus the non-forest-classified holdings of owners already named above.
-         If most of it is really Private, it belongs in that class and under the Private cap."
-      - "Uncapped until decomposed. Assigning it to a TPO group before knowing what it is
-         would silently move ~22% of the landscape under someone else's volume ceiling."
+# ---------------------------------------------------------------------------------------
+# Deliberate changes from the pre-config behaviour
+# ---------------------------------------------------------------------------------------
+# regime_assignment.py previously sent Federal, State, Tribal, and Local alike to
+# `selection_harvest`, and any corporate owner to plantation-or-clearcut. Under this file:
+#   - Federal, tribal  → unchanged (public_selection_light == the old selection_harvest
+#                        parameters exactly).
+#   - State pine       → now public_thin_restore, not selection.
+#   - Local            → now no_management, not selection.
+#   - Corporate        → still industrial-by-default, but now demotable to
+#                        private_corporate_other by parcel evidence, which changes both the
+#                        default prescription and the eligible menu for the demoted units.
+# Everything else resolves to the same template and the same parameters as before, which
+# tests/test_s4_regime_templates.py pins.
 
-# Harris classes with no LETO counterpart in this AOI. Kept visible so the crosswalk is
-# demonstrably total in both directions rather than quietly lossy.
-harris_classes_absent_from_leto:
-  tribal_forest:
-    harris_raster_value: 5
-    note: >-
-      No tribal ownership appears in the 5-county AOI's LETO run. projection.yaml's
-      "fall back to pooled estimate if training sample < 500 harvest events" still applies
-      when the pipeline expands beyond Florida.
-  non_forest:
-    harris_raster_value: 1
-    note: "Masked from the pipeline (projection.yaml: ownership.mask_values)."
-  water:
-    harris_raster_value: 2
-    note: "Masked from the pipeline (projection.yaml: ownership.mask_values)."
-
-# ---------------------------------------------------------------------------------
-# Crosswalks.
-# ---------------------------------------------------------------------------------
-crosswalks:
-
-  # LETO owner class -> TPO owner group. Names must match config/tpo_targets.yaml
-  # by_owner_group keys exactly; the scheduler's OWNER dimension looks up caps by these.
-  tpo_owner_group:
-    "Federal (NF)": [federal]
-    "Other public": [state, county]
-    "Private": [private, corporate, ngo]
-    _uncapped: [unknown, other]
-
-  # LETO owner class -> LAMPS minimum-harvest-age group. `_unmapped` classes have no MHA
-  # by design: LAMPS refuses to invent one, so the scheduler marks those units
-  # schedulable=false rather than crashing.
-  lamps_mha_group:
-    industrial: [corporate]
-    public: [federal, state, county, ngo]
-    _unmapped: [private, unknown, other]
-
-  # LETO OWN_CODE -> Harris raster value. THE INTEGERS DO NOT MATCH. This mapping is the
-  # only safe way to move between the two systems.
-  leto_own_code_to_harris_raster_value:
-    0: 0      # Unknown   -> unknown_forest
-    1: 3      # Private   -> family_forest
-    2: 4      # Corporate -> corporate_forest
-    3: 6      # Federal   -> federal_forest
-    4: 7      # State     -> state_forest
-    5: 8      # County    -> local_forest
-    6: null   # NGO       -> no Harris equivalent
-    7: null   # Other     -> no Harris equivalent
-
-  # The 9 FVS database groups from the LETO run. This is a RUN-PACKAGING key, not an
-  # ownership vocabulary: it equals OWN_TYPE for upland stands and "Riparian" for every
-  # riparian stand regardless of owner. Do not assign regimes off this field.
-  fvs_db_group:
-    derivation: "OWN_TYPE where MGMT_CLASS == 0; 'Riparian' where MGMT_CLASS == 1"
-    groups: [Corporate, County, Federal, NGO, Other, Private, Riparian, State, Unknown]
-
-# ---------------------------------------------------------------------------------
-# Trajectory-library cost. FVS run count is unique(plot x regime x site-index bin)
-# (PLAN.md 4c). Distinct parameterizations across every eligible set above:
-#   no_management, thin_from_below, selection_harvest, plantation_rotation, clearcut = 5.
-# The LETO run resolves 57,527 stands from 529 retained unique PLT_CN donors, so the
-# library is keyed on those donors, not on stand count.
-# ---------------------------------------------------------------------------------
-trajectory_library:
-  distinct_parameterizations: 5
-  leto_unique_donor_plots: 529
-  leto_stands: 57527
-  pilot_upper_bound_runs: 2645   # 529 donors x 5 regimes
-  si_binning: "inherited from donor plot; no multiplier until per-pixel SI regression lands (PLAN.md 2d)"
+# ---------------------------------------------------------------------------------------
+# Trajectory-library cost
+# ---------------------------------------------------------------------------------------
+# 8 prescriptions. Five-county pilot: 693 unique FIA plots (notes/terminology.md). With
+# site-index binning at `si_bins` the upper bound on FVS runs is
+# 693 × 8 × si_bins, before deduplication for plots that are never eligible for a given
+# prescription. Any addition to `prescriptions` must state its cost here.
+si_bins: 3
+estimated_max_runs_pilot: 16632      # 693 × 8 × 3

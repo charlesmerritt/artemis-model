@@ -86,6 +86,16 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 - **The full mapping now lives in [`config/management_regimes.yaml`](../config/management_regimes.yaml)**, with the reasoning in [`management-regimes-by-owner.md`](management-regimes-by-owner.md). It carries all **seven** Harris forest classes separately (per `PLAN.md` §3c) rather than the four-way `PUBLIC_OWNERS` collapse the sketch above implies, plus each class's eligible regime set and its key in the TPO and LAMPS owner vocabularies.
 - **Output**: `pipeline/s3_management/regime_assignment.py` with `assign_regime(unit_attrs) -> (regime_name, params)`. The module still hardcodes its own copy of the mapping; `tests/test_config.py` asserts it agrees with the config until the loader lands.
 
+**Superseded by config, 2026-08-03.** The mapping above is now declared in
+[`config/management_regimes.yaml`](../config/management_regimes.yaml) rather than written into the module, and
+it carries two things this step did not: an **owner class** resolved from the Harris raster
+against the parcel layer (`config/ownership_policy.yaml`, seven classes — the corporate
+class is split into industrial vs. other-corporate), and an **eligible menu** of 2-3
+prescriptions per owner class alongside the single default, so the Phase 4 scheduler has
+something to choose among. State pine now defaults to a restoration thin and local
+government to no management; federal and family are unchanged. See
+[`docs/config-policy.md`](../docs/config-policy.md).
+
 ---
 
 ## Phase 4: Constrained harvest scheduling prototype

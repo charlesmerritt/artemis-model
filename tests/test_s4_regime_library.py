@@ -196,41 +196,38 @@ def test_rendered_years_are_inside_the_projection_window(names, library, project
                 assert INV_YEAR < year <= INV_YEAR + horizon, f"{name}: cut in {year}"
 
 
-def test_owner_defaults_and_eligible_sets_resolve_to_real_regimes(management_regimes, names):
-    """Every regime named in management_regimes.yaml must exist in the library."""
-    for cls, block in management_regimes["owner_classes"].items():
-        default = block["default"]
-        defaults = (
-            [b["regime"] for b in default["by_forest_type"].values()]
-            if "by_forest_type" in default else [default["regime"]]
-        )
-        for regime in defaults:
-            assert regime in names, f"{cls}: default regime {regime!r} not in the library"
-            assert regime in block["eligible_regimes"], f"{cls}: default not eligible"
-        for regime in block["eligible_regimes"]:
-            assert regime in names, f"{cls}: eligible regime {regime!r} not in the library"
+def test_the_two_regime_libraries_are_independent(management_regimes, names):
+    """This library is used by config/scenarios.yaml, not by management_regimes.yaml.
 
+    There are two prescription libraries in the repo and that is a known, deliberate
+    state, not an accident to be papered over:
 
-def test_every_owner_class_gets_a_distinct_default(management_regimes):
-    """The point of this library: public classes no longer share one selection_harvest.
+      - `config/regimes.yaml` (this one) declares operations as data and is what the
+        Diaz-style scenario factorial in `config/scenarios.yaml` resolves against.
+      - `config/management_regimes.yaml` carries its own `prescriptions` block, rendered
+        through the Python builders in `pipeline/s4_fvs/regime_templates.py`, and is what
+        `regime_assignment.py` assigns from today.
 
-    Not every class needs a unique regime — `unknown` and `other` intentionally share the
-    holding position — but the four public/conservation classes must differ from each
-    other, which is what the old shared-parameter version could not express.
+    They overlap in intent and do not share names. Reconciling them is an open decision.
+    This test pins the split so neither library silently starts depending on the other —
+    the failure mode that would make the split expensive instead of merely untidy.
     """
-    defaults = {}
+    prescriptions = set(management_regimes["prescriptions"])
+    assert "regime_library" not in management_regimes, (
+        "management_regimes.yaml now points at an external library; if that is intended, "
+        "this split is being resolved and these tests need rewriting"
+    )
+    shared = prescriptions & set(names)
+    assert shared == {"no_management"}, (
+        f"the two libraries share regime names besides no_management: {sorted(shared)}. "
+        "Either they are being merged (good — rewrite this test) or a name collided by "
+        "accident (bad — one of them means something different now)."
+    )
     for cls, block in management_regimes["owner_classes"].items():
-        d = block["default"]
-        if "by_forest_type" not in d:
-            defaults[cls] = d["regime"]
-    public = {defaults[c] for c in ("federal", "state", "county", "ngo")}
-    assert len(public) == 4, f"public classes still share regimes: {public}"
-
-
-def test_riparian_override_regime_exists_and_does_not_cut(management_regimes, library):
-    regime = management_regimes["riparian_override"]["regime"]
-    assert regime in regime_names(library)
-    assert not cuts(regime, library), "riparian must never be scheduled for entry"
+        for regime in block["eligible"]:
+            assert regime in prescriptions, (
+                f"{cls}: eligible prescription {regime!r} is not in management_regimes.yaml"
+            )
 
 
 def test_intensity_ordering_matches_stated_intent(library):
