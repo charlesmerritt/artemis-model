@@ -97,6 +97,11 @@ def test_scheduler_objectives_use_known_forms(projection_config):
         assert obj["weight"] > 0
 
 
+def _harvest_volume_objective(projection_config):
+    objectives = projection_config["harvest"]["objectives"]
+    return next(o for o in objectives if o["metric"] == "harvest_volume")
+
+
 def test_harvest_volume_target_stays_dimensioned(projection_config):
     """The volume target must stay broken out by county and owner group.
 
@@ -106,10 +111,23 @@ def test_harvest_volume_target_stays_dimensioned(projection_config):
     Sustained-Yield Unit. Collapsing `dimensions` to a landscape total reproduces that
     artifact across Florida counties, so it is asserted rather than left to drift.
     """
-    objectives = projection_config["harvest"]["objectives"]
-    volume = next(o for o in objectives if o["metric"] == "harvest_volume")
+    volume = _harvest_volume_objective(projection_config)
     assert volume["form"] == "evenflow_target"
     assert set(volume["dimensions"]) >= {"county", "owner_group"}
+
+
+def test_harvest_volume_target_period_exists(projection_config, project_root):
+    """The objective selects one period available in every target dimension."""
+    import yaml
+
+    volume = _harvest_volume_objective(projection_config)
+    with open(project_root / volume["target_source"]) as f:
+        targets = yaml.safe_load(f)
+    period = volume["target_period"]
+    target_groups = [targets["by_county"], targets["by_owner_group"]]
+    assert all(period in values for group in target_groups for values in group.values()), (
+        f"target_period {period!r} is not available for every configured target"
+    )
 
 
 def test_one_objective_dominates_the_rest(projection_config):
@@ -141,24 +159,22 @@ def test_annealing_schedule_is_well_formed(projection_config):
 # The scheduler can only select what the library contains, so these tests are the guard
 # on the decision space itself. See notes/trajectory-library-and-annealing.md section 3.
 
-# Prescription families implemented in pipeline/s4_fvs/regime_templates.py.
-REGIME_FAMILIES = {
-    "no_management", "clearcut", "thin_from_below",
-    "selection_harvest", "plantation_rotation",
-}
-
-
 def _families(entry):
     return [p["family"] for p in entry["prescriptions"]]
 
 
-def test_prescription_families_are_implemented(prescriptions_config):
+def test_prescription_families_are_implemented(
+    prescriptions_config, project_root, monkeypatch
+):
     """Every family named in the config must exist in regime_templates.REGIMES."""
+    monkeypatch.syspath_prepend(project_root)
+    from pipeline.s4_fvs.regime_templates import REGIMES
+
     used = set()
     for entry in prescriptions_config["ownership_libraries"].values():
         used.update(_families(entry))
     used.update(_families(prescriptions_config["overrides"]["riparian"]))
-    unknown = used - REGIME_FAMILIES
+    unknown = used - set(REGIMES)
     assert not unknown, f"prescriptions.yaml names unimplemented families: {sorted(unknown)}"
 
 

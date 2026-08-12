@@ -102,7 +102,7 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 - Cache on a content hash of `(tree list, site attributes, prescription)`. Dedup is a cache, never a reporting decision.
 - Budget: target **6–12 trajectories per unit**; the 5-county pilot (order 10⁴ units) is then order 10⁵ runs, a one-time cost per library version.
 - **Output**: `trajectory_index` (one row per trajectory — the scheduler's working set) and `trajectory_cycles` (one row per trajectory × cycle) in DuckDB/Parquet. Built from raw `FVS_Summary2` using the view vocabulary in [`duckdb-iterative-coupling-cells.md`](duckdb-iterative-coupling-cells.md).
-- **Verify** (library integrity, on every build): ≥2 trajectories for every non-riparian unit and exactly 1 for every riparian unit; exactly `n_cycles` rows per trajectory with no NaNs in objective columns; unit layer and library cover each other in **both** directions; every prescription is a member of its class's eligible set.
+- **Verify** (library integrity, on every build): ≥2 trajectories for every non-riparian unit and exactly 1 for every riparian unit; exactly `n_cycles + 1` state rows per trajectory after duplicate removal rows are collapsed, with no NaNs in objective columns; unit layer and library cover each other in **both** directions; every prescription is a member of its class's eligible set.
 
 ### Step 4.3: Build the simulated-annealing scheduler
 - Core logic in `pipeline/s3_management/harvest_scheduler.py`, alongside the existing greedy allocator:
@@ -117,7 +117,7 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 - **Verify**: determinism under a fixed seed; monotone best-so-far objective; structural constraints honoured exactly; final objective ≥ the greedy baseline.
 
 ### Step 4.4: Report the plan (a plan is not a result without this)
-- Simulated annealing gives no optimality guarantee, so every plan ships with: the objective value; the **full constraint-violation vector** per dimension per cycle; the **unconstrained per-stand best** `Σ_s max_{x∈L_s} value(x)` as an optimality-gap bound; the **greedy and random baselines**; and the **objective spread across seeds**.
+- Simulated annealing gives no optimality guarantee, so every plan ships with: the objective value; the **full constraint-violation vector** per dimension per cycle; an **objective-specific relaxation bound** (per-stand only for separable objectives, aggregate-preserving for coupled even-flow forms, or explicitly unavailable); the **greedy and random baselines**; and the **objective spread across seeds**.
 - A plan that does not beat greedy is a finding about the search, and must be reported as one rather than tuned until it goes away.
 - **Output**: `selected_plan.parquet` (`unit_id` → `trajectory_id`) + `scheduler_report.json`.
 

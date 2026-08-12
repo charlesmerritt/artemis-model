@@ -143,7 +143,7 @@
 
 ### 3d. Hindcast validation of the scheduler
 - Hold out the most recent 10 years of LCMS (2015-2024).
-- Build the trajectory library from the 2015 state of the landscape and run the scheduler with 2015-2024 TPO caps.
+- Build the trajectory library from the 2015 state of the landscape and run the scheduler with the explicitly selected 2013-2024 TPO average.
 - Compare the selected plan against observed LCMS Tree Removal:
   - Total area harvested per year, per state, per ownership class
   - Spatial pattern agreement (Cohen's kappa or AUROC at pixel level)
@@ -185,20 +185,20 @@ The core of the architecture. **One library per stand, its contents determined b
 - Store two tables:
   - `trajectory_index` — one row per trajectory: `trajectory_id`, `stand_id`, `prescription_id`, `ownership_class`, `county`, `area_ac`, `unit_class`, per-cycle harvest volume, precomputed objective terms. This is the scheduler's working set and must fit in memory.
   - `trajectory_cycles` — one row per `(trajectory_id, cycle)`: BA, TPA, QMD, SDI, volume, biomass, removals, carbon pools when enabled. Joined only after selection.
-- Integrity checks on every build: every non-riparian stand has ≥2 trajectories, every riparian stand exactly 1 (`no_management`), every trajectory has exactly `n_cycles` rows, the unit layer and the library cover each other in both directions, and every prescription is a member of its ownership class's eligible set.
+- Integrity checks on every build: every non-riparian stand has ≥2 trajectories, every riparian stand exactly 1 (`no_management`), every trajectory has exactly `n_cycles + 1` state rows after duplicate removal rows are collapsed (initial state plus one endpoint per cycle), the unit layer and the library cover each other in both directions, and every prescription is a member of its ownership class's eligible set.
 - Output: `fvs_trajectory_library.parquet` / DuckDB (`trajectory_index`, `trajectory_cycles`).
 
 ### 4d. Harvest scheduling by simulated annealing
 - **Decision variable:** one choice `x_s` per stand from its library `L_s`. With ~10⁴ stands and ~8 trajectories each, the space is astronomically large — hence a heuristic, and hence the requirement to *report* search quality rather than assume it.
 - **Objective — four forms** after `CLIMATE-FVS`: `maximize`, `minimize`, `evenflow` (minimize the standard deviation of a metric across periods), and `evenflow_target` (minimize variation around a target, which may be a value or a range and may vary over time). Each carries a weight; the binding harvest target is weighted well above the rest so the scheduler hits it first and optimizes the others within that constraint. Evaluating a whole landscape plan is a lookup and a sum, not an FVS run — which is what makes search affordable at all.
-- **TPO figures are an `evenflow_target`, not a hard ceiling.** They derive from observed historical removals, so undershooting a county target is as much a finding as overshooting it.
+- **TPO figures are an `evenflow_target`, not a hard ceiling.** They derive from observed historical removals, so undershooting a county target is as much a finding as overshooting it. The baseline selects the `2013_2024` period explicitly in `config/projection.yaml`; `all_years` remains available only as an explicit sensitivity scenario.
 - **Keep targets dimensioned by county and owner group.** Diaz et al. set theirs globally and their scheduler shifted harvest between BLM Districts to hit the landscape total — an artifact they flag against actual BLM practice. Report per-dimension outcomes, not just the total.
 - **Constraint split.** Policy absolutes are made **unrepresentable** (riparian no-entry and eligibility screens are enforced by library construction, so the search cannot select them — the same device Diaz et al. used for stream buffers, wilderness, and Critical Habitat). Spatial constraints are **priced** as penalties: adjacency and green-up, maximum contiguous opening size, treatment budget. These come from `LAMPS`; the Diaz et al. scheduler carried no spatial constraint at all, so its code cannot supply them.
 - **Moves:** a mixture of single-stand reassignment, whole adjacency-block reassignment (single-stand moves stall under a green-up penalty), and period swaps between comparable stands.
 - **Acceptance and cooling:** Metropolis acceptance; geometric cooling; `T₀` calibrated at run start to a target initial acceptance rate rather than hardcoded. Parameters in `config/projection.yaml` under `harvest.annealing`.
 - **Initial solution:** seed from the greedy oldest-first allocator in `pipeline/s3_management/harvest_scheduler.py`, which is retained for this purpose and as a reported baseline.
 - **Reproducibility:** one documented seed; same seed + same library + same weights ⇒ identical plan. Record seed, cooling schedule, and objective weights in `versions.lock`.
-- **Required quality report** (a plan is not a result without it): objective value; the full constraint-violation vector per dimension per cycle; the unconstrained per-stand best `Σ_s max_{x∈L_s} value(x)` as an optimality-gap bound; the greedy and random baselines; and the spread across seeds.
+- **Required quality report** (a plan is not a result without it): objective value; the full constraint-violation vector per dimension per cycle; an objective-specific relaxation bound (per-stand only for separable objectives; aggregate-preserving for `evenflow` / `evenflow_target`, or explicitly unavailable); the greedy and random baselines; and the spread across seeds.
 - Output: `selected_plan.parquet` (`stand_id` → `trajectory_id`) + `scheduler_report.json`.
 
 ### 4e. Painting the selected plan
@@ -220,7 +220,7 @@ The core of the architecture. **One library per stand, its contents determined b
 
 ### 5b. Library integrity (cheap; run on every library build)
 - Every non-riparian stand has ≥2 trajectories; every riparian stand has exactly 1, and it is `no_management`.
-- Every trajectory has exactly `n_cycles` rows, no gaps, no NaNs in any objective column.
+- After collapsing duplicate FVS removal rows, every trajectory has exactly `n_cycles + 1` state rows (the initial state plus one endpoint per cycle), with no gaps and no NaNs in any objective column.
 - Unit layer and library cover each other **in both directions** — a stand silently missing from the library is a stand the scheduler cannot manage, and it will not announce itself.
 - Every prescription in the library is a member of its ownership class's eligible set in `config/prescriptions.yaml`.
 
@@ -228,7 +228,7 @@ The core of the architecture. **One library per stand, its contents determined b
 - **Determinism.** Same seed + same library + same weights ⇒ identical plan.
 - **Search behaviour.** Monotone best-so-far objective; final objective ≥ the greedy baseline on the pilot. A plan that does not beat greedy is a finding about the search and must be reported as one.
 - **Constraint accounting.** Structural constraints honoured exactly; priced constraints reported as a violation vector per dimension per cycle, against a stated tolerance.
-- **Optimality gap.** Report against the unconstrained per-stand best `Σ_s max_{x∈L_s} value(x)`, a valid upper bound when the only coupling is the constraints.
+- **Optimality gap.** Choose the bound through the objective's declared strategy. Separable maximization objectives may use `Σ_s max_{x∈L_s} value(x)`; coupled `evenflow` and `evenflow_target` objectives require a relaxation that preserves their per-period, per-dimension aggregate term while removing spatial penalties. If no validated relaxation is implemented, report the gap as unavailable.
 - **Seed spread.** Report objective spread across restarts; a wide spread means the search has not converged, whatever the best run shows.
 
 ### 5d. Landscape plausibility

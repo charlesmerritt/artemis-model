@@ -11,7 +11,7 @@ spatial:
 projection:
   horizon_years: 50
   cycle_years: 5
-  n_cycles: 10                       # horizon / cycle = 10 output time steps
+  n_cycles: 10                       # horizon / cycle; state trajectories have n_cycles + 1 rows
   base_year: 2022                    # TreeMap / ownership vintage year
   output_years: [2022, 2047, 2072]   # Year-0, Year-25, Year-50 headline rasters
 
@@ -93,6 +93,7 @@ harvest:
     - metric: "harvest_volume"
       form: "evenflow_target"
       target_source: "config/tpo_targets.yaml"
+      target_period: "2013_2024"     # explicit scenario; recent observed removals baseline
       dimensions: ["county", "owner_group"]
       weight: 6.0
     - metric: "standing_volume"

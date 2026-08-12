@@ -306,6 +306,10 @@ Note what this reframing does to the TPO caps. They are **not** hard ceilings �
 figure derived from observed historical removals. A plan that undershoots the county target
 is as much a finding as one that overshoots.
 
+`config/projection.yaml` selects the `2013_2024` target period explicitly. The target file
+also retains `all_years` for sensitivity scenarios, but the scheduler must never infer a
+period from key order or silently choose between them.
+
 **Targets must stay dimensioned.** Diaz et al. set all targets at a single global level and
 documented the consequence: the scheduler shifted harvest between BLM Districts to hit the
 landscape total, concentrating it in Salem and pulling it out of Coos Bay, Roseburg and
@@ -373,9 +377,13 @@ optimality guarantee, so a plan is not a result until it is reported alongside:
 
 1. the objective value and the **full constraint-violation vector** at the returned
    solution, per dimension per cycle, not just a scalar penalty;
-2. the **unconstrained per-stand best**, `Σ_s max_{x∈L_s} value(x)` — a valid upper bound
-   for a maximization objective whose only coupling comes from the constraints, and
-   therefore an honest optimality-gap denominator;
+2. an **objective-specific relaxation bound**. For a separable maximization objective,
+   use the unconstrained per-stand best, `Σ_s max_{x∈L_s} value(x)`. For a coupled form
+   such as `evenflow` or `evenflow_target`, solve a relaxation that removes the spatial
+   penalties but preserves the per-period, per-dimension aggregate objective. The
+   objective implementation must declare which bound strategy it supports; if no
+   validated relaxation exists, report the gap as unavailable rather than manufacture a
+   denominator from stand-local scores;
 3. the **greedy baseline** from `harvest_scheduler.py` and a **random-selection** baseline.
    A plan that does not beat greedy is a finding about the search, and must be reported as
    one rather than tuned until it goes away;
@@ -409,7 +417,9 @@ Beyond the growth validation in `PLAN.md` §5, which is unchanged:
 **Library integrity** (cheap, run on every build):
 - Every non-riparian stand has ≥ 2 trajectories; every riparian stand has exactly 1, and
   it is `no_management`.
-- Every trajectory has exactly `n_cycles` rows, no gaps, no NaNs in any objective column.
+- After collapsing duplicate FVS removal rows, every trajectory has exactly
+  `n_cycles + 1` state rows — the initial state plus one endpoint per cycle — with no
+  gaps and no NaNs in any objective column.
 - Every stand in the unit layer appears in the library, and every library stand exists in
   the unit layer. Both directions — a stand silently missing from the library is a stand
   the scheduler cannot manage, and it will not announce itself.

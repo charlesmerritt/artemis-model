@@ -198,8 +198,9 @@ uv.lock                    Locked Python environment
   enumerated cannot be selected, so state-dependent silviculture must be expressed as FVS
   event-monitor logic inside a trajectory rather than as a scheduler decision.
 - Simulated annealing gives no optimality guarantee. A plan is not a result until it is
-  reported with its constraint-violation vector, its gap to the per-stand upper bound, the
-  greedy and random baselines, and the objective spread across seeds.
+  reported with its constraint-violation vector, an objective-appropriate relaxation bound
+  (or an explicit unavailable gap), the greedy and random baselines, and the objective
+  spread across seeds.
 - The v1 objective (NPV, volume, carbon, or a weighting) is undecided, and the tribal and
   unknown-ownership eligible sets are conservative placeholders pending a documented source.
 - Carbon output stays disabled (`carbon_extension: false`). The measured corruption was a
