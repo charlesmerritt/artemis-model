@@ -1,0 +1,199 @@
+{
+  "aoi_acres": 1824689.0288,
+  "hole_acres": 730003.3136,
+  "hole_lifeform_acres": {
+    "Sparse": 3.7807999999999997,
+    "Barren": 1133.7952,
+    "Water": 19668.3888,
+    "Shrub": 36413.9968,
+    "Tree": 65552.6224,
+    "Agriculture": 83731.59839999999,
+    "Developed": 121599.8688,
+    "Herb": 401899.26239999995
+  },
+  "recently_logged_acres": {
+    "2016": 57798.424,
+    "2022": 0.0,
+    "2024": 0.0
+  },
+  "hole_lifeform_acres_by_vintage": {
+    "2016": {
+      "Herb": 381388.4224,
+      "Tree": 113138.6608,
+      "Developed": 93244.3136,
+      "Agriculture": 69411.04,
+      "Shrub": 52014.912,
+      "Water": 19668.3888,
+      "Barren": 1133.7952,
+      "Sparse": 3.7807999999999997
+    },
+    "2022": {
+      "Herb": 401899.26239999995,
+      "Developed": 121599.8688,
+      "Agriculture": 83731.59839999999,
+      "Tree": 65552.6224,
+      "Shrub": 36413.9968,
+      "Water": 19668.3888,
+      "Barren": 1133.7952,
+      "Sparse": 3.7807999999999997
+    },
+    "2024": {
+      "Herb": 385863.1104,
+      "Tree": 151186.8528,
+      "Developed": 120660.896,
+      "Agriculture": 40436.768,
+      "Water": 19668.3888,
+      "Shrub": 11049.721599999999,
+      "Barren": 1133.7952,
+      "Sparse": 3.7807999999999997
+    }
+  },
+  "strata_acres": {
+    "1": 41548.768,
+    "2": 11430.4704,
+    "3": 80741.6528,
+    "4": 70495.23999999999,
+    "5": 525787.1823999999
+  },
+  "recoverable_acres": 204216.13119999997,
+  "interior_fraction": {
+    "S1": 0.2758591157263676,
+    "S2": 0.023231379873920148,
+    "S3": 0.11312584871931182,
+    "S4": 0.11808186765517785
+  },
+  "s1s2_patches": 31101,
+  "s1s2_frac_acres_ge5ac": 0.6977197165597607,
+  "stage_a": [
+    {
+      "k": 1,
+      "nonforest_leak": 0.30266666666666664,
+      "s3_pass": 0.5158428390367554,
+      "threshold": 0.7744493163283855
+    },
+    {
+      "k": 2,
+      "nonforest_leak": 0.248,
+      "s3_pass": 0.4816223067173637,
+      "threshold": 0.8369920460948237
+    },
+    {
+      "k": 4,
+      "nonforest_leak": 0.176,
+      "s3_pass": 0.4055766793409379,
+      "threshold": 0.8859806663455748
+    },
+    {
+      "k": 6,
+      "nonforest_leak": 0.116,
+      "s3_pass": 0.3637515842839037,
+      "threshold": 0.9045695612737514
+    },
+    {
+      "k": 8,
+      "nonforest_leak": 0.08666666666666667,
+      "s3_pass": 0.33460076045627374,
+      "threshold": 0.917156847035679
+    },
+    {
+      "k": 12,
+      "nonforest_leak": 0.07666666666666666,
+      "s3_pass": 0.31432192648922685,
+      "threshold": 0.9258061999456999
+    }
+  ],
+  "stage_a_threshold_k6": 0.9045695612737514,
+  "stage_a_median_sim": {
+    "anchor_clearcut": 0.9540578950802372,
+    "anchor_nonforest": 0.8240538846166063,
+    "apply": 0.9160995216522929
+  },
+  "stage_b_auc": 0.981821,
+  "stage_b_auc_shuffled": 0.49680877777777777,
+  "stage_b_accuracy": 0.9433333333333334,
+  "stage_b_survivor_conditional": {
+    "auc": 0.9117801130592035,
+    "accuracy": 0.9393732970027248,
+    "n": 1468,
+    "positive": 1299,
+    "negative": 169
+  },
+  "pipeline_end_to_end": {
+    "accuracy": 0.9033333333333333,
+    "balanced_accuracy": 0.9033333333333333,
+    "sensitivity": 0.8573333333333333,
+    "specificity": 0.9493333333333334,
+    "precision": 0.9441997063142438,
+    "f1": 0.8986722571628232,
+    "true_positive": 1286,
+    "false_negative": 214,
+    "false_positive": 76,
+    "true_negative": 1424
+  },
+  "stage_a_fold_local_pass_rate": {
+    "clearcut": 0.866,
+    "nonforest": 0.11266666666666666
+  },
+  "apply_variants": {
+    "2022 anchors, 1 centroid": {
+      "3": 0.18250950570342206,
+      "4": 0.829817158931083
+    },
+    "2022 anchors, 6 exemplars": {
+      "3": 0.16476552598225602,
+      "4": 0.7693389592123769
+    },
+    "2018+2022 anchors, 6 exemplars": {
+      "3": 0.2661596958174905,
+      "4": 0.7651195499296765
+    }
+  },
+  "add_back_acres": 75831.06079999999,
+  "add_back_patches": 2974,
+  "add_back_patch_median_ac": 13.5664,
+  "add_back_patch_max_ac": 376.74559999999997,
+  "add_back_by_stratum": {
+    "S1": {
+      "hole_acres": 41548.768,
+      "added_acres": 38779.220799999996
+    },
+    "S2": {
+      "hole_acres": 11430.4704,
+      "added_acres": 2098.5663999999997
+    },
+    "S3": {
+      "hole_acres": 80741.6528,
+      "added_acres": 8087.575999999999
+    },
+    "S4": {
+      "hole_acres": 70495.23999999999,
+      "added_acres": 26865.6976
+    },
+    "S5": {
+      "hole_acres": 525787.1823999999,
+      "added_acres": 0.0
+    }
+  },
+  "fia": {
+    "fia_total_acres": 1803585.0,
+    "fia_forest_acres": 1255424.0,
+    "aoi_acres": 1824689.0288,
+    "treemap_forest_acres": 1094685.7152,
+    "added_acres": 75831.06079999999,
+    "corrected_forest_acres": 1170516.776,
+    "shortfall_acres": 160738.28480000002,
+    "shortfall_closed_frac": 0.4717672637502225,
+    "remaining_acres": 84907.22400000003
+  },
+  "s3_validation": {
+    "precision_proxy_LU_forest": 0.98,
+    "rejected_still_forest_frac": 0.3583333333333333,
+    "sampling_frame_accepted_acres": 1284.8048,
+    "sampling_frame_rejected_acres": 7176.180799999999,
+    "recall_proxy_within_sampling_frame": 0.32869979053211346,
+    "estimated_missed_acres_within_sampling_frame": 2571.464786666666,
+    "sampling_uncertainty": "not estimated for spatially correlated pixels",
+    "s1_reference": 0.9933333333333332,
+    "s5_reference": 0.0783333333333333
+  }
+}

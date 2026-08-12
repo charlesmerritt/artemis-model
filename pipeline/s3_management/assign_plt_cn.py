@@ -31,6 +31,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from pipeline.ids import as_id_series
+
 logger = logging.getLogger(__name__)
 
 NODATA_ID = -999999999
@@ -41,17 +43,23 @@ DEFAULT_PLT_COL = "PLT_CN"
 def load_tmid_plt_lookup(
     path: Path, value_col: str = DEFAULT_VALUE_COL, plt_col: str = DEFAULT_PLT_COL
 ) -> dict[int, str]:
-    """Load the TreeMap-value → PLT_CN lookup as ``{int value: str PLT_CN}``."""
+    """Load the TreeMap-value → PLT_CN lookup as ``{int value: str PLT_CN}``.
+
+    Both columns are parsed exactly. PLT_CN in particular is a FIA control number: it is
+    read as text and validated rather than passed through ``float``, which would silently
+    truncate it above 2**53 (see ``pipeline.ids``). This lookup is produced by
+    ``r/02_subset_FIA_SQLite_multistateR.R``, so a PLT_CN arriving in scientific notation
+    means that script wrote the column from a double.
+    """
     df = pd.read_csv(path, dtype=str)
     if value_col not in df.columns or plt_col not in df.columns:
         raise ValueError(
             f"Lookup {path} must have '{value_col}' and '{plt_col}' columns; got {list(df.columns)}"
         )
-    out: dict[int, str] = {}
-    for value, plt in zip(df[value_col], df[plt_col]):
-        if pd.notna(value) and pd.notna(plt):
-            out[int(float(value))] = str(plt).strip()
-    return out
+    keep = df[[value_col, plt_col]].dropna()
+    values = as_id_series(keep[value_col], column=value_col)
+    plts = as_id_series(keep[plt_col], column=plt_col)
+    return {int(value): plt for value, plt in zip(values, plts)}
 
 
 def build_weighted_plt_cn(
@@ -83,8 +91,11 @@ def build_weighted_plt_cn(
 
     counts["TOTAL_CELLS"] = counts.groupby("MU_ID")["CELL_COUNT"].transform("sum")
     counts["WEIGHT"] = counts["CELL_COUNT"] / counts["TOTAL_CELLS"]
-    counts["MU_ID"] = counts["MU_ID"].astype(str)
-    counts["PLT_CN"] = counts["PLT_CN"].astype(str)
+    # MU_ID and PLT_CN leave here as exact strings — they are the join keys the FVS-input
+    # builder matches on, and both are integer-valued, so ``astype(str)`` on anything that
+    # had become a float would emit "1.0" / "2.3e+14" and break the join silently.
+    counts["MU_ID"] = as_id_series(counts["MU_ID"], column="MU_ID")
+    counts["PLT_CN"] = as_id_series(counts["PLT_CN"], column="PLT_CN")
     return counts.reset_index(drop=True)
 
 
@@ -113,14 +124,27 @@ def rasterize_and_weight(
     if id_field not in units.columns:
         # Fall back to a stable integer id derived from row order.
         units[id_field] = range(1, len(units) + 1)
-    units[id_field] = pd.to_numeric(units[id_field], errors="coerce")
+
+    # Rasterizing needs an integer burn value, but the MU_ID that leaves this function has
+    # to be byte-identical to the one in the units file — the FVS-input builder joins the
+    # two. Normalise once, then derive the burn value from the exact string, so a MU_ID
+    # stored as REAL in the GeoPackage ("1.0") cannot become a different key downstream.
+    units[id_field] = as_id_series(units[id_field], column=id_field)
+    burn = pd.to_numeric(units[id_field], errors="coerce")
+    unusable = int(burn.isna().sum())
+    if unusable:
+        raise ValueError(
+            f"{unusable} of {len(units)} units have a non-integer {id_field}; rasterizing "
+            f"needs an integer burn value. Sample: "
+            f"{units.loc[burn.isna(), id_field].head(3).tolist()}"
+        )
 
     with rasterio.open(treemap_path) as src:
         units = units.to_crs(src.crs)
         tm_arr = src.read(1)
         tm_nodata = src.nodata if src.nodata is not None else nodata
         tm_arr = np.where(tm_arr == tm_nodata, nodata, tm_arr).astype("int64")
-        shapes = ((geom, int(val)) for geom, val in zip(units.geometry, units[id_field]) if pd.notna(val))
+        shapes = ((geom, int(val)) for geom, val in zip(units.geometry, burn))
         mu_arr = rasterize(
             shapes, out_shape=src.shape, transform=src.transform,
             fill=nodata, dtype="int64", merge_alg=rasterio.enums.MergeAlg.replace,

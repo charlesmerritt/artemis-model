@@ -78,7 +78,7 @@ decision space that is our own.
 | **What restricts a stand's options** | Land classification ("prescription zones"): Critical Habitat, wilderness, stream buffers | Industrial vs. public owner behaviour | **Ownership class** (Harris 2025, seven forest classes) — §3 |
 | **Absolutes** | Structural: excluded classes simply have no active prescriptions | — | Structural, same device: riparian library = `{no_management}` — §3 |
 | **Eligibility screens** | — | Minimum harvest age (MHA), minimum harvestable percentage (MHP) | Applied at library-build time, so ineligible options never reach the scheduler — §3 |
-| **Timing as a decision** | "Offsets" delaying first activity 5/10/15 yr, explicitly to give the optimizer choices | — | `*_offset` parameter grids — §4 |
+| **Timing as a decision** | "Offsets" delaying first activity 5/10/15 yr, explicitly to give the optimizer choices | — | Cycle-aligned age/offset schedules — §4 |
 | **Simulation engine** | Distributed, fault-tolerant, parallel FVS batch → database | — | Barrier-free parallel FVS → DuckDB — §4, §5 |
 | **Search** | Simulated annealing over prescriptions × timing for every stand | Simulated annealing / tabu / genetic for spatially constrained scheduling | Simulated annealing, seeded from greedy — §6 |
 | **Objective structure** | Four forms: `maximize`, `minimize`, `evenflow`, `evenflow_target`; weights set priority | — | Adopted verbatim — §6 |
@@ -91,7 +91,7 @@ decision space that is our own.
    *designation* on a single federal ownership; LAMPS distinguishes industrial from public
    behaviour. Neither keys a prescription library to a national, 30 m, seven-class
    ownership raster across a mixed-ownership landscape. That is the move this project is
-   making, and `config/prescriptions.yaml` is where it lives.
+   making, and `config/management_regimes.yaml` is where it lives.
 2. **Imputed tree lists composed to units.** TreeMap → FIA plots → weighted union per
    management unit (§4). Diaz et al. had the analogous problem and solved it with GNN
    imputation, but our composition rule is ours to defend.
@@ -156,26 +156,24 @@ retired is the restart *barrier* as a scheduling mechanism.
 
 ## 3. Ownership class defines the library, not the choice
 
-This is the substantive change to `pipeline/s3_management/regime_assignment.py`. That
-module maps a unit to **exactly one** regime (`corporate + pine → plantation_rotation`).
-Under the new direction the same ownership signal instead defines an **eligible set**, and
-the scheduler picks within it.
+`pipeline/s3_management/regime_assignment.py` now answers two separate questions from one
+policy source: the deterministic default used by the greedy baseline, and the **eligible
+set** from which the scheduler selects.
 
-| Ownership class (Harris 2025 code) | Eligible prescriptions | Rationale |
+| Resolved owner class | Active eligible prescriptions (plus universal `no_management`) | Rationale |
 |---|---|---|
-| `family_forest` (3) | no_management, thin_from_below, selection_harvest, clearcut (long rotation) | NIPF behaviour is heterogeneous; the owner may do nothing for decades or liquidate |
-| `corporate_forest` (4) | plantation_rotation, thin_from_below, clearcut, no_management | Industrial intent, but rotation length and thin timing are the decision |
-| `tribal_forest` (5) | no_management, selection_harvest, thin_from_below | Conservative default pending a documented tribal-management source |
-| `federal_forest` (6) | no_management, selection_harvest, thin_from_below | Public multiple-use; no clearcut in the v1 eligible set |
-| `state_forest` (7) | no_management, selection_harvest, thin_from_below | As federal |
-| `local_forest` (8) | no_management, selection_harvest | Small holdings, typically low-intensity |
-| `unknown_forest` (0) | no_management, thin_from_below | Conservative default; count and report these separately |
-| `non_forest` (1), `water` (2) | — masked, not stands | Excluded from the pipeline entirely |
+| `private_industrial` | short/long pine rotation, hardwood clearcut/regeneration | Rotation forestry; forest type controls whether pine planting is valid |
+| `private_corporate_other` | long pine rotation, light thin, uneven-aged selection | Corporate forest without evidence of industrial-scale management |
+| `private_family` | light thin, uneven-aged selection, long pine rotation | Heterogeneous non-industrial private objectives |
+| `tribal` | public selection, family light thin | Conservative placeholder pending a documented source |
+| `federal` | public selection, restoration thin | Public multiple-use; no stand-replacing harvest in v1 |
+| `state` | restoration thin, public selection, long pine rotation | Includes active state-forest management without a short industrial rotation |
+| `local` | public selection, restoration thin | Small public holdings, typically lower intensity |
+| `unknown` | family light thin | Conservative placeholder; count and report separately |
 
-Machine-readable form: [`config/prescriptions.yaml`](../config/prescriptions.yaml). The
-table above is the human summary; the YAML is authoritative and carries the parameter
-grids (harvest years, thinning intensities, rotation ages) that expand each prescription
-family into concrete trajectories.
+Machine-readable form: [`config/management_regimes.yaml`](../config/management_regimes.yaml).
+The YAML is the sole authority and carries the shared prescription parameters, defaults,
+eligible menus, and the absolute riparian override.
 
 Three rules govern the mapping:
 
@@ -231,16 +229,13 @@ identical trajectory, so key the FVS run cache on a content hash of those three 
 the result. The library still carries one row set per `(stand, prescription)` and every
 polygon keeps its own identity in the outputs — the dedup is invisible above the runner.
 
-**Timing offsets are a deliberate axis, not padding.** A family's parameter grid varies
-*when* the first activity happens as well as how hard it cuts. Diaz et al. built exactly
-this — offsets delaying the first activity by 5, 10, or 15 years — and state the purpose
-plainly: the offsets "offer choices to the optimization model to schedule the initiation of
-activities to best achieve multiple objectives." Without them the scheduler can choose
-*what* happens to a stand but not *when*, which is most of what an even-flow constraint
-needs to work with. Our `*_offset` grids in `config/prescriptions.yaml` serve the same role.
+**Timing is deliberate, not padding.** Diaz et al. offered delayed activity starts so the
+optimizer could choose both *what* and *when*. ARTEMIS resolves age-based or fixed-offset
+schedules from `config/management_regimes.yaml` and snaps every operation to an FVS cycle.
+Adding alternative timing parameterizations remains a library-budget decision.
 
-**Library size.** Per stand, the library is the sum over its eligible prescription
-families of that family's parameter-grid size — target **6–12 trajectories per stand**,
+**Library size.** Per stand, the library is the sum of resolved eligible prescriptions —
+target **6–12 trajectories per stand** as timing variants are added,
 which puts the five-county pilot at roughly 10⁵ FVS runs. That is hours on one
 workstation core and minutes across a node, and it is a one-time cost per library version
 rather than a per-scenario cost. Growth of the grid is multiplicative, so treat "how many
@@ -306,9 +301,10 @@ Note what this reframing does to the TPO caps. They are **not** hard ceilings �
 figure derived from observed historical removals. A plan that undershoots the county target
 is as much a finding as one that overshoots.
 
-`config/projection.yaml` selects the `2013_2024` target period explicitly. The target file
-also retains `all_years` for sensitivity scenarios, but the scheduler must never infer a
-period from key order or silently choose between them.
+`config/projection.yaml` selects the `2013_2024` target period for forward projection and
+the leakage-free `pre_2015` period for the 2015–2024 hindcast. The target file also retains
+`all_years` for sensitivity scenarios, but the scheduler must never infer a period from key
+order or silently choose between them.
 
 **Targets must stay dimensioned.** Diaz et al. set all targets at a single global level and
 documented the consequence: the scheduler shifted harvest between BLM Districts to hit the
@@ -415,8 +411,9 @@ evidence**:
 Beyond the growth validation in `PLAN.md` §5, which is unchanged:
 
 **Library integrity** (cheap, run on every build):
-- Every non-riparian stand has ≥ 2 trajectories; every riparian stand has exactly 1, and
-  it is `no_management`.
+- Every riparian stand has exactly one trajectory, `no_management`. Every non-riparian
+  stand has at least two unless structural screens remove every active prescription; a
+  screened-down stand has exactly `no_management` and appears in an audit report.
 - After collapsing duplicate FVS removal rows, every trajectory has exactly
   `n_cycles + 1` state rows — the initial state plus one endpoint per cycle — with no
   gaps and no NaNs in any objective column.
@@ -424,7 +421,7 @@ Beyond the growth validation in `PLAN.md` §5, which is unchanged:
   the unit layer. Both directions — a stand silently missing from the library is a stand
   the scheduler cannot manage, and it will not announce itself.
 - Prescriptions in the library are a subset of the ownership class's eligible set in
-  `config/prescriptions.yaml`. This is the test that keeps the config honest.
+  `config/management_regimes.yaml`. This is the test that keeps the config honest.
 
 **Scheduler behaviour:**
 - Determinism under a fixed seed.
@@ -457,7 +454,7 @@ run beyond the library build; step 5 needs no FVS at all.
 1. **Ownership assignment per unit** — dominant-owner vote over the Harris raster within
    each unit footprint, with the confidence threshold from the orchestrator sketch
    (sub-threshold units excluded *and logged*, never silently dropped).
-2. **Eligible-set expansion** — read `config/prescriptions.yaml`, apply the riparian
+2. **Eligible-set expansion** — read `config/management_regimes.yaml`, apply the riparian
    override and the eligibility screens, emit `stand_id → [prescription_id]`. Pure
    function over the unit table; unit-testable with synthetic fixtures.
 3. **Library generation** — render a keyfile per pair via `regime_templates.py`, run FVS
@@ -488,7 +485,7 @@ run beyond the library build; step 5 needs no FVS at all.
    URM vs. ARM formulation for green-up. No help from `CLIMATE-FVS` here — their scheduler
    had no spatial constraint — so this comes from `LAMPS` alone.
 5. **Tribal and unknown-ownership eligible sets.** Both are conservative placeholders in
-   `config/prescriptions.yaml` and need a documented source before publication.
+   `config/management_regimes.yaml` and need a documented source before publication.
 6. **Re-enabling carbon.** The barrier-free architecture removes the measured obstacle;
    whether v1 reports the five IPCC pools is now a scope decision.
 
@@ -504,5 +501,5 @@ run beyond the library build; step 5 needs no FVS at all.
 - [`restart-fidelity-findings.md`](restart-fidelity-findings.md) — why barriers were a
   problem, and why library generation does not have them.
 - [`../PLAN.md`](../PLAN.md) §3c, §4 — the target architecture in build-plan form.
-- [`../config/prescriptions.yaml`](../config/prescriptions.yaml) — the authoritative
-  ownership → eligible prescription mapping.
+- [`../config/management_regimes.yaml`](../config/management_regimes.yaml) — the sole
+  prescription, scheduling, and ownership-eligibility authority.

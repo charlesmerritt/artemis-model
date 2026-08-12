@@ -22,7 +22,7 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 
 ### Step 1.1: Load and structure TPO harvest targets
 - Parse `Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx` into a clean YAML/Parquet config (`config/tpo_targets.yaml` or `data/interim/tpo_targets.parquet`).
-- Structure: nested dict with `owner_group` and `county` dimensions, both averaging periods (all years, 2013-2024).
+- Structure: nested dict with `owner_group` and `county` dimensions and three explicit periods: all years, 2013-2024, and the leakage-free pre-2015 hindcast target.
 - Add `openpyxl` to `pyproject.toml` dependencies.
 - **Verify**: unit test confirms parsed targets match spreadsheet values.
 
@@ -79,8 +79,11 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 - **Output**: `pipeline/s4_fvs/regime_templates.py` with `render_keyfile(stand, regime, params)`. ✅ Implemented.
 
 ### Step 3.2: Map ownership class → *eligible set*, not one regime
-- **This is the change.** `regime_assignment.py` currently returns exactly one `(regime, params)` per unit. Under the adopted architecture the same ownership signal instead returns the **set** of prescriptions the unit may be assigned, and the scheduler picks within it.
-- Authoritative mapping and parameter grids: [`../config/prescriptions.yaml`](../config/prescriptions.yaml). Guarded by `tests/test_config.py`.
+- `regime_assignment.py` resolves both the deterministic default and the **set** of
+  prescriptions a unit may be assigned; the scheduler will pick within that set.
+- The sole executable authority for parameters, defaults, and eligible menus is
+  [`../config/management_regimes.yaml`](../config/management_regimes.yaml), guarded by
+  configuration, resolver, and renderer tests.
 - Three rules:
   - **`no_management` is in every non-riparian library.** Without it, a binding volume cap has no feasible answer and "the plan harvested this stand" stops being a decision.
   - **Riparian units get a library of exactly one trajectory** (`no_management`). No harvest, ever — no entry of any kind, no buffer class exempted. Assigned by geometry, so it overrides any ownership rule. Enforced by the **absence of an alternative**, which no objective weight can trade away. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
@@ -97,12 +100,12 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 - **Verify**: every retained unit has one ownership class; the excluded list is written and counted.
 
 ### Step 4.2: Enumerate and generate the trajectory library
-- For every unit, expand its eligible set from `config/prescriptions.yaml` into concrete prescriptions (grids expand as a cartesian product), then render one FVS keyfile per `(unit, prescription)`.
+- For every unit, resolve its eligible set from `config/management_regimes.yaml`, then render one FVS keyfile per `(unit, prescription)`.
 - Run each as **one continuous FVS simulation — no restart barrier**. Runs are independent, so this is embarrassingly parallel; use the concurrent worker pattern proven in `research/restart_fidelity/parallel_demo.py`.
 - Cache on a content hash of `(tree list, site attributes, prescription)`. Dedup is a cache, never a reporting decision.
 - Budget: target **6–12 trajectories per unit**; the 5-county pilot (order 10⁴ units) is then order 10⁵ runs, a one-time cost per library version.
 - **Output**: `trajectory_index` (one row per trajectory — the scheduler's working set) and `trajectory_cycles` (one row per trajectory × cycle) in DuckDB/Parquet. Built from raw `FVS_Summary2` using the view vocabulary in [`duckdb-iterative-coupling-cells.md`](duckdb-iterative-coupling-cells.md).
-- **Verify** (library integrity, on every build): ≥2 trajectories for every non-riparian unit and exactly 1 for every riparian unit; exactly `n_cycles + 1` state rows per trajectory after duplicate removal rows are collapsed, with no NaNs in objective columns; unit layer and library cover each other in **both** directions; every prescription is a member of its class's eligible set.
+- **Verify** (library integrity, on every build): exactly one `no_management` trajectory for every riparian unit; at least two trajectories for each non-riparian unit unless structural screens remove every active prescription, in which case exactly `no_management` remains and the unit is logged; exactly `n_cycles + 1` state rows per trajectory after duplicate removal rows are collapsed, with no NaNs in objective columns; unit layer and library cover each other in **both** directions; every prescription is a member of its class's eligible set.
 
 ### Step 4.3: Build the simulated-annealing scheduler
 - Core logic in `pipeline/s3_management/harvest_scheduler.py`, alongside the existing greedy allocator:

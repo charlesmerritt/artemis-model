@@ -39,6 +39,15 @@ library(DBI)
 library(RSQLite)
 library(dplyr)
 
+# PLT_CN / STAND_CN PRECISION:
+#   Every identifier in this linkage table -- PLT_CN, STAND_CN_COND,
+#   STAND_CN_PLOT, STAND_ID -- is a FIA control number wider than a double can
+#   hold. They stay character from CSV and from SQLite (via CAST(... AS TEXT)),
+#   and scipen keeps anything else out of scientific notation on write.csv.
+#   This table is the bridge back from FVS output to TreeMap pixels, so a
+#   re-rendered key here mis-paints the raster rather than erroring.
+options(scipen = 999)
+
 # ---- File paths ----
 output_path<- "output2020"
 tmid_csv       <- file.path(output_path,"FL_5county_TreeMap_TMIDs.csv")
@@ -83,10 +92,10 @@ plt_cn_str <- paste(unique(base_link$PLT_CN), collapse = ",")
 
 cond_link <- dbGetQuery(con, sprintf(
   "SELECT
-     c.PLT_CN,
-     c.CN          AS STAND_CN_COND,
+     CAST(c.PLT_CN AS TEXT) AS PLT_CN,
+     CAST(c.CN     AS TEXT) AS STAND_CN_COND,
      c.CONDID,
-     s.STAND_ID    AS STAND_ID_COND,
+     CAST(s.STAND_ID AS TEXT) AS STAND_ID_COND,
      s.INV_YEAR    AS INV_YEAR_COND,
      s.VARIANT,
      s.STATE,
@@ -100,10 +109,10 @@ cat(paste0("Condition-level links resolved: ", nrow(cond_link), "\n"))
 # ---- Plot-level: PLT_CN = PLOT.CN = STAND_CN_PLOT ----
 plot_link <- dbGetQuery(con, sprintf(
   "SELECT
-     p.CN          AS PLT_CN,
-     p.CN          AS STAND_CN_PLOT,
-     s.STAND_ID    AS STAND_ID_PLOT,
-     s.INV_YEAR    AS INV_YEAR_PLOT
+     CAST(p.CN AS TEXT)       AS PLT_CN,
+     CAST(p.CN AS TEXT)       AS STAND_CN_PLOT,
+     CAST(s.STAND_ID AS TEXT) AS STAND_ID_PLOT,
+     s.INV_YEAR               AS INV_YEAR_PLOT
    FROM PLOT p
    LEFT JOIN FVS_STANDINIT_PLOT s ON s.STAND_CN = p.CN
    WHERE p.CN IN (%s)", plt_cn_str))

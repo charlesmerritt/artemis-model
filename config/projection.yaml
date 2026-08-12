@@ -2,9 +2,78 @@
 # All pipeline components read from this file. Do not hardcode these values.
 
 spatial:
-  crs: "EPSG:5070"                  # CONUS Albers Equal Area
+  # ---------------------------------------------------------------------------------
+  # THE PROJECT CRS. Every raster, every vector, every output. One value, stated once.
+  # Read it through pipeline/spatial_ref.py — never write "EPSG:5070" into code again.
+  # ---------------------------------------------------------------------------------
+  crs: "EPSG:5070"
+  crs_name: "NAD83 / Conus Albers"
+  crs_esri_name: "NAD_1983_Contiguous_USA_Albers"   # how ArcGIS labels this same CRS
+  crs_datum: "North American Datum 1983 (NAD83)"
+  crs_projection: "Albers Equal Area Conic"
+  crs_units: "metre"
+  crs_parameters:                    # verified against pyproj, 2026-08-03
+    standard_parallel_1: 29.5
+    standard_parallel_2: 45.5
+    latitude_of_origin: 23.0
+    central_meridian: -96.0
+    false_easting: 0.0
+    false_northing: 0.0
+
+  # Why this one, and not another Albers:
+  #   - It is the NATIVE CRS of TreeMap 2022, LANDFIRE EVT, and the Harris ownership
+  #     raster. Those three are 30 m, pixel-co-registered, and carry categorical values
+  #     (plot IDs, vegetation types, ownership classes). Reprojecting them means
+  #     RESAMPLING them, and nearest-neighbour resampling of a plot-ID raster changes
+  #     which FIA plot a pixel inherits. Staying on 5070 makes the raster work
+  #     reproject-and-snap only, with nothing resampled.
+  #   - It is equal-area, so acres and hectares are computed directly from geometry.
+  #
+  # Confusable CRSs — all of these are wrong for ARTEMIS, and all of them fail quietly
+  # rather than loudly. `pipeline/spatial_ref.py::assert_project_crs` is what catches them.
+  crs_not:
+    "ESRI:102008":
+      name: "North_America_Albers_Equal_Area_Conic"
+      why_not: >
+        Same NAD83 datum, but standard parallels 20/60 and latitude of origin 40 — a
+        genuinely different grid, off by kilometres. Continental fit, worse for a
+        CONUS/Florida extent, and it would force a resample of every native input.
+    "ESRI:102003":
+      name: "USA_Contiguous_Albers_Equal_Area_Conic"
+      why_not: >
+        Same standard parallels as 5070 but latitude of origin 37.5, so northings differ.
+        Close enough to look plausible on a map and still be wrong.
+    "ESRI:102039":
+      name: "USA_Contiguous_Albers_Equal_Area_Conic_USGS_version"
+      why_not: >
+        Numerically equivalent to EPSG:5070 (same parameters). Not an error, but use the
+        EPSG code so string comparison of CRS identity keeps working.
+    "EPSG:6350":
+      name: "NAD83(2011) / Conus Albers"
+      why_not: >
+        Identical projection parameters, newer datum realization. The offset from 5070 is
+        sub-metre — too small to see, large enough to break a 30 m snap grid. Mixing the
+        two is a silent shift, not a visible failure.
+    "EPSG:4269":
+      name: "NAD83 (geographic)"
+      why_not: >
+        Degrees, not metres. Area and length are meaningless; every acre figure computed
+        in it is wrong. This is the one that shows up by accident, because several inputs
+        (NHD flowlines, NHD waterbodies) ship in it.
+
   resolution_m: 30                   # Target pixel size; matches TreeMap 2022 native
   snap_reference: "treemap_2022"     # All rasters snapped to this grid
+
+  # The exact TreeMap 2022 affine, read from TreeMap2022_CONUS.tif via rasterio, in GDAL
+  # order [xScale, xShear, xOrigin, yShear, yScale, yOrigin]. GEE exports pass this as
+  # `crsTransform=` — never `scale=`, which lets GEE pick its own origin and silently
+  # produces a half-pixel-offset grid.
+  #
+  # Note the origin is NOT a multiple of 30: -2361585 = -78719.5 x 30. TreeMap's grid sits
+  # half a pixel off the "round" 5070 grid, so anything snapped to a round origin is
+  # misaligned by 15 m. That is the failure this transform exists to prevent.
+  snap_transform: [30, 0, -2361585, 0, -30, 3177435]
+
   chunk_strategy: "huc8"             # Chunking unit for Zarr stores and FVS batching
   # chunk_strategy alternatives: "degree_tile" (1°×1°), "state"
 
@@ -42,7 +111,7 @@ fvs:
 
 harvest:
   # Harvest is DECIDED, not drawn. The scheduler selects one precomputed trajectory per
-  # stand from that stand's ownership-class library (config/prescriptions.yaml) using
+  # stand from that stand's ownership-class library (config/management_regimes.yaml) using
   # simulated annealing. This replaces the previous "pseudo_deterministic" method, which
   # drew a per-pixel schedule from a fitted LCMS harvest probability model; that model is
   # now calibration/validation evidence rather than the forward generator.
@@ -94,6 +163,7 @@ harvest:
       form: "evenflow_target"
       target_source: "config/tpo_targets.yaml"
       target_period: "2013_2024"     # explicit scenario; recent observed removals baseline
+      hindcast_target_period: "pre_2015"  # excludes the 2015-2024 LCMS validation holdout
       dimensions: ["county", "owner_group"]
       weight: 6.0
     - metric: "standing_volume"

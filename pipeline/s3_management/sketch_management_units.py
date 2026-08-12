@@ -1,9 +1,22 @@
 """
 Draft Florida management-unit delineation via naive boundary intersection.
 
-This script creates candidate forest management units by intersecting parcels with
-LANDFIRE EVT forest mask, then erasing Florida BMP stream buffers, NHD waterbodies,
-and a small road-artifact buffer. Outputs are per-county GeoPackages + CSV summaries.
+This script creates candidate forest units by intersecting parcels with a LANDFIRE EVT
+forest mask, then partitioning the result into two unit classes:
+
+- ``unit_class = "managed"``  — forest available for a harvest regime.
+- ``unit_class = "riparian"`` — forest inside a Florida BMP stream buffer. These grow
+  freely and are never harvested, but they stay in the landscape as unique polygons with
+  their own ``unit_id`` and their own rows in the summaries.
+
+Only NHD waterbodies and the small road-artifact buffer are erased outright: water is
+non-forest and the road buffer exists solely to absorb road/parcel alignment error.
+Those acres leave the modelled landscape, so they are reported as their own accounting
+line rather than silently dropped. The two unit classes partition what remains:
+
+    Σ managed + Σ riparian == (forest mask ∩ parcels) − (waterbodies ∪ road buffer)
+
+Outputs are per-county GeoPackages plus ``summary.csv`` and ``area_accounting.csv``.
 
 Usage:
     uv run python -m pipeline.s3_management.sketch_management_units --county-fips 125
@@ -27,20 +40,37 @@ from rasterio.mask import mask as rio_mask
 from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 
+from pipeline.spatial_ref import project_crs
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Constants
-PROJECT_CRS = "EPSG:5070"  # CONUS Albers Equal Area
+PROJECT_CRS = project_crs()  # CONUS Albers Equal Area, from config/projection.yaml
 FLORIDA_FIPS = "12"
 FEET_TO_METERS_CONVERSION = 0.3048
 MIN_UNIT_AREA_HA = 2.0
 TARGET_MAX_AREA_HA = 40.0
 SMALL_ROAD_BUFFER_M = 3.0  # Overcome alignment artifacts
+SQ_M_PER_ACRE = 4046.8564224
 
-# Five-county pilot
-PILOT_COUNTIES = ["003", "023", "047", "089", "125"]  # Baker, Columbia, Hamilton, Nassau, Suwannee, Union
+# Most protective first. Where buffer classes overlap, the wider buffer wins, so the
+# retained riparian rows stay disjoint and `buffer_class` is unambiguous.
+RIPARIAN_BUFFER_PRIORITY = ["perennial_large", "perennial_small", "ephemeral_intermittent"]
+
+# Unit classes emitted by this script.
+UNIT_CLASS_MANAGED = "managed"
+UNIT_CLASS_RIPARIAN = "riparian"
+
+# Relative tolerance for the managed + riparian == eligible forest area check. Loose
+# enough to absorb buffer(0) topology cleanup, tight enough to catch a dropped layer.
+AREA_BALANCE_TOLERANCE = 1e-6
+
+# Five-county pilot. These are the counties actually present in FL_5_Co_Parcels.gdb:
+# Baker, Columbia, Hamilton, Suwannee, Union. (089/Nassau was listed here previously and
+# has no parcels in the AOI, which dropped Suwannee from the pilot entirely.)
+PILOT_COUNTIES = ["003", "023", "047", "121", "125"]  # Baker, Columbia, Hamilton, Suwannee, Union
 
 
 def feet_to_meters(feet: float) -> float:
@@ -97,20 +127,27 @@ def target_grid_cell_size_m(target_area_ha: float) -> float:
 
 def clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """
-    Clean geometries: buffer(0) to fix self-intersections, drop invalid/empty.
+    Repair invalid polygon geometries and drop anything still invalid or empty.
     Preserves all geometry types (Point, LineString, Polygon, etc.).
 
-    For LineString and Point geometries, buffer(0) returns an empty polygon,
-    so we skip the buffer operation for non-polygon types.
+    Repair uses `make_valid`, and only on rows that are actually invalid. The older
+    unconditional `buffer(0)` silently destroyed area: `buffer(0)` is sensitive to ring
+    orientation, which OGC validity does not constrain, so a *valid* MultiPolygon whose
+    exterior rings happen to be wound clockwise can have a whole part reinterpreted as a
+    hole and erased. That cost the Union County managed layer 0.22 ha in one polygon --
+    exactly the kind of invisible forest loss the area-accounting check exists to catch.
     """
     gdf = gdf.copy()
 
-    # Apply buffer(0) only to Polygons/MultiPolygons to fix topology issues
-    # LineStrings and Points should not be buffered
+    # Repair only what is broken, and only for Polygons/MultiPolygons.
+    # LineStrings and Points are passed through untouched.
     polygon_mask = gdf.geom_type.isin(["Polygon", "MultiPolygon"])
+    repair_mask = polygon_mask & ~gdf["geometry"].is_valid
 
-    if polygon_mask.any():
-        gdf.loc[polygon_mask, "geometry"] = gdf.loc[polygon_mask, "geometry"].buffer(0)
+    n_repaired = int(repair_mask.sum())
+    if n_repaired > 0:
+        logger.info(f"Repairing {n_repaired} invalid polygon geometries with make_valid")
+        gdf.loc[repair_mask, "geometry"] = gdf.loc[repair_mask, "geometry"].make_valid()
 
     # Drop invalid or empty geometries
     valid_mask = gdf["geometry"].is_valid & ~gdf["geometry"].is_empty
@@ -119,6 +156,25 @@ def clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         logger.warning(f"Dropped {n_dropped} invalid/empty geometries")
 
     return gdf[valid_mask].reset_index(drop=True)
+
+
+def polygon_parts(geometry) -> list:
+    """
+    Every Polygon inside `geometry`, recursing through multipart geometries.
+
+    Clipping a multipart polygon can return a GeometryCollection: a cell that fully
+    contains one part while merely *touching* a detached part returns that polygon plus a
+    stray Point or LineString. Matching only on "Polygon"/"MultiPolygon" drops such a
+    result whole -- polygon and all -- which silently deleted 23 ha of Columbia County
+    forest. Lower-dimensional debris carries no area and is discarded here explicitly.
+    """
+    if geometry.is_empty:
+        return []
+    if geometry.geom_type == "Polygon":
+        return [geometry]
+    if hasattr(geometry, "geoms"):
+        return [p for g in geometry.geoms for p in polygon_parts(g)]
+    return []
 
 
 def split_large_geometry(geometry, target_max_area_ha: float = TARGET_MAX_AREA_HA):
@@ -161,13 +217,164 @@ def split_large_geometry(geometry, target_max_area_ha: float = TARGET_MAX_AREA_H
         if geometry.intersects(cell):
             part = geometry.intersection(cell)
             if not part.is_empty and part.area > 0:
-                # Handle multi-part results
-                if part.geom_type == "MultiPolygon":
-                    parts.extend(list(part.geoms))
-                elif part.geom_type == "Polygon":
-                    parts.append(part)
+                parts.extend(polygon_parts(part))
 
     return parts if parts else [geometry]
+
+
+def load_evt_tree_values(vat_path: Path, lifeform: str = "Tree") -> np.ndarray:
+    """
+    Return the LANDFIRE EVT raster values whose VAT lifeform is `lifeform`.
+
+    The forest mask has to come from the VAT, not from a hardcoded value range: LF2022
+    EVT codes tree classes across a non-contiguous 4402-9722 span interleaved with
+    herbaceous, developed, and agricultural classes, so any range test both misses forest
+    and admits non-forest.
+    """
+    vat = pd.read_csv(vat_path, usecols=["VALUE", "EVT_LF"])
+    values = vat.loc[vat["EVT_LF"] == lifeform, "VALUE"].to_numpy()
+    if len(values) == 0:
+        raise ValueError(f"No EVT_LF == {lifeform!r} rows in {vat_path}")
+    logger.info(f"EVT VAT: {len(values)} {lifeform!r} classes")
+    return values
+
+
+def build_riparian_buffer_layer(
+    streams: gpd.GeoDataFrame,
+    buffer_widths: dict,
+    crs: str = PROJECT_CRS,
+) -> gpd.GeoDataFrame:
+    """
+    Build Florida BMP stream buffers as a *retained* layer, one row per buffer class.
+
+    Buffer classes overlap on the ground (a 35 ft ephemeral buffer can sit inside a 75 ft
+    perennial one). Rows are made mutually disjoint by subtracting every more-protective
+    class already assigned, so the returned geometries partition the buffered area and
+    `buffer_class` is unambiguous anywhere inside it. Buffer polygons are never dissolved
+    across classes — carrying the class as an attribute is what lets summaries be cut by
+    class without merging the polygons themselves.
+    """
+    streams = streams.copy()
+    streams["buffer_class"] = streams["fcode"].apply(classify_stream_fcode)
+
+    rows = []
+    claimed = None  # union of the more-protective classes already assigned
+    for buffer_class in RIPARIAN_BUFFER_PRIORITY:
+        width_m = buffer_widths.get(buffer_class)
+        class_streams = streams[streams["buffer_class"] == buffer_class]
+        if width_m is None or len(class_streams) == 0:
+            continue
+
+        geom = class_streams.buffer(width_m).union_all()
+        if claimed is not None:
+            geom = geom.difference(claimed)
+        if geom.is_empty:
+            continue
+
+        claimed = geom if claimed is None else claimed.union(geom)
+        rows.append({"buffer_class": buffer_class, "geometry": geom})
+
+    if not rows:
+        return gpd.GeoDataFrame({"buffer_class": pd.Series(dtype="object")}, geometry=[], crs=crs)
+
+    return gpd.GeoDataFrame(rows, geometry="geometry", crs=crs)
+
+
+def build_exclusion_layer(
+    waterbodies: gpd.GeoDataFrame,
+    roads: gpd.GeoDataFrame,
+    road_buffer_m: float = SMALL_ROAD_BUFFER_M,
+    crs: str = PROJECT_CRS,
+) -> gpd.GeoDataFrame:
+    """
+    Build the erase-only layer: NHD waterbodies plus the small road-artifact buffer,
+    tagged by `exclusion_class`.
+
+    Neither is a stand. Water is non-forest, and the road buffer exists only to absorb
+    road/parcel alignment error. These acres leave the modelled landscape entirely, which
+    is why they are reported as their own accounting lines instead of being folded into a
+    unit class.
+
+    Rows are left **undissolved**, and the two classes may overlap. Dissolving is both
+    unnecessary -- `erase` differences per row through a spatial index -- and actively
+    dangerous: a county-wide `union_all` over NHD swamp polygons segfaults GEOS on
+    swamp-heavy counties such as Baker. The exclusion areas are therefore measured by
+    telescoping differences in `process_county`, not read off these rows.
+    """
+    layers = []
+
+    for exclusion_class, geometry in (
+        ("waterbody", waterbodies.geometry if len(waterbodies) > 0 else None),
+        ("road_buffer", roads.buffer(road_buffer_m) if len(roads) > 0 else None),
+    ):
+        if geometry is None:
+            continue
+        layer = gpd.GeoDataFrame(geometry=geometry.reset_index(drop=True), crs=crs)
+        layer["exclusion_class"] = exclusion_class
+        layers.append(layer)
+
+    if not layers:
+        return gpd.GeoDataFrame({"exclusion_class": pd.Series(dtype="object")}, geometry=[], crs=crs)
+
+    return gpd.GeoDataFrame(pd.concat(layers, ignore_index=True), geometry="geometry", crs=crs)
+
+
+def erase(gdf: gpd.GeoDataFrame, erase_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """
+    Difference `erase_gdf` out of `gdf`, passing `gdf` through unchanged if there is
+    nothing to erase.
+
+    `erase_gdf` is used as-is: geopandas differences each row of `gdf` against only the
+    `erase_gdf` rows a spatial-index query says it touches, so the erase layer must not
+    be pre-dissolved. Overlapping erase rows are handled correctly -- they are applied
+    successively -- which is why the caller can pass raw NHD waterbodies.
+    """
+    if len(erase_gdf) == 0:
+        return gdf.copy()
+    return gpd.overlay(gdf, erase_gdf[["geometry"]], how="difference")
+
+
+def area_accounting_table(
+    forest_in_parcels_m2: float,
+    waterbody_excluded_m2: float,
+    road_excluded_m2: float,
+    managed_m2: float,
+    riparian_m2: float,
+) -> pd.DataFrame:
+    """
+    Build the area-balance table for one county.
+
+    The identity being checked is stated against the *post-exclusion* area:
+
+        Σ managed + Σ riparian == (forest mask ∩ parcels) − (waterbodies ∪ road buffer)
+
+    The raw forested AOI is the wrong right-hand side — roads run through forest, so the
+    road-artifact buffer routinely overlaps forested pixels and an equality against the
+    pre-exclusion area would fail by construction. The permanently excluded acres get
+    their own lines so that drop stays visible instead of absorbing a real bug.
+    """
+    excluded_m2 = waterbody_excluded_m2 + road_excluded_m2
+    eligible_m2 = forest_in_parcels_m2 - excluded_m2
+    residual_m2 = eligible_m2 - (managed_m2 + riparian_m2)
+
+    lines = [
+        ("forest_in_parcels", forest_in_parcels_m2),
+        ("excluded_waterbody", waterbody_excluded_m2),
+        ("excluded_road_buffer", road_excluded_m2),
+        ("excluded_total", excluded_m2),
+        ("eligible_forest", eligible_m2),
+        ("managed", managed_m2),
+        ("riparian", riparian_m2),
+        ("balance_residual", residual_m2),
+    ]
+
+    return pd.DataFrame(
+        {
+            "line": [name for name, _ in lines],
+            "area_ha": [value / 10_000 for _, value in lines],
+            "area_acres": [value / SQ_M_PER_ACRE for _, value in lines],
+        }
+    )
 
 
 def load_config(config_path: Path = Path("config/bmp_rules.yaml")) -> dict:
@@ -241,15 +448,15 @@ def process_county(
     2. Load and clip roads, streams, waterbodies, LANDFIRE EVT
     3. Create forest mask from EVT
     4. Intersect parcels with forest mask
-    5. Build and erase BMP stream buffers
-    6. Erase waterbodies
-    7. Erase small road buffer
-    8. Classify by size
-    9. Optionally split large polygons
-    10. Save outputs
+    5. Erase the permanent exclusions (waterbodies, road buffer) -> eligible forest
+    6. Build BMP stream buffers and split eligible forest into managed + riparian units
+    7. Classify by size
+    8. Optionally split large managed polygons
+    9. Check the area balance and save outputs
 
     Returns:
-        Summary statistics dict, or None if dry_run=True
+        {"summary": summary rows, "balance_ok": bool, "balance_residual_ha": float},
+        or None if dry_run=True or the county could not be processed.
     """
     logger.info(f"Processing county FIPS {FLORIDA_FIPS}{county_fips}")
 
@@ -263,6 +470,7 @@ def process_county(
     county_output_dir.mkdir(parents=True, exist_ok=True)
 
     output_gpkg = county_output_dir / "candidate_management_units.gpkg"
+    accounting_csv = county_output_dir / "area_accounting.csv"
     if output_gpkg.exists() and not overwrite:
         logger.warning(f"Output exists and overwrite=False: {output_gpkg}")
         return None
@@ -277,6 +485,7 @@ def process_county(
     streams_path = data_root / "US SE Streams - FINAL" / "US SE Streams - FINAL" / "Streams By State" / "nhdplus_epasnapshot2022_fl.gdb"
     waterbodies_path = data_root / "US SE Waterbodies Final" / "US SE Streams 10.20.2023" / "US SE Streams" / "US SE Streams.gdb"
     evt_path = data_root / "LF2022_EVT_CONUS" / "LF2022_EVT_CONUS" / "Tif" / "LF2022_EVT_CONUS.tif"
+    evt_vat_path = data_root / "LF2022_EVT_CONUS" / "LF2022_EVT_CONUS" / "CSV_Data" / "LF2022_EVT.csv"
 
     # 1. Load parcels for county
     logger.info("Loading parcels...")
@@ -291,12 +500,18 @@ def process_county(
         "047": "HAMILTON",
         "089": "NASSAU",
         "091": "OKALOOSA",  # Not in pilot but included for reference
+        "121": "SUWANNEE",
         "125": "UNION",
     }
 
-    if county_fips in county_name_map:
-        county_name = county_name_map[county_fips]
-        parcels = parcels[parcels["CNTYNAME"] == county_name].copy()
+    if county_fips not in county_name_map:
+        # Without a name there is no filter, so every county's parcels would fall through
+        # and be attributed to this one. Fail loudly instead.
+        logger.error(f"No county name mapping for FIPS {county_fips}; refusing to run unfiltered")
+        return None
+
+    county_name = county_name_map[county_fips]
+    parcels = parcels[parcels["CNTYNAME"] == county_name].copy()
 
     if len(parcels) == 0:
         logger.error(f"No parcels found for county {county_fips}")
@@ -304,39 +519,41 @@ def process_county(
 
     logger.info(f"Loaded {len(parcels)} parcels")
 
-    # Get AOI bounds for clipping
+    # Get AOI bounds for clipping. The vector reads need a *CRS-aware* mask: pyogrio
+    # interprets a bare shapely geometry in the target layer's own CRS, and the source
+    # layers are in EPSG:4326/4269, so a raw EPSG:5070 box silently matches nothing.
     aoi_bounds = parcels.total_bounds
     aoi_geom = box(*aoi_bounds)
+    aoi_mask = gpd.GeoSeries([aoi_geom], crs=PROJECT_CRS)
 
     # 2. Load and clip other inputs
     logger.info("Loading roads...")
-    roads = gpd.read_file(roads_path, layer="SE_rds100k", mask=aoi_geom)
+    roads = gpd.read_file(roads_path, layer="SE_rds100k", mask=aoi_mask)
     roads = roads.to_crs(PROJECT_CRS)
     logger.info(f"Loaded {len(roads)} roads")
 
     logger.info("Loading streams...")
-    streams = gpd.read_file(streams_path, layer="nhdflowline_fl", mask=aoi_geom)
+    streams = gpd.read_file(streams_path, layer="nhdflowline_fl", mask=aoi_mask)
     streams = streams.to_crs(PROJECT_CRS)
     logger.info(f"Loaded {len(streams)} streams")
 
     logger.info("Loading waterbodies...")
-    waterbodies = gpd.read_file(waterbodies_path, layer="NHDWaterbody_DissolveBoundaries1", mask=aoi_geom)
+    waterbodies = gpd.read_file(waterbodies_path, layer="NHDWaterbody_DissolveBoundaries1", mask=aoi_mask)
     waterbodies = waterbodies.to_crs(PROJECT_CRS)
     logger.info(f"Loaded {len(waterbodies)} waterbodies")
 
-    # 3. Create forest mask (simplified - in production use EVT VAT properly)
+    # 3. Create forest mask from the EVT VAT
     logger.info("Creating forest mask from EVT...")
-    # For now, create a simple forest mask from raster
-    # This is a placeholder - the real implementation would use rasterio properly
     from shapely.geometry import shape
 
+    tree_values = load_evt_tree_values(evt_vat_path)
+
     with rasterio.open(evt_path) as src:
-        # Clip to AOI
+        # Clip to AOI. The EVT raster is already EPSG:5070, so the bare box is correct here.
         aoi_geom_dict = [mapping(aoi_geom)]
         out_image, out_transform = rio_mask(src, aoi_geom_dict, crop=True, all_touched=False)
 
-        # Tree-dominated classes: approximate as 1000-2999
-        forest_mask = (out_image[0] >= 1000) & (out_image[0] < 3000)
+        forest_mask = np.isin(out_image[0], tree_values)
 
         # Vectorize
         forest_shapes_list = []
@@ -363,83 +580,76 @@ def process_county(
         return None
 
     logger.info(f"Forested parcel fragments: {len(forested_parcels)}")
+    forest_in_parcels_m2 = float(forested_parcels.geometry.area.sum())
 
-    # 5. Build BMP stream buffers
+    # 5. Erase the permanent exclusions: waterbodies and the small road-artifact buffer.
+    #    These are not stands and never become units, so their acres leave the landscape
+    #    here and are reported on their own accounting lines below.
+    #
+    #    Erased one class at a time so the excluded areas *telescope*: each class is
+    #    credited with exactly the area it was the first to remove, the two lines sum to
+    #    the total drop by construction, and no county-wide union is ever built.
+    logger.info("Building exclusion layer (waterbodies + road buffer)...")
+    exclusion_gdf = build_exclusion_layer(waterbodies, roads, road_buffer_m=SMALL_ROAD_BUFFER_M)
+
+    excluded_m2 = {"waterbody": 0.0, "road_buffer": 0.0}
+    eligible = forested_parcels
+    for exclusion_class in ("waterbody", "road_buffer"):
+        layer = exclusion_gdf[exclusion_gdf["exclusion_class"] == exclusion_class]
+        before_m2 = float(eligible.geometry.area.sum())
+        eligible = erase(eligible, layer)
+        excluded_m2[exclusion_class] = before_m2 - float(eligible.geometry.area.sum())
+        logger.info(f"  erased {exclusion_class}: {excluded_m2[exclusion_class] / 10_000:,.1f} ha")
+
+    eligible = clean_geometries(eligible)
+    logger.info(f"Eligible forest fragments after exclusions: {len(eligible)}")
+
+    # 6. Build BMP stream buffers and split the eligible forest into managed + riparian.
+    #    Buffers are retained, not erased: they grow freely, are never harvested, and are
+    #    reported as unique polygons with their own IDs.
     logger.info("Building BMP stream buffers...")
-    streams["buffer_class"] = streams["fcode"].apply(classify_stream_fcode)
-
-    # Map buffer class to width in meters
     buffer_widths = {
         "ephemeral_intermittent": feet_to_meters(fl_buffers["ephemeral_intermittent"]["width_ft"]),
         "perennial_small": feet_to_meters(fl_buffers["perennial_small"]["width_ft"]),
         "perennial_large": feet_to_meters(fl_buffers["perennial_large"]["width_ft"]),
     }
+    riparian_buffer_gdf = build_riparian_buffer_layer(streams, buffer_widths)
+    logger.info(f"Riparian buffer classes present: {list(riparian_buffer_gdf['buffer_class'])}")
 
-    stream_buffers = []
-    for buffer_class, width_m in buffer_widths.items():
-        class_streams = streams[streams["buffer_class"] == buffer_class]
-        if len(class_streams) > 0:
-            buffered = class_streams.buffer(width_m)
-            stream_buffers.append(buffered.unary_union)
-
-    if stream_buffers:
-        all_stream_buffers = unary_union(stream_buffers)
-        stream_buffer_gdf = gpd.GeoDataFrame(geometry=[all_stream_buffers], crs=PROJECT_CRS)
+    logger.info("Partitioning eligible forest into managed and riparian units...")
+    if len(riparian_buffer_gdf) > 0:
+        riparian_units = gpd.overlay(eligible, riparian_buffer_gdf, how="intersection")
+        managed_units = erase(eligible, riparian_buffer_gdf)
     else:
-        stream_buffer_gdf = gpd.GeoDataFrame(geometry=[], crs=PROJECT_CRS)
+        riparian_units = eligible.iloc[0:0].copy()
+        riparian_units["buffer_class"] = pd.Series(dtype="object")
+        managed_units = eligible.copy()
 
-    # 6. Erase waterbodies
-    logger.info("Preparing waterbody erase layer...")
-    if len(waterbodies) > 0:
-        waterbody_union = waterbodies.unary_union
-        waterbody_gdf = gpd.GeoDataFrame(geometry=[waterbody_union], crs=PROJECT_CRS)
-    else:
-        waterbody_gdf = gpd.GeoDataFrame(geometry=[], crs=PROJECT_CRS)
+    managed_units["buffer_class"] = None
+    managed_units["unit_class"] = UNIT_CLASS_MANAGED
+    riparian_units["unit_class"] = UNIT_CLASS_RIPARIAN
 
-    # 7. Erase small road buffer
-    logger.info("Preparing road buffer erase layer...")
-    if len(roads) > 0:
-        road_buffer = roads.buffer(SMALL_ROAD_BUFFER_M).unary_union
-        road_buffer_gdf = gpd.GeoDataFrame(geometry=[road_buffer], crs=PROJECT_CRS)
-    else:
-        road_buffer_gdf = gpd.GeoDataFrame(geometry=[], crs=PROJECT_CRS)
+    managed_units = clean_geometries(managed_units)
+    riparian_units = clean_geometries(riparian_units)
+    logger.info(f"Managed fragments: {len(managed_units)}, riparian fragments: {len(riparian_units)}")
 
-    # Combine all erase layers
-    logger.info("Erasing buffers and water...")
-    erase_layers = []
-    if len(stream_buffer_gdf) > 0:
-        erase_layers.append(stream_buffer_gdf)
-    if len(waterbody_gdf) > 0:
-        erase_layers.append(waterbody_gdf)
-    if len(road_buffer_gdf) > 0:
-        erase_layers.append(road_buffer_gdf)
+    # 7. Calculate areas and classify
+    for units in (managed_units, riparian_units):
+        units["unit_area_ha"] = units.geometry.area / 10_000
+        units["size_class"] = units["unit_area_ha"].apply(classify_unit_size)
 
-    if erase_layers:
-        erase_union = pd.concat(erase_layers, ignore_index=True).unary_union
-        erase_gdf = gpd.GeoDataFrame(geometry=[erase_union], crs=PROJECT_CRS)
-
-        # Perform difference
-        candidate_units = gpd.overlay(forested_parcels, erase_gdf, how="difference")
-    else:
-        candidate_units = forested_parcels.copy()
-
-    logger.info(f"Candidate units after erase: {len(candidate_units)}")
-
-    # 8. Calculate areas and classify
-    candidate_units = clean_geometries(candidate_units)
-    candidate_units["unit_area_ha"] = candidate_units.geometry.area / 10_000
-    candidate_units["size_class"] = candidate_units["unit_area_ha"].apply(classify_unit_size)
-
-    # 9. Optionally split large polygons
+    # 8. Optionally split large polygons. Managed units only: the 40 ha target bounds an
+    #    operational harvest unit, and riparian buffers are never entered, so splitting
+    #    them would invent geometry with no management meaning.
     if split_large:
-        logger.info("Splitting large polygons...")
-        large_mask = candidate_units["size_class"] == "large_gt_target"
+        logger.info("Splitting large managed polygons (riparian units are left intact)...")
+        large_mask = managed_units["size_class"] == "large_gt_target"
         n_large = large_mask.sum()
 
         if n_large > 0:
             # Split large geometries
             split_rows = []
-            for idx, row in candidate_units[large_mask].iterrows():
+            for idx, row in managed_units[large_mask].iterrows():
                 parts = split_large_geometry(row.geometry, target_max_area_ha=TARGET_MAX_AREA_HA)
                 for part in parts:
                     new_row = row.copy()
@@ -449,19 +659,22 @@ def process_county(
                     split_rows.append(new_row)
 
             # Combine split and non-large units
-            non_large = candidate_units[~large_mask]
+            non_large = managed_units[~large_mask]
             if split_rows:
                 split_gdf = gpd.GeoDataFrame(split_rows, crs=PROJECT_CRS)
-                candidate_units = pd.concat([non_large, split_gdf], ignore_index=True)
+                managed_units = pd.concat([non_large, split_gdf], ignore_index=True)
             else:
-                candidate_units = non_large
+                managed_units = non_large
 
             logger.info(f"Split {n_large} large units into {len(split_rows)} parts")
 
-    # 10. Add metadata
-    candidate_units["unit_id"] = [
-        f"mu_{county_code}_{i:08d}" for i in range(len(candidate_units))
-    ]
+    # 9. Add metadata. Managed and riparian units get distinct ID prefixes so a buffer
+    #    polygon stays addressable in every downstream summary.
+    managed_units["unit_id"] = [f"mu_{county_code}_{i:08d}" for i in range(len(managed_units))]
+    riparian_units["unit_id"] = [f"rb_{county_code}_{i:08d}" for i in range(len(riparian_units))]
+
+    candidate_units = pd.concat([managed_units, riparian_units], ignore_index=True)
+    candidate_units = gpd.GeoDataFrame(candidate_units, geometry="geometry", crs=PROJECT_CRS)
     candidate_units["county_fips"] = county_code
     candidate_units["county_name"] = county_name_map.get(county_fips, "Unknown")
 
@@ -470,7 +683,7 @@ def process_county(
         candidate_units["source_parcel_area_ha"] = candidate_units["ACRES"] * 0.404686  # acres to ha
 
     # Reorder columns
-    id_cols = ["unit_id", "county_fips", "county_name"]
+    id_cols = ["unit_id", "unit_class", "buffer_class", "county_fips", "county_name"]
     parcel_cols = [c for c in candidate_units.columns if c in ["CNTYNAME", "PARCELID", "NPARNO", "DORUC", "PARUSEDESC", "ACRES"]]
     area_cols = ["source_parcel_area_ha", "unit_area_ha", "size_class"] if "source_parcel_area_ha" in candidate_units.columns else ["unit_area_ha", "size_class"]
     other_cols = [c for c in candidate_units.columns if c not in id_cols + parcel_cols + area_cols + ["geometry"]]
@@ -479,36 +692,66 @@ def process_county(
     col_order = [c for c in col_order if c in candidate_units.columns]
     candidate_units = candidate_units[col_order]
 
+    # 10. Area accounting. Managed + riparian must partition the eligible forest; the
+    #     permanently excluded acres get their own lines so the drop stays visible.
+    is_riparian = candidate_units["unit_class"] == UNIT_CLASS_RIPARIAN
+    accounting = area_accounting_table(
+        forest_in_parcels_m2=forest_in_parcels_m2,
+        waterbody_excluded_m2=excluded_m2["waterbody"],
+        road_excluded_m2=excluded_m2["road_buffer"],
+        managed_m2=float(candidate_units.loc[~is_riparian, "unit_area_ha"].sum() * 10_000),
+        riparian_m2=float(candidate_units.loc[is_riparian, "unit_area_ha"].sum() * 10_000),
+    )
+
+    eligible_ha = float(accounting.loc[accounting["line"] == "eligible_forest", "area_ha"].iloc[0])
+    residual_ha = float(accounting.loc[accounting["line"] == "balance_residual", "area_ha"].iloc[0])
+    balance_ok = eligible_ha <= 0 or abs(residual_ha) / eligible_ha <= AREA_BALANCE_TOLERANCE
+    if balance_ok:
+        logger.info(f"Area balance check passed (residual {residual_ha:.6f} ha of {eligible_ha:,.1f} ha)")
+    else:
+        logger.error(
+            "Area balance check FAILED: managed + riparian is off eligible forest by "
+            f"{residual_ha:.4f} ha ({abs(residual_ha) / eligible_ha:.2e} relative), "
+            f"tolerance {AREA_BALANCE_TOLERANCE:.0e}. Forest area has been lost between the "
+            "exclusion step and the written units -- treat this county's outputs as wrong."
+        )
+
     # 11. Save outputs
     logger.info(f"Saving to {output_gpkg}")
     candidate_units.to_file(output_gpkg, driver="GPKG")
 
-    # Save summary CSV
-    summary = candidate_units.groupby("size_class").agg(
+    accounting.to_csv(accounting_csv, index=False)
+    logger.info(f"Area accounting:\n{accounting.to_string(index=False)}")
+
+    # Save summary CSV. Riparian units keep their own rows, cut by buffer class.
+    summary = candidate_units.groupby(["unit_class", "buffer_class", "size_class"], dropna=False).agg(
         polygon_count=("unit_id", "count"),
         total_area_ha=("unit_area_ha", "sum"),
+        total_area_acres=("unit_area_ha", lambda s: s.sum() * 10_000 / SQ_M_PER_ACRE),
         median_area_ha=("unit_area_ha", "median"),
     ).reset_index()
 
     summary_csv = county_output_dir / "summary.csv"
     summary.to_csv(summary_csv, index=False)
-    logger.info(f"Summary:\n{summary}")
+    logger.info(f"Summary:\n{summary.to_string(index=False)}")
 
     # Save QA layers if requested
     if save_qa:
         qa_dir = county_output_dir / "qa"
         qa_dir.mkdir(exist_ok=True)
 
-        if len(stream_buffer_gdf) > 0:
-            stream_buffer_gdf.to_file(qa_dir / "stream_buffers.gpkg", driver="GPKG")
-        if len(waterbody_gdf) > 0:
-            waterbody_gdf.to_file(qa_dir / "waterbodies.gpkg", driver="GPKG")
-        if len(road_buffer_gdf) > 0:
-            road_buffer_gdf.to_file(qa_dir / "road_buffers.gpkg", driver="GPKG")
+        if len(riparian_buffer_gdf) > 0:
+            riparian_buffer_gdf.to_file(qa_dir / "riparian_buffers.gpkg", driver="GPKG")
+        if len(exclusion_gdf) > 0:
+            exclusion_gdf.to_file(qa_dir / "exclusions.gpkg", driver="GPKG")
         if len(forest_mask_gdf) > 0:
             forest_mask_gdf.to_file(qa_dir / "forest_mask.gpkg", driver="GPKG")
 
-    return summary.to_dict(orient="records")
+    return {
+        "summary": summary.to_dict(orient="records"),
+        "balance_ok": balance_ok,
+        "balance_residual_ha": residual_ha,
+    }
 
 
 def main():
@@ -546,6 +789,7 @@ def main():
 
     # Process each county
     results = []
+    failed = []
     for county_fips in counties_to_process:
         try:
             result = process_county(
@@ -557,14 +801,24 @@ def main():
                 dry_run=args.dry_run,
             )
             if result:
-                results.append({"county_fips": county_fips, "summary": result})
+                results.append({"county_fips": county_fips, "summary": result["summary"]})
+                if not result["balance_ok"]:
+                    failed.append((county_fips, result["balance_residual_ha"]))
         except Exception as e:
             logger.error(f"Failed processing county {county_fips}: {e}", exc_info=True)
+            failed.append((county_fips, float("nan")))
 
     logger.info("Processing complete")
 
     if results and not args.dry_run:
         logger.info(f"Processed {len(results)} counties successfully")
+
+    # A county whose area balance does not close has lost forest somewhere. Exit non-zero
+    # so a batch run cannot report success while shipping wrong acreage.
+    if failed:
+        for county_fips, residual_ha in failed:
+            logger.error(f"County {FLORIDA_FIPS}{county_fips}: area balance off by {residual_ha:.4f} ha")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

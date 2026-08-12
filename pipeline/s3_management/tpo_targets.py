@@ -17,10 +17,11 @@ split across two merged rows and whose two data rows are tagged by a free-text n
     per year            11755875  17798687.5 ...                            "Assuming all TPO years are averaged"
     by county           11451200  19725500   ...                            "Assuming 2013-2024 TPO years are averaged"
 
-So we anchor on the ``"Assuming … averaged"`` note cells to find the data rows, read the
-numeric cells to their left as the values, and build names from the one-or-two header rows
-directly above the first data row. Two averaging periods are emitted: ``all_years`` and
-``2013_2024``. Values are cubic feet per year.
+So we anchor on the ``"Assuming … averaged"`` note cells to find the summary rows, then
+read the annual total-product block to derive a third, leakage-free period:
+``pre_2015``. The workbook reports annual observations in thousands of cubic feet, which
+are converted to cubic feet per year. The committed summary periods ``all_years`` and
+``2013_2024`` are retained for forward and sensitivity scenarios.
 
 The two sheets are ``ByOwnerGroup`` (Federal (NF), Other public, Private, All owners) and
 ``ByCounty`` (Baker, Columbia, Hamilton, Suwanee, Union, All five counties). Note the
@@ -115,6 +116,70 @@ def extract_summary_block(raw: pd.DataFrame) -> dict[str, dict[str, float]]:
     return out
 
 
+def _contiguous_year_runs(raw: pd.DataFrame) -> list[tuple[int, list[tuple[int, int]]]]:
+    """Return candidate ``(year_column, [(row, year), ...])`` annual-data blocks."""
+    candidates: list[tuple[int, list[tuple[int, int]]]] = []
+    for column in range(raw.shape[1]):
+        year_cells: list[tuple[int, int]] = []
+        for row, value in enumerate(raw.iloc[:, column]):
+            if not _is_number(value) or float(value) != int(value):
+                continue
+            year = int(value)
+            if 1900 <= year <= 2100:
+                year_cells.append((row, year))
+
+        run: list[tuple[int, int]] = []
+        for item in year_cells:
+            if run and item[0] != run[-1][0] + 1:
+                if len(run) >= 2:
+                    candidates.append((column, run))
+                run = []
+            run.append(item)
+        if len(run) >= 2:
+            candidates.append((column, run))
+    return candidates
+
+
+def extract_annual_average(
+    raw: pd.DataFrame,
+    names: list[str],
+    *,
+    before_year: int,
+) -> dict[str, float]:
+    """Average reported annual total-product volumes before ``before_year``.
+
+    The owner sheet contains adjacent softwood, hardwood, and total blocks, each with its
+    own year column. The total block is identified by having exactly as many consistently
+    numeric value columns as the summary block has names. Values in the annual table are
+    thousands of cubic feet and are converted to cubic feet per year here.
+    """
+    candidates = _contiguous_year_runs(raw)
+    for index, (year_col, year_rows) in enumerate(candidates):
+        next_year_col = next(
+            (candidate_col for candidate_col, _ in candidates[index + 1:]
+             if candidate_col > year_col),
+            raw.shape[1],
+        )
+        rows = [row for row, year in year_rows if year < before_year]
+        if not rows:
+            continue
+        value_cols = [
+            column
+            for column in range(year_col + 1, next_year_col)
+            if all(_is_number(raw.iat[row, column]) for row in rows)
+        ]
+        if len(value_cols) != len(names):
+            continue
+        return {
+            name: float(raw.iloc[rows, column].mean()) * 1_000.0
+            for name, column in zip(names, value_cols, strict=True)
+        }
+
+    raise ValueError(
+        "Could not identify the annual total-product block matching the summary columns."
+    )
+
+
 def parse_tpo_workbook(
     path: Path,
     owner_sheet: str = OWNER_SHEET,
@@ -134,11 +199,22 @@ def parse_tpo_workbook(
     owner_raw = pd.read_excel(path, sheet_name=owner_sheet, header=None)
     county_raw = pd.read_excel(path, sheet_name=county_sheet, header=None)
 
+    owner_targets = extract_summary_block(owner_raw)
+    county_targets = extract_summary_block(county_raw)
+    for name, value in extract_annual_average(
+        owner_raw, list(owner_targets), before_year=2015
+    ).items():
+        owner_targets[name]["pre_2015"] = value
+    for name, value in extract_annual_average(
+        county_raw, list(county_targets), before_year=2015
+    ).items():
+        county_targets[name]["pre_2015"] = value
+
     targets = {
         "units": VALUE_UNITS,
         "source": path.name,
-        "by_owner_group": extract_summary_block(owner_raw),
-        "by_county": extract_summary_block(county_raw),
+        "by_owner_group": owner_targets,
+        "by_county": county_targets,
     }
     periods = sorted({p for d in targets["by_county"].values() for p in d})
     logger.info(

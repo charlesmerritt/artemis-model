@@ -90,7 +90,7 @@ in this repo; the two words mean the same thing and `regime` survives in code id
 ### Prescription
 A family **with its parameters bound** — `plantation_rotation` with `thin_year=2037,
 clearcut_year=2052`. This is what gets rendered into a keyfile. One family expands into
-many prescriptions via the parameter grid in `config/prescriptions.yaml`.
+many prescriptions via the eligible menu in `config/management_regimes.yaml`.
 
 ### Trajectory
 The **result** of running one prescription on one stand: the full 50-year, 10-cycle path of
@@ -119,7 +119,9 @@ treatments — the treatments are already inside the chosen trajectories.
   ID of the FIA plot imputed to it. `notes/treemap-methodology.md`.
 - **Sliver** — a management-unit polygon below the minimum operational size (**5 ac ≈ 2 ha**);
   87% of raw Union County polygons. **Sliver-merge** dissolves each into its best neighbor
-  (`sliver_merge.py`), conserving area.
+  (`sliver_merge.py`), conserving area. "Best" = highest `(same parcel, shared boundary length)`
+  among candidates of the *same* `unit_class`, then nearest same-class unit for isolated
+  fragments. Merging never crosses managed/riparian.
 - **BMP erase** — cutting the required no-harvest buffers (Florida BMP: 35–75 ft around
   streams/water/roads) out of the units; this fragmentation is what *creates* slivers.
 - **State-zero** — the clean management-unit map at year 0, before any simulated harvest.
@@ -127,7 +129,11 @@ treatments — the treatments are already inside the chosen trajectories.
 - **Stand metrics** — **BA** basal area (trunk cross-section per acre, sq ft/ac); **TPA**
   trees per acre; **SDI** stand density index; **QMD** quadratic mean diameter. These are the
   "stand values" the restart-fidelity work proved exact across pause/restart.
-- **EPSG:5070** — CONUS Albers Equal-Area, the project CRS; equal-area so acres/hectares are
+- **EPSG:5070** — **NAD83 / Conus Albers** (ArcGIS: `NAD_1983_Contiguous_USA_Albers`), the
+  project CRS for everything. Declared in `config/projection.yaml`, read via
+  `pipeline/spatial_ref.py`. Not `ESRI:102008` "North America Albers" (parallels 20/60) and
+  not `EPSG:6350` NAD83(2011) — both are different grids that still look correct on a map.
+  CONUS Albers Equal-Area; equal-area so acres/hectares are
   correct.
 
 ## Usage rules (do this going forward)

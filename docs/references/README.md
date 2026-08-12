@@ -47,10 +47,10 @@ Their pipeline, and how ARTEMIS maps onto it:
 |---|---|
 | 40-acre grid cells clipped to BLM ownership, small remnants merged; "management units (used interchangeably with 'stands')" | Parcel-derived management units + `sliver_merge.py`. Same term, same role |
 | Inventory imputed to stands by Gradient Nearest Neighbor (GNN/LEMMA) | TreeMap 2022 imputed FIA plots — the same imputation-initialized design |
-| **"Identifying prescription zones"**: land classification (Critical Habitat, wilderness/ACEC/RNA, stream buffers) determines which prescriptions may be applied | **Ownership class** determines the eligible set (`config/prescriptions.yaml`) |
+| **"Identifying prescription zones"**: land classification (Critical Habitat, wilderness/ACEC/RNA, stream buffers) determines which prescriptions may be applied | **Ownership class** determines the eligible set (`config/management_regimes.yaml`) |
 | Grow-only simulated for *all* classifications; exclusion areas and stream buffers get no active management; Critical Habitat limited to complex thinning or patch cuts | `no_management` in every library; riparian library is `{no_management}` only; public classes exclude clearcut |
 | Six prescriptions: grow only; 80-yr rotation; 100(+)-yr rotation; thin every 20–25 yr; complex-structure thinning; patch cut | Five families: `no_management`, `clearcut`, `thin_from_below`, `selection_harvest`, `plantation_rotation` |
-| **"Offsets"** delaying the first activity by 5, 10, or 15 years, "to offer choices to the optimization model" | `*_offset` parameter grids in `config/prescriptions.yaml` — the same idea, same purpose |
+| **"Offsets"** delaying the first activity to offer choices to the optimization model | Cycle-aligned age/offset schedules in `config/management_regimes.yaml` — the same idea, resolved through the production scheduler |
 | Batch system rendering keyfiles for every prescription × offset × emissions scenario × GCM; distributed, fault-tolerant, parallel FVS; results parsed to SQLite | Library generation, `PLAN.md` §4c; results to DuckDB/Parquet |
 | Simulated-annealing scheduler over "all possible combinations of prescriptions and timing for every stand" | `PLAN.md` §4d |
 | 100-year horizon, 5-year timestep, FFE for carbon and fire metrics | 50-year horizon, 5-year cycles; FFE currently off |
@@ -133,7 +133,7 @@ What ARTEMIS takes from it:
 Already staged against this reference:
 [`docs/superpowers/plans/2026-07-28-lamps-scheduler-integration.md`](../superpowers/plans/2026-07-28-lamps-scheduler-integration.md)
 (the `harvest_eligibility.py` / `adjacency.py` port) and
-[`config/prescriptions.yaml`](../../config/prescriptions.yaml) (`eligibility_screens`).
+[`config/management_regimes.yaml`](../../config/management_regimes.yaml) and the structural screens applied while building the library.
 
 > **Citation to verify against the PDF.** Best available identification from open sources:
 > Bettinger, P. and Lennette, M. (2004), *Landscape Management Policy Simulator (LAMPS),

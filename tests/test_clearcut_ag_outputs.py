@@ -1,7 +1,10 @@
 """Invariant checks on the clearcut-vs-agriculture run outputs.
 
-These skip when the notebooks have not been executed (the CSV is a gitignored artifact).
-When present, they guard the properties the analysis relies on.
+The CSVs are gitignored notebook artifacts. `_resolve` looks for them locally and
+then in the R2 mirror of the repo's data/ tree, so these run against the real
+outputs wherever R2 is reachable and skip only where it is not — meaning the
+notebook has to be re-run. When present, they guard the properties the analysis
+relies on.
 """
 
 import sys
@@ -18,13 +21,19 @@ import clearcut_ag_common as cac  # noqa: E402
 CSV = REPO_ROOT / "data" / "interim" / "clearcut_ag" / "embeddings_samples.csv"
 
 
-@pytest.fixture(scope="module")
-def samples():
-    if not CSV.exists():
-        pytest.skip(f"{CSV} not present — run Clearcut-vs-Agriculture-Embeddings.ipynb first")
+def _resolve(data_access, csv, notebook):
+    """Local path to a notebook output, fetched from R2 when it is not on disk."""
+    local = data_access.ensure_local(csv)
+    if local is None:
+        pytest.skip(f"{data_access.unavailable_reason(csv)} — run {notebook} to regenerate")
+    return local
+
+
+@pytest.fixture
+def samples(data_access):
     import pandas as pd
 
-    return pd.read_csv(CSV)
+    return pd.read_csv(_resolve(data_access, CSV, "Clearcut-vs-Agriculture-Embeddings.ipynb"))
 
 
 def test_embeddings_present_and_finite(samples):
@@ -59,13 +68,13 @@ def test_labels_are_internally_consistent(samples):
 FEATURE_CSV = REPO_ROOT / "data" / "interim" / "clearcut_ag" / "feature_table.csv"
 
 
-@pytest.fixture(scope="module")
-def feature_table():
-    if not FEATURE_CSV.exists():
-        pytest.skip(f"{FEATURE_CSV} not present — run Clearcut-Grassland-Feature-Engineering.ipynb")
+@pytest.fixture
+def feature_table(data_access):
     import pandas as pd
 
-    return pd.read_csv(FEATURE_CSV)
+    return pd.read_csv(
+        _resolve(data_access, FEATURE_CSV, "Clearcut-Grassland-Feature-Engineering.ipynb")
+    )
 
 
 def test_feature_table_embeddings_finite(feature_table):

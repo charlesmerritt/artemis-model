@@ -29,7 +29,7 @@
 
 ## 0. Project scaffolding (do this first)
 - Define the spatial extent precisely: list of state FIPS codes or a bounding polygon; commit as `config/extent.geojson`.
-- Pick a single CRS for all rasters (recommend EPSG:5070, CONUS Albers Equal Area) and a snap grid aligned to TreeMap.
+- **CRS — decided.** Everything is **EPSG:5070, NAD83 / Conus Albers** (ArcGIS: `NAD_1983_Contiguous_USA_Albers`): every raster, every vector, every output. Equal-area and in metres, so acres and hectares come straight from geometry. Snap grid is the TreeMap 2022 affine `[30, 0, -2361585, 0, -30, 3177435]` — note the origin is half a pixel off the round 30 m grid, so exports must pass `crsTransform=`, never `scale=`. Declared once in `config/projection.yaml`, read through `pipeline/spatial_ref.py`, hardcoding blocked by test. Do not substitute `ESRI:102008` (North America Albers, parallels 20/60 — off by kilometres) or `EPSG:6350` (NAD83(2011) — off by under a metre, still breaks the snap grid); both look right on a map.
 - Set up storage: Zarr or Cloud-Optimized GeoTIFF for raster cubes; Parquet for tabular FIA joins and FVS outputs; PostGIS optional for vector ops.
 - Establish a chunking convention (e.g., HUC8 or 1° tiles) so nothing has to be processed CONUS-wide in memory.
 - **Compute stack:** Google Earth Engine (raster acquisition, clipping, terrain/climate derivatives, LCMS, segmentation inputs) + local workstation (FIA SQL joins, FVS runs, Python pipeline, Zarr/Parquet assembly) + campus HPC (FVS trajectory library at scale, once pipeline is proven locally). Do not architect for HPC until a clean local job exists.
@@ -112,6 +112,13 @@
     - Lakes and ponds → 75 ft
   - Store rules as `config/bmp_rules.yaml` keyed by state FIPS; add additional states at expansion time.
 - Output: `riparian_buffer.tif` (categorical: buffer class per pixel).
+- **Implemented 2026-08-03:** buffers are **retained**, not erased. `sketch_management_units`
+  builds the BMP buffer layer and uses it to partition the eligible forest into
+  `unit_class = "managed"` and `unit_class = "riparian"` units, each riparian unit carrying
+  its `buffer_class`. `sliver_merge` then treats `unit_class` as a hard constraint: a 35–75 ft
+  buffer is below the 5-acre minimum stand size almost everywhere, so merging across the line
+  would put unharvestable acres inside a harvest unit. Area is accounted in
+  `area_accounting.csv`, with permanently-excluded acres on their own lines.
 
 ### 3c. Ownership assignment and prescription eligibility
 - **Ownership assignment per pixel:**
@@ -120,7 +127,13 @@
   - Vintage: **circa 2022** — temporally co-registered with TreeMap 2022. These two datasets were designed to be used together.
   - Nine raster values: `unknown_forest`, `non_forest`, `water`, `family_forest`, `corporate_forest`, `tribal_forest`, `federal_forest`, `state_forest`, `local_forest`.
   - `non_forest` and `water` pixels masked from FVS pipeline entirely.
-  - Each of the seven forest ownership classes gets its own prescription library (no collapsing).
+  - Each of the seven forest ownership classes treated as its own class in the harvest model (no collapsing).
+  - **Refined 2026-08-03** (`config/ownership_policy.yaml`): the `corporate_forest` class is
+    *split* — not collapsed — into `private_industrial` and `private_corporate_other` using
+    parcel DOR use codes and acreage, since the raster cannot distinguish TIMO/REIT
+    timberland from small corporate holdings and the two behave nothing alike. The raster
+    stays authoritative for public-vs-private and the level of government; parcel
+    disagreements are flagged, not applied.
   - Output: `ownership_class.tif` (9-value categorical, reprojected to EPSG:5070 snapped to TreeMap grid).
 
 - **Ownership assignment per stand:**
@@ -128,7 +141,7 @@
   - Output: `ownership_class` on the unit table — the key that selects the unit's prescription library.
 
 - **Prescription eligibility (ownership decides the menu, not the meal):**
-  - Ownership class maps to a **set** of eligible prescription families and their parameter grids, not to a single regime. Authoritative mapping: [`config/prescriptions.yaml`](config/prescriptions.yaml).
+  - Ownership class maps to a **set** of eligible prescriptions, not to a single regime. The sole executable authority for prescription parameters, defaults, and eligible menus is [`config/management_regimes.yaml`](config/management_regimes.yaml).
   - `no_management` is in every non-riparian library — a stand must always be allowed to grow untreated, or a binding volume cap has no feasible answer.
   - Riparian units (BMP stream-management zone by geometry) get a library of **exactly one** trajectory, `no_management`. No entry, ever, enforced by the absence of an alternative rather than by a constraint the search could violate.
   - Eligibility screens (minimum harvest age, reserve status, operability) **remove** prescriptions at build time and never add any. A library that screens down to `{no_management}` is a valid outcome and must be logged.
@@ -143,7 +156,7 @@
 
 ### 3d. Hindcast validation of the scheduler
 - Hold out the most recent 10 years of LCMS (2015-2024).
-- Build the trajectory library from the 2015 state of the landscape and run the scheduler with the explicitly selected 2013-2024 TPO average.
+- Build the trajectory library from the 2015 state of the landscape and run the scheduler with the explicitly selected pre-2015 TPO average. The 2015-2024 LCMS holdout is never used to calibrate its own harvest target.
 - Compare the selected plan against observed LCMS Tree Removal:
   - Total area harvested per year, per state, per ownership class
   - Spatial pattern agreement (Cohen's kappa or AUROC at pixel level)
@@ -171,21 +184,32 @@
   - `clearcut` — full removal at a target year
   - Riparian (**no entry, ever**; still grown and reported as unique buffer polygons — see `notes/methodology-directions.md`) is `no_management` assigned by geometry, not a separate template.
 - Regeneration keywords (`PLANT`/`NATREGEN`), `ThinBBA`/shelterwood, and the FFE/carbon block still need their field layouts verified before they are emitted.
-- **A family is not a trajectory.** Each family carries a parameter grid (treatment offsets, intensities, rotation ages) in `config/prescriptions.yaml`; the grid expands as a cartesian product into the concrete prescriptions a stand can be assigned.
-- Output: `regime_templates.py` (renderer) + `config/prescriptions.yaml` (ownership → eligible families + grids).
+- **Implemented as config, 2026-08-03:** the library is `config/management_regimes.yaml` (8
+  prescriptions, all rendered through the verified `ThinDBH` templates in
+  `pipeline/s4_fvs/regime_templates.py`), and each owner class declares 2-3 *eligible*
+  prescriptions plus one default — the default is what `regime_assignment.py` assigns, the
+  menu is what the §4c trajectory library gets built for and the scheduler chooses among.
+  Regeneration after a stand-replacing entry is a fixed tree list
+  (`config/fallback_treelists.yaml`), not a `PLANT`/`NATREGEN` keyword. See
+  `docs/config-policy.md`.
+- **A family is not a trajectory.** Age and rotation parameters in
+  `config/management_regimes.yaml` are resolved against each stand and expanded into the
+  concrete prescriptions the scheduler may select.
+- Output: `regime_templates.py` (renderer) + `config/management_regimes.yaml` (the sole
+  prescription and ownership-eligibility authority).
 
 ### 4c. Trajectory library construction
 The core of the architecture. **One library per stand, its contents determined by ownership class.**
 
 - **Stand = management unit polygon**, not FIA plot. The unit's tree list is the weighted union of its constituent plots' lists (`build_fvs_inputs.py::build_tree_init`: each donor tree kept intact, its `TPA` scaled by the plot's area share). See `notes/terminology.md`.
-- Enumerate `(stand, prescription)` pairs: for each stand, expand its ownership class's eligible set from `config/prescriptions.yaml`, apply the riparian override and the eligibility screens.
+- Enumerate `(stand, prescription)` pairs: for each stand, resolve its ownership class's eligible set from `config/management_regimes.yaml`, then apply the riparian override and structural eligibility screens.
 - Run FVS once per pair — 50-year horizon, 5-year cycles, **one continuous run, no restart barrier**. Runs are independent, so this is embarrassingly parallel across processes/nodes; no synchronization between stands is required.
 - Cache on a content hash of `(tree list, site attributes, prescription)` so identical inputs are not re-run. Dedup is a cache, never a reporting decision — every polygon keeps its own identity in the outputs.
 - Budget: target **6-12 trajectories per stand**. The five-county pilot (order 10⁴ units) is then order 10⁵ FVS runs — a one-time cost per library version, not a per-scenario cost. Grid growth is multiplicative; treat grid size as a standing budget question.
 - Store two tables:
   - `trajectory_index` — one row per trajectory: `trajectory_id`, `stand_id`, `prescription_id`, `ownership_class`, `county`, `area_ac`, `unit_class`, per-cycle harvest volume, precomputed objective terms. This is the scheduler's working set and must fit in memory.
   - `trajectory_cycles` — one row per `(trajectory_id, cycle)`: BA, TPA, QMD, SDI, volume, biomass, removals, carbon pools when enabled. Joined only after selection.
-- Integrity checks on every build: every non-riparian stand has ≥2 trajectories, every riparian stand exactly 1 (`no_management`), every trajectory has exactly `n_cycles + 1` state rows after duplicate removal rows are collapsed (initial state plus one endpoint per cycle), the unit layer and the library cover each other in both directions, and every prescription is a member of its ownership class's eligible set.
+- Integrity checks on every build: every riparian stand has exactly one trajectory (`no_management`); every non-riparian stand has at least two trajectories unless structural eligibility screens remove every active prescription, in which case it has exactly `no_management` and appears in a screened-down audit; every trajectory has exactly `n_cycles + 1` state rows after duplicate removal rows are collapsed (initial state plus one endpoint per cycle); the unit layer and library cover each other in both directions; and every prescription belongs to its ownership class's eligible set.
 - Output: `fvs_trajectory_library.parquet` / DuckDB (`trajectory_index`, `trajectory_cycles`).
 
 ### 4d. Harvest scheduling by simulated annealing
@@ -219,10 +243,10 @@ The core of the architecture. **One library per stand, its contents determined b
 - **Sensitivity probe.** Re-run with perturbed site index (±10%) and document output sensitivity; informs whether site index uncertainty matters before deciding to invest in better SI modeling.
 
 ### 5b. Library integrity (cheap; run on every library build)
-- Every non-riparian stand has ≥2 trajectories; every riparian stand has exactly 1, and it is `no_management`.
+- Every riparian stand has exactly one trajectory, `no_management`. Every non-riparian stand has at least two unless structural screens remove every active prescription; a screened-down stand has exactly `no_management` and is logged.
 - After collapsing duplicate FVS removal rows, every trajectory has exactly `n_cycles + 1` state rows (the initial state plus one endpoint per cycle), with no gaps and no NaNs in any objective column.
 - Unit layer and library cover each other **in both directions** — a stand silently missing from the library is a stand the scheduler cannot manage, and it will not announce itself.
-- Every prescription in the library is a member of its ownership class's eligible set in `config/prescriptions.yaml`.
+- Every prescription in the library is a member of its ownership class's eligible set in `config/management_regimes.yaml`.
 
 ### 5c. Scheduler validation
 - **Determinism.** Same seed + same library + same weights ⇒ identical plan.
@@ -259,6 +283,6 @@ The core of the architecture. **One library per stand, its contents determined b
 4. **The v1 objective** — NPV, volume, carbon, or a stated weighting? This is the scenario definition, not a tuning parameter.
 5. **Parameter-grid resolution per prescription family** — how many rotation ages and thin timings genuinely change the answer? Library cost is multiplicative in this.
 6. **Even-flow scope** — per ownership class, per county, or landscape-wide; non-declining or within a ± band?
-7. **Tribal and unknown-ownership eligible sets** — both are conservative placeholders in `config/prescriptions.yaml` and need a documented source before publication.
+7. **Tribal and unknown-ownership eligible sets** — both are conservative placeholders in `config/management_regimes.yaml` and need a documented source before publication.
 
 Settled since the first draft of this plan: ownership granularity is the **seven Harris et al. (2025) forest classes**, uncollapsed (§3c); BMP/riparian rules are **state-specific**, keyed by FIPS in `config/bmp_rules.yaml` (§3b).
