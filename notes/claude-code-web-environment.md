@@ -129,3 +129,21 @@ Judge a session by that invariant rather than by a fixed count — the totals mo
 with the suite (they were 82 passed / 21 skipped when this note was written). A
 *failure*, particularly anywhere in `tests/test_restart_fidelity.py`, means the
 `sqlite_scanner` staging above did not happen.
+
+## What the environment does not need
+
+- **System GDAL.** rasterio bundles GDAL 3.12.1 and pyogrio 3.11.4 in their wheels;
+  the suite passes without it. Noble's `gdal-bin` (3.8) would add a second, older GDAL.
+- **A Python build.** `.python-version` pins 3.14 and uv provisions it — 3.14.0rc2
+  with uv 0.8.17, which is the newest uv the base image carries. CI's newer uv gets
+  3.14 final; both pass.
+
+## Data
+
+`/mnt/d` is a workstation mount and never exists here. The same data is in the
+Cloudflare R2 bucket `artemis-r2`; [`data/index.md`](../data/index.md) catalogs it and
+`pipeline/data_access.py` resolves declared paths against whichever source answers.
+The token is bucket-scoped, so a bare `rclone lsd r2:` returns 403 — always name the
+bucket. Credentials come from `RCLONE_CONFIG_R2_*` set on the environment; the
+account-scoped endpoint is what the egress policy must allow, not the generic
+`r2.cloudflarestorage.com`.

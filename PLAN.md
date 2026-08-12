@@ -29,7 +29,7 @@
 
 ## 0. Project scaffolding (do this first)
 - Define the spatial extent precisely: list of state FIPS codes or a bounding polygon; commit as `config/extent.geojson`.
-- Pick a single CRS for all rasters (recommend EPSG:5070, CONUS Albers Equal Area) and a snap grid aligned to TreeMap.
+- **CRS — decided.** Everything is **EPSG:5070, NAD83 / Conus Albers** (ArcGIS: `NAD_1983_Contiguous_USA_Albers`): every raster, every vector, every output. Equal-area and in metres, so acres and hectares come straight from geometry. Snap grid is the TreeMap 2022 affine `[30, 0, -2361585, 0, -30, 3177435]` — note the origin is half a pixel off the round 30 m grid, so exports must pass `crsTransform=`, never `scale=`. Declared once in `config/projection.yaml`, read through `pipeline/spatial_ref.py`, hardcoding blocked by test. Do not substitute `ESRI:102008` (North America Albers, parallels 20/60 — off by kilometres) or `EPSG:6350` (NAD83(2011) — off by under a metre, still breaks the snap grid); both look right on a map.
 - Set up storage: Zarr or Cloud-Optimized GeoTIFF for raster cubes; Parquet for tabular FIA joins and FVS outputs; PostGIS optional for vector ops.
 - Establish a chunking convention (e.g., HUC8 or 1° tiles) so nothing has to be processed CONUS-wide in memory.
 - **Compute stack:** Google Earth Engine (raster acquisition, clipping, terrain/climate derivatives, LCMS, segmentation inputs) + local workstation (FIA SQL joins, FVS runs, Python pipeline, Zarr/Parquet assembly) + campus HPC (FVS trajectory library at scale, once pipeline is proven locally). Do not architect for HPC until a clean local job exists.
@@ -112,6 +112,13 @@
     - Lakes and ponds → 75 ft
   - Store rules as `config/bmp_rules.yaml` keyed by state FIPS; add additional states at expansion time.
 - Output: `riparian_buffer.tif` (categorical: buffer class per pixel).
+- **Implemented 2026-08-03:** buffers are **retained**, not erased. `sketch_management_units`
+  builds the BMP buffer layer and uses it to partition the eligible forest into
+  `unit_class = "managed"` and `unit_class = "riparian"` units, each riparian unit carrying
+  its `buffer_class`. `sliver_merge` then treats `unit_class` as a hard constraint: a 35–75 ft
+  buffer is below the 5-acre minimum stand size almost everywhere, so merging across the line
+  would put unharvestable acres inside a harvest unit. Area is accounted in
+  `area_accounting.csv`, with permanently-excluded acres on their own lines.
 
 ### 3c. Ownership assignment and prescription eligibility
 - **Ownership assignment per pixel:**
@@ -162,17 +169,25 @@
   - Parses the output cycle reports into a tidy dataframe
 - Use `pyFVS` or `rFVS` if you'd rather not build from scratch; both wrap the binary cleanly.
 
-### 4b. Management prescription keyword files
-- Implement each prescription family as a parameterized FVS keyword template. Current families (`pipeline/s4_fvs/regime_templates.py`, all built from the verified `ThinDBH` keyword):
-  - `no_management` — the baseline; also the required member of every library
-  - `thin_from_below` — proportional removal below a DBH ceiling
-  - `selection_harvest` — light proportional thins on an interval
-  - `plantation_rotation` — commercial thin, then clearcut at rotation age
-  - `clearcut` — full removal at a target year
-  - Riparian (**no entry, ever**; still grown and reported as unique buffer polygons — see `notes/methodology-directions.md`) is `no_management` assigned by geometry, not a separate template.
-- Regeneration keywords (`PLANT`/`NATREGEN`), `ThinBBA`/shelterwood, and the FFE/carbon block still need their field layouts verified before they are emitted.
-- **A family is not a trajectory.** Each family carries a parameter grid (treatment offsets, intensities, rotation ages) in `config/prescriptions.yaml`; the grid expands as a cartesian product into the concrete prescriptions a stand can be assigned.
-- Output: `regime_templates.py` (renderer) + `config/prescriptions.yaml` (ownership → eligible families + grids).
+### 4b. Management regime keyword files
+- Define ~6-10 regimes as parameterized FVS keyword templates:
+  - No management
+  - NIPF light (occasional partial harvest)
+  - Industrial pine plantation (site prep, plant, thin, clearcut on rotation)
+  - Industrial hardwood / mixed
+  - Public conservative management
+  - Riparian (**no entry, ever**; still grown and reported as unique buffer polygons — see `notes/methodology-directions.md`)
+- Each regime gets selected per pixel by a deterministic function of `(ownership, forest type, riparian buffer class, stand age)`.
+- **Owner class → regime is specified in `config/management_regimes.yaml`** (reasoning: `notes/management-regimes-by-owner.md`): one default regime and one eligible regime set per ownership class from §3c, all seven carried separately, with riparian geometry overriding ownership. That config also crosswalks the seven classes to the three TPO owner groups used as volume caps and to the LAMPS minimum-harvest-age groups.
+- Output: `regimes/*.key` templates + `regime_assignment.py` (the function).
+- **Implemented as config, 2026-08-03:** the library is `config/management_regimes.yaml` (8
+  prescriptions, all rendered through the verified `ThinDBH` templates in
+  `pipeline/s4_fvs/regime_templates.py`), and each owner class declares 2-3 *eligible*
+  prescriptions plus one default — the default is what `regime_assignment.py` assigns, the
+  menu is what the §4c trajectory library gets built for and the scheduler chooses among.
+  Regeneration after a stand-replacing entry is a fixed tree list
+  (`config/fallback_treelists.yaml`), not a `PLANT`/`NATREGEN` keyword. See
+  `docs/config-policy.md`.
 
 ### 4c. Trajectory library construction
 The core of the architecture. **One library per stand, its contents determined by ownership class.**

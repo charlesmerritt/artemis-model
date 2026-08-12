@@ -61,6 +61,13 @@ library(DBI)
 library(RSQLite)
 library(dplyr)
 
+# PLT_CN / Stand_CN PRECISION:
+#   FIA control numbers exceed R's double precision (~15 significant digits).
+#   They are read and kept as character here, and scipen keeps any numeric
+#   column that still reaches a paste() or write.csv out of scientific
+#   notation -- an IN clause built from "1.7498047010478e+13" matches nothing.
+options(scipen = 999)
+
 # ---- File paths ----
 tmid_csv  <- "output/FL_5county_TreeMap_TMIDs.csv"
 output_db <- "output/FVS_5county_input.db"
@@ -105,10 +112,15 @@ FVS_TABLES <- c(
 # SECTION 1: LOAD TREEMAP PLT_CN REFERENCE LIST
 # ============================================================
 
-tmid_list   <- read.csv(tmid_csv)
+# colClasses is required: without it read.csv types PLT_CN as a double, and the
+# SQL IN clauses built from it below would be assembled from re-rendered (and,
+# above 2^53, truncated) control numbers.
+tmid_list   <- read.csv(tmid_csv, colClasses = c(PLT_CN = "character"))
 all_plt_cns <- unique(tmid_list$PLT_CN)
 
-cat(paste0("TreeMap PLT_CNs to match: ", length(all_plt_cns), "\n\n"))
+cat(paste0("TreeMap PLT_CNs to match: ", length(all_plt_cns), "\n"))
+cat(paste0("Sample PLT_CN strings: ",
+           paste(head(all_plt_cns, 3), collapse = ", "), "\n\n"))
 
 
 # ============================================================
@@ -153,8 +165,11 @@ for (state in names(source_dbs)) {
   # COND.CN is Stand_CN used in FVS tables
   plt_cn_str <- paste(all_plt_cns, collapse=",")
   
+  # CAST(... AS TEXT) in SQLite, on the stored integer, so no digit is lost on
+  # the way out. Stand_CN feeds the IN clause below; a driver-supplied double
+  # would re-render it and silently select no FVS rows.
   stand_cns <- dbGetQuery(con, sprintf(
-    "SELECT CN AS Stand_CN, PLT_CN
+    "SELECT CAST(CN AS TEXT) AS Stand_CN, CAST(PLT_CN AS TEXT) AS PLT_CN
      FROM COND
      WHERE PLT_CN IN (%s)", plt_cn_str
   ))

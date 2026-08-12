@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pipeline.ids import IdPrecisionError
 from pipeline.s3_management.assign_plt_cn import (
     NODATA_ID,
     build_weighted_plt_cn,
@@ -71,3 +72,37 @@ def test_load_tmid_plt_lookup_validates_columns(tmp_path):
     pd.DataFrame({"foo": [1], "bar": [2]}).to_csv(csv, index=False)
     with pytest.raises(ValueError, match="Value"):
         load_tmid_plt_lookup(csv)
+
+
+def test_load_tmid_plt_lookup_keeps_a_19_digit_control_number_exact(tmp_path):
+    # A control number wider than 2**53. The old int(float(...)) path lost the last
+    # digits here; a truncated PLT_CN silently joins to the wrong FIA plot.
+    wide = "1234567890123456789"
+    csv = tmp_path / "lookup.csv"
+    csv.write_text(f"Value,PLT_CN\n2623,{wide}\n")
+    assert load_tmid_plt_lookup(csv)[2623] == wide
+
+
+def test_load_tmid_plt_lookup_repairs_r_scientific_notation(tmp_path):
+    # What r/02 wrote while it still cast PLT_CN through as.numeric().
+    csv = tmp_path / "lookup.csv"
+    csv.write_text("Value,PLT_CN\n2623,1.7498047010478e+13\n")
+    assert load_tmid_plt_lookup(csv)[2623] == "17498047010478"
+
+
+def test_load_tmid_plt_lookup_rejects_a_truncated_control_number(tmp_path):
+    # 1.234567890123457e+18 has already lost its low digits; repairing it would
+    # invent a plot ID, so this must fail rather than guess.
+    csv = tmp_path / "lookup.csv"
+    csv.write_text("Value,PLT_CN\n2623,1.234567890123457e+18\n")
+    with pytest.raises(IdPrecisionError, match="lost digits"):
+        load_tmid_plt_lookup(csv)
+
+
+def test_weighted_table_emits_plt_cn_as_exact_digits():
+    wide = "1234567890123456789"
+    weights = build_weighted_plt_cn(np.array([[1, 1]]), np.array([[10, 20]]),
+                                    {10: wide, 20: "17498047010478"})
+    assert set(weights["PLT_CN"]) == {wide, "17498047010478"}
+    # MU_ID leaves as "1", never "1.0" — the FVS-input builder joins on this string.
+    assert set(weights["MU_ID"]) == {"1"}

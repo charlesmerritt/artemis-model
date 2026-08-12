@@ -36,9 +36,9 @@ vintage.
 
 Only the minimal files the painter reads were downloaded from the Cloudflare R2
 bucket `r2:artemis-r2` (bucket `data/` maps to the repo's `/mnt/d`), via the
-S3-compatible API (rclone.org and github.com release downloads are blocked by
-egress policy, so `boto3` with the preconfigured `RCLONE_CONFIG_R2_*`
-credentials was used instead):
+S3-compatible API. rclone could not be installed at the time — rclone.org and
+github.com release downloads are blocked by egress policy — so `boto3` was
+pointed at the preconfigured `RCLONE_CONFIG_R2_*` credentials instead:
 
 | R2 key | Downloaded to | Size |
 |---|---|---|
@@ -52,6 +52,15 @@ The two 2020-vintage files are the *losing* candidate pairing — pulled only so
 the script's auto-selection coverage comparison runs authentically (it correctly
 picks `treemap2022`). Total download ≈ 18 MB. **None of this input data is
 committed** — it lives under `/mnt/d` and gitignored `data/`.
+
+> **The `boto3` workaround above is obsolete (verified 2026-07-30).** The sandbox
+> image now ships `/usr/local/bin/rclone` (v1.60.1), and the same
+> `RCLONE_CONFIG_R2_*` environment variables configure the `r2` remote with no
+> `rclone.conf` — while `boto3` is *not* installed in either interpreter, so the
+> original recipe is now the one that fails. Fetch with rclone instead; the
+> bucket layout, current commands, and the one path whose bucket name differs
+> from its drive name are documented in
+> [`config/data_paths.yaml`](../../config/data_paths.yaml).
 
 ## Exact command that produced the artifact
 
@@ -78,13 +87,24 @@ uv pip install numpy pandas rasterio matplotlib   # matplotlib only for map.png
 Versions used: numpy 2.5.1, pandas 3.0.3, rasterio 1.5.0.
 Unit tests (`tests/test_s4_paint_fvs_to_raster.py`) pass in this environment.
 
+> **The 3.13 fallback is no longer needed (verified 2026-07-30).** `uv sync
+> --frozen` provisions Python 3.14 in the sandbox and installs the full locked
+> environment; `uv run ruff check .` and the tracked suite run against it. The
+> 3.13 venv is recorded here because it is what this artifact was actually built
+> with, not as current guidance.
+
 ## How to regenerate
 
-1. Fetch the five input files above from R2 into the paths shown (the three
+1. Fetch the five input files above from R2 into the paths shown — the three
    2022-pairing files are the minimum; the two 2020 files only affect the
-   printed coverage comparison).
-2. Create the environment (Python 3.14 via `uv sync` where available, or the
-   3.13 fallback above).
+   printed coverage comparison. Each R2 key is the drive path with
+   `/mnt/d` swapped for `r2:artemis-r2/data`:
+
+   ```bash
+   rclone copyto r2:artemis-r2/data/<key> <destination from the table above>
+   ```
+
+2. Create the environment with `uv sync` (Python 3.14).
 3. Run `uv run python -m pipeline.s4_fvs.paint_fvs_to_raster`.
 4. Copy the two GeoTIFFs from `data/processed/no_management_fl5co_rasters/`.
    `map.png` is a two-panel matplotlib render of those GeoTIFFs (shared 2–98

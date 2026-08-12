@@ -66,27 +66,37 @@ Build a spatially explicit harvest scheduling prototype for the 5-county Florida
 
 ---
 
-## Phase 3: Prescription library by ownership class
+## Phase 3: Management regime library
 
-### Step 3.1: Define prescription templates
-- Implement each prescription family as a parameterized FVS keyword template. Every family is built from the **`ThinDBH` keyword**, the one management keyword verified against real FVS runs in this project:
-  1. **no_management** — the baseline; also the required member of every library
-  2. **clearcut** — full removal at a target year
-  3. **thin_from_below** — proportional removal below a DBH ceiling
-  4. **selection_harvest** — light proportional thins on an interval
-  5. **plantation_rotation** — commercial thin, then clearcut at rotation age
-- Regeneration keywords (`PLANT`/`NATREGEN`), `ThinBBA`/shelterwood, and the FFE/carbon block are deliberately **not** emitted until their FVS field layouts are verified.
-- **Output**: `pipeline/s4_fvs/regime_templates.py` with `render_keyfile(stand, regime, params)`. ✅ Implemented.
+### Step 3.1: Define regime templates
+- Define 4-6 FVS keyword templates as parameterized text (extending `keyword_builder.py`):
+  1. **no_management** — already have this (baseline)
+  2. **clearcut** — harvest all trees at a target year, optionally replant
+  3. **thinning_from_below** — remove a target BA percentage at a target year
+  4. **shelterwood** — partial harvest + removal cut after regeneration
+  5. **selection_harvest** — periodic partial removals
+  6. **pine_plantation_rotation** — site prep, plant, thin, clearcut on rotation (industrial)
+- Each template parameterized by: harvest year, intensity (BA% removed, TPA target), regeneration method.
+- **Output**: `pipeline/s4_fvs/regime_templates.py` with `render_keyfile(stand, regime, params)`.
 
-### Step 3.2: Map ownership class → *eligible set*, not one regime
-- **This is the change.** `regime_assignment.py` currently returns exactly one `(regime, params)` per unit. Under the adopted architecture the same ownership signal instead returns the **set** of prescriptions the unit may be assigned, and the scheduler picks within it.
-- Authoritative mapping and parameter grids: [`../config/prescriptions.yaml`](../config/prescriptions.yaml). Guarded by `tests/test_config.py`.
-- Three rules:
-  - **`no_management` is in every non-riparian library.** Without it, a binding volume cap has no feasible answer and "the plan harvested this stand" stops being a decision.
-  - **Riparian units get a library of exactly one trajectory** (`no_management`). No harvest, ever — no entry of any kind, no buffer class exempted. Assigned by geometry, so it overrides any ownership rule. Enforced by the **absence of an alternative**, which no objective weight can trade away. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
-  - **Eligibility screens shrink a library, never extend it.** Minimum harvest age, reserve status, and operability drop prescriptions at build time (the `LAMPS` MHA/MHP screens). A library that reduces to `{no_management}` is a valid outcome and must be logged.
-- **Output**: `assign_eligible_prescriptions(unit_attrs) -> list[(prescription_id, params)]` alongside the existing single-regime `assign_regime`, which is retained for the greedy baseline.
-- **Verify**: every unit's emitted set is a subset of its ownership class's config entry; riparian units emit exactly one; screened-out units are logged, not dropped.
+### Step 3.2: Assign default regimes by ownership × forest type
+- Simple deterministic mapping:
+  - Federal/state → conservative (selection or no harvest)
+  - Family forest → light thinning
+  - Corporate → pine plantation rotation (if pine) or clearcut (if hardwood)
+  - Riparian buffer units → **no harvest, ever** (no entry of any kind, no buffer class exempted). Assigned by geometry, so it overrides any ownership/forest-type rule above it. Buffers are still projected and reported as their own polygons — see [`methodology-directions.md`](methodology-directions.md) item 2.
+- **The full mapping now lives in [`config/management_regimes.yaml`](../config/management_regimes.yaml)**, with the reasoning in [`management-regimes-by-owner.md`](management-regimes-by-owner.md). It carries all **seven** Harris forest classes separately (per `PLAN.md` §3c) rather than the four-way `PUBLIC_OWNERS` collapse the sketch above implies, plus each class's eligible regime set and its key in the TPO and LAMPS owner vocabularies.
+- **Output**: `pipeline/s3_management/regime_assignment.py` with `assign_regime(unit_attrs) -> (regime_name, params)`. The module still hardcodes its own copy of the mapping; `tests/test_config.py` asserts it agrees with the config until the loader lands.
+
+**Superseded by config, 2026-08-03.** The mapping above is now declared in
+[`config/management_regimes.yaml`](../config/management_regimes.yaml) rather than written into the module, and
+it carries two things this step did not: an **owner class** resolved from the Harris raster
+against the parcel layer (`config/ownership_policy.yaml`, seven classes — the corporate
+class is split into industrial vs. other-corporate), and an **eligible menu** of 2-3
+prescriptions per owner class alongside the single default, so the Phase 4 scheduler has
+something to choose among. State pine now defaults to a restoration thin and local
+government to no management; federal and family are unchanged. See
+[`docs/config-policy.md`](../docs/config-policy.md).
 
 ---
 

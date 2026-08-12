@@ -89,11 +89,19 @@ volume, so restart is faithful for everything this objective touches. `carbon_ex
 2. **First build: the management-injection spike** (see Gate). The orchestrator is not buildable
    until the apply step is proven.
 
-3. **Ambiguous-stand assignment: dominant-owner with threshold.** Assign a stand to its plurality
-   ownership class only if that class clears a confidence threshold (e.g. >70% of the stand's
-   pixels); otherwise **exclude and log**. Keeps clean cases, drops genuinely ambiguous ones. The
-   threshold value is itself a parameter to justify and tune. Excluded stands are a reviewable
-   list, never silent drops.
+3. ~~**Ambiguous-stand assignment: dominant-owner with threshold.**~~ **FALSIFIED 2026-07-26 —
+   superseded by pixel-share allocation.** The original decision was to assign a stand to its
+   plurality ownership class only if that class clears a confidence threshold (e.g. >70% of the
+   stand's pixels), excluding and logging the rest, with the threshold as a parameter to tune.
+   Measured against Harris 2025 over the 693 pilot stands, that rule keeps **212/693 stands and
+   23% of AOI acres** at 70%, and still drops 30% of acres at a bare 50% plurality. No threshold
+   value is defensible, because the unit being thresholded is the wrong unit: a TreeMap stand is
+   an imputed FIA plot scattered across many disjoint pixels, so its footprint straddles owners
+   by construction. **Use pixel-share allocation** — each stand contributes acres to every owner
+   in proportion to its pixel counts — for supply-side accounting and the even-flow target;
+   defer harvest *application* to spatially coherent management units. Full analysis, costs and
+   open questions: `notes/ownership-bundling-pixel-share.md`; evidence:
+   `weekly-artifact/2026-07-26/fig7_bundle_threshold.png`.
 
 ## The Gate: management-injection spike — PASSED (2026-07-17)
 
@@ -136,8 +144,12 @@ architecture moves to in-process-only bundles (smaller bundles, no eviction).
 Bundle membership is the input to the whole optimization; a mis-assigned stand corrupts an
 owner's flow. Guards to build (before or alongside the orchestrator):
 
-1. **Ownership assignment** — dominant-owner-with-threshold vote over the Harris 2025 raster
-   within each stand's footprint; sub-threshold stands excluded and logged.
+1. **Ownership assignment** — **pixel-share allocation** over the Harris 2025 raster within each
+   stand's footprint: each stand contributes acres to every owner proportionally, nothing is
+   excluded. (Was: dominant-owner-with-threshold with sub-threshold stands excluded and logged —
+   falsified, see decision 3.) Consequence the orchestrator must absorb: bundles are no longer a
+   partition of stands, so a stand is projected once and its results shared across the owners
+   accounting for it. Harvest *application* still needs a single-owner unit — see guard 5.
 2. **Operability mask** — ownership class ≠ harvestable. Federal wilderness is federal but
    reserved. Layer reserve status, and later slope/access, min harvest age, residual stocking.
 3. **Crosswalk-vintage safety** — the TreeMap 2022-vs-2020 trap (693 vs 688 stands via
@@ -146,7 +158,15 @@ owner's flow. Guards to build (before or alongside the orchestrator):
 4. **FVS instance limits** — `maxstands 500`, `maxtrees 3000` per process. An owner exceeding 500
    stands forces **sub-bundling**: multiple workers for one owner, and the even-flow solve must
    then gather across those sub-bundles. This is the one place "one owner = one worker" breaks and
-   the allocation becomes cross-process for that owner.
+   the allocation becomes cross-process for that owner. Pixel-share makes this bite sooner: an
+   owner's stand list is now every stand containing any of its pixels, which for private in the
+   pilot is close to all 693.
+5. **Single-owner unit for harvest application** — pixel-share is sound for *accounting* volume,
+   not for *applying* a cut: telling the federal bundle to cut a stand that is 40% federal lands
+   the physical cut on pixels that mostly are not. Applying harvest needs a spatially coherent,
+   single-owner unit, which is what `pipeline/s3_management` produces from parcels, roads and BMP
+   buffers. Until those units are wired in, the even-flow solve should treat its allocation as
+   supply-side accounting only. See `notes/ownership-bundling-pixel-share.md`.
 
 ## Proven vs. unproven
 
@@ -159,7 +179,10 @@ owner's flow. Guards to build (before or alongside the orchestrator):
 | Management injection at a barrier | **Proven (2026-07-17)** — gate passed |
 | Per-stand selective cut within a bundle | **Proven (2026-07-17)** — non-target untouched |
 | Even-flow allocation / rolling-horizon LP | Not started |
-| Stand selection / bundling layer | Not started |
+| Dominant-owner-with-threshold bundling | **Disproven (2026-07-26)** — 212/693 stands, 23% of acres at 70%; wrong unit, not a bad threshold |
+| Pixel-share ownership allocation (supply-side accounting) | **Measured (2026-07-26)** — keeps the whole AOI; `notes/ownership-bundling-pixel-share.md` |
+| Single-owner unit for harvest application | Not started — blocked on `pipeline/s3_management` |
+| Stand selection / bundling layer | Partly measured — guards 1 and 5 above |
 
 ## Open questions
 

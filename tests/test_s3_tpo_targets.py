@@ -3,8 +3,8 @@
 The parser targets the real, hand-formatted workbook layout (title/url rows, merged
 multi-row headers, a summary block whose two data rows are tagged by an
 "Assuming … averaged" note). The synthetic fixture below reproduces that shape. A
-second test runs against the real file when it is present (downloaded from R2), and
-skips in CI where the data drive is unavailable.
+second test runs against the real workbook, which the `real_xlsx` fixture resolves
+from the data drive or fetches from R2, and skips only where neither is reachable.
 """
 
 from pathlib import Path
@@ -119,9 +119,22 @@ def test_write_tpo_targets_roundtrips_yaml(tmp_path):
     assert yaml.safe_load(out.read_text()) == targets
 
 
-@pytest.mark.skipif(not REAL_XLSX.exists(), reason="real TPO workbook not available (data drive/R2)")
-def test_parse_real_tpo_workbook_matches_known_totals():
-    targets = parse_tpo_workbook(REAL_XLSX)
+@pytest.fixture
+def real_xlsx(config_dir, data_access):
+    """The real workbook: already staged, on the drive, or fetched from R2 (30 KB)."""
+    if REAL_XLSX.exists():
+        return REAL_XLSX
+    import yaml
+    with open(config_dir / "data_paths.yaml") as fh:
+        declared = yaml.safe_load(fh)["raw"]["tpo_guidance"]["xlsx"]
+    local = data_access.ensure_local(declared, dest=REAL_XLSX)
+    if local is None:
+        pytest.skip(data_access.unavailable_reason(declared))
+    return local
+
+
+def test_parse_real_tpo_workbook_matches_known_totals(real_xlsx):
+    targets = parse_tpo_workbook(real_xlsx)
     for name, expected in COUNTY_ALL_YEARS.items():
         assert targets["by_county"][name]["all_years"] == pytest.approx(expected)
     for name, expected in OWNER_ALL_YEARS.items():

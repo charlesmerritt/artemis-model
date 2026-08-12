@@ -229,10 +229,65 @@ cat(paste0("Total forested acres (TreeMap): ",
 #   select(Value, PLT_CN, pixel_count, pixel_acres,
 #          FORTYPCD, ForTypName, BALIVE, TPA_LIVE, CARBON_L)
 
+# PLT_CN PRECISION AT THE SOURCE:
+#   This is where control numbers enter the pipeline, so it is the only place
+#   they can still be exact. If terra hands back the VAT's PLT_CN as a double,
+#   digits above ~15 significant figures are ALREADY gone and no later cast
+#   recovers them -- as.character() would just freeze the damaged value into a
+#   string that every downstream join then fails to match. Check the incoming
+#   type and stop rather than write a corrupted crosswalk: the fix is to read
+#   PLT_CN from the .vat.dbf as character, not to convert it here.
+if (is.factor(county_data$PLT_CN)) {
+  # A factor's labels are the original text from the .vat.dbf, so this is lossless.
+  county_data$PLT_CN <- as.character(county_data$PLT_CN)
+}
+if (!is.character(county_data$PLT_CN)) {
+  # Capture the incoming class BEFORE converting: vat_cn is numeric by construction,
+  # so reporting its class would print "numeric" every time and tell the operator
+  # nothing about what actually produced the column (integer, integer64, double, ...).
+  vat_class <- paste(class(county_data$PLT_CN), collapse = "/")
+  vat_cn    <- as.numeric(county_data$PLT_CN)
+  lossy     <- !is.na(vat_cn) & abs(vat_cn) >= 2^53
+  if (any(lossy)) {
+    stop(sum(lossy), " PLT_CN values arrived from the VAT as doubles at or above ",
+         "2^53 and have lost digits (e.g. ",
+         paste(head(format(vat_cn[lossy], scientific = FALSE, trim = TRUE), 3), collapse = ", "),
+         "). Read PLT_CN from the VAT as character before summarising.")
+  }
+  warning("VAT PLT_CN arrived as ", vat_class, ", not character. All values are ",
+          "below 2^53 so they survived the double intact, but read them as character ",
+          "to remove the risk entirely.")
+  # Convert here, once, while we still know the column is numeric. format() is right
+  # for a NUMERIC (scientific = FALSE gives full digits, trim drops the leading blanks
+  # from right-justification) but WRONG for a character vector: there `justify = "left"`
+  # pads to the width of the longest element and `trim` does not suppress it -- per
+  # ?format, trim applies to "logical, numeric and complex values" only. Control numbers
+  # vary in width, so running format() over the already-character case would append
+  # trailing blanks to every shorter key and break each downstream lookup.
+  #
+  # ifelse keeps a missing PLT_CN missing: format(NA_real_) renders the literal string
+  # "NA", which is not NA, so the digits-only guard below would treat it as a corrupted
+  # identifier and abort with a message blaming precision damage that never happened.
+  # The character branch skips real NAs via !is.na(), so both branches must agree.
+  county_data$PLT_CN <- ifelse(is.na(vat_cn), NA_character_,
+                               format(vat_cn, scientific = FALSE, trim = TRUE))
+}
+
+# By here PLT_CN is character and exact whichever branch produced it. Assert it rather
+# than trust it: this is the file every later stage joins on, and a stray blank or a
+# stray "e" is invisible in a CSV until a join quietly returns nothing.
+stopifnot(is.character(county_data$PLT_CN))
+bad_cn <- county_data$PLT_CN[!is.na(county_data$PLT_CN) &
+                             !grepl("^[0-9]+$", county_data$PLT_CN)]
+if (length(bad_cn) > 0) {
+  stop(length(bad_cn), " PLT_CN values are not plain digits (e.g. '",
+       paste(head(bad_cn, 3), collapse = "', '"),
+       "'). Padding or scientific notation here corrupts the TM_ID crosswalk.")
+}
+
 tmid_list <- county_data %>%
   select(Value, PLT_CN, pixel_count, pixel_acres,
-         FORTYPCD, ForTypName, BALIVE, TPA_LIVE, CARBON_L) %>%
-  mutate(PLT_CN = as.character(PLT_CN))  # 
+         FORTYPCD, ForTypName, BALIVE, TPA_LIVE, CARBON_L)
 
 write.csv(tmid_list, file.path(output_path,"FL_5county_TreeMap_TMIDs.csv"), row.names = FALSE)
 cat("TM_ID list saved to output/FL_5county_TreeMap_TMIDs.csv\n")
