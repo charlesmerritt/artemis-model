@@ -8,6 +8,22 @@ forest structure, timber volume, and carbon change through time.
 The intended v1 extent is Florida. Current implementation and validation work concentrates
 on a five-county north Florida pilot before statewide and eastern-US expansion.
 
+## How ARTEMIS decides management
+
+ARTEMIS builds a **library of candidate trajectories for every stand**, where the stand's
+**ownership class** determines which management prescriptions are eligible for it. FVS runs
+once per `(stand, prescription)` pair, offline and without restart barriers. A **harvest
+scheduler then uses simulated annealing** to select one trajectory per stand, subject to
+volume, flow, adjacency, and reserve constraints.
+
+Simulation enumerates what each stand *could* do; the scheduler decides what each stand
+*will* do. Because every candidate is precomputed, evaluating a whole landscape plan costs
+a table lookup and a sum rather than an FVS run — which is what makes searching the
+decision space affordable at all.
+
+[`notes/trajectory-library-and-annealing.md`](notes/trajectory-library-and-annealing.md) is
+the design of record.
+
 ## Modeling frame
 
 | Dimension | Current direction |
@@ -17,12 +33,31 @@ on a five-county north Florida pilot before statewide and eastern-US expansion.
 | Growth model | FVS Southern (`SN`) variant |
 | Projection horizon | Approximately 50 years, using FVS cycles |
 | Initial forest state | TreeMap 2022 linked to FIA/FVS-ready tree lists |
+| Simulation unit | Management-unit polygon, initialized from the area-weighted union of its FIA plots' tree lists |
+| Decision space | Per-stand trajectory library; eligible prescriptions set by ownership class ([`config/management_regimes.yaml`](config/management_regimes.yaml)) |
+| Management selection | Simulated annealing over one trajectory per stand |
+| Constraints | TPO volume caps, even flow, adjacency/green-up, opening size; riparian no-entry and eligibility screens enforced structurally |
 | Management evidence | LCMS tree removal, ownership, parcels, roads, water, and Florida BMP constraints |
-| Compute model | GEE for remote raster preparation; local Python/FVS for joins, simulation, painting, and validation |
-| Reproducibility | `uv`, pytest, fixed inputs/configuration, and documented iteration |
+| Compute model | GEE for remote raster preparation; local Python/FVS for joins, simulation, painting, and validation; parallel FVS workers for library generation |
+| Reproducibility | `uv`, pytest, fixed inputs/configuration, locked scheduler seed and objective weights |
 
 See [`PLAN.md`](PLAN.md) for the target architecture. It is a build plan, not a claim that
 every stage is implemented.
+
+## Guiding references
+
+Two documents guide the methodology; see
+[`docs/references/README.md`](docs/references/README.md) for citations and the detailed
+mapping onto ARTEMIS.
+
+- **`CLIMATE-FVS`** — Diaz, Perry, Tutak, Hodges & Mertens (2015), *Potential climate change
+  impacts on management outcomes for western Oregon BLM forestlands simulated using
+  Climate-FVS*, Ecotrust, report to BLM. **The end-to-end precedent**: Ecotrust built the
+  same batch-simulate-then-anneal system and published both halves
+  (`growth-yield-batch`, `harvest-scheduler`). Committed in `docs/references/`.
+- **`LAMPS`** — Bettinger & Lennette et al., Landscape Management Policy Simulator:
+  eligibility screening, adjacency and green-up — the spatial constraint machinery Diaz
+  et al. did not need. PDF not yet committed.
 
 ### Coordinate reference system
 
@@ -61,6 +96,13 @@ uv run python -m pipeline.spatial_ref     # print the declaration and the confus
   buffer acres are never absorbed into a harvest unit). Buffers are retained rather than
   erased, so their acres stay in the projected landscape and keep their own polygon
   identity. Segmentation, road-buffer policy, and terrain integration remain under review.
+- **Prescription policy and rendering:** `pipeline/s3_management/regime_assignment.py`
+  resolves both the deterministic default and the ownership-class eligible menu from
+  `config/management_regimes.yaml`; `pipeline/s4_fvs/regime_templates.py` renders those
+  prescriptions with cycle-aligned FVS operations.
+- **Harvest allocation:** `pipeline/s3_management/harvest_scheduler.py` is a greedy
+  oldest-first allocator against TPO caps. It is retained as the annealer's initial solution
+  and as a reported baseline; the simulated-annealing scheduler itself is not built yet.
 - **FVS raster painting:** `pipeline/s4_fvs/paint_fvs_to_raster.py` maps stand-level FVS
   trajectories back to TreeMap pixels for initial and final snapshots. It requires external
   five-county trajectory, crosswalk, and raster files.
@@ -226,12 +268,18 @@ entry point for each notebook group.
 ```text
 config/                    Spatial, BMP, projection, ownership/regime/treelist policy,
                            and local data-path configuration
+  management_regimes.yaml  Sole authority for regime parameters and owner eligibility
+  ownership_policy.yaml    Ownership classification and corporate refinement
+  projection.yaml          Projection and scheduler/annealing settings
+  tpo_targets.yaml         TPO harvest targets by county and owner group
 data/                      Gitignored raw/interim/processed data products
+docs/references/           The two guiding papers (LAMPS, Climate-FVS)
+docs/superpowers/          Design specs and implementation plans
 gee/                       Google Earth Engine export scripts
 notebooks/                 Exploratory analyses and reusable notebook helpers
 pipeline/
-  s3_management/           Draft management-unit generation
-  s4_fvs/                  FVS trajectory-to-raster painting
+  s3_management/           Management units, ownership, regimes, harvest allocation
+  s4_fvs/                  FVS input building, keyfile rendering, raster painting
   s5_imagery/              NAIP acquisition, embedding clustering, viewer catalog
 research/mgmt_units/       Segmentation research, state, and next steps
 scripts/                    Repository utility scripts
@@ -239,6 +287,7 @@ tests/                      Pytest suite
 viewer/                     Map-viewer side panel and its build/serve script
 notes/                      Durable findings, decisions, run status, and open questions
 PLAN.md                    Target v1 architecture and build sequence
+artemis.txt                One-page architecture diagram
 pyproject.toml             Python metadata and dependencies
 uv.lock                    Locked Python environment
 ```
@@ -265,7 +314,21 @@ uv run python -m pipeline.s4_fvs.fallback_treelists
 - The draft management-unit workflow still needs visual QA and decisions on road buffers,
   large-unit splitting, terrain, and sub-2 ha sliver handling.
 - The committed repository paints existing FVS output but does not yet provide a complete,
-  automated FVS trajectory-generation pipeline.
+  automated FVS trajectory-generation pipeline. **No trajectory library has been generated
+  and no simulated-annealing scheduler exists yet** — the documentation defines the target
+  so implementation can be reviewed against it.
+- The decision space is frozen when a library is built. A prescription that was not
+  enumerated cannot be selected, so state-dependent silviculture must be expressed as FVS
+  event-monitor logic inside a trajectory rather than as a scheduler decision.
+- Simulated annealing gives no optimality guarantee. A plan is not a result until it is
+  reported with its constraint-violation vector, an objective-appropriate relaxation bound
+  (or an explicit unavailable gap), the greedy and random baselines, and the objective
+  spread across seeds.
+- The v1 objective (NPV, volume, carbon, or a weighting) is undecided, and the tribal and
+  unknown-ownership eligible sets are conservative placeholders pending a documented source.
+- Carbon output stays disabled (`carbon_extension: false`). The measured corruption was a
+  stop/restart artifact and library runs have no barriers, so re-enabling is now a scope
+  decision rather than a blocked one.
 - The DOR use-code table in `config/ownership_policy.yaml` is transcribed, not yet verified
   against the parcel layer (`--audit-parcels`), and the fallback tree lists have no pinned
   donor plots until `fallback_treelists --resolve` runs against the FIA database. Both need
@@ -299,4 +362,9 @@ research detail in the root README.
 - POLARIS soils via the GEE community catalog
 - USGS 3DEP terrain
 
+Methodological references are tracked separately in
+[`docs/references/README.md`](docs/references/README.md).
+
 Dataset version pinning and a publication-ready data dictionary remain planned deliverables.
+Version pinning must also cover the trajectory-library version, the scheduler seed, the
+cooling schedule, and the objective weights — a plan is not reproducible without them.

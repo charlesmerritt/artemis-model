@@ -1,3 +1,29 @@
+# DuckDB view vocabulary over FVS output
+
+> **Status (2026-08-06): views current, framing superseded.** This note was written for the
+> *iterative coupling* design — run FVS 5 years, inspect state, decide management
+> externally, resume. That loop has been replaced: ARTEMIS now precomputes a library of
+> candidate trajectories per stand and selects among them with simulated annealing
+> ([`trajectory-library-and-annealing.md`](trajectory-library-and-annealing.md)).
+>
+> **What carries over:** all of the SQL. These views are how raw `FVS_Summary2` /
+> `FVS_Cases` output becomes the `trajectory_cycles` table — `fvs_removals` and
+> `fvs_removal_summary` in particular are how a trajectory's harvest volume per cycle gets
+> extracted, which is the constraint currency the scheduler runs on. `fvs_cycle_ledger`
+> remains the best single analysis table, and `fvs_spatial_crosswalk` / `fvs_raster_ready`
+> remain the bridge for painting a selected plan back to pixels.
+>
+> **What does not:** `fvs_management_candidates` (Cell 2) screens stands for treatment
+> *between cycles*, which is the decision the scheduler no longer makes that way. Its
+> thresholds — high BA, high SDI, high TPA, volume decline — are still useful, but as
+> **event-monitor triggers to enumerate inside a trajectory** (a "thin when SDI > 450"
+> prescription) or as diagnostics on a finished plan. Do not rebuild the between-cycle
+> decision loop on it.
+>
+> Everything below is the original note, unedited.
+
+---
+
 You are identifying the right three pillars:
 
 1. **`fvs_cycle_change`**: the 5-year state transition ledger.

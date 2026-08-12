@@ -22,7 +22,8 @@
 
 version: 1
 
-# Offsets and rotation ages resolve against these. Kept in sync with config/projection.yaml
+# Offsets and rotation ages resolve against these and are snapped up to a cycle boundary.
+# Kept in sync with config/projection.yaml
 # (`projection.base_year`, `projection.cycle_years`); the loader asserts they match.
 inventory_year: 2022
 cycle_years: 5

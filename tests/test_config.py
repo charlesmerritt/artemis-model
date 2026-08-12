@@ -71,7 +71,100 @@ def test_projection_config_carbon_is_disabled(projection_config):
 
 def test_projection_config_harvest_seed_is_locked(projection_config):
     assert projection_config["harvest"]["random_seed"] == 42
-    assert projection_config["harvest"]["forward_method"] == "pseudo_deterministic"
+
+
+def test_projection_config_harvest_selection_is_annealing(projection_config):
+    """Harvest is decided by the scheduler, not drawn from a fitted probability model.
+
+    The previous `forward_method: pseudo_deterministic` drew a per-pixel harvest schedule
+    from an LCMS-fitted model. Under the adopted architecture the scheduler selects one
+    precomputed trajectory per stand from its ownership-class library by simulated
+    annealing; the fitted model became validation evidence.
+    See notes/trajectory-library-and-annealing.md.
+    """
+    harvest = projection_config["harvest"]
+    assert harvest["selection_method"] == "simulated_annealing"
+    assert "forward_method" not in harvest, (
+        "forward_method is the retired pseudo-deterministic draw; use selection_method"
+    )
+
+
+# The four objective forms in Diaz et al. (2015), "Scheduling model". See docs/references/.
+OBJECTIVE_FORMS = {"maximize", "minimize", "evenflow", "evenflow_target"}
+
+
+def test_scheduler_objectives_use_known_forms(projection_config):
+    objectives = projection_config["harvest"]["objectives"]
+    assert objectives, "the scheduler needs at least one objective"
+    for obj in objectives:
+        assert obj["form"] in OBJECTIVE_FORMS, (
+            f"{obj['metric']}: unknown objective form {obj['form']!r}; "
+            f"choices: {sorted(OBJECTIVE_FORMS)}"
+        )
+        assert obj["weight"] > 0
+
+
+def _harvest_volume_objective(projection_config):
+    objectives = projection_config["harvest"]["objectives"]
+    return next(o for o in objectives if o["metric"] == "harvest_volume")
+
+
+def test_harvest_volume_target_stays_dimensioned(projection_config):
+    """The volume target must stay broken out by county and owner group.
+
+    Diaz et al. (2015) set all targets at a single global level; their scheduler then
+    shifted harvest between BLM Districts to hit the landscape total, concentrating it in
+    one District — contrary to how BLM actually allocates sale quantities by
+    Sustained-Yield Unit. Collapsing `dimensions` to a landscape total reproduces that
+    artifact across Florida counties, so it is asserted rather than left to drift.
+    """
+    volume = _harvest_volume_objective(projection_config)
+    assert volume["form"] == "evenflow_target"
+    assert set(volume["dimensions"]) >= {"county", "owner_group"}
+
+
+def test_harvest_volume_target_period_exists(projection_config, project_root):
+    """Forward and hindcast objectives select periods available in every dimension."""
+    import yaml
+
+    volume = _harvest_volume_objective(projection_config)
+    with open(project_root / volume["target_source"]) as f:
+        targets = yaml.safe_load(f)
+    target_groups = [targets["by_county"], targets["by_owner_group"]]
+    for key in ("target_period", "hindcast_target_period"):
+        period = volume[key]
+        assert all(period in values for group in target_groups for values in group.values()), (
+            f"{key} {period!r} is not available for every configured target"
+        )
+
+
+def test_hindcast_target_does_not_overlap_lcms_holdout(projection_config):
+    volume = _harvest_volume_objective(projection_config)
+    assert volume["hindcast_target_period"] == "pre_2015"
+
+
+def test_one_objective_dominates_the_rest(projection_config):
+    """Diaz et al. weighted the binding target 6x against 1x for everything else, so the
+    scheduler hits the harvest target first and optimizes the rest within that constraint.
+    A flat weight vector means no objective is primary."""
+    weights = sorted(o["weight"] for o in projection_config["harvest"]["objectives"])
+    if len(weights) > 1:
+        assert weights[-1] > weights[-2], "no objective is weighted as primary"
+
+
+def test_annealing_schedule_is_well_formed(projection_config):
+    ann = projection_config["harvest"]["annealing"]
+    assert 0.0 < ann["cooling_factor"] < 1.0, "geometric cooling must contract"
+    assert 0.0 < ann["initial_accept_rate"] < 1.0
+    assert ann["min_temperature"] > 0
+    assert ann["iterations_per_temperature"] >= 1
+    assert ann["restarts"] >= 1
+    weights = ann["move_weights"]
+    assert set(weights) == {"single_stand", "block", "period_swap"}
+    assert sum(weights.values()) == pytest.approx(1.0)
+    assert weights["block"] > 0, (
+        "block moves are required: single-stand moves alone stall under a green-up penalty"
+    )
 
 
 # --- FVS keyword register (config/fvs_keywords.yaml) ---------------------------------

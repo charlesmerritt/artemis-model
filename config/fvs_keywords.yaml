@@ -84,7 +84,7 @@ verification:
 defaults:
 
   # Silvicultural intensity per prescription family. Used when a regime's params do not
-  # override them; config/prescriptions.yaml grids normally do.
+  # override them; config/management_regimes.yaml normally does.
   # STATUS: conventional working values, not calibrated against Florida practice.
   regimes:
     thin_from_below:

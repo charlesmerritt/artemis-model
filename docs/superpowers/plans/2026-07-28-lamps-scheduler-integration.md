@@ -1,5 +1,31 @@
 # LAMPS Eligibility + Adjacency Scheduler Integration — Implementation Plan
 
+> **REFRAMED 2026-08-06 — the ports are still wanted; their consumer changed.**
+>
+> This plan targets a **greedy, block-aware, per-cycle allocator**. ARTEMIS has since
+> adopted a different scheduler: a library of candidate trajectories per stand, contents set
+> by ownership class, with **simulated annealing** selecting one trajectory per stand
+> ([`notes/trajectory-library-and-annealing.md`](../../../notes/trajectory-library-and-annealing.md)).
+>
+> **Tasks 1 and 2 — the `harvest_eligibility.py` and `adjacency.py` ports — are unchanged
+> and still the right next step.** They are the LAMPS mechanisms this project is built on
+> (see [`docs/references/README.md`](../../references/README.md)). What changes is where
+> their output goes:
+>
+> | LAMPS mechanism | In this plan | In the adopted architecture |
+> |---|---|---|
+> | Eligibility screen (MHA/MHP) | Per-cycle filter on harvest candidates | **Library build-time filter.** An ineligible prescription is never offered, so the scheduler cannot select it |
+> | Riparian exclusion | Absolute rule checked during screening | **Structural.** A riparian unit's library is `{no_management}` — enforced by the absence of an alternative |
+> | Adjacency graph | Built once per landscape | Unchanged — built once, and it is what the annealer's **block move** operates on |
+> | Blocks | Atomic harvest decision per cycle | The unit of the block move; green-up becomes a **priced penalty** rather than a hard per-cycle veto |
+> | Volume-cap ledger | Greedy budget consumption | A penalty term evaluated over the whole horizon at once |
+>
+> The one design point to carry across deliberately: this plan makes a block an *atomic*
+> decision (all members harvest or none). Under annealing that is a property of the **move
+> set**, not of the solution space — the block move reassigns members together, but nothing
+> forbids a configuration the search reaches another way. If atomicity must hold exactly,
+> it has to be structural, like the riparian rule.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a constrained harvest scheduler where LAMPS's eligibility screening (MHA/MHP) and adjacency/blocking (ARM/URM) decide *whether and when* a management unit can be cut, and PR #6's existing deterministic regime assignment + FVS keyfile rendering decide *what happens* to a unit once it's scheduled — with riparian zones absolutely excluded from harvest via a single shared rule.

@@ -144,6 +144,29 @@ def test_age_based_falls_back_to_offsets_without_a_stand_age():
     assert any("no stand_age" in n for n in notes)
 
 
+def test_offset_fallback_snaps_every_entry_to_a_projection_cycle():
+    years, _ = resolve_schedule(
+        _spec("age_based", first_thin_age=18, rotation_years=35,
+              offsets={"thin_year": 18, "clearcut_year": 35}),
+        inv_year=INV_YEAR, cycle_years=5, horizon_years=50, stand_age=None,
+    )
+    assert years == {"thin_year": 2042, "clearcut_year": 2057}
+
+
+def test_offset_fallback_does_not_expand_a_repeated_treatment_window():
+    years, _ = resolve_schedule(
+        _spec("offset_based", offsets={"start_year": 10, "end_year": 39}),
+        inv_year=INV_YEAR, cycle_years=5, horizon_years=50, stand_age=None,
+    )
+    assert years == {"start_year": 2032, "end_year": 2057}
+
+    thins = build_thins(
+        "selection_harvest",
+        {**years, "interval": 15, "proportion": 0.20},
+    )
+    assert [thin.year for thin in thins] == [2032, 2047]
+
+
 def test_an_entry_on_the_horizon_boundary_is_kept():
     """2072 is the year-50 headline raster year in config/projection.yaml, not past the end."""
     years, _ = resolve_schedule(
@@ -234,6 +257,9 @@ def test_every_scheduled_entry_falls_inside_the_projection_horizon():
             for thin in build_thins(template, params):
                 assert INV_YEAR < thin.year <= INV_YEAR + 50, (
                     f"owner {owner} / type {fortypcd}: entry at {thin.year} is outside the horizon"
+                )
+                assert (thin.year - INV_YEAR) % 5 == 0, (
+                    f"owner {owner} / type {fortypcd}: entry at {thin.year} is off-cycle"
                 )
 
 

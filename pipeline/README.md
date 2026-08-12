@@ -1,14 +1,30 @@
 # Pipeline
 
-The committed pipeline currently contains three implemented slices of the larger workflow in
+The committed pipeline contains implemented slices of the larger workflow in
 [`../PLAN.md`](../PLAN.md). Numbering follows the target architecture, so missing stage numbers
 are planned work rather than missing directories.
+
+## Where these modules sit in the architecture
+
+ARTEMIS builds a **library of candidate trajectories per stand**, its contents determined by
+the stand's **ownership class**, then selects one trajectory per stand with **simulated
+annealing** ([`../notes/trajectory-library-and-annealing.md`](../notes/trajectory-library-and-annealing.md)).
+The modules below cover the front half — delineating stands, attributing them, and rendering
+the keyfiles a library is generated from. The library generator and the annealing scheduler
+are **not implemented yet**.
 
 ## Implemented modules
 
 | Module | Purpose | Maturity |
 |---|---|---|
-| `s3_management/sketch_management_units.py` | Build draft Florida forest units by intersecting parcels with the LANDFIRE forest mask, then partitioning into `managed` and grow-only `riparian` units, processing one county at a time | Pilot; requires visual QA and policy decisions |
+| `s3_management/sketch_management_units.py` | Build draft Florida management units by intersecting forested parcels with road, water, and BMP exclusions, processing one county at a time | Pilot; requires visual QA and policy decisions |
+| `s3_management/sliver_merge.py` | Dissolve sub-minimum-size polygons into their best same-class neighbour, conserving area and riparian identity | Pilot |
+| `s3_management/assign_plt_cn.py` | Assign TreeMap plots to units with area-share weights | Implemented |
+| `s3_management/regime_assignment.py` | Resolve the deterministic default and ownership-class eligible menu from the regime config | Implemented |
+| `s3_management/tpo_targets.py` | Parse TPO harvest guidance into annual volume caps | Implemented |
+| `s3_management/harvest_scheduler.py` | Greedy oldest-first allocation against TPO caps | Implemented; retained as the annealer's initial solution and reported baseline |
+| `s4_fvs/build_fvs_inputs.py` | Build per-unit FVS tree lists as the area-weighted union of constituent plots | Implemented |
+| `s4_fvs/regime_templates.py` | Render FVS keyfiles for the five prescription families | Implemented; `ThinDBH`-only by design |
 | `s4_fvs/paint_fvs_to_raster.py` | Join FVS stand trajectories through a TreeMap crosswalk and paint stand metrics onto TreeMap pixels | Five-county prototype; external inputs required |
 | `s5_imagery/` | Pull NAIP over an extent vector with a real coverage check, cluster Earth Engine embeddings inside versus outside an area of interest, and publish both to the map viewer | Working; Earth Engine paths not covered by tests |
 
@@ -41,6 +57,13 @@ Rules:
 warning naming the column; it raises `IdPrecisionError` on anything that lost digits.
 `report_key_overlap` logs a warning when two ID columns share no keys at all, which is the
 signature of a formatting mismatch rather than genuinely disjoint data.
+
+## Not implemented
+
+| Planned module | Purpose | Plan reference |
+|---|---|---|
+| Trajectory library generator | Run FVS once per `(stand, prescription)`, barrier-free and parallel; load to DuckDB | `PLAN.md` §4c, Step 4.2 |
+| Simulated-annealing scheduler | Select one trajectory per stand under priced and structural constraints; emit the quality report | `PLAN.md` §4d, Steps 4.3–4.4 |
 
 ## Management-unit sketch
 
@@ -130,8 +153,10 @@ separability statistic does and does not establish.
 uv run pytest tests/test_s3_sketch_management_units.py \
   tests/test_s4_paint_fvs_to_raster.py \
   tests/test_s5_vectors.py tests/test_s5_naip_acquire.py \
-  tests/test_s5_embeddings.py tests/test_s5_viewer_catalog.py
+  tests/test_s5_embeddings.py tests/test_s5_viewer_catalog.py \
+  tests/test_config.py tests/test_s3_regime_assignment.py
 ```
 
-The broader stages—initial-state assembly, site attributes, automated FVS execution, validation,
-and product packaging—remain described in [`../PLAN.md`](../PLAN.md) until implemented.
+The broader stages—initial-state assembly, site attributes, library generation, scheduling,
+validation, and product packaging—remain described in [`../PLAN.md`](../PLAN.md) until
+implemented.

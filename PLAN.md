@@ -1,7 +1,25 @@
 # Eastern US Forest Projection Pipeline — v1 Build Plan
 
+> **Architecture (adopted 2026-08-06).** ARTEMIS builds a **library of candidate
+> trajectories for every stand**, where the stand's **ownership class** determines which
+> management prescriptions are eligible for it. FVS runs once per `(stand, prescription)`
+> pair, offline and without restart barriers. A **harvest scheduler then uses simulated
+> annealing** to select one trajectory per stand subject to volume, flow, adjacency, and
+> reserve constraints. Simulation enumerates what each stand *could* do; the scheduler
+> decides what each stand *will* do.
+>
+> Read [`notes/trajectory-library-and-annealing.md`](notes/trajectory-library-and-annealing.md)
+> first — it is the design of record, and §3c/§4 below are its build-plan form.
+>
+> **Guiding references** — consult before changing §3c, §4, or §5. See
+> [`docs/references/README.md`](docs/references/README.md).
+> **`CLIMATE-FVS`** (Diaz et al. 2015, Ecotrust) is the end-to-end precedent: the same
+> batch-simulate-then-anneal design, applied to western Oregon BLM lands, with published
+> code for both halves. **`LAMPS`** (Bettinger & Lennette et al.) supplies the eligibility
+> and adjacency/green-up machinery Diaz et al. did not need.
+
 ## Scope notes for the agent
-- **In scope:** deterministic, pixel-level forward projection using FVS Southern variant, initialized from TreeMap 2022 + FIA tree lists, with calibrated management from LCMS.
+- **In scope:** deterministic, pixel-level forward projection using FVS Southern variant, initialized from TreeMap 2022 + FIA tree lists, with management selected by constrained optimization over a precomputed trajectory library.
 - **Out of scope (v1):** natural disturbance overlays (hurricane, SPB, fire, ice), climate-modified growth, stochastic Monte Carlo replicates, uncertainty quantification.
 - **Target resolution:** 30m pixels.
 - **Target extent:** Florida first (FIPS 12); expand to full eastern US once pipeline is validated.
@@ -102,7 +120,7 @@
   would put unharvestable acres inside a harvest unit. Area is accounted in
   `area_accounting.csv`, with permanently-excluded acres on their own lines.
 
-### 3c. Ownership and harvest behavior model
+### 3c. Ownership assignment and prescription eligibility
 - **Ownership assignment per pixel:**
   - Source: **Harris, Caputo & Butler (2025)** — *Forest ownership in the conterminous United States circa 2022: distribution of seven ownership types.* USFS Research Data Archive. doi:10.2737/RDS-2025-0045.
   - Native resolution: **30m** — pixel-perfect alignment with TreeMap 2022; reproject and snap only, no resampling of class values.
@@ -118,27 +136,36 @@
     disagreements are flagged, not applied.
   - Output: `ownership_class.tif` (9-value categorical, reprojected to EPSG:5070 snapped to TreeMap grid).
 
-- **Harvest model fitting:**
-  - Training data: per-pixel LCMS Change product 1985-2024, filtered to "Tree Removal" class for harvest events.
-  - Features: stand age (from TreeMap plot), forest type group, ownership class, county, year, time since last disturbance.
-  - Model: multinomial logit (Simons-Legaard et al. style) or gradient-boosted classifier predicting P(harvest event in year t | features). Treat clearcut vs partial cut as separate classes if you can distinguish them from LCMS magnitude or post-event recovery slope.
-  - Fit separately by ownership class — industrial behavior is qualitatively different from NIPF.
-  - **Development order: growth first, harvest second.** Validate FVS growth trajectories against FIA remeasurements before layering in the harvest model. This isolates growth model error from harvest scheduling error.
-  - **Forward application method: pseudo-deterministic (approach C).** Draw harvest schedule once per pixel at initialization using a fixed, documented random seed. Reproducible and spatially explicit. Document seed in `versions.lock`.
-  - Output: `harvest_model.pkl` plus per-ownership predicted annual harvest probability raster `p_harvest_by_year_ownership.zarr`.
+- **Ownership assignment per stand:**
+  - A management unit spans many pixels and can straddle an ownership boundary. Assign by **dominant-owner vote with a confidence threshold** (e.g. >70% of the unit's pixels): below threshold, exclude the unit and **log it**. Excluded stands are a reviewable list, never a silent drop.
+  - Output: `ownership_class` on the unit table — the key that selects the unit's prescription library.
 
-### 3d. Hindcast validation
-- Hold out the most recent 10 years of LCMS (2015-2024) from training.
-- Run the harvest model forward on the 2015 state of the landscape; predict harvest events 2015-2024.
-- Compare predicted harvest rates against observed LCMS Tree Removal:
+- **Prescription eligibility (ownership decides the menu, not the meal):**
+  - Ownership class maps to a **set** of eligible prescriptions, not to a single regime. The sole executable authority for prescription parameters, defaults, and eligible menus is [`config/management_regimes.yaml`](config/management_regimes.yaml).
+  - `no_management` is in every non-riparian library — a stand must always be allowed to grow untreated, or a binding volume cap has no feasible answer.
+  - Riparian units (BMP stream-management zone by geometry) get a library of **exactly one** trajectory, `no_management`. No entry, ever, enforced by the absence of an alternative rather than by a constraint the search could violate.
+  - Eligibility screens (minimum harvest age, reserve status, operability) **remove** prescriptions at build time and never add any. A library that screens down to `{no_management}` is a valid outcome and must be logged.
+  - Public classes exclude clearcut in v1; the tribal and unknown-ownership sets are conservative placeholders pending a documented source.
+
+- **LCMS harvest evidence (calibration, not generation):**
+  - Training data: per-pixel LCMS Change product 1985-2024, filtered to "Tree Removal".
+  - Features: stand age (from TreeMap plot), forest type group, ownership class, county, year, time since last disturbance.
+  - **Role change.** The forward harvest schedule now comes from the scheduler (§4d), so a fitted `P(harvest | features)` model is no longer the generator. It becomes the **observed-behaviour target** the selected plan is checked against — harvest rates and age distributions by ownership class, county, and year.
+  - **Development order: growth first, harvest second.** Validate FVS growth trajectories against FIA remeasurements before evaluating any schedule. This isolates growth model error from scheduling error.
+  - Output: observed harvest-rate tables by `(ownership, county, year, age class)`, used in §3d and §5.
+
+### 3d. Hindcast validation of the scheduler
+- Hold out the most recent 10 years of LCMS (2015-2024).
+- Build the trajectory library from the 2015 state of the landscape and run the scheduler with the explicitly selected pre-2015 TPO average. The 2015-2024 LCMS holdout is never used to calibrate its own harvest target.
+- Compare the selected plan against observed LCMS Tree Removal:
   - Total area harvested per year, per state, per ownership class
   - Spatial pattern agreement (Cohen's kappa or AUROC at pixel level)
   - Age distribution of harvested pixels
-- Document systematic bias; iterate on features if needed.
+- Document systematic bias. Disagreement localizes to one of two inspectable places — the **eligible prescription sets** (wrong menu) or the **objective weights** (wrong preferences) — which is the diagnostic advantage over a fitted probability surface.
 
 ---
 
-## 4. FVS execution pipeline (missing from your list — needed for an end-to-end agent)
+## 4. FVS execution pipeline — trajectory library and scheduling
 
 ### 4a. FVS wrapping
 - Install **Open-FVS** (the actively maintained open-source FVS). Confirm Southern variant is available; some Atlantic states need other variants — document which variant per state.
@@ -148,17 +175,15 @@
   - Parses the output cycle reports into a tidy dataframe
 - Use `pyFVS` or `rFVS` if you'd rather not build from scratch; both wrap the binary cleanly.
 
-### 4b. Management regime keyword files
-- Define ~6-10 regimes as parameterized FVS keyword templates:
-  - No management
-  - NIPF light (occasional partial harvest)
-  - Industrial pine plantation (site prep, plant, thin, clearcut on rotation)
-  - Industrial hardwood / mixed
-  - Public conservative management
-  - Riparian (**no entry, ever**; still grown and reported as unique buffer polygons — see `notes/methodology-directions.md`)
-- Each regime gets selected per pixel by a deterministic function of `(ownership, forest type, riparian buffer class, stand age)`.
-- **Owner class → regime is specified in `config/management_regimes.yaml`** (reasoning: `notes/management-regimes-by-owner.md`): one default regime and one eligible regime set per ownership class from §3c, all seven carried separately, with riparian geometry overriding ownership. That config also crosswalks the seven classes to the three TPO owner groups used as volume caps and to the LAMPS minimum-harvest-age groups.
-- Output: `regimes/*.key` templates + `regime_assignment.py` (the function).
+### 4b. Management prescription keyword files
+- Implement each prescription family as a parameterized FVS keyword template. Current families (`pipeline/s4_fvs/regime_templates.py`, all built from the verified `ThinDBH` keyword):
+  - `no_management` — the baseline; also the required member of every library
+  - `thin_from_below` — proportional removal below a DBH ceiling
+  - `selection_harvest` — light proportional thins on an interval
+  - `plantation_rotation` — commercial thin, then clearcut at rotation age
+  - `clearcut` — full removal at a target year
+  - Riparian (**no entry, ever**; still grown and reported as unique buffer polygons — see `notes/methodology-directions.md`) is `no_management` assigned by geometry, not a separate template.
+- Regeneration keywords (`PLANT`/`NATREGEN`), `ThinBBA`/shelterwood, and the FFE/carbon block still need their field layouts verified before they are emitted.
 - **Implemented as config, 2026-08-03:** the library is `config/management_regimes.yaml` (8
   prescriptions, all rendered through the verified `ThinDBH` templates in
   `pipeline/s4_fvs/regime_templates.py`), and each owner class declares 2-3 *eligible*
@@ -167,44 +192,97 @@
   Regeneration after a stand-replacing entry is a fixed tree list
   (`config/fallback_treelists.yaml`), not a `PLANT`/`NATREGEN` keyword. See
   `docs/config-policy.md`.
+- **A family is not a trajectory.** Age and rotation parameters in
+  `config/management_regimes.yaml` are resolved against each stand and expanded into the
+  concrete prescriptions the scheduler may select.
+- Output: `regime_templates.py` (renderer) + `config/management_regimes.yaml` (the sole
+  prescription and ownership-eligibility authority).
 
 ### 4c. Trajectory library construction
-- Identify unique combinations of `(FIA plot ID, regime, site index class)` across the eastern US extent.
-- Run FVS once per unique combination, 50-year horizon, 5-year cycles.
-- Store outputs in a lookup table keyed by `(plot_id, regime, site_idx_bin)` → trajectory of stand attributes (BA, TPA, QMD, volume, biomass, carbon, species composition) per cycle.
-- Output: `fvs_trajectory_library.parquet`.
+The core of the architecture. **One library per stand, its contents determined by ownership class.**
 
-### 4d. Per-pixel painting
-- For every pixel, look up the trajectory matching its `(plot_id, regime, site_idx_bin)`.
+- **Stand = management unit polygon**, not FIA plot. The unit's tree list is the weighted union of its constituent plots' lists (`build_fvs_inputs.py::build_tree_init`: each donor tree kept intact, its `TPA` scaled by the plot's area share). See `notes/terminology.md`.
+- Enumerate `(stand, prescription)` pairs: for each stand, resolve its ownership class's eligible set from `config/management_regimes.yaml`, then apply the riparian override and structural eligibility screens.
+- Run FVS once per pair — 50-year horizon, 5-year cycles, **one continuous run, no restart barrier**. Runs are independent, so this is embarrassingly parallel across processes/nodes; no synchronization between stands is required.
+- Cache on a content hash of `(tree list, site attributes, prescription)` so identical inputs are not re-run. Dedup is a cache, never a reporting decision — every polygon keeps its own identity in the outputs.
+- Budget: target **6-12 trajectories per stand**. The five-county pilot (order 10⁴ units) is then order 10⁵ FVS runs — a one-time cost per library version, not a per-scenario cost. Grid growth is multiplicative; treat grid size as a standing budget question.
+- Store two tables:
+  - `trajectory_index` — one row per trajectory: `trajectory_id`, `stand_id`, `prescription_id`, `ownership_class`, `county`, `area_ac`, `unit_class`, per-cycle harvest volume, precomputed objective terms. This is the scheduler's working set and must fit in memory.
+  - `trajectory_cycles` — one row per `(trajectory_id, cycle)`: BA, TPA, QMD, SDI, volume, biomass, removals, carbon pools when enabled. Joined only after selection.
+- Integrity checks on every build: every riparian stand has exactly one trajectory (`no_management`); every non-riparian stand has at least two trajectories unless structural eligibility screens remove every active prescription, in which case it has exactly `no_management` and appears in a screened-down audit; every trajectory has exactly `n_cycles + 1` state rows after duplicate removal rows are collapsed (initial state plus one endpoint per cycle); the unit layer and library cover each other in both directions; and every prescription belongs to its ownership class's eligible set.
+- Output: `fvs_trajectory_library.parquet` / DuckDB (`trajectory_index`, `trajectory_cycles`).
+
+### 4d. Harvest scheduling by simulated annealing
+- **Decision variable:** one choice `x_s` per stand from its library `L_s`. With ~10⁴ stands and ~8 trajectories each, the space is astronomically large — hence a heuristic, and hence the requirement to *report* search quality rather than assume it.
+- **Objective — four forms** after `CLIMATE-FVS`: `maximize`, `minimize`, `evenflow` (minimize the standard deviation of a metric across periods), and `evenflow_target` (minimize variation around a target, which may be a value or a range and may vary over time). Each carries a weight; the binding harvest target is weighted well above the rest so the scheduler hits it first and optimizes the others within that constraint. Evaluating a whole landscape plan is a lookup and a sum, not an FVS run — which is what makes search affordable at all.
+- **TPO figures are an `evenflow_target`, not a hard ceiling.** They derive from observed historical removals, so undershooting a county target is as much a finding as overshooting it. The baseline selects the `2013_2024` period explicitly in `config/projection.yaml`; `all_years` remains available only as an explicit sensitivity scenario.
+- **Keep targets dimensioned by county and owner group.** Diaz et al. set theirs globally and their scheduler shifted harvest between BLM Districts to hit the landscape total — an artifact they flag against actual BLM practice. Report per-dimension outcomes, not just the total.
+- **Constraint split.** Policy absolutes are made **unrepresentable** (riparian no-entry and eligibility screens are enforced by library construction, so the search cannot select them — the same device Diaz et al. used for stream buffers, wilderness, and Critical Habitat). Spatial constraints are **priced** as penalties: adjacency and green-up, maximum contiguous opening size, treatment budget. These come from `LAMPS`; the Diaz et al. scheduler carried no spatial constraint at all, so its code cannot supply them.
+- **Moves:** a mixture of single-stand reassignment, whole adjacency-block reassignment (single-stand moves stall under a green-up penalty), and period swaps between comparable stands.
+- **Acceptance and cooling:** Metropolis acceptance; geometric cooling; `T₀` calibrated at run start to a target initial acceptance rate rather than hardcoded. Parameters in `config/projection.yaml` under `harvest.annealing`.
+- **Initial solution:** seed from the greedy oldest-first allocator in `pipeline/s3_management/harvest_scheduler.py`, which is retained for this purpose and as a reported baseline.
+- **Reproducibility:** one documented seed; same seed + same library + same weights ⇒ identical plan. Record seed, cooling schedule, and objective weights in `versions.lock`.
+- **Required quality report** (a plan is not a result without it): objective value; the full constraint-violation vector per dimension per cycle; an objective-specific relaxation bound (per-stand only for separable objectives; aggregate-preserving for `evenflow` / `evenflow_target`, or explicitly unavailable); the greedy and random baselines; and the spread across seeds.
+- Output: `selected_plan.parquet` (`stand_id` → `trajectory_id`) + `scheduler_report.json`.
+
+### 4e. Painting the selected plan
+- Join the selected plan to `trajectory_cycles`, then to pixels through the unit × TreeMap crosswalk.
 - Write outputs to a per-pixel × per-cycle Zarr store.
 - Chunk by HUC8 or tile; aggregate to summary statistics (county, ownership, state) on the fly.
+- Per-acre densities paint directly; **totals require × pixel acres** (900 m² = 0.2224 ac). See `notes/treemap-methodology.md`.
 - Output: `projection_cube.zarr` with dimensions `(pixel, cycle, attribute)`.
 
 ---
 
-## 5. Validation (also missing — needed before any product is published)
+## 5. Validation (needed before any product is published)
 
+### 5a. Growth validation (validate growth before evaluating any schedule)
 - **Hindcast against FIA remeasurements.** Initialize from an older FIA panel (e.g., 2010-2014 measurements), run the pipeline forward, compare against the most recent panel (2018-2022) at the plot level. Report bias and RMSE for BA, TPA, QMD, volume by species group.
 - **Cross-check against BIGMAP.** Compare projected year-0 biomass against BIGMAP 2014-2018 biomass at the pixel level; verify TreeMap+FIA initialization is consistent with an independent product.
 - **Spatial pattern check.** Aggregate to county, compare against FIA EVALIDator estimates for the same counties.
 - **Sensitivity probe.** Re-run with perturbed site index (±10%) and document output sensitivity; informs whether site index uncertainty matters before deciding to invest in better SI modeling.
 
+### 5b. Library integrity (cheap; run on every library build)
+- Every riparian stand has exactly one trajectory, `no_management`. Every non-riparian stand has at least two unless structural screens remove every active prescription; a screened-down stand has exactly `no_management` and is logged.
+- After collapsing duplicate FVS removal rows, every trajectory has exactly `n_cycles + 1` state rows (the initial state plus one endpoint per cycle), with no gaps and no NaNs in any objective column.
+- Unit layer and library cover each other **in both directions** — a stand silently missing from the library is a stand the scheduler cannot manage, and it will not announce itself.
+- Every prescription in the library is a member of its ownership class's eligible set in `config/management_regimes.yaml`.
+
+### 5c. Scheduler validation
+- **Determinism.** Same seed + same library + same weights ⇒ identical plan.
+- **Search behaviour.** Monotone best-so-far objective; final objective ≥ the greedy baseline on the pilot. A plan that does not beat greedy is a finding about the search and must be reported as one.
+- **Constraint accounting.** Structural constraints honoured exactly; priced constraints reported as a violation vector per dimension per cycle, against a stated tolerance.
+- **Optimality gap.** Choose the bound through the objective's declared strategy. Separable maximization objectives may use `Σ_s max_{x∈L_s} value(x)`; coupled `evenflow` and `evenflow_target` objectives require a relaxation that preserves their per-period, per-dimension aggregate term while removing spatial penalties. If no validated relaxation is implemented, report the gap as unavailable.
+- **Seed spread.** Report objective spread across restarts; a wide spread means the search has not converged, whatever the best run shows.
+
+### 5d. Landscape plausibility
+- **The selected prescription mix, by ownership class** — a headline result, not a diagnostic. Diaz et al. report exactly this (their Figure 16) as the primary read on scheduler behaviour.
+- **Per-dimension outcomes**, by county and owner group. A plan that hits the landscape total by reallocating harvest between counties is invisible in an aggregate figure.
+- Harvested area per cycle per ownership class against TPO targets and the LCMS observed record (§3d).
+- Age-class distribution through time. A plan that liquidates the oldest classes in cycle 1 and flatlines is satisfying its constraints and failing forestry.
+- Opening-size distribution against the green-up rules.
+
 ---
 
 ## 6. Output products and packaging
 
+- **The trajectory library is itself a product**, not an intermediate: `trajectory_index` + `trajectory_cycles`. It is what makes an alternative scenario cheap — a new objective or a new constraint set is a re-run of §4d, not a re-run of FVS.
+- **The selected plan**: `selected_plan.parquet` (`stand_id` → `trajectory_id`) plus `scheduler_report.json` carrying the objective value, violation vector, optimality-gap bound, baselines, and seed spread. The plan is not publishable without the report.
 - Per-cycle, per-pixel state cube: `projection_cube.zarr`.
-- Headline rasters at year 0, 25, 50: BA, biomass, dominant species, and **all five IPCC carbon pools**: aboveground live, belowground live, dead wood, forest floor, soil organic carbon.
-- FVS `CARBON` extension enabled in all keyword templates; all five pools parsed from cycle reports and stored in trajectory library.
-- Aggregated summary tables: by county, by ownership, by forest type group.
+- Headline rasters at year 0, 25, 50: BA, biomass, dominant species, and — if carbon is re-enabled — **all five IPCC carbon pools**: aboveground live, belowground live, dead wood, forest floor, soil organic carbon. Library runs are barrier-free, so the measured restart corruption does not apply; `carbon_extension` is nonetheless still `false` pending an explicit scope decision (see `config/projection.yaml`).
+- Aggregated summary tables: by county, by ownership, by forest type group. Riparian buffers report as their own polygons, never dissolved into neighbouring units.
 - Documentation: data dictionary, methods writeup, validation report — **all required for peer review**.
-- Reproducibility: pin all input dataset versions (TreeMap 2022, LCMS v2024.10, PRISM normals 1991-2020, FIA evaluation cycle), commit a `versions.lock` file. All steps must be reproducible from pinned inputs with no manual intervention.
+- Reproducibility: pin all input dataset versions (TreeMap 2022, LCMS v2024.10, PRISM normals 1991-2020, FIA evaluation cycle) **plus the library version, scheduler seed, cooling schedule, and objective weights**; commit a `versions.lock` file. All steps must be reproducible from pinned inputs with no manual intervention.
 
 ---
 
-## What the agent should ask before starting
+## Open project decisions
 1. Exact state list / boundary for "eastern US"?
-2. Target ownership classification granularity — FIA OWNGRPCD (4 classes) or finer?
-3. Are the BMP / riparian rules state-specific or use a single regional default?
-4. Compute environment — local, HPC, cloud?
-5. Does the project have FIA database credentials or use public DataMart downloads?
+2. Compute environment for library generation at scale — local, HPC, cloud? (Run count is `stands × prescriptions`; §4c.)
+3. Does the project have FIA database credentials or use public DataMart downloads?
+4. **The v1 objective** — NPV, volume, carbon, or a stated weighting? This is the scenario definition, not a tuning parameter.
+5. **Parameter-grid resolution per prescription family** — how many rotation ages and thin timings genuinely change the answer? Library cost is multiplicative in this.
+6. **Even-flow scope** — per ownership class, per county, or landscape-wide; non-declining or within a ± band?
+7. **Tribal and unknown-ownership eligible sets** — both are conservative placeholders in `config/management_regimes.yaml` and need a documented source before publication.
+
+Settled since the first draft of this plan: ownership granularity is the **seven Harris et al. (2025) forest classes**, uncollapsed (§3c); BMP/riparian rules are **state-specific**, keyed by FIPS in `config/bmp_rules.yaml` (§3b).

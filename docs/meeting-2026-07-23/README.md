@@ -6,11 +6,23 @@ This is the evidence table behind one claim ARTEMIS depends on:
 > stands we choose, and resume — and the model behaves exactly as if the cut had
 > been written into the keyword file from the start.**
 
-That is the mechanism the constrained harvest scheduler is built on. A county-level
-TPO volume cap is a *global* constraint: at each 5-year barrier the scheduler must
-look across every stand, decide which ones to cut so the county stays under its cap,
-apply those cuts, and let the rest keep growing. This table shows each piece of that
-loop was measured against an authoritative baseline and matched it to the last digit.
+That is the mechanism the constrained harvest scheduler was built on **as of this
+meeting**. A county-level TPO volume cap is a *global* constraint: at each 5-year
+barrier the scheduler must look across every stand, decide which ones to cut so the
+county stays under its cap, apply those cuts, and let the rest keep growing. This table
+shows each piece of that loop was measured against an authoritative baseline and matched
+it to the last digit.
+
+> **Status note added 2026-08-06 — the measurements stand, the architecture moved.**
+> ARTEMIS no longer schedules at restart barriers. It precomputes a library of candidate
+> trajectories per stand (contents set by ownership class) and selects among them with
+> simulated annealing; see
+> [`notes/trajectory-library-and-annealing.md`](../../notes/trajectory-library-and-annealing.md).
+> Every row in this table is still a valid measurement and none of it is withdrawn — the
+> parallel-worker and cut-injection results now underwrite **library generation** rather
+> than an inner scheduling loop. One consequence is worth flagging against the FAIL row
+> below: library runs are continuous, with no barrier, so the carbon corruption documented
+> there does not arise in them.
 
 ## Where the numbers come from
 
