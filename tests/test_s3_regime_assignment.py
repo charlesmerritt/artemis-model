@@ -153,6 +153,20 @@ def test_offset_fallback_snaps_every_entry_to_a_projection_cycle():
     assert years == {"thin_year": 2042, "clearcut_year": 2057}
 
 
+def test_offset_fallback_does_not_expand_a_repeated_treatment_window():
+    years, _ = resolve_schedule(
+        _spec("offset_based", offsets={"start_year": 10, "end_year": 39}),
+        inv_year=INV_YEAR, cycle_years=5, horizon_years=50, stand_age=None,
+    )
+    assert years == {"start_year": 2032, "end_year": 2057}
+
+    thins = build_thins(
+        "selection_harvest",
+        {**years, "interval": 15, "proportion": 0.20},
+    )
+    assert [thin.year for thin in thins] == [2032, 2047]
+
+
 def test_an_entry_on_the_horizon_boundary_is_kept():
     """2072 is the year-50 headline raster year in config/projection.yaml, not past the end."""
     years, _ = resolve_schedule(

@@ -173,6 +173,11 @@ def _snap_to_cycle(years_out: float, cycle_years: int) -> int:
     return max(cycle_years, int(math.ceil(years_out / cycle_years)) * cycle_years)
 
 
+def _floor_to_cycle(years_out: float, cycle_years: int) -> int:
+    """Round an inclusive window bound down so it cannot admit a new treatment."""
+    return int(math.floor(years_out / cycle_years)) * cycle_years
+
+
 def _stand_age(unit: Mapping) -> float | None:
     """
     The unit's stand age, or ``None`` when it is missing or unusable.
@@ -233,7 +238,11 @@ def resolve_schedule(
 
     if mode == "offset_based":
         years = {
-            key: inv_year + _snap_to_cycle(offset, cycle_years)
+            key: inv_year + (
+                _floor_to_cycle(offset, cycle_years)
+                if key == "end_year"
+                else _snap_to_cycle(offset, cycle_years)
+            )
             for key, offset in offsets.items()
         }
     elif mode == "age_based":
