@@ -1,0 +1,16 @@
+owner_class,forest_branch,eligible_menu,units,stands,acres,menu_size,library_rows
+private_family,pine,family_light_thin | family_uneven_aged_selection | no_management | pine_plantation_long_rotation,701,273,313674.13802320714,4,2804
+private_family,hardwood,family_light_thin | family_uneven_aged_selection | no_management,892,287,204890.81238722624,3,2676
+private_industrial,pine,no_management | pine_plantation_long_rotation | pine_plantation_short_rotation,638,271,106920.32403348552,3,1914
+federal,pine,no_management | public_selection_light | public_thin_restore,222,126,104933.22610841731,3,666
+private_industrial,hardwood,hardwood_clearcut_regen | no_management,748,265,59910.50205240906,2,1496
+private_family,other,family_light_thin | family_uneven_aged_selection | no_management,194,68,47951.66414253857,3,582
+federal,hardwood,no_management | public_selection_light | public_thin_restore,225,125,25417.506643094093,3,675
+private_industrial,other,hardwood_clearcut_regen | no_management,164,70,16423.4143895285,2,328
+local,pine,no_management | public_selection_light | public_thin_restore,319,184,15984.851758500577,3,957
+federal,other,no_management | public_selection_light | public_thin_restore,56,28,10067.147372586756,3,168
+local,hardwood,no_management | public_selection_light | public_thin_restore,399,186,7665.9502492558695,3,1197
+state,pine,no_management | pine_plantation_long_rotation | public_selection_light | public_thin_restore,238,127,5146.661464121826,4,952
+state,hardwood,no_management | public_selection_light | public_thin_restore,296,149,2722.3352770856136,3,888
+local,other,no_management | public_selection_light | public_thin_restore,84,44,2702.9869257167347,3,252
+state,other,no_management | public_selection_light | public_thin_restore,64,32,686.310486486905,3,192
