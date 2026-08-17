@@ -105,8 +105,8 @@ def panel_menu_matrix(ax, menu: pd.DataFrame, lib: pd.DataFrame) -> None:
     masked = np.ma.masked_invalid(grid.to_numpy())
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("seq", SEQ)
     cmap.set_bad(SURFACE)
-    im = ax.imshow(masked, cmap=cmap, aspect="auto",
-                   norm=matplotlib.colors.LogNorm(vmin=0.5, vmax=np.nanmax(grid.to_numpy())))
+    ax.imshow(masked, cmap=cmap, aspect="auto",
+              norm=matplotlib.colors.LogNorm(vmin=0.5, vmax=np.nanmax(grid.to_numpy())))
 
     for i in range(grid.shape[0]):
         for j in range(grid.shape[1]):
