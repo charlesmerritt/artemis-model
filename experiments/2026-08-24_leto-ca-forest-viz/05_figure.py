@@ -32,9 +32,6 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
-    AOI_BOUNDS_4269,
-    CELL_ACRES,
-    FLOWLINE_BUFFER_RULES_FT,
     INV_YEAR,
     OUTPUTS,
     STREAMS_SHP,
@@ -137,12 +134,11 @@ def draw_north_arrow_and_scale(ax, extent, bar_km: float = 2.0) -> None:
 
     # -- north arrow: true north, computed from the actual grid convergence -
     ndx, ndy = true_north_unit_vector(extent)
-    perp_x, perp_y = -ndy, ndx  # 90° left of "north", for the arrowhead width
+    perp_x, _perp_y = -ndy, ndx  # 90° left of "north"; only the x-offset is used below
     length = 0.075 * height
     base = (margin_x, margin_y)
     tip = (base[0] + ndx * length, base[1] + ndy * length)
     shaft_frac, head_width = 0.62, length * 0.42
-    shoulder = (base[0] + ndx * length * shaft_frac, base[1] + ndy * length * shaft_frac)
     arrow = FancyArrow(base[0], base[1], tip[0] - base[0], tip[1] - base[1],
                        width=length * 0.10, head_width=head_width,
                        head_length=length * (1 - shaft_frac) * 1.15,
@@ -181,8 +177,12 @@ def lookup_image(mu_labels: np.ndarray, values: dict[int, np.ndarray],
     return lut[mu_labels]
 
 
-def polygonize_units(mu_labels: np.ndarray, transform) -> "gpd.GeoDataFrame":
-    """Vectorize the MU raster: one (multi)polygon per management unit."""
+def polygonize_units(mu_labels: np.ndarray, transform):
+    """Vectorize the MU raster: one (multi)polygon per management unit.
+
+    Returns a geopandas.GeoDataFrame — left untyped in the signature since
+    geopandas is imported lazily here, not at module level.
+    """
     import geopandas as gpd
     from rasterio import features
     from shapely.geometry import shape as to_shape
@@ -247,7 +247,6 @@ def main() -> None:
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
     import matplotlib.colors as mcolors
-    import matplotlib.patheffects as patheffects
 
     from affine import Affine
 

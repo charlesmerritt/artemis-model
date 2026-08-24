@@ -46,7 +46,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
@@ -57,6 +56,7 @@ from common import FIA_DB, INV_YEAR, NUM_CYCLES, CYCLE_YEARS, WORK, region_paths
 from pipeline.s3_management.regime_assignment import assign_prescription  # noqa: E402
 from pipeline.s4_fvs.build_fvs_inputs import build_tree_init  # noqa: E402
 from pipeline.s4_fvs.regime_templates import render_keyfile  # noqa: E402
+from policies import Schedule  # noqa: E402
 
 FVS_BIN = os.environ.get(
     "FVSSN_BIN",
@@ -313,12 +313,7 @@ def schedules_log(schedules: dict[str, "Schedule"]) -> pd.DataFrame:
 def build_policy_schedules(policy: str, mu: pd.DataFrame,
                            sdi_tables: dict) -> dict[str, "Schedule"]:
     """Pass-1 schedules for the random/heuristic policies (riparian: no entry)."""
-    from policies import (
-        Schedule,
-        heuristic_group,
-        industrial_initial_schedule,
-        random_schedule,
-    )
+    from policies import heuristic_group, industrial_initial_schedule, random_schedule
 
     schedules = {}
     for r in mu.itertuples(index=False):
