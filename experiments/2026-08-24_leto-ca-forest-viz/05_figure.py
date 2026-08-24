@@ -221,7 +221,20 @@ def harvest_class(summary: pd.DataFrame, year: int, window: int = 5) -> pd.Serie
     return pd.Series(out, name="harvest")
 
 
+# Per-policy labels: the harvest-legend title and the suptitle's policy clause.
+POLICY_LABELS = {
+    "default": ("owner-class default regimes",
+                "ARTEMIS owner-class default regimes"),
+    "random": ("random schedules, ≥10 yr between entries",
+               "random per-stand harvest schedules (10-yr re-entry lockout)"),
+    "heuristic": ("heuristic rules — see below",
+                  "heuristic harvest rules (stated below)"),
+}
+
+
 def main() -> None:
+    import argparse
+
     import geopandas as gpd
     import matplotlib
     matplotlib.use("Agg")
@@ -233,10 +246,18 @@ def main() -> None:
 
     from affine import Affine
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--policy", choices=tuple(POLICY_LABELS),
+                        default="default")
+    args = parser.parse_args()
+    policy = args.policy
+    suffix = "" if policy == "default" else f"_{policy}"
+    legend_label, title_clause = POLICY_LABELS[policy]
+
     seg = np.load(WORK / "segmentation.npz")
     mu_labels, riparian = seg["mu_labels"], seg["riparian"]
     mu = pd.read_csv(WORK / "mu_summary.csv")
-    summary = pd.read_csv(WORK / "fvs_summary2.csv", dtype={"MU_ID": str})
+    summary = pd.read_csv(WORK / f"fvs_summary2{suffix}.csv", dtype={"MU_ID": str})
     summary["MU_ID"] = summary["MU_ID"].astype(int)
     meta = json.loads((WORK / "staged" / "aoi_meta.json").read_text())
     a, b, c, d, e, f = meta["transform"]
@@ -321,7 +342,9 @@ def main() -> None:
     draw_north_arrow_and_scale(axes[0], extent)
 
     # -- Panels 2-4: BA ----------------------------------------------------
-    ba_titles = ["Start", "“1st harvest” era", "End of simulation"]
+    ba_titles = ["Start",
+                 "“1st harvest” era" if policy == "default" else "Mid-simulation",
+                 "End of simulation"]
     for i, year in enumerate(snap_years):
         vals = {}
         for mu_id in mu["MU_ID"]:
@@ -384,19 +407,28 @@ def main() -> None:
     ]
     leg2 = fig.legend(handles=harvest_handles, loc="lower right",
                       bbox_to_anchor=(0.99, 0.008), fontsize=9.5,
-                      title="Harvest activity (owner-class default regimes)",
+                      title=f"Harvest activity ({legend_label})",
                       title_fontsize=10, frameon=False)
     leg2.get_title().set_fontweight("bold")
 
     fig.suptitle(
-        "LETO cellular-automata stands → ARTEMIS owner-class regimes → "
-        "FVS Southern variant, 2022–2072\n"
+        "LETO cellular-automata stands → "
+        f"{title_clause} → FVS Southern variant, 2022–2072\n"
         "White Springs AOI, Columbia County, FL (five-county pilot) · "
         "TreeMap 2022 + FIA tree lists · Suwannee River riparian buffer",
         fontsize=13.5, y=0.99)
 
+    if policy == "heuristic":
+        from policies import HEURISTIC_RULES_TEXT
+
+        fig.subplots_adjust(bottom=0.27)
+        fig.text(0.5, 0.008, HEURISTIC_RULES_TEXT, ha="center", va="bottom",
+                 fontsize=9.5, color="#333333", linespacing=1.5,
+                 bbox=dict(facecolor="#f5f3ee", edgecolor="#999999",
+                           boxstyle="round,pad=0.55", linewidth=0.8))
+
     OUTPUTS.mkdir(exist_ok=True)
-    out = OUTPUTS / "leto_artemis_forest_viz.png"
+    out = OUTPUTS / f"leto_artemis_forest_viz{suffix}.png"
     fig.savefig(out, dpi=170, facecolor="white", bbox_inches="tight")
     print(f"wrote {out}")
 

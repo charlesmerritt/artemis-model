@@ -162,27 +162,14 @@ def write_input_db(stands: pd.DataFrame, trees: pd.DataFrame, path: Path) -> Non
 
 
 def run_shard(args) -> tuple[int, int, int]:
-    shard_id, stand_ids, regimes, sdi_tables, input_db = args
-    shard_dir = WORK / "fvs_runs" / f"shard_{shard_id:02d}"
+    shard_id, run_dir, keyfiles = args
+    shard_dir = Path(run_dir) / f"shard_{shard_id:02d}"
     shard_dir.mkdir(parents=True, exist_ok=True)
     out_db = shard_dir / "FVSOut.db"
     if out_db.exists():
         out_db.unlink()
     ok = failed = 0
-    for stand_id in stand_ids:
-        reg = regimes[stand_id]
-        params = json.loads(reg["params"])
-        sdi = sdi_tables.get(stand_id)
-        if sdi:
-            params["stand_sdi"] = sdi
-        key = render_keyfile(
-            stand_id=stand_id, stand_cn=stand_id,
-            regime=reg["template"], params=params,
-            mgmt_id=(reg["owner_class"][:4].upper() or "A001").ljust(4, "_"),
-            inv_year=INV_YEAR, cycle_years=CYCLE_YEARS, num_cycle=NUM_CYCLES,
-            out_db="FVSOut.db", in_db=str(input_db),
-            stand_table="FVS_STANDINIT_PLOT", tree_table="FVS_TREEINIT_PLOT",
-        )
+    for stand_id, key in keyfiles:
         keyfile = shard_dir / f"{stand_id}.key"
         keyfile.write_text(key)
         proc = subprocess.run(
@@ -198,9 +185,15 @@ def run_shard(args) -> tuple[int, int, int]:
     return shard_id, ok, failed
 
 
-def collect_summaries() -> pd.DataFrame:
+def run_batch(run_dir: Path, keyfiles: dict[str, str]) -> pd.DataFrame:
+    """Run one batch of keyfiles across the worker pool; return FVS_Summary2."""
+    items = sorted(keyfiles.items())
+    shards = [(i, str(run_dir), items[i::N_WORKERS]) for i in range(N_WORKERS)]
+    with mp.Pool(N_WORKERS) as pool:
+        for shard_id, ok, failed in pool.imap_unordered(run_shard, shards):
+            print(f"  shard {shard_id}: {ok} ok, {failed} failed")
     frames = []
-    for out_db in sorted((WORK / "fvs_runs").glob("shard_*/FVSOut.db")):
+    for out_db in sorted(Path(run_dir).glob("shard_*/FVSOut.db")):
         con = sqlite3.connect(out_db)
         frames.append(pd.read_sql(
             "SELECT s.StandID, s.Year, s.Age, s.Tpa, s.BA, s.QMD, s.TCuFt, s.MCuFt,"
@@ -212,35 +205,179 @@ def collect_summaries() -> pd.DataFrame:
     return summary
 
 
-def main() -> None:
-    mu = load_units()
-    regimes = assign_regimes(mu)
-    regimes.to_csv(WORK / "mu_regimes.csv", index=False)
-    print(regimes.groupby(["owner_class", "prescription"]).size().to_string())
+def post_treatment_ba(summary: pd.DataFrame) -> pd.DataFrame:
+    """Post-removal BA per (StandID, Year): the max-RmvCode row of each year."""
+    s = summary.sort_values("RmvCode").drop_duplicates(["StandID", "Year"], keep="last")
+    return s
 
+
+def default_keyfiles(regimes: pd.DataFrame, sdi_tables: dict,
+                     input_db: Path, stand_ids: list[str]) -> dict[str, str]:
+    reg_by_id = {f"MU_{r.MU_ID}": {"template": r.template, "params": r.params,
+                                   "owner_class": r.owner_class}
+                 for r in regimes.itertuples(index=False)}
+    out = {}
+    for stand_id in stand_ids:
+        reg = reg_by_id[stand_id]
+        params = json.loads(reg["params"])
+        sdi = sdi_tables.get(stand_id)
+        if sdi:
+            params["stand_sdi"] = sdi
+        out[stand_id] = render_keyfile(
+            stand_id=stand_id, stand_cn=stand_id,
+            regime=reg["template"], params=params,
+            mgmt_id=(reg["owner_class"][:4].upper() or "A001").ljust(4, "_"),
+            inv_year=INV_YEAR, cycle_years=CYCLE_YEARS, num_cycle=NUM_CYCLES,
+            out_db="FVSOut.db", in_db=str(input_db),
+            stand_table="FVS_STANDINIT_PLOT", tree_table="FVS_TREEINIT_PLOT",
+        )
+    return out
+
+
+def schedule_keyfile(stand_id: str, sched, label: str, input_db: Path) -> str:
+    """Render a keyfile straight from a policy Schedule's ThinDBH/Regeneration
+    lists (render_keyfile's thins=/regen= override)."""
+    return render_keyfile(
+        stand_id=stand_id, stand_cn=stand_id, regime=label,
+        thins=sorted(sched.thins, key=lambda t: t.year),
+        regen=sorted(sched.regen, key=lambda r: r.year),
+        mgmt_id=label[:4].upper().ljust(4, "_"),
+        inv_year=INV_YEAR, cycle_years=CYCLE_YEARS, num_cycle=NUM_CYCLES,
+        out_db="FVSOut.db", in_db=str(input_db),
+        stand_table="FVS_STANDINIT_PLOT", tree_table="FVS_TREEINIT_PLOT",
+    )
+
+
+def schedules_log(schedules: dict[str, "Schedule"]) -> pd.DataFrame:
+    rows = []
+    for stand_id, sched in schedules.items():
+        for t in sorted(sched.thins, key=lambda t: t.year):
+            rows.append({"MU_ID": stand_id.removeprefix("MU_"), "year": t.year,
+                         "kind": "clearcut" if t.proportion >= 1.0 else "thin",
+                         "proportion": t.proportion})
+    return pd.DataFrame(rows, columns=["MU_ID", "year", "kind", "proportion"])
+
+
+def build_policy_schedules(policy: str, mu: pd.DataFrame,
+                           sdi_tables: dict) -> dict[str, "Schedule"]:
+    """Pass-1 schedules for the random/heuristic policies (riparian: no entry)."""
+    from policies import (
+        Schedule,
+        heuristic_group,
+        industrial_initial_schedule,
+        random_schedule,
+    )
+
+    schedules = {}
+    for r in mu.itertuples(index=False):
+        stand_id = f"MU_{r.MU_ID}"
+        sdi = sdi_tables.get(stand_id)
+        if policy == "random":
+            if int(r.MGMT_CLASS) == 1:
+                schedules[stand_id] = Schedule()
+            else:
+                schedules[stand_id] = random_schedule(
+                    str(r.MU_ID), int(r.FORTYPCD_DOM), sdi, policy_tag="random")
+        else:  # heuristic
+            group = heuristic_group(r.OWNER_CLASS, int(r.MGMT_CLASS))
+            if group == "noop":
+                schedules[stand_id] = Schedule()
+            elif group == "industrial":
+                schedules[stand_id] = industrial_initial_schedule(float(r.STDAGE_MEAN))
+            else:
+                schedules[stand_id] = random_schedule(
+                    str(r.MU_ID), int(r.FORTYPCD_DOM), sdi, policy_tag="heuristic")
+    return schedules
+
+
+def run_heuristic_industrial_loop(schedules: dict, summary_by_stand: dict,
+                                  mu: pd.DataFrame, sdi_tables: dict,
+                                  input_db: Path, run_root: Path,
+                                  max_passes: int = 5) -> None:
+    """Iterate the industrial BA>100 clearcut trigger against real FVS output.
+
+    Each pass: read every industrial stand's latest post-treatment BA
+    trajectory, extend schedules whose trajectory crosses the trigger, rerun
+    only the extended stands, fold their new summaries in. Stops when a pass
+    triggers nothing (every industrial trajectory stays under 100 sq ft/ac
+    between entries) or at `max_passes` — regrowth to the trigger takes
+    15-20 years here, so two rotations is the practical ceiling.
+    """
+    from policies import heuristic_group, industrial_next_clearcut
+
+    industrial = [f"MU_{r.MU_ID}" for r in mu.itertuples(index=False)
+                  if heuristic_group(r.OWNER_CLASS, int(r.MGMT_CLASS)) == "industrial"]
+    fortypcd = {f"MU_{r.MU_ID}": int(r.FORTYPCD_DOM) for r in mu.itertuples(index=False)}
+
+    for pass_no in range(2, max_passes + 1):
+        changed = {}
+        for stand_id in industrial:
+            rows = summary_by_stand.get(stand_id)
+            if rows is None:
+                continue
+            post = post_treatment_ba(rows)
+            ba_by_year = dict(zip(post["Year"].astype(int), post["BA"]))
+            if industrial_next_clearcut(schedules[stand_id], ba_by_year,
+                                        fortypcd[stand_id],
+                                        sdi_tables.get(stand_id)):
+                changed[stand_id] = schedule_keyfile(
+                    stand_id, schedules[stand_id], "heuristic", input_db)
+        if not changed:
+            print(f"industrial BA-trigger loop converged before pass {pass_no}")
+            return
+        print(f"industrial BA-trigger pass {pass_no}: {len(changed):,} stands "
+              f"crossed 100 sq ft/ac — rerunning")
+        summary = run_batch(run_root / f"pass{pass_no}", changed)
+        for stand_id, rows in summary.groupby("StandID"):
+            summary_by_stand[stand_id] = rows
+    print(f"industrial BA-trigger loop stopped at max_passes={max_passes}")
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--policy", choices=("default", "random", "heuristic"),
+                        default="default")
+    args = parser.parse_args()
+    policy = args.policy
+    suffix = "" if policy == "default" else f"_{policy}"
+
+    mu = load_units()
     stands, trees = build_inputs(mu)
     print(f"runnable stands: {len(stands):,}; tree rows: {len(trees):,}; "
           f"not runnable: {mu['MU_ID'].nunique() - len(stands):,}")
     input_db = (WORK / "fvs_inputs.db").resolve()
     write_input_db(stands, trees, input_db)
     sdi_tables = stand_sdi_tables(trees)
-
-    reg_by_id = {f"MU_{r.MU_ID}": {"template": r.template, "params": r.params,
-                                   "owner_class": r.owner_class}
-                 for r in regimes.itertuples(index=False)}
     stand_ids = sorted(stands["STAND_ID"])
-    shards = [(i, stand_ids[i::N_WORKERS], reg_by_id, sdi_tables, input_db)
-              for i in range(N_WORKERS)]
-    print(f"running {len(stand_ids):,} FVSsn projections on {N_WORKERS} workers…")
-    with mp.Pool(N_WORKERS) as pool:
-        for shard_id, ok, failed in pool.imap_unordered(run_shard, shards):
-            print(f"shard {shard_id}: {ok} ok, {failed} failed")
+    run_root = WORK / f"fvs_runs{suffix}"
 
-    summary = collect_summaries()
-    summary.to_csv(WORK / "fvs_summary2.csv", index=False)
+    if policy == "default":
+        regimes = assign_regimes(mu)
+        regimes.to_csv(WORK / "mu_regimes.csv", index=False)
+        print(regimes.groupby(["owner_class", "prescription"]).size().to_string())
+        keyfiles = default_keyfiles(regimes, sdi_tables, input_db, stand_ids)
+        print(f"running {len(keyfiles):,} FVSsn projections on {N_WORKERS} workers…")
+        summary = run_batch(run_root, keyfiles)
+    else:
+        schedules = build_policy_schedules(policy, mu, sdi_tables)
+        keyfiles = {sid: schedule_keyfile(sid, schedules[sid], policy, input_db)
+                    for sid in stand_ids}
+        print(f"[{policy}] running {len(keyfiles):,} FVSsn projections "
+              f"on {N_WORKERS} workers…")
+        first = run_batch(run_root / "pass1", keyfiles)
+        summary_by_stand = {sid: rows for sid, rows in first.groupby("StandID")}
+        if policy == "heuristic":
+            run_heuristic_industrial_loop(schedules, summary_by_stand, mu,
+                                          sdi_tables, input_db, run_root)
+        summary = pd.concat(summary_by_stand.values(), ignore_index=True)
+        schedules_log(schedules).to_csv(WORK / f"mu_schedules{suffix}.csv", index=False)
+
+    summary.to_csv(WORK / f"fvs_summary2{suffix}.csv", index=False)
     n_ran = summary["StandID"].nunique()
     print(f"collected FVS_Summary2 for {n_ran:,} stands "
-          f"({len(summary):,} rows) -> fvs_summary2.csv")
+          f"({len(summary):,} rows) -> fvs_summary2{suffix}.csv")
 
 
 if __name__ == "__main__":

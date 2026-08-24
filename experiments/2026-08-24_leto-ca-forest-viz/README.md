@@ -75,14 +75,46 @@ BA trajectories: industrial land drops from 83 to 23 sq ft/ac at the pulse and
 regrows to 180 by 2072, federal land saw-tooths under decadal selection, and
 unmanaged local land plateaus near 194.
 
+## Harvest policies (`--policy` on 04/05/06)
+
+The deterministic default exposed its own weakness: offset-based public
+prescriptions treat every stand of a class in the same cycle years, so the
+whole federal forest thinned at once. Until the simulated-annealing scheduler
+exists to select per-stand schedules against a regional even-flow target,
+two alternative policies (`policies.py`) spread entries per stand:
+
+- **`random`** — at each 5-year cycle boundary an eligible stand harvests
+  with probability 0.25; an entry locks the stand out for 10 years (no stand
+  harvested more than once per decade). 30% of events are clearcuts (followed
+  by regeneration — planted loblolly on pine types, SDI-apportioned natural
+  regen otherwise), 70% proportional thins at a random 15–45% intensity.
+  Seeded per stand via crc32, so schedules are reproducible and uncorrelated
+  across stands — harvests scatter in space and time instead of pulsing.
+  Mean ~2 entries per stand over the horizon; many stands see more than one
+  clearcut or thinning.
+- **`heuristic`** — three rules, printed on the figure itself:
+  family/unknown = no entry (like riparian); industrial = one thin from
+  below at stand age 10 (age from FIA STDAGE, re-established at 0 by each
+  clearcut) plus a clearcut whenever projected live BA exceeds 100 sq ft/ac —
+  a state-dependent trigger evaluated **iteratively against real FVSsn
+  output** (run, find the first cycle year BA crosses 100, schedule the
+  clearcut + replant + next age-10 thin, rerun, repeat until nothing
+  triggers); everything else (federal/state/local) = random entries under the
+  same 10-year lockout. Riparian stays absolute no-entry under every policy.
+
+Outputs are suffixed per policy: `fvs_summary2_random.csv`,
+`mu_schedules_heuristic.csv`, `leto_artemis_forest_viz_heuristic.png`, …
+
 ## Pipeline
 
 ```
 01_stage_aoi.py         R2 pulls + windowed /vsis3/ raster clips (TreeMap, ownership)
 02_build_attributes.py  VAT parse + FIA COND STDAGE → 5 attribute rasters (LETO stage 1)
 03_ca_segment.py        cellular-automata segmentation + riparian split (LETO stage 2)
-04_fvs_run.py           weighted FVS inputs, regime assignment, 6.5k FVSsn runs (stages 3-5)
-05_figure.py            the four-panel figure
+policies.py             random / heuristic harvest-schedule generators
+04_fvs_run.py           weighted FVS inputs, schedules, ~7k FVSsn runs (--policy)
+05_figure.py            the four-panel figure (--policy)
+06_hexbin_figure.py     hexbin (mean BA per ~1 km hex) over the 2072 map
 ```
 
 Run in order with `uv run python experiments/2026-08-24_leto-ca-forest-viz/<script>`;
