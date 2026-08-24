@@ -1,0 +1,5 @@
+# Regenerable ownership-warp cache (~32 MB) and derived vector output
+own_aoi_full.npy
+outputs/leto_stands.gpkg
+outputs/stand_harvest.csv
+__pycache__/
