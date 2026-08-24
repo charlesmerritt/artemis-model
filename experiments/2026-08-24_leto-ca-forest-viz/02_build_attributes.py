@@ -18,6 +18,7 @@ Outputs (work/):
 
 from __future__ import annotations
 
+import argparse
 import sqlite3
 import struct
 import sys
@@ -27,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import AOI_TREEMAP_TIF, FIA_DB, TREEMAP_NODATA, TREEMAP_VAT_DBF, WORK
+from common import FIA_DB, TREEMAP_NODATA, TREEMAP_VAT_DBF, region_paths
 
 
 def read_vat(path: Path) -> pd.DataFrame:
@@ -58,12 +59,17 @@ def read_vat(path: Path) -> pd.DataFrame:
 def main() -> None:
     import rasterio
 
-    with rasterio.open(AOI_TREEMAP_TIF) as src:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--region", choices=("aoi", "full"), default="aoi")
+    args = parser.parse_args()
+    paths = region_paths(args.region)
+
+    with rasterio.open(paths.treemap_tif) as src:
         tm = src.read(1)
     valid = tm != TREEMAP_NODATA
 
     vat = read_vat(TREEMAP_VAT_DBF)
-    print(f"VAT: {len(vat)} rows; AOI values: {np.unique(tm[valid]).size}")
+    print(f"VAT: {len(vat)} rows; {args.region} values: {np.unique(tm[valid]).size}")
 
     aoi_values = np.unique(tm[valid])
     vat_aoi = vat[vat["Value"].isin(aoi_values)].copy()
@@ -102,10 +108,11 @@ def main() -> None:
         v = grid[valid]
         print(f"{name:9s} min {np.nanmin(v):8.1f} med {np.nanmedian(v):8.1f} max {np.nanmax(v):8.1f}")
 
-    WORK.mkdir(exist_ok=True)
-    np.savez_compressed(WORK / "attributes.npz", tm=tm, valid=valid, **grids)
-    vat_aoi.to_csv(WORK / "vat_aoi.csv", index=False)
-    print(f"wrote attributes.npz and vat_aoi.csv ({len(vat_aoi)} donor plots)")
+    paths.attributes_npz.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(paths.attributes_npz, tm=tm, valid=valid, **grids)
+    vat_aoi.to_csv(paths.vat_csv, index=False)
+    print(f"wrote {paths.attributes_npz.name} and {paths.vat_csv.name} "
+          f"({len(vat_aoi)} donor plots)")
 
 
 if __name__ == "__main__":

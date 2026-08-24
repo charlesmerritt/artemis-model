@@ -46,8 +46,7 @@ from common import (
     FT_TO_M,
     HARRIS_TO_OWNER_CLASS,
     STREAMS_SHP,
-    AOI_OWNERSHIP_TIF,
-    WORK,
+    region_paths,
 )
 
 # ============================================================
@@ -471,12 +470,31 @@ def rasterize_riparian(shape, transform):
 
 
 def main() -> None:
+    import argparse
     import json
 
     import rasterio
 
-    data = np.load(WORK / "attributes.npz")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--region", choices=("aoi", "full"), default="aoi")
+    args = parser.parse_args()
+    paths = region_paths(args.region)
+
+    data = np.load(paths.attributes_npz)
     valid = data["valid"]
+
+    if args.region == "full":
+        # The five counties are not a rectangle; the staged raster covers
+        # their bounding box, so cells outside the actual county polygons
+        # (river slivers of neighbouring counties, mostly) must drop out of
+        # segmentation the same way non-forest already does.
+        with rasterio.open(paths.county_mask_tif) as src:
+            in_county = src.read(1).astype(bool)
+        before = int(valid.sum())
+        valid = valid & in_county
+        print(f"county mask: {before:,} forested cells -> {int(valid.sum()):,} "
+              f"inside the five-county pilot boundary")
+
     forest_type = np.where(valid, np.nan_to_num(data["FORTYPCD"], nan=0), 0).astype(np.int32)
     raw = {n: np.nan_to_num(data[n], nan=0.0) for n in CONTINUOUS}
     feature_arrays, scales = {}, {}
@@ -485,7 +503,7 @@ def main() -> None:
         feature_arrays[name] = np.nan_to_num(std, nan=0.0)
         scales[name] = scale
 
-    with rasterio.open(AOI_OWNERSHIP_TIF) as src:
+    with rasterio.open(paths.ownership_tif) as src:
         harris = src.read(1)
         transform = src.transform
     # CA ownership hard-boundary codes: forest owner classes stay distinct,
@@ -520,15 +538,21 @@ def main() -> None:
           f"({riparian.sum() * CELL_ACRES:.0f} acres)")
     combo = seg_labels.astype(np.int64) * 2 + riparian
     combo[seg_labels == 0] = 0
-    mu_labels = np.zeros_like(seg_labels)
-    next_id = 1
-    structure = connectivity_structure()
-    for value in np.unique(combo[combo > 0]):
-        comp, n = ndimage.label(combo == value, structure=structure)
-        pos = comp > 0
-        mu_labels[pos] = comp[pos] + next_id - 1
-        next_id += n
+    # split_disconnected_segments is O(n_unique_labels) via per-label bounding
+    # boxes (ndimage.find_objects); a per-value `combo == value` + full-array
+    # ndimage.label loop here is O(n_unique_labels x total_cells) — invisible
+    # at AOI scale (a few thousand combo values over 217k cells) but well
+    # over an hour at the five-county scale (hundreds of thousands of parent
+    # segments over 15M+ cells).
+    mu_labels = split_disconnected_segments(combo.astype(np.int32))
     print(f"management units (MU_ID): {int(mu_labels.max()):,}")
+
+    # Save the rasters as soon as they exist, before the (cheaper but not
+    # free) summary/donor-weight bookkeeping below — so a bug in that later
+    # bookkeeping doesn't cost rerunning the CA loop itself, which is the
+    # expensive part at full-region scale.
+    np.savez_compressed(paths.segmentation_npz, mu_labels=mu_labels,
+                        seg_labels=seg_labels, riparian=riparian)
 
     # Per-MU summary
     valid_mu = mu_labels > 0
@@ -537,7 +561,16 @@ def main() -> None:
     counts = np.bincount(ids, minlength=max_id + 1)
     mu_ids = np.flatnonzero(counts > 0)
     mu_ids = mu_ids[mu_ids > 0]
-    parent = segment_categorical_mode(mu_labels, seg_labels)
+    # A management unit is a spatially-connected piece of exactly one parent
+    # segment (mu_labels comes from splitting `combo = seg_labels*2+riparian`
+    # apart, never merging different seg_labels values back together), so
+    # every cell of a given mu_label already carries the same seg_labels
+    # value — this is a direct lookup, not a categorical mode. Computing it
+    # as a mode via segment_categorical_mode builds a (n_mu x n_seg) count
+    # table, which is fine at AOI scale (a few thousand x a few thousand) but
+    # allocates hundreds of gigabytes at full-region scale (188k x 155k).
+    parent = np.zeros(max_id + 1, dtype=np.int32)
+    parent[ids] = seg_labels[valid_mu]
     owner_mode = segment_categorical_mode(mu_labels, np.maximum(ownership, 0))
     mgmt = segment_categorical_mode(mu_labels, riparian.astype(np.int32))
     dom_type = segment_categorical_mode(mu_labels, forest_type)
@@ -554,21 +587,19 @@ def main() -> None:
         rows[f"{name}_MEAN"] = np.divide(sums, counts, out=np.zeros(max_id + 1),
                                          where=counts > 0)[mu_ids]
     summary = pd.DataFrame(rows)
-    summary.to_csv(WORK / "mu_summary.csv", index=False)
+    summary.to_csv(paths.mu_summary_csv, index=False)
 
     # Donor weights: pixel share of each TreeMap plot (PLT_CN) within each MU
     # — LETO stage 3's segment/plot crosswalk.
     tm = data["tm"]
-    vat = pd.read_csv(WORK / "vat_aoi.csv", dtype={"PLT_CN": str})
+    vat = pd.read_csv(paths.vat_csv, dtype={"PLT_CN": str})
     value_to_plt = dict(zip(vat["Value"].astype(np.int64), vat["PLT_CN"]))
     pairs = pd.DataFrame({"MU_ID": mu_labels[valid_mu], "VALUE": tm[valid_mu]})
     weights = (pairs.groupby(["MU_ID", "VALUE"]).size().rename("CELLS").reset_index())
     weights["PLT_CN"] = weights["VALUE"].map(value_to_plt)
     weights["WEIGHT"] = weights["CELLS"] / weights.groupby("MU_ID")["CELLS"].transform("sum")
-    weights.to_csv(WORK / "mu_donor_weights.csv", index=False)
+    weights.to_csv(paths.mu_donor_weights_csv, index=False)
 
-    np.savez_compressed(WORK / "segmentation.npz", mu_labels=mu_labels,
-                        seg_labels=seg_labels, riparian=riparian)
     qa = {
         "valid_cells": int(valid.sum()),
         "parent_segments": n_segments,
@@ -578,7 +609,7 @@ def main() -> None:
         "acres_by_owner_class": summary.groupby("OWNER_CLASS")["ACRES"].sum().round(1).to_dict(),
         "homogeneity_scales": {k: float(v) for k, v in scales.items()},
     }
-    (WORK / "segmentation_qa.json").write_text(json.dumps(qa, indent=2))
+    paths.segmentation_qa_json.write_text(json.dumps(qa, indent=2))
     print(json.dumps(qa, indent=2))
 
 

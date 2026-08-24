@@ -105,16 +105,61 @@ two alternative policies (`policies.py`) spread entries per stand:
 Outputs are suffixed per policy: `fvs_summary2_random.csv`,
 `mu_schedules_heuristic.csv`, `leto_artemis_forest_viz_heuristic.png`, …
 
+## Region: AOI vs. the full five-county pilot (`--region`)
+
+Every script accepts `--region aoi` (default — the White Springs window this
+README otherwise describes) or `--region full` — the true, contiguous
+Baker/Columbia/Hamilton/Suwannee/Union extent (`common.PILOT_COUNTY_FIPS`;
+1.82M acres, ~51x the AOI). `01_stage_aoi.py --region full` additionally
+rasterizes a county-membership mask at the TreeMap grid (the five counties
+are not a rectangle, so the staged raster's bounding box pulls in slivers of
+neighbouring counties along the edges; `03_ca_segment.py` ANDs this mask into
+its valid-cell mask so segmentation never crosses the pilot boundary). Full
+region outputs get a `_full` filename component ahead of any policy suffix
+(`mu_summary_full.csv`, `fvs_summary2_full_heuristic.csv`, …) and never
+collide with the AOI's unsuffixed files — both regions can be built and
+inspected independently.
+
+Two things that only bite at full-region scale, both fixed in this pipeline
+rather than worked around:
+
+- **The riparian/parent-segment split and the parent-segment lookup were
+  O(segments) or O(segments²) in two spots** (`03_ca_segment.py`): a
+  per-unique-value `ndimage.label` loop to split each parent segment's
+  riparian/upland pieces apart, and a `segment_categorical_mode` call used to
+  look up each management unit's parent segment. Both were invisible at AOI
+  scale (a few thousand segments) and prohibitive at full-region scale
+  (155k+ parent segments) — the mode lookup alone tried to allocate a
+  `(188k x 155k)` count table (218 GiB). Fixed to the bbox-based
+  `split_disconnected_segments` (already used elsewhere in the same file)
+  and a direct scatter lookup respectively — a parent segment is looked up,
+  not voted on, since a management unit is by construction a spatially
+  connected piece of exactly one parent segment. Both fixes were verified to
+  reproduce the AOI's segmentation output byte-for-byte before being trusted
+  at full-region scale.
+- **FVS raw output (keyfiles + per-shard SQLite databases) does not fit on
+  disk at ~200k stands** if left in place until every shard finishes, the
+  way the AOI's few-thousand-stand batches could afford to. `04_fvs_run.py`
+  processes each shard in bounded chunks (`CHUNK_STANDS`, default 800):
+  after each chunk, FVS_Summary2 is flushed to the shard's growing CSV and
+  the chunk's keyfiles + FVSOut.db are deleted before the next chunk starts.
+  Peak disk usage is `O(workers x CHUNK_STANDS)` regardless of total stand
+  count — validated at the AOI's full 6,944-stand scale against the
+  previously-committed output (byte-identical harvest counts, zero
+  duplicate summary rows) before trusting it unattended overnight.
+
 ## Pipeline
 
 ```
-01_stage_aoi.py         R2 pulls + windowed /vsis3/ raster clips (TreeMap, ownership)
+01_stage_aoi.py         R2 pulls + windowed /vsis3/ raster clips (TreeMap, ownership,
+                        + county mask for --region full)
 02_build_attributes.py  VAT parse + FIA COND STDAGE → 5 attribute rasters (LETO stage 1)
 03_ca_segment.py        cellular-automata segmentation + riparian split (LETO stage 2)
 policies.py             random / heuristic harvest-schedule generators
-04_fvs_run.py           weighted FVS inputs, schedules, ~7k FVSsn runs (--policy)
-05_figure.py            the four-panel figure (--policy)
-06_hexbin_figure.py     hexbin (mean BA per ~1 km hex) over the 2072 map
+04_fvs_run.py           weighted FVS inputs, schedules, chunked disk-safe FVSsn runs
+                        (--policy, --region, --limit for smoke-testing)
+05_figure.py            the four-panel figure (--policy, --region)
+06_hexbin_figure.py     hexbin (mean BA per ~1 km hex) over the 2072 map (--region)
 ```
 
 Run in order with `uv run python experiments/2026-08-24_leto-ca-forest-viz/<script>`;

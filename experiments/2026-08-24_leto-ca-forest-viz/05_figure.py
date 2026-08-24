@@ -39,6 +39,7 @@ from common import (
     OUTPUTS,
     STREAMS_SHP,
     WORK,
+    region_paths,
 )
 
 STAND_EDGE = "#2b2b2b"     # upland management-unit outline
@@ -90,21 +91,25 @@ def ba_to_color(ba: np.ndarray) -> np.ndarray:
     return stops[lo] * (1 - frac) + stops[hi] * frac
 
 
-def true_north_unit_vector() -> tuple[float, float]:
+def true_north_unit_vector(extent) -> tuple[float, float]:
     """The (dx, dy) unit vector pointing to true north, in EPSG:5070 map units.
 
     EPSG:5070 is an Albers conic — "up" on the raster is grid north, not true
-    north, and the two differ by the meridian convergence angle (at this AOI,
-    ~8° east of the -96° central meridian). Rather than assume north is up,
-    project the AOI centroid and a point a short distance due north of it
-    (same longitude, +0.001° latitude) into the map CRS and take the actual
-    direction between them — exact regardless of sign conventions.
+    north, and the two differ by the meridian convergence angle (~8° east of
+    the -96° central meridian at the original AOI; the full five-county
+    extent spans a wide enough longitude range that this is recomputed from
+    the actual map centroid rather than a fixed constant). Rather than assume
+    north is up, project the map centroid and a point a short distance due
+    north of it (same longitude, +0.001° latitude) into the map CRS and take
+    the actual direction between them — exact regardless of sign conventions.
     """
     from pyproj import Transformer
 
+    to_4269 = Transformer.from_crs("EPSG:5070", "EPSG:4269", always_xy=True)
     to_5070 = Transformer.from_crs("EPSG:4269", "EPSG:5070", always_xy=True)
-    cx = (AOI_BOUNDS_4269[0] + AOI_BOUNDS_4269[2]) / 2
-    cy = (AOI_BOUNDS_4269[1] + AOI_BOUNDS_4269[3]) / 2
+    cx5070 = (extent[0] + extent[1]) / 2
+    cy5070 = (extent[2] + extent[3]) / 2
+    cx, cy = to_4269.transform(cx5070, cy5070)
     x0, y0 = to_5070.transform(cx, cy)
     x1, y1 = to_5070.transform(cx, cy + 0.001)
     dx, dy = x1 - x0, y1 - y0
@@ -131,7 +136,7 @@ def draw_north_arrow_and_scale(ax, extent, bar_km: float = 2.0) -> None:
     outline = [patheffects.withStroke(linewidth=2.5, foreground="white")]
 
     # -- north arrow: true north, computed from the actual grid convergence -
-    ndx, ndy = true_north_unit_vector()
+    ndx, ndy = true_north_unit_vector(extent)
     perp_x, perp_y = -ndy, ndx  # 90° left of "north", for the arrowhead width
     length = 0.075 * height
     base = (margin_x, margin_y)
@@ -249,17 +254,19 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", choices=tuple(POLICY_LABELS),
                         default="default")
+    parser.add_argument("--region", choices=("aoi", "full"), default="aoi")
     args = parser.parse_args()
     policy = args.policy
-    suffix = "" if policy == "default" else f"_{policy}"
+    paths = region_paths(args.region)
+    suffix = paths.suffix + ("" if policy == "default" else f"_{policy}")
     legend_label, title_clause = POLICY_LABELS[policy]
 
-    seg = np.load(WORK / "segmentation.npz")
+    seg = np.load(paths.segmentation_npz)
     mu_labels, riparian = seg["mu_labels"], seg["riparian"]
-    mu = pd.read_csv(WORK / "mu_summary.csv")
+    mu = pd.read_csv(paths.mu_summary_csv)
     summary = pd.read_csv(WORK / f"fvs_summary2{suffix}.csv", dtype={"MU_ID": str})
     summary["MU_ID"] = summary["MU_ID"].astype(int)
-    meta = json.loads((WORK / "staged" / "aoi_meta.json").read_text())
+    meta = json.loads(paths.meta_json.read_text())
     a, b, c, d, e, f = meta["transform"]
     h, w = mu_labels.shape
     extent = (c, c + a * w, f + e * h, f)
@@ -417,10 +424,14 @@ def main() -> None:
                       title_fontsize=10, frameon=False)
     leg2.get_title().set_fontweight("bold")
 
+    extent_clause = ("White Springs AOI, Columbia County, FL (five-county pilot)"
+                     if args.region == "aoi" else
+                     "Baker, Columbia, Hamilton, Suwannee & Union Counties, FL "
+                     "(full five-county pilot)")
     fig.suptitle(
         "LETO cellular-automata stands → "
         f"{title_clause} → FVS Southern variant, 2022–2072\n"
-        "White Springs AOI, Columbia County, FL (five-county pilot) · "
+        f"{extent_clause} · "
         "TreeMap 2022 + FIA tree lists · Suwannee River riparian buffer",
         fontsize=13.5, y=0.99)
 

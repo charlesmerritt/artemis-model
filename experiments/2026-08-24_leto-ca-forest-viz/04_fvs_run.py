@@ -24,11 +24,16 @@ LETO stage 4/5 methodology in the repo's geopandas/pandas stack:
     through the FVS Southern (SN) variant compiled from the USDA
     ForestVegetationSimulator sources in this container.
 
-Outputs (work/):
-    fvs_inputs.db      FVS_STANDINIT_PLOT / FVS_TREEINIT_PLOT for every runnable MU
-    mu_regimes.csv     per-MU owner class, prescription, resolved entry years
-    fvs_runs/          per-shard keyfiles and FVSOut databases
-    fvs_summary2.csv   FVS_Summary2 rows for every run (the BA trajectories)
+Outputs (work/), suffixed by region ("" aoi / "_full") and policy ("" default
+/ "_random" / "_heuristic"):
+    fvs_inputs*.db      FVS_STANDINIT_PLOT / FVS_TREEINIT_PLOT for every runnable MU
+    mu_regimes.csv      per-MU owner class, prescription, resolved entry years
+    fvs_runs*/          per-shard keyfiles and FVSOut databases, chunked and deleted
+                        as each chunk is collected (see run_batch) — bounds peak
+                        disk usage to O(workers x chunk_size) regardless of how
+                        many stands the region has, which is what makes the
+                        --region full run (~200k+ stands) safe to run unattended.
+    fvs_summary2*.csv   FVS_Summary2 rows for every run (the BA trajectories)
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import FIA_DB, INV_YEAR, NUM_CYCLES, CYCLE_YEARS, WORK  # noqa: E402
+from common import FIA_DB, INV_YEAR, NUM_CYCLES, CYCLE_YEARS, WORK, region_paths  # noqa: E402
 from pipeline.s3_management.regime_assignment import assign_prescription  # noqa: E402
 from pipeline.s4_fvs.build_fvs_inputs import build_tree_init  # noqa: E402
 from pipeline.s4_fvs.regime_templates import render_keyfile  # noqa: E402
@@ -74,8 +79,8 @@ _SN_FIAJSP = ("010 057 090 107 110 111 115 121 123 126 128 129 131 132 221 222 2
 FIA_TO_SN = dict(zip(_SN_FIAJSP, _SN_JSP))
 
 
-def load_units() -> pd.DataFrame:
-    mu = pd.read_csv(WORK / "mu_summary.csv")
+def load_units(paths) -> pd.DataFrame:
+    mu = pd.read_csv(paths.mu_summary_csv)
     mu["MU_ID"] = mu["MU_ID"].astype(str)
     return mu
 
@@ -99,9 +104,9 @@ def assign_regimes(mu: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_inputs(mu: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def build_inputs(mu: pd.DataFrame, paths) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Stand-level StandInit/TreeInit via the repo's weighted-union builder."""
-    weights = pd.read_csv(WORK / "mu_donor_weights.csv",
+    weights = pd.read_csv(paths.mu_donor_weights_csv,
                           dtype={"MU_ID": str, "PLT_CN": str})
     con = sqlite3.connect(FIA_DB)
     tree_init = pd.read_sql(
@@ -161,45 +166,92 @@ def write_input_db(stands: pd.DataFrame, trees: pd.DataFrame, path: Path) -> Non
     con.close()
 
 
+SUMMARY_COLS = ["StandID", "Year", "Age", "Tpa", "BA", "QMD", "TCuFt", "MCuFt",
+                "RTpa", "RTCuFt", "TPrdTpa", "TPrdTCuFt", "RmvCode"]
+
+# Stands processed per shard before flushing FVS_Summary2 to the shard's
+# growing CSV and deleting the chunk's keyfiles + FVSOut.db. Bounds peak disk
+# usage to O(workers x CHUNK_STANDS) regardless of the region's total stand
+# count — for the ~500-1700-stand AOI batches this is one chunk and behaves
+# exactly as the unchunked runner did; for the ~200k-stand full-region run it
+# is what keeps an unattended overnight batch from filling the disk.
+CHUNK_STANDS = int(os.environ.get("ARTEMIS_FVS_CHUNK", "800"))
+
+
+def _read_summary(db_path: Path) -> pd.DataFrame:
+    con = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql(f"SELECT {', '.join('s.' + c for c in SUMMARY_COLS)} "
+                         "FROM FVS_Summary2 s", con)
+    finally:
+        con.close()
+    return df
+
+
 def run_shard(args) -> tuple[int, int, int]:
     shard_id, run_dir, keyfiles = args
     shard_dir = Path(run_dir) / f"shard_{shard_id:02d}"
     shard_dir.mkdir(parents=True, exist_ok=True)
+    summary_csv = shard_dir / "summary.csv"
     out_db = shard_dir / "FVSOut.db"
-    if out_db.exists():
-        out_db.unlink()
+    err_log = shard_dir / "errors.log"
     ok = failed = 0
-    for stand_id, key in keyfiles:
-        keyfile = shard_dir / f"{stand_id}.key"
-        keyfile.write_text(key)
-        proc = subprocess.run(
-            [FVS_BIN, f"--keywordfile={keyfile.name}"],
-            cwd=shard_dir, capture_output=True, text=True, timeout=300)
-        # FVS exits 10 ("STOP 10") on a normal completed run
-        if proc.returncode in (0, 10):
-            ok += 1
-        else:
-            failed += 1
-            (shard_dir / f"{stand_id}.err").write_text(
-                f"rc={proc.returncode}\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
+
+    for chunk_start in range(0, len(keyfiles), CHUNK_STANDS):
+        chunk = keyfiles[chunk_start:chunk_start + CHUNK_STANDS]
+        out_db.unlink(missing_ok=True)
+        chunk_keyfiles = []
+        for stand_id, key in chunk:
+            keyfile = shard_dir / f"{stand_id}.key"
+            keyfile.write_text(key)
+            chunk_keyfiles.append(keyfile)
+            proc = subprocess.run(
+                [FVS_BIN, f"--keywordfile={keyfile.name}"],
+                cwd=shard_dir, capture_output=True, text=True, timeout=300)
+            # FVS exits 10 ("STOP 10") on a normal completed run
+            if proc.returncode in (0, 10):
+                ok += 1
+            else:
+                failed += 1
+                with open(err_log, "a") as f:
+                    f.write(f"{stand_id} rc={proc.returncode}\n"
+                           f"{proc.stdout[-1000:]}\n{proc.stderr[-1000:]}\n---\n")
+
+        if out_db.exists():
+            chunk_summary = _read_summary(out_db)
+            chunk_summary.to_csv(summary_csv, mode="a", index=False,
+                                 header=not summary_csv.exists())
+
+        # Reclaim disk before the next chunk — this is the whole point.
+        for keyfile in chunk_keyfiles:
+            keyfile.unlink(missing_ok=True)
+        out_db.unlink(missing_ok=True)
+        for suffix in (".out", ".trl"):
+            for stray in shard_dir.glob(f"*{suffix}"):
+                stray.unlink(missing_ok=True)
+
     return shard_id, ok, failed
 
 
 def run_batch(run_dir: Path, keyfiles: dict[str, str]) -> pd.DataFrame:
-    """Run one batch of keyfiles across the worker pool; return FVS_Summary2."""
+    """Run one batch of keyfiles across the worker pool; return FVS_Summary2.
+
+    Each shard streams its own summary.csv (see run_shard) and deletes its
+    raw FVS output as it goes, so the only per-run artifacts left on disk at
+    the end are those small summary CSVs plus any *.err files. run_dir is
+    wiped first: summary.csv is opened in append mode per chunk, so a stale
+    file from an earlier or interrupted run at the same path would otherwise
+    silently double-count those stands' rows into this run's result.
+    """
+    import shutil
+
+    shutil.rmtree(run_dir, ignore_errors=True)
     items = sorted(keyfiles.items())
     shards = [(i, str(run_dir), items[i::N_WORKERS]) for i in range(N_WORKERS)]
     with mp.Pool(N_WORKERS) as pool:
         for shard_id, ok, failed in pool.imap_unordered(run_shard, shards):
             print(f"  shard {shard_id}: {ok} ok, {failed} failed")
-    frames = []
-    for out_db in sorted(Path(run_dir).glob("shard_*/FVSOut.db")):
-        con = sqlite3.connect(out_db)
-        frames.append(pd.read_sql(
-            "SELECT s.StandID, s.Year, s.Age, s.Tpa, s.BA, s.QMD, s.TCuFt, s.MCuFt,"
-            " s.RTpa, s.RTCuFt, s.TPrdTpa, s.TPrdTCuFt, s.RmvCode"
-            " FROM FVS_Summary2 s", con))
-        con.close()
+    frames = [pd.read_csv(f) for f in sorted(Path(run_dir).glob("shard_*/summary.csv"))]
     summary = pd.concat(frames, ignore_index=True)
     summary["MU_ID"] = summary["StandID"].str.removeprefix("MU_")
     return summary
@@ -335,27 +387,38 @@ def run_heuristic_industrial_loop(schedules: dict, summary_by_stand: dict,
 
 def main() -> None:
     import argparse
+    import time
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", choices=("default", "random", "heuristic"),
                         default="default")
+    parser.add_argument("--region", choices=("aoi", "full"), default="aoi")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="run only the first N stands (smoke-testing)")
     args = parser.parse_args()
     policy = args.policy
-    suffix = "" if policy == "default" else f"_{policy}"
+    paths = region_paths(args.region)
+    # region suffix first, then policy — "_full_heuristic", not "_heuristic_full".
+    suffix = paths.suffix + ("" if policy == "default" else f"_{policy}")
 
-    mu = load_units()
-    stands, trees = build_inputs(mu)
-    print(f"runnable stands: {len(stands):,}; tree rows: {len(trees):,}; "
+    mu = load_units(paths)
+    stands, trees = build_inputs(mu, paths)
+    print(f"[{args.region}/{policy}] runnable stands: {len(stands):,}; "
+          f"tree rows: {len(trees):,}; "
           f"not runnable: {mu['MU_ID'].nunique() - len(stands):,}")
-    input_db = (WORK / "fvs_inputs.db").resolve()
+    input_db = paths.fvs_inputs_db.resolve()
     write_input_db(stands, trees, input_db)
     sdi_tables = stand_sdi_tables(trees)
     stand_ids = sorted(stands["STAND_ID"])
+    if args.limit:
+        stand_ids = stand_ids[:args.limit]
+        print(f"--limit {args.limit}: smoke-test subset")
     run_root = WORK / f"fvs_runs{suffix}"
+    t0 = time.monotonic()
 
     if policy == "default":
         regimes = assign_regimes(mu)
-        regimes.to_csv(WORK / "mu_regimes.csv", index=False)
+        regimes.to_csv(WORK / f"mu_regimes{paths.suffix}.csv", index=False)
         print(regimes.groupby(["owner_class", "prescription"]).size().to_string())
         keyfiles = default_keyfiles(regimes, sdi_tables, input_db, stand_ids)
         print(f"running {len(keyfiles):,} FVSsn projections on {N_WORKERS} workers…")
@@ -376,8 +439,9 @@ def main() -> None:
 
     summary.to_csv(WORK / f"fvs_summary2{suffix}.csv", index=False)
     n_ran = summary["StandID"].nunique()
+    elapsed_h = (time.monotonic() - t0) / 3600
     print(f"collected FVS_Summary2 for {n_ran:,} stands "
-          f"({len(summary):,} rows) -> fvs_summary2{suffix}.csv")
+          f"({len(summary):,} rows) in {elapsed_h:.2f}h -> fvs_summary2{suffix}.csv")
 
 
 if __name__ == "__main__":

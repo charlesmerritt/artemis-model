@@ -23,7 +23,7 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from common import INV_YEAR, OUTPUTS, STREAMS_SHP, WORK  # noqa: E402
+from common import INV_YEAR, OUTPUTS, STREAMS_SHP, WORK, region_paths  # noqa: E402
 
 # 05_figure.py starts with a digit, so pull its helpers in via importlib.
 _spec = importlib.util.spec_from_file_location("figure_mod", HERE / "05_figure.py")
@@ -47,15 +47,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", choices=("default", "random", "heuristic"),
                         default="heuristic")
+    parser.add_argument("--region", choices=("aoi", "full"), default="aoi")
     args = parser.parse_args()
-    suffix = "" if args.policy == "default" else f"_{args.policy}"
+    paths = region_paths(args.region)
+    suffix = paths.suffix + ("" if args.policy == "default" else f"_{args.policy}")
 
-    seg = np.load(WORK / "segmentation.npz")
+    seg = np.load(paths.segmentation_npz)
     mu_labels = seg["mu_labels"]
-    mu = pd.read_csv(WORK / "mu_summary.csv")
+    mu = pd.read_csv(paths.mu_summary_csv)
     summary = pd.read_csv(WORK / f"fvs_summary2{suffix}.csv", dtype={"MU_ID": str})
     summary["MU_ID"] = summary["MU_ID"].astype(int)
-    meta = json.loads((WORK / "staged" / "aoi_meta.json").read_text())
+    meta = json.loads(paths.meta_json.read_text())
     a, b, c, d, e, f = meta["transform"]
     h, w = mu_labels.shape
     extent = (c, c + a * w, f + e * h, f)
