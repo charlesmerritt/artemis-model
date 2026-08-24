@@ -198,7 +198,10 @@ def main() -> None:
         with zipfile.ZipFile(streams_zip) as zf:
             zf.extractall(SHARED_STAGE_ROOT / "FL_5_Co_Streams")
 
-    if paths.treemap_tif.exists() and paths.ownership_tif.exists():
+    required = [paths.treemap_tif, paths.ownership_tif, paths.meta_json]
+    if args.region == "full":
+        required.append(paths.county_mask_tif)
+    if all(p.exists() for p in required):
         print(f"[{args.region}] rasters already staged")
         return
 

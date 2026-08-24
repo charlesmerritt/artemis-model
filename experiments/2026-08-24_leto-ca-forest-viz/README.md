@@ -163,8 +163,14 @@ policies.py             random / heuristic harvest-schedule generators
 ```
 
 Run in order with `uv run python experiments/2026-08-24_leto-ca-forest-viz/<script>`;
-set `FVSSN_BIN` to a compiled FVSsn binary. Intermediate data lands in `work/`
-(gitignored); the figure and QA summaries in `outputs/`.
+set `FVSSN_BIN` to a compiled FVSsn binary, or build one at `fvs/bin/FVSsn`
+(matching the root `.gitignore`'s `fvs/bin/` exclusion) — compile the USDA
+`ForestVegetationSimulator` sources' `sn` variant per "What is real here"
+above. Intermediate data lands in `work/` (gitignored). QA summaries
+(CSV/JSON) are committed under `outputs/`; the PNG figures are not, per the
+repo convention that inputs and outputs aren't committed (root
+`.gitignore`) — regenerate them locally with `05_figure.py` /
+`06_hexbin_figure.py` after running the pipeline once.
 
 ## Figure reading notes
 

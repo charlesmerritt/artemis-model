@@ -58,11 +58,34 @@ from pipeline.s4_fvs.build_fvs_inputs import build_tree_init  # noqa: E402
 from pipeline.s4_fvs.regime_templates import render_keyfile  # noqa: E402
 from policies import Schedule  # noqa: E402
 
-FVS_BIN = os.environ.get(
-    "FVSSN_BIN",
-    "/tmp/claude-0/-home-user-artemis-model/a51bbb3c-0856-58b5-9966-8b2afceecf89/"
-    "scratchpad/ForestVegetationSimulator/bin/FVSsn_CmakeDir/FVSsn",
-)
+
+def _resolve_fvs_bin() -> str:
+    """The FVSsn executable: $FVSSN_BIN, else the repo-relative build location
+    (`fvs/bin/`, matching the root .gitignore's `fvs/bin/` exclusion for a
+    locally-built binary — not committed, built per machine).
+
+    Fails loudly rather than falling back to a guess: an unresolved FVS
+    binary must stop the run before it burns hours of compute rather than
+    silently no-op every stand.
+    """
+    env_path = os.environ.get("FVSSN_BIN")
+    if env_path:
+        if not Path(env_path).exists():
+            raise RuntimeError(f"FVSSN_BIN={env_path!r} does not exist")
+        return env_path
+    default = REPO / "fvs" / "bin" / "FVSsn"
+    if not default.exists():
+        raise RuntimeError(
+            f"No FVSsn binary found. Set FVSSN_BIN to a compiled FVSsn "
+            f"executable, or build one at {default} — see "
+            f"experiments/2026-08-24_leto-ca-forest-viz/README.md for how "
+            f"this experiment built FVSsn from the USDA ForestVegetationSimulator "
+            f"sources."
+        )
+    return str(default)
+
+
+FVS_BIN = _resolve_fvs_bin()
 N_WORKERS = max(1, (os.cpu_count() or 2) - 0)
 
 # FIA SPCD -> FVS SN alpha species codes, from the compiled variant's own
@@ -238,22 +261,52 @@ def run_batch(run_dir: Path, keyfiles: dict[str, str]) -> pd.DataFrame:
 
     Each shard streams its own summary.csv (see run_shard) and deletes its
     raw FVS output as it goes, so the only per-run artifacts left on disk at
-    the end are those small summary CSVs plus any *.err files. run_dir is
+    the end are those small summary CSVs plus any errors.log. run_dir is
     wiped first: summary.csv is opened in append mode per chunk, so a stale
     file from an earlier or interrupted run at the same path would otherwise
     silently double-count those stands' rows into this run's result.
+
+    Raises rather than returning a partial result on any failure: a stand
+    missing from the summary reads downstream as "nonstocked donor" and gets
+    silently filled with its static TreeMap BALIVE (05_figure.py), which
+    looks like a complete, real result rather than a truncated run. Checked
+    twice — the run_shard failure count, and (belt-and-suspenders, in case
+    FVS exits 0/10 but a keyfile issue still produced no Summary2 rows) that
+    every requested stand actually appears in the collected summary.
     """
     import shutil
 
     shutil.rmtree(run_dir, ignore_errors=True)
     items = sorted(keyfiles.items())
     shards = [(i, str(run_dir), items[i::N_WORKERS]) for i in range(N_WORKERS)]
+    total_failed = 0
     with mp.Pool(N_WORKERS) as pool:
         for shard_id, ok, failed in pool.imap_unordered(run_shard, shards):
             print(f"  shard {shard_id}: {ok} ok, {failed} failed")
+            total_failed += failed
+
+    if total_failed:
+        error_logs = sorted(Path(run_dir).glob("shard_*/errors.log"))
+        detail = "\n".join(f.read_text() for f in error_logs)
+        raise RuntimeError(
+            f"{total_failed} FVS run(s) failed in {run_dir} — aborting the batch "
+            f"rather than writing a partial-but-plausible-looking summary. "
+            f"Errors:\n{detail[-4000:]}"
+        )
+
     frames = [pd.read_csv(f) for f in sorted(Path(run_dir).glob("shard_*/summary.csv"))]
     summary = pd.concat(frames, ignore_index=True)
     summary["MU_ID"] = summary["StandID"].str.removeprefix("MU_")
+
+    requested = {sid.removeprefix("MU_") for sid in keyfiles}
+    missing = requested - set(summary["MU_ID"].unique())
+    if missing:
+        preview = sorted(missing)[:20]
+        raise RuntimeError(
+            f"{len(missing)} requested stand(s) produced no FVS_Summary2 rows "
+            f"despite every FVS run reporting success — a truncated or empty "
+            f"output database for a stand that still exited 0/10: {preview}"
+        )
     return summary
 
 
