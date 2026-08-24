@@ -372,7 +372,13 @@ def main() -> None:
                              fontsize=9.5, color="#555555")
 
     # -- Legends -----------------------------------------------------------
-    fig.subplots_adjust(left=0.01, right=0.99, top=0.84, bottom=0.20, wspace=0.03)
+    # The heuristic variant carries a rules box across the very bottom, so its
+    # legends and colorbar sit one band higher to leave that strip free.
+    leg_y = 0.10 if policy == "heuristic" else 0.008
+    cbar_y = 0.155 if policy == "heuristic" else 0.075
+    fig.subplots_adjust(left=0.01, right=0.99, top=0.84,
+                        bottom=0.27 if policy == "heuristic" else 0.20,
+                        wspace=0.03)
 
     owner_handles = [Patch(facecolor=OWNER_COLORS[k], edgecolor="black",
                            linewidth=0.4, label=OWNER_LABELS[k])
@@ -383,13 +389,13 @@ def main() -> None:
     owner_handles.append(Line2D([0], [0], color=STREAM_COLOR, lw=2,
                                 label="NHD flowline"))
     leg1 = fig.legend(handles=owner_handles, loc="lower left",
-                      bbox_to_anchor=(0.015, 0.008), ncol=2, fontsize=9.5,
+                      bbox_to_anchor=(0.015, leg_y), ncol=2, fontsize=9.5,
                       title="Owner class (Harris et al. 2025)", title_fontsize=10,
                       frameon=False)
     leg1.get_title().set_fontweight("bold")
 
     cmap = mcolors.LinearSegmentedColormap.from_list("ba", BA_RAMP)
-    cax = fig.add_axes([0.42, 0.075, 0.16, 0.028])
+    cax = fig.add_axes([0.42, cbar_y, 0.16, 0.028])
     cb = fig.colorbar(plt.cm.ScalarMappable(
         norm=mcolors.Normalize(0, BA_MAX), cmap=cmap), cax=cax,
         orientation="horizontal")
@@ -406,7 +412,7 @@ def main() -> None:
               label="Thinned in the last 5 yr (31–90% BA)"),
     ]
     leg2 = fig.legend(handles=harvest_handles, loc="lower right",
-                      bbox_to_anchor=(0.99, 0.008), fontsize=9.5,
+                      bbox_to_anchor=(0.99, leg_y), fontsize=9.5,
                       title=f"Harvest activity ({legend_label})",
                       title_fontsize=10, frameon=False)
     leg2.get_title().set_fontweight("bold")
@@ -421,7 +427,6 @@ def main() -> None:
     if policy == "heuristic":
         from policies import HEURISTIC_RULES_TEXT
 
-        fig.subplots_adjust(bottom=0.27)
         fig.text(0.5, 0.008, HEURISTIC_RULES_TEXT, ha="center", va="bottom",
                  fontsize=9.5, color="#333333", linespacing=1.5,
                  bbox=dict(facecolor="#f5f3ee", edgecolor="#999999",
