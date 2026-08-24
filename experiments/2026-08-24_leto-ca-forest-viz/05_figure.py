@@ -32,6 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (
+    AOI_BOUNDS_4269,
     CELL_ACRES,
     FLOWLINE_BUFFER_RULES_FT,
     INV_YEAR,
@@ -87,6 +88,81 @@ def ba_to_color(ba: np.ndarray) -> np.ndarray:
     hi = np.minimum(lo + 1, len(stops) - 1)
     frac = (t - lo)[..., None]
     return stops[lo] * (1 - frac) + stops[hi] * frac
+
+
+def true_north_unit_vector() -> tuple[float, float]:
+    """The (dx, dy) unit vector pointing to true north, in EPSG:5070 map units.
+
+    EPSG:5070 is an Albers conic — "up" on the raster is grid north, not true
+    north, and the two differ by the meridian convergence angle (at this AOI,
+    ~8° east of the -96° central meridian). Rather than assume north is up,
+    project the AOI centroid and a point a short distance due north of it
+    (same longitude, +0.001° latitude) into the map CRS and take the actual
+    direction between them — exact regardless of sign conventions.
+    """
+    from pyproj import Transformer
+
+    to_5070 = Transformer.from_crs("EPSG:4269", "EPSG:5070", always_xy=True)
+    cx = (AOI_BOUNDS_4269[0] + AOI_BOUNDS_4269[2]) / 2
+    cy = (AOI_BOUNDS_4269[1] + AOI_BOUNDS_4269[3]) / 2
+    x0, y0 = to_5070.transform(cx, cy)
+    x1, y1 = to_5070.transform(cx, cy + 0.001)
+    dx, dy = x1 - x0, y1 - y0
+    norm = float(np.hypot(dx, dy))
+    return dx / norm, dy / norm
+
+
+def draw_north_arrow_and_scale(ax, extent, bar_km: float = 2.0) -> None:
+    """A true-north arrow and a segmented scale bar, once, bottom-left of `ax`.
+
+    Both are drawn in `ax`'s data coordinates (EPSG:5070 metres), which keeps
+    the scale bar exact and the arrow's rotation correct under the axes'
+    equal-aspect projection — no separate inset or unit conversion needed.
+    """
+    import matplotlib.patheffects as patheffects
+    from matplotlib.patches import FancyArrow, Rectangle
+
+    # extent is (xmin, xmax, ymin, ymax) — imshow's (left, right, bottom, top).
+    # `height` must be positive (ymax - ymin) or every offset below silently
+    # inverts and the elements land at the top instead of the bottom-left.
+    xmin, xmax, ymin, ymax = extent
+    width, height = xmax - xmin, ymax - ymin
+    margin_x, margin_y = xmin + 0.05 * width, ymin + 0.06 * height
+    outline = [patheffects.withStroke(linewidth=2.5, foreground="white")]
+
+    # -- north arrow: true north, computed from the actual grid convergence -
+    ndx, ndy = true_north_unit_vector()
+    perp_x, perp_y = -ndy, ndx  # 90° left of "north", for the arrowhead width
+    length = 0.075 * height
+    base = (margin_x, margin_y)
+    tip = (base[0] + ndx * length, base[1] + ndy * length)
+    shaft_frac, head_width = 0.62, length * 0.42
+    shoulder = (base[0] + ndx * length * shaft_frac, base[1] + ndy * length * shaft_frac)
+    arrow = FancyArrow(base[0], base[1], tip[0] - base[0], tip[1] - base[1],
+                       width=length * 0.10, head_width=head_width,
+                       head_length=length * (1 - shaft_frac) * 1.15,
+                       length_includes_head=True, facecolor="black",
+                       edgecolor="white", linewidth=0.7, zorder=8)
+    ax.add_patch(arrow)
+    ax.text(tip[0] + ndx * 0.018 * height, tip[1] + ndy * 0.018 * height, "N",
+            ha="center", va="center", fontsize=11, fontweight="bold",
+            zorder=8, path_effects=outline)
+
+    # -- scale bar: alternating 1 km segments with tick labels --------------
+    bar_m = bar_km * 1000
+    seg_m = bar_m / 2
+    x0 = margin_x + max(length * abs(perp_x), length) + 0.02 * width
+    y0 = margin_y
+    bar_h = 0.02 * height
+    for i, color in enumerate(("black", "white")):
+        seg = Rectangle((x0 + i * seg_m, y0), seg_m, bar_h, facecolor=color,
+                        edgecolor="black", linewidth=0.8, zorder=7)
+        ax.add_patch(seg)
+    for frac, label in ((0.0, "0"), (0.5, "1"), (1.0, f"{bar_km:g}")):
+        ax.text(x0 + frac * bar_m, y0 + bar_h + 0.018 * height, label,
+                ha="center", fontsize=8.5, zorder=8, path_effects=outline)
+    ax.text(x0 + bar_m + 0.012 * width, y0 + bar_h * 0.5, "km", ha="left",
+            va="center", fontsize=8.5, zorder=8, path_effects=outline)
 
 
 def lookup_image(mu_labels: np.ndarray, values: dict[int, np.ndarray],
@@ -239,12 +315,10 @@ def main() -> None:
            "cellular-automata segmentation · riparian buffer in pale blue",
            owner_edges=True)
 
-    # scale bar: 2 km
-    x0, y0 = extent[0] + 800, extent[2] + 900
-    axes[0].plot([x0, x0 + 2000], [y0, y0], color="black", lw=3,
-                 path_effects=[patheffects.withStroke(linewidth=5, foreground="white")])
-    axes[0].text(x0 + 1000, y0 + 260, "2 km", ha="center", fontsize=9,
-                 bbox=dict(facecolor="white", edgecolor="none", pad=1, alpha=0.8))
+    # North arrow + scale bar, once — all four panels share the same extent,
+    # scale, and orientation, so one pair in the bottom-left corner of panel 1
+    # (right above the owner-class legend) covers the figure.
+    draw_north_arrow_and_scale(axes[0], extent)
 
     # -- Panels 2-4: BA ----------------------------------------------------
     ba_titles = ["Start", "“1st harvest” era", "End of simulation"]

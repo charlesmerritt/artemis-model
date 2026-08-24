@@ -107,5 +107,11 @@ set `FVSSN_BIN` to a compiled FVSsn binary. Intermediate data lands in `work/`
 - BA panels use a single-hue green ramp, 0–180 sq ft/ac, painted from each unit's
   post-removal FVS_Summary2 basal area. Units whose donors carried no live trees
   (nonstocked) hold their TreeMap BALIVE.
+- A north arrow and scale bar appear once, bottom-left of panel 1 — all four
+  panels share the same extent, scale, and orientation. The arrow points to
+  true north as computed from the actual EPSG:5070 Albers grid convergence at
+  the AOI (via pyproj, not assumed to be "up"): at this longitude, ~8° east of
+  the -96° central meridian, true north tilts a few degrees off the raster's
+  vertical axis, which the arrow's slight lean reflects rather than approximates.
 - Harvest overlay classes on t=25/t=50: BA removal fraction in the preceding
   5 years — ≥90% = clearcut, 31–90% = heavy thin, 10–30% = light thin.
