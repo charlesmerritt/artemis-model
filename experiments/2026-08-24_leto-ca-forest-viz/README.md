@@ -21,8 +21,9 @@ data and the real methodology end to end:
   minimizing the weighted attribute cost (FORTYPCD .30 / STDAGE .25 / BALIVE .20 /
   QMD .15 / TPA .10, shared-edge bonus 0.1, z-clip 4), ownership hard boundaries,
   5-acre minimum / 300-acre maximum, similar-stand merge (≤10 yr age, same type),
-  riparian split. Converged in 12 iterations → **4,208 parent stands → 6,685
-  management units** (1,454 riparian).
+  riparian split. LETO ships 40 iterations / 1% convergence; this run tightens
+  that to 0.1% (cap 100), settling at iteration 40 with 0.096% of cells still
+  moving → **4,279 parent stands → 6,944 management units** (1,523 riparian).
 - **Riparian buffer** — EPA NHDPlus 2022 flowlines (`FL_5_Co_Streams.zip`) buffered
   by LETO's per-FCode first-pass rules (perennial 75 ft, intermittent/unclassified
   35 ft; the 55800 artificial-path channel of the Suwannee at the perennial
@@ -42,8 +43,8 @@ data and the real methodology end to end:
 - **Growth model** — the real FVS Southern (SN) variant, compiled from the USDA
   `ForestVegetationSimulator` sources (gfortran, `bin/CMakeLists.txt` with the
   NVEL submodule) in this container; runs are keyfile-driven with SQLite DB input
-  and `FVS_Summary2` output. All 6,685 management units were runnable and were projected
-  2022→2072 in ten 5-year cycles (678,292 weighted tree records; zero failed runs).
+  and `FVS_Summary2` output. All 6,944 management units were runnable and were projected
+  2022→2072 in ten 5-year cycles (zero failed runs).
 - **Harvest activities** — the deterministic owner-class **default** prescriptions
   from `config/management_regimes.yaml`, resolved by
   `pipeline/s3_management/regime_assignment.assign_prescription` (age-based entry
@@ -92,8 +93,18 @@ set `FVSSN_BIN` to a compiled FVSsn binary. Intermediate data lands in `work/`
 
 - Owner-class colors are anchored to the mockup (family red, industrial yellow,
   federal blue, state pink) and CVD-separation checked; unknown forest is the
-  neutral gray by convention. Black hairlines are management-unit boundaries.
-- BA panels use a single-hue green ramp, 0–160 sq ft/ac, painted from each unit's
+  neutral gray by convention.
+- Stand boundaries are vectorized polygon outlines (hairline dark gray), with a
+  heavier black owner-class boundary on the ownership panel. The white linear
+  corridors inside the forest are TreeMap's real non-forest pixels — roads and
+  cleared rights-of-way — not a rendering artifact.
+- Riparian management units are their own stands: pale-blue fill on the
+  ownership panel to show the buffer, and on every BA panel their own projected
+  basal area with a muted blue corridor outline — watch them stay dark
+  (untouched, still growing) through the harvested matrix at t=25. The minor
+  perennial stream network is drawn only on the first two panels so it does not
+  cover that corridor growth; the Suwannee channel stays on all panels.
+- BA panels use a single-hue green ramp, 0–180 sq ft/ac, painted from each unit's
   post-removal FVS_Summary2 basal area. Units whose donors carried no live trees
   (nonstocked) hold their TreeMap BALIVE.
 - Harvest overlay classes on t=25/t=50: BA removal fraction in the preceding

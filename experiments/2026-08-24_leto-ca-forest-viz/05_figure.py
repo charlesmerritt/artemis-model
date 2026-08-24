@@ -68,7 +68,7 @@ HARVEST_COLORS = {
 BACKGROUND = "#f4f2ec"   # non-forest / outside TreeMap
 RIPARIAN_TINT = "#ddeef5"
 STREAM_COLOR = "#3fa8e0"
-BA_MAX = 200.0           # sq ft/acre at the dark end of the ramp (p90 at 2072 ≈ 210)
+BA_MAX = 180.0           # sq ft/acre at the dark end of the ramp (p90 at 2072 ≈ 210)
 RIVER_FCODES = (55800, 46006)  # channels drawn as lines; all rules still buffer
 
 BA_RAMP = ["#eef7e2", "#cfe8b5", "#a9d67f", "#7fc258", "#54a83c",
@@ -171,6 +171,9 @@ def main() -> None:
     units = units.merge(mu[["MU_ID", "OWNER_CLASS", "MGMT_CLASS"]], on="MU_ID")
     upland = units[units["MGMT_CLASS"] == 0]
     rip_units = units[units["MGMT_CLASS"] == 1]
+    # One corridor outline, not 1,523 fragment outlines: the dissolved
+    # riparian footprint reads as its own stand without webbing the map.
+    rip_corridor = rip_units.dissolve()
     owner_bounds = units.dissolve(by="OWNER_CLASS")
     print(f"{len(units):,} unit polygons ({len(rip_units):,} riparian)")
 
@@ -192,24 +195,33 @@ def main() -> None:
     fig, axes = plt.subplots(1, 4, figsize=(24, 7.8), dpi=170)
     fig.patch.set_facecolor("white")
 
-    def finish(ax, img, title, subtitle, owner_edges=False):
+    def finish(ax, img, title, subtitle, owner_edges=False, minor_streams=True):
         ax.imshow(img, extent=extent, interpolation="nearest")
         # Vector stand borders: hairline anti-aliased outlines instead of a
         # per-pixel boundary mask (which reads as salt-and-pepper at this
         # stand density).
         upland.boundary.plot(ax=ax, linewidth=0.25, color=STAND_EDGE,
                              alpha=0.8, zorder=3)
-        rip_units.boundary.plot(ax=ax, linewidth=0.7, color=RIPARIAN_EDGE,
-                                zorder=4)
+        # The riparian corridor is its own stand: a muted blue-gray hairline
+        # marks it without webbing the map (the buffer follows the entire
+        # dendritic network, so a bright/thick outline overwhelms the fill).
+        rip_lw, rip_color, rip_alpha = ((0.7, RIPARIAN_EDGE, 1.0) if owner_edges
+                                        else (0.35, "#2e5f7a", 0.7))
+        rip_corridor.boundary.plot(ax=ax, linewidth=rip_lw, color=rip_color,
+                                   alpha=rip_alpha, zorder=4)
         if owner_edges:
             owner_bounds.boundary.plot(ax=ax, linewidth=0.9, color=OWNER_EDGE,
                                        zorder=5)
         river = stream[stream["fcode"] == 55800]
         peren = stream[stream["fcode"] != 55800]
         if len(river):
-            river.plot(ax=ax, color=STREAM_COLOR, linewidth=1.8, zorder=6)
-        if len(peren):
-            peren.plot(ax=ax, color=STREAM_COLOR, linewidth=0.7, zorder=6)
+            river.plot(ax=ax, color=STREAM_COLOR,
+                       linewidth=1.6 if minor_streams else 1.0, zorder=6)
+        # The minor perennial network is context on the ownership/start
+        # panels; on the projection panels it would cover the very riparian
+        # growth the corridor outline exists to show.
+        if minor_streams and len(peren):
+            peren.plot(ax=ax, color=STREAM_COLOR, linewidth=0.6, zorder=6)
         ax.set_xlim(extent[0], extent[1])
         ax.set_ylim(extent[2], extent[3])
         ax.set_title(title, fontsize=15, fontweight="bold", pad=10)
@@ -252,7 +264,8 @@ def main() -> None:
         # their own stands, growing untouched; the blue outline identifies them.
         img = lookup_image(mu_labels, vals, default_rgb)
         finish(axes[i + 1], img, ba_titles[i],
-               f"t = {year - INV_YEAR} · {year}")
+               f"t = {year - INV_YEAR} · {year}",
+               minor_streams=(year == INV_YEAR))
         if year > INV_YEAR:
             n_cc = int((hc == "clearcut").sum())
             n_th = int(hc.isin(["thin_light", "thin_heavy"]).sum())

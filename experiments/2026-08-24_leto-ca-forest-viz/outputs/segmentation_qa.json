@@ -1,8 +1,8 @@
 {
   "valid_cells": 160730,
-  "parent_segments": 4208,
-  "management_units": 6685,
-  "riparian_units": 1454,
+  "parent_segments": 4279,
+  "management_units": 6944,
+  "riparian_units": 1523,
   "total_acres": 35745.523099317,
   "acres_by_owner_class": {
     "federal": 7936.8,
