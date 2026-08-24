@@ -1,0 +1,100 @@
+# LETO CA stands → ARTEMIS regimes → FVSsn: four-panel landscape figure
+
+Reproduces the mockup figure — LETO-segmented stands with their owner class, then
+projected basal area at t=0 / t=25 / t=50 with recent harvest activity — using real
+data and the real methodology end to end:
+
+![figure](outputs/leto_artemis_forest_viz.png)
+
+## What is real here
+
+- **AOI** — an ~13 × 15 km window around White Springs, FL (Columbia County, inside
+  the five-county pilot), chosen by scanning the Harris ownership raster across the
+  pilot for the window holding all four target owner classes (family, corporate,
+  federal — the west edge of Osceola NF, state — Big Shoals State Forest) with the
+  most perennial stream length (the Suwannee River crosses it). 216,972 cells on the
+  TreeMap 2022 30 m grid (EPSG:5070), 160,730 of them forested (~35,700 acres).
+- **Stand generation** — LETO's cellular-automata segmentation
+  (`scripts/Cellular_automata/02_segment_treemap.py`, v3 boundary-vectorized),
+  ported off ArcPy onto rasterio/scipy with the algorithm and its published
+  parameters unchanged: 100-acre seeds, synchronous boundary-cell reassignment
+  minimizing the weighted attribute cost (FORTYPCD .30 / STDAGE .25 / BALIVE .20 /
+  QMD .15 / TPA .10, shared-edge bonus 0.1, z-clip 4), ownership hard boundaries,
+  5-acre minimum / 300-acre maximum, similar-stand merge (≤10 yr age, same type),
+  riparian split. Converged in 12 iterations → **4,208 parent stands → 6,685
+  management units** (1,454 riparian).
+- **Riparian buffer** — EPA NHDPlus 2022 flowlines (`FL_5_Co_Streams.zip`) buffered
+  by LETO's per-FCode first-pass rules (perennial 75 ft, intermittent/unclassified
+  35 ft; the 55800 artificial-path channel of the Suwannee at the perennial
+  distance). Riparian units take the absolute `no_management` override from
+  `config/management_regimes.yaml` — grown, never entered.
+- **Initial forest state** — TreeMap 2022 (RDS-2025-0032) imputed plot raster; the
+  segmentation attributes come from its VAT (FORTYPCD, BALIVE, QMD, TPA_LIVE) plus
+  STDAGE from the FIA COND dominant condition. Each unit's FVS tree list is the
+  area-weighted union of its TreeMap donor plots' FVS-ready records
+  (`FVS_TREEINIT_PLOT`, TREE_COUNT scaled by pixel share, donors <5% dropped and
+  renormalised — `pipeline/s4_fvs/build_fvs_inputs.py`, LETO stage 4), from
+  `Lowe_TreeMap_Chaz/output/FIA_5county_consolidated.db` — the FVS-ready SQLite the
+  provenance scripts (`Lowe_TreeMap_Chaz/scripts/01–07`) built for every FIA plot
+  TreeMap 2022 references in the pilot. 237 donor plots occur in this AOI.
+  INV_YEAR is set to 2022, the TreeMap imputation anchor
+  (`notes/treemap-fvs-workflow.md`).
+- **Growth model** — the real FVS Southern (SN) variant, compiled from the USDA
+  `ForestVegetationSimulator` sources (gfortran, `bin/CMakeLists.txt` with the
+  NVEL submodule) in this container; runs are keyfile-driven with SQLite DB input
+  and `FVS_Summary2` output. All 6,685 management units were runnable and were projected
+  2022→2072 in ten 5-year cycles (678,292 weighted tree records; zero failed runs).
+- **Harvest activities** — the deterministic owner-class **default** prescriptions
+  from `config/management_regimes.yaml`, resolved by
+  `pipeline/s3_management/regime_assignment.assign_prescription` (age-based entry
+  years snapped to cycles, pine/hardwood/other branching, riparian absolute
+  override) and rendered by `pipeline/s4_fvs/regime_templates.render_keyfile`
+  (verified ThinDBH and Estab/Plant/Natural keyword layouts; natural regeneration
+  apportioned over the stand's own species by SDI share, the Diaz et al. 2015 rule).
+
+## What is estimated (and why)
+
+The simulated-annealing trajectory scheduler is not built yet (README "Known
+constraints"), so no volume/even-flow/adjacency constraints select among the
+eligible menus — every unit simply runs its owner class's *default* regime:
+industrial pine on the 25-yr pulpwood rotation (thin @15, clearcut @30, replant),
+industrial hardwood on clearcut-and-natural-regen, family and unknown forest on a
+single light thin, federal on light selection, state pine on restoration thinning.
+That is exactly the repo's current deterministic assignment; the annealer would
+re-time and re-choose entries against TPO caps, not change the machinery. Second
+rotations after a within-horizon replant are not scheduled (the keyfile expresses
+one rotation; the coupling loop that restarts rotations is future work).
+
+One visible consequence: age-based scheduling front-loads the harvest. Median
+stand age in the AOI is 32, above the 25–30 yr industrial rotation ages, so 527
+of the 730 clearcuts land in the very first cycle (2027) — the age-overhang pulse
+an even-flow constraint exists to spread. `outputs/harvest_by_year.csv` has the
+full removal schedule and `outputs/ba_trajectory_by_owner.csv` the area-weighted
+BA trajectories: industrial land drops from 83 to 23 sq ft/ac at the pulse and
+regrows to 180 by 2072, federal land saw-tooths under decadal selection, and
+unmanaged local land plateaus near 194.
+
+## Pipeline
+
+```
+01_stage_aoi.py         R2 pulls + windowed /vsis3/ raster clips (TreeMap, ownership)
+02_build_attributes.py  VAT parse + FIA COND STDAGE → 5 attribute rasters (LETO stage 1)
+03_ca_segment.py        cellular-automata segmentation + riparian split (LETO stage 2)
+04_fvs_run.py           weighted FVS inputs, regime assignment, 6.5k FVSsn runs (stages 3-5)
+05_figure.py            the four-panel figure
+```
+
+Run in order with `uv run python experiments/2026-08-24_leto-ca-forest-viz/<script>`;
+set `FVSSN_BIN` to a compiled FVSsn binary. Intermediate data lands in `work/`
+(gitignored); the figure and QA summaries in `outputs/`.
+
+## Figure reading notes
+
+- Owner-class colors are anchored to the mockup (family red, industrial yellow,
+  federal blue, state pink) and CVD-separation checked; unknown forest is the
+  neutral gray by convention. Black hairlines are management-unit boundaries.
+- BA panels use a single-hue green ramp, 0–160 sq ft/ac, painted from each unit's
+  post-removal FVS_Summary2 basal area. Units whose donors carried no live trees
+  (nonstocked) hold their TreeMap BALIVE.
+- Harvest overlay classes on t=25/t=50: BA removal fraction in the preceding
+  5 years — ≥90% = clearcut, 31–90% = heavy thin, 10–30% = light thin.
