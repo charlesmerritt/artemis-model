@@ -1,0 +1,4 @@
+scenario,units,acres,library_rows,fvs_runs,fvs_runs_si_expanded,riparian_units,riparian_acres,units_with_a_cutting_option,acres_with_a_cutting_option,library_rows_vs_baseline,fvs_runs_vs_baseline,harvestable_acres_vs_baseline
+no_riparian,5240,925097.8313136606,15747,3788,11364,0,0.0,5240,925097.8313136606,0,0,0.0
+unit_mean,5240,925097.8313136606,15688,3781,11343,30,18.90356168223815,5210,925078.9277519785,-59,-7,-18.903561682091095
+smz_split,7064,925097.8313136607,17550,3782,11346,1835,11154.65815642375,5229,913943.173157237,1803,-6,-11154.658156423597
