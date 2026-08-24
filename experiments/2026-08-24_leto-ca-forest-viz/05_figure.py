@@ -10,8 +10,15 @@ Panels, mirroring the mockup:
 
 BA values are FVSsn FVS_Summary2 trajectories (post-removal state in harvest
 years). Management units that never received a runnable tree list (nonstocked
-donors) hold their TreeMap BALIVE. The stream centerline and its buffered
-riparian management units are drawn on the ownership and t=0 panels.
+donors) hold their TreeMap BALIVE.
+
+Rendering: stand boundaries are drawn as vectorized polygon outlines
+(rasterio.features.shapes), not per-pixel masks — hairline anti-aliased
+borders instead of raster salt-and-pepper. Riparian management units are
+their own stands: on the BA panels they carry their projected basal area
+like any other unit (they grow untouched — the no-entry override), and a
+blue outline marks them; the ownership panel fills them pale blue to show
+the buffer itself. Owner-class boundaries get a heavier line on panel 1.
 """
 
 from __future__ import annotations
@@ -33,7 +40,9 @@ from common import (
     WORK,
 )
 
-UPSCALE = 3  # boundary overlay stays hairline at 3x nearest-neighbour
+STAND_EDGE = "#2b2b2b"     # upland management-unit outline
+OWNER_EDGE = "#000000"     # owner-class boundary (panel 1, heavier)
+RIPARIAN_EDGE = "#1a6fae"  # riparian-unit outline — their own stands
 
 OWNER_COLORS = {  # mockup-anchored; CVD-separation validated (see README)
     "private_family": "#8f1d33",
@@ -91,16 +100,17 @@ def lookup_image(mu_labels: np.ndarray, values: dict[int, np.ndarray],
     return lut[mu_labels]
 
 
-def upscale(img: np.ndarray, k: int) -> np.ndarray:
-    return np.repeat(np.repeat(img, k, axis=0), k, axis=1)
+def polygonize_units(mu_labels: np.ndarray, transform) -> "gpd.GeoDataFrame":
+    """Vectorize the MU raster: one (multi)polygon per management unit."""
+    import geopandas as gpd
+    from rasterio import features
+    from shapely.geometry import shape as to_shape
 
-
-def boundary_mask(labels: np.ndarray) -> np.ndarray:
-    up = upscale(labels, UPSCALE)
-    b = np.zeros(up.shape, dtype=bool)
-    b[:-1, :] |= (up[:-1, :] != up[1:, :]) & ((up[:-1, :] > 0) | (up[1:, :] > 0))
-    b[:, :-1] |= (up[:, :-1] != up[:, 1:]) & ((up[:, :-1] > 0) | (up[:, 1:] > 0))
-    return b
+    shapes = features.shapes(mu_labels.astype(np.int32),
+                             mask=mu_labels > 0, transform=transform)
+    records = [{"MU_ID": int(v), "geometry": to_shape(g)} for g, v in shapes]
+    gdf = gpd.GeoDataFrame(records, crs="EPSG:5070")
+    return gdf.dissolve(by="MU_ID", as_index=False)
 
 
 def ba_by_year(summary: pd.DataFrame) -> pd.DataFrame:
@@ -145,6 +155,8 @@ def main() -> None:
     import matplotlib.colors as mcolors
     import matplotlib.patheffects as patheffects
 
+    from affine import Affine
+
     seg = np.load(WORK / "segmentation.npz")
     mu_labels, riparian = seg["mu_labels"], seg["riparian"]
     mu = pd.read_csv(WORK / "mu_summary.csv")
@@ -154,6 +166,13 @@ def main() -> None:
     a, b, c, d, e, f = meta["transform"]
     h, w = mu_labels.shape
     extent = (c, c + a * w, f + e * h, f)
+
+    units = polygonize_units(mu_labels, Affine(a, b, c, d, e, f))
+    units = units.merge(mu[["MU_ID", "OWNER_CLASS", "MGMT_CLASS"]], on="MU_ID")
+    upland = units[units["MGMT_CLASS"] == 0]
+    rip_units = units[units["MGMT_CLASS"] == 1]
+    owner_bounds = units.dissolve(by="OWNER_CLASS")
+    print(f"{len(units):,} unit polygons ({len(rip_units):,} riparian)")
 
     ba = ba_by_year(summary)
     snap_years = (INV_YEAR, INV_YEAR + 25, INV_YEAR + 50)
@@ -173,18 +192,26 @@ def main() -> None:
     fig, axes = plt.subplots(1, 4, figsize=(24, 7.8), dpi=170)
     fig.patch.set_facecolor("white")
 
-    def finish(ax, img, title, subtitle, labels_for_bounds, stream_on=True):
-        up = upscale(img, UPSCALE)
-        bmask = boundary_mask(labels_for_bounds)
-        up[bmask] = 0.08
-        ax.imshow(up, extent=extent, interpolation="nearest")
-        if stream_on:
-            river = stream[stream["fcode"] == 55800]
-            peren = stream[stream["fcode"] != 55800]
-            if len(river):
-                river.plot(ax=ax, color=STREAM_COLOR, linewidth=1.8, zorder=5)
-            if len(peren):
-                peren.plot(ax=ax, color=STREAM_COLOR, linewidth=0.8, zorder=5)
+    def finish(ax, img, title, subtitle, owner_edges=False):
+        ax.imshow(img, extent=extent, interpolation="nearest")
+        # Vector stand borders: hairline anti-aliased outlines instead of a
+        # per-pixel boundary mask (which reads as salt-and-pepper at this
+        # stand density).
+        upland.boundary.plot(ax=ax, linewidth=0.25, color=STAND_EDGE,
+                             alpha=0.8, zorder=3)
+        rip_units.boundary.plot(ax=ax, linewidth=0.7, color=RIPARIAN_EDGE,
+                                zorder=4)
+        if owner_edges:
+            owner_bounds.boundary.plot(ax=ax, linewidth=0.9, color=OWNER_EDGE,
+                                       zorder=5)
+        river = stream[stream["fcode"] == 55800]
+        peren = stream[stream["fcode"] != 55800]
+        if len(river):
+            river.plot(ax=ax, color=STREAM_COLOR, linewidth=1.8, zorder=6)
+        if len(peren):
+            peren.plot(ax=ax, color=STREAM_COLOR, linewidth=0.7, zorder=6)
+        ax.set_xlim(extent[0], extent[1])
+        ax.set_ylim(extent[2], extent[3])
         ax.set_title(title, fontsize=15, fontweight="bold", pad=10)
         ax.text(0.5, -0.045, subtitle, transform=ax.transAxes,
                 ha="center", fontsize=12)
@@ -198,7 +225,7 @@ def main() -> None:
     img[riparian] = _hex_to_rgb(RIPARIAN_TINT)
     finish(axes[0], img, "LETO stands and their owner class",
            "cellular-automata segmentation · riparian buffer in pale blue",
-           mu_labels)
+           owner_edges=True)
 
     # scale bar: 2 km
     x0, y0 = extent[0] + 800, extent[2] + 900
@@ -221,11 +248,11 @@ def main() -> None:
             hc = harvest_class(summary, year)
             for mu_id, cls in hc.items():
                 vals[int(mu_id)] = _hex_to_rgb(HARVEST_COLORS[cls])
+        # Riparian units keep their projected BA on every panel — they are
+        # their own stands, growing untouched; the blue outline identifies them.
         img = lookup_image(mu_labels, vals, default_rgb)
-        if year == INV_YEAR:
-            img[riparian] = _hex_to_rgb(RIPARIAN_TINT)
         finish(axes[i + 1], img, ba_titles[i],
-               f"t = {year - INV_YEAR} · {year}", mu_labels)
+               f"t = {year - INV_YEAR} · {year}")
         if year > INV_YEAR:
             n_cc = int((hc == "clearcut").sum())
             n_th = int(hc.isin(["thin_light", "thin_heavy"]).sum())
@@ -240,8 +267,9 @@ def main() -> None:
     owner_handles = [Patch(facecolor=OWNER_COLORS[k], edgecolor="black",
                            linewidth=0.4, label=OWNER_LABELS[k])
                      for k in OWNER_COLORS]
-    owner_handles.append(Patch(facecolor=RIPARIAN_TINT, edgecolor="black",
-                               linewidth=0.4, label="Riparian buffer (no entry)"))
+    owner_handles.append(Patch(facecolor=RIPARIAN_TINT, edgecolor=RIPARIAN_EDGE,
+                               linewidth=1.2,
+                               label="Riparian stand (no entry, grows untouched)"))
     owner_handles.append(Line2D([0], [0], color=STREAM_COLOR, lw=2,
                                 label="NHD flowline"))
     leg1 = fig.legend(handles=owner_handles, loc="lower left",

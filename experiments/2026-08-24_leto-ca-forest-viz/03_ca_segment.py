@@ -56,8 +56,11 @@ from common import (
 INITIAL_SEED_ACRES = 100.0
 MIN_STAND_ACRES = 5.0
 MAX_STAND_ACRES = 300.0
-MAX_ITERATIONS = 40
-CONVERGENCE_THRESHOLD = 0.01
+# LETO ships 40 iterations / 1% convergence; this run lets the CA settle an
+# order of magnitude further so boundaries stop moving rather than merely
+# slowing (visual QA on the first render showed ragged, still-moving edges).
+MAX_ITERATIONS = 100
+CONVERGENCE_THRESHOLD = 0.001
 MINIMUM_SCORE_IMPROVEMENT = 0.01
 WEIGHTS = {"FORTYPCD": 0.30, "STDAGE": 0.25, "BALIVE": 0.20, "QMD": 0.15, "TPA": 0.10}
 SHARED_EDGE_BONUS = 0.1
