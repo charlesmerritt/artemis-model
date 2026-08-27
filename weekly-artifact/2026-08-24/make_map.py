@@ -123,8 +123,8 @@ def headline_numbers() -> dict:
     """Acreages for the titles and legend, read from the committed summary CSVs."""
     by_class = pd.read_csv(OUT_DIR / "smz_by_buffer_class.csv").set_index("buffer_class")
     delta = pd.read_csv(OUT_DIR / "library_riparian_delta.csv").set_index("scenario")
-    smz_ac = float(delta.loc["smz_split", "riparian_acres"])
-    total_ac = float(delta.loc["smz_split", "acres"])
+    smz_ac = float(delta.loc["riparian_stands", "riparian_acres"])
+    total_ac = float(delta.loc["riparian_stands", "acres"])
     # perennial_large is declared in bmp_rules.yaml but unreachable from the current
     # classifier, so it may be absent from the summary CSV entirely — default to 0.
     class_ac = by_class["smz_acres"]
