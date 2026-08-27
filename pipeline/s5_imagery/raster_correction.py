@@ -80,6 +80,7 @@ from sklearn.model_selection import GroupKFold, cross_val_predict
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from pipeline.raster_windows import round_outward
 from pipeline.s5_imagery import vectors
 from pipeline.s5_imagery.feature_sources import FeatureSource
 from pipeline.spatial_ref import assert_projected_metres
@@ -201,7 +202,7 @@ def read_window(
         requested = rio_windows.from_bounds(
             minx - pad_m, miny - pad_m, maxx + pad_m, maxy + pad_m, dataset.transform
         )
-        requested = _round_outward(requested)
+        requested = round_outward(requested)
         full = rio_windows.Window(0, 0, dataset.width, dataset.height)
         try:
             window = rio_windows.intersection(requested, full)
@@ -229,24 +230,6 @@ def read_window(
             source=str(raster_path),
             window=window,
         )
-
-
-def _round_outward(window: Any) -> Any:
-    """Grow a fractional window to whole pixels in every direction.
-
-    ``Window.round_lengths`` rounds to nearest, which can shave half a pixel off
-    the padding ring. Rounding outward instead keeps the ring at least as wide as
-    asked for — the ring is the training evidence, so erring small is the wrong
-    direction to err.
-    """
-    col_off = math.floor(window.col_off)
-    row_off = math.floor(window.row_off)
-    return rio_windows.Window(
-        col_off=col_off,
-        row_off=row_off,
-        width=math.ceil(window.col_off + window.width) - col_off,
-        height=math.ceil(window.row_off + window.height) - row_off,
-    )
 
 
 def pixel_table(
@@ -298,7 +281,12 @@ def pixel_table(
     )
 
     if window.nodata is not None:
-        table = table[table["class_value"] != window.nodata]
+        # NaN is a legal nodata sentinel for float rasters, and `NaN != NaN`,
+        # so an equality test would keep every nodata pixel.
+        if math.isnan(window.nodata):
+            table = table[~table["class_value"].isna()]
+        else:
+            table = table[table["class_value"] != window.nodata]
     if invalid_values:
         table = table[~table["class_value"].isin(list(invalid_values))]
     return table.reset_index(drop=True)
@@ -553,13 +541,34 @@ def spatial_cross_validate(
         )
 
     cv = GroupKFold(n_splits=folds)
-    predicted = cross_val_predict(build_model(seed), features, labels, cv=cv, groups=groups)
+    splits = list(cv.split(features, labels, groups=groups))
 
     rng = np.random.default_rng(seed)
     shuffled_labels = labels[rng.permutation(len(labels))]
-    shuffled = cross_val_predict(
-        build_model(seed), features, shuffled_labels, cv=cv, groups=groups
-    )
+
+    # A class concentrated in one spatial block vanishes from the training side
+    # of the fold that holds the block out; the solver then refuses to fit and
+    # the whole correction dies mid-`cross_val_predict`. That layout is a fact
+    # about the landscape, so it is reported as a skip the manifest shows.
+    starved = [
+        fold
+        for fold, (train_index, _) in enumerate(splits)
+        if len(np.unique(labels[train_index])) < 2
+        or len(np.unique(shuffled_labels[train_index])) < 2
+    ]
+    if starved:
+        return CrossValidationReport(
+            **base,
+            n_folds=folds,
+            skipped_reason=(
+                f"fold(s) {starved} would train on fewer than 2 classes — a class "
+                "sits entirely inside the block(s) those folds hold out. Widen "
+                "pad_m to spread classes across more blocks, or shrink block_m."
+            ),
+        )
+
+    predicted = cross_val_predict(build_model(seed), features, labels, cv=splits)
+    shuffled = cross_val_predict(build_model(seed), features, shuffled_labels, cv=splits)
 
     per_class: dict[int, dict[str, float]] = {}
     class_f1 = f1_score(labels, predicted, average=None, labels=np.unique(labels), zero_division=0)

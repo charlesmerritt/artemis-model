@@ -53,7 +53,6 @@ import argparse
 import contextlib
 import json
 import logging
-import math
 import sys
 from pathlib import Path
 from typing import Any, Iterator
@@ -66,6 +65,7 @@ from rasterio import windows as rio_windows
 from shapely.geometry.base import BaseGeometry
 
 from pipeline import data_access
+from pipeline.raster_windows import round_outward
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -126,14 +126,19 @@ def open_source(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def region_geometry(region_path: str | Path, layer: str | None = None) -> BaseGeometry:
-    """Dissolve a region vector to one geometry, in its own declared CRS."""
+def read_region(region_path: str | Path, layer: str | None = None) -> gpd.GeoDataFrame:
+    """Read and validate a region vector layer, once — the file can be large."""
     gdf = gpd.read_file(region_path, layer=layer) if layer else gpd.read_file(region_path)
     if gdf.empty:
         raise ValueError(f"Region layer has no features: {region_path}")
     if gdf.crs is None:
         raise ValueError(f"Region layer has no CRS: {region_path}")
-    return gdf.union_all()
+    return gdf
+
+
+def region_geometry(region_path: str | Path, layer: str | None = None) -> BaseGeometry:
+    """Dissolve a region vector to one geometry, in its own declared CRS."""
+    return read_region(region_path, layer).union_all()
 
 
 def region_window(dataset: rasterio.DatasetReader, region: BaseGeometry, region_crs) -> Any:
@@ -147,15 +152,7 @@ def region_window(dataset: rasterio.DatasetReader, region: BaseGeometry, region_
     local = gpd.GeoSeries([region], crs=region_crs).to_crs(dataset.crs).iloc[0]
     minx, miny, maxx, maxy = local.bounds
     requested = rio_windows.from_bounds(minx, miny, maxx, maxy, dataset.transform)
-
-    col_off = math.floor(requested.col_off)
-    row_off = math.floor(requested.row_off)
-    outward = rio_windows.Window(
-        col_off=col_off,
-        row_off=row_off,
-        width=math.ceil(requested.col_off + requested.width) - col_off,
-        height=math.ceil(requested.row_off + requested.height) - row_off,
-    )
+    outward = round_outward(requested)
     try:
         return rio_windows.intersection(
             outward, rio_windows.Window(0, 0, dataset.width, dataset.height)
@@ -209,12 +206,9 @@ def clip_raster(
     regardless of region size. Returns a record of what was written, suitable for
     printing or storing beside the output.
     """
-    region = region_geometry(region_path, region_layer)
-    region_crs = (
-        gpd.read_file(region_path, layer=region_layer)
-        if region_layer
-        else gpd.read_file(region_path)
-    ).crs
+    region_gdf = read_region(region_path, region_layer)
+    region = region_gdf.union_all()
+    region_crs = region_gdf.crs
 
     out_path = Path(out_path)
 

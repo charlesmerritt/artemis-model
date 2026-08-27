@@ -229,6 +229,19 @@ def test_pixel_table_drops_nodata(tmp_path, aoi):
     assert len(table) == SIZE * (SIZE - 10)
 
 
+def test_pixel_table_drops_nan_nodata(tmp_path, aoi):
+    """A float raster may declare NaN as nodata, and `NaN != NaN` breaks equality."""
+    values = _truth_array().astype(np.float32)
+    values[:, 80:] = np.nan
+    path = _write(tmp_path / "nan_nodata.tif", values, nodata=float("nan"))
+    window = rc.read_window(path, aoi, pad_m=100_000.0)
+    table = rc.pixel_table(window, aoi)
+    assert not table["class_value"].isna().any()
+    assert len(table) == SIZE * (SIZE - 10)
+    # The surviving rows must be usable as integer labels downstream.
+    assert set(table["class_value"].astype(int)) == {FOREST, WATER}
+
+
 def test_pixel_table_drops_in_band_fill_values(rasters, aoi):
     """LANDFIRE codes ocean as -9999 *inside* the valid range, below the 32767 nodata."""
     # 600 m of pad is what reaches the water band down the side of the grid.
@@ -405,6 +418,19 @@ def test_spatial_cross_validate_skips_rather_than_raises_with_one_block():
     assert report.skipped_reason is not None
     assert report.accuracy is None
     assert report.n_folds == 0
+
+
+def test_spatial_cross_validate_skips_when_a_fold_would_lose_a_class():
+    """A class confined to one block starves the fold that holds the block out."""
+    features = np.random.default_rng(0).normal(size=(30, 4))
+    # WATER lives only in block 0; the fold holding block 0 out trains on FOREST alone.
+    labels = np.array([WATER] * 10 + [FOREST] * 20)
+    groups = np.array([0] * 10 + [1] * 10 + [2] * 10)
+    report = rc.spatial_cross_validate(features, labels, groups)
+    assert report.skipped_reason is not None
+    assert "fewer than 2 classes" in report.skipped_reason
+    assert report.accuracy is None
+    assert report.n_blocks == 3
 
 
 # ──────────────────────────────────────────────────────────────────────────────
