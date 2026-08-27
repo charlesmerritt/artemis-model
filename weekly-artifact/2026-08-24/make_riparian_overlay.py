@@ -245,10 +245,24 @@ def attribute_pixels_with_smz() -> pd.DataFrame:
 
 
 def pixel_table() -> pd.DataFrame:
-    """The SMZ-aware pixel attribution, cached under gitignored data/interim."""
-    if SMZ_CACHE.exists():
+    """The SMZ-aware pixel attribution, cached under gitignored data/interim.
+
+    One pass (`attribute_pixels_with_smz` -> `build_smz_layer`) writes three caches —
+    the pixel CSV plus the two GeoPackages `main()` reads back for the map and the
+    stream summaries — and they only describe the same run together. A hit therefore
+    requires all three; a partial cache (say, the CSV survived a cleanup that took the
+    GeoPackages) is rebuilt whole rather than half-read, which would either crash on
+    the missing file or silently pair the attribution with stale geometry. If all
+    three exist they are trusted — to force a rebuild, delete all three, never one.
+    """
+    caches = (SMZ_CACHE, SMZ_LAYER_CACHE, STREAM_LAYER_CACHE)
+    if all(p.exists() for p in caches):
         log.info("Reusing cached SMZ attribution %s", SMZ_CACHE)
         return pd.read_csv(SMZ_CACHE, keep_default_na=False, na_values=[])
+    present = [p for p in caches if p.exists()]
+    if present:
+        log.info("Partial cache under %s (%s) — rebuilding all three in lock-step",
+                 SMZ_CACHE.parent, ", ".join(p.name for p in present))
     counts = attribute_pixels_with_smz()
     SMZ_CACHE.parent.mkdir(parents=True, exist_ok=True)
     counts.to_csv(SMZ_CACHE, index=False)
@@ -294,12 +308,11 @@ def build_units_with_smz() -> tuple[pd.DataFrame, pd.DataFrame]:
             "OWN_CODE", "PLT_CN", "FORTYPCD", "ForTypName"]
     units = (
         pieces.groupby(keys, as_index=False, dropna=False)
-        .agg(pixel_count=("pixel_count", "sum"), acres=("acres", "sum"),
-             smz_pixels=("pixel_count", lambda s: 0), smz_acres=("acres", lambda s: 0.0))
+        .agg(pixel_count=("pixel_count", "sum"), acres=("acres", "sum"))
     )
     smz = (pieces[pieces["in_smz"]].groupby("unit_id", as_index=False)
            .agg(smz_pixels=("pixel_count", "sum"), smz_acres=("acres", "sum")))
-    units = units.drop(columns=["smz_pixels", "smz_acres"]).merge(smz, on="unit_id", how="left")
+    units = units.merge(smz, on="unit_id", how="left")
     units[["smz_pixels", "smz_acres"]] = units[["smz_pixels", "smz_acres"]].fillna(0)
     units["SMZ_Pct"] = 100.0 * units["smz_pixels"] / units["pixel_count"]
 
@@ -401,12 +414,7 @@ def summarize_smz(units: pd.DataFrame, pieces: pd.DataFrame, streams) -> dict[st
     forested["forest_branch"] = forested.apply(
         lambda r: forest_type_branch({"FORTYPCD": r["FORTYPCD"]}), axis=1)
 
-    by_county = (
-        forested.groupby("county", as_index=False)
-        .agg(acres=("acres", "sum"),
-             smz_acres=("acres", lambda s: 0.0))
-        .drop(columns="smz_acres")
-    )
+    by_county = forested.groupby("county", as_index=False).agg(acres=("acres", "sum"))
     smz_c = (forested[forested["in_smz"]].groupby("county", as_index=False)
              .agg(smz_acres=("acres", "sum")))
     by_county = by_county.merge(smz_c, on="county", how="left").fillna({"smz_acres": 0.0})

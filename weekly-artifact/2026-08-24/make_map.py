@@ -58,6 +58,7 @@ OVERLAY = _load("weekly-artifact/2026-08-24/make_riparian_overlay.py", "overlay_
 # Categorical hues in fixed order, validated CVD-safe (see the artifact README).
 C_EPHEMERAL = "#E69F00"
 C_PERENNIAL = "#0072B2"
+C_PERENNIAL_LG = "#009E73"
 C_FOREST = "#c8ccc4"
 C_STREAM = "#4a6fa5"
 INK = "#22252a"
@@ -124,12 +125,16 @@ def headline_numbers() -> dict:
     delta = pd.read_csv(OUT_DIR / "library_riparian_delta.csv").set_index("scenario")
     smz_ac = float(delta.loc["smz_split", "riparian_acres"])
     total_ac = float(delta.loc["smz_split", "acres"])
+    # perennial_large is declared in bmp_rules.yaml but unreachable from the current
+    # classifier, so it may be absent from the summary CSV entirely — default to 0.
+    class_ac = by_class["smz_acres"]
     return {
         "smz_ac": smz_ac,
         "total_ac": total_ac,
         "smz_pct": 100 * smz_ac / total_ac,
-        "perennial_ac": float(by_class.loc["perennial_small", "smz_acres"]),
-        "ephemeral_ac": float(by_class.loc["ephemeral_intermittent", "smz_acres"]),
+        "perennial_ac": float(class_ac.get("perennial_small", 0.0)),
+        "perennial_lg_ac": float(class_ac.get("perennial_large", 0.0)),
+        "ephemeral_ac": float(class_ac.get("ephemeral_intermittent", 0.0)),
     }
 
 
@@ -152,7 +157,7 @@ def main() -> None:
     # ---- Panel A: the AOI -------------------------------------------------------------
     axa.imshow(np.ma.masked_where(~forest, forest), extent=extent, origin="upper",
                cmap=matplotlib.colors.ListedColormap([C_FOREST]), interpolation="nearest")
-    for code, color in ((1, C_EPHEMERAL), (2, C_PERENNIAL)):
+    for code, color in ((1, C_EPHEMERAL), (2, C_PERENNIAL), (3, C_PERENNIAL_LG)):
         layer = np.ma.masked_where(smz_forest != code, smz_forest)
         axa.imshow(layer, extent=extent, origin="upper",
                    cmap=matplotlib.colors.ListedColormap([color]), interpolation="nearest")
@@ -162,9 +167,13 @@ def main() -> None:
         axa.annotate(name.upper(), (pt.x, pt.y), ha="center", va="center", fontsize=9.5,
                      color=INK, zorder=5,
                      path_effects=[pe.withStroke(linewidth=3, foreground="white")])
+    # The mask highlights every forested SMZ pixel; the attributed total additionally
+    # drops non-forest/water/unknown ownership classes, so title both numbers.
+    drawn_ac = float((smz_forest > 0).sum()) * OVERLAY.PRIOR_10.ACRES_PER_PIXEL
     axa.set_title("A · Forested land inside a Florida BMP stream-management zone\n"
-                  f"{n['smz_ac']:,.0f} of {n['total_ac']:,.0f} attributed acres "
-                  f"({n['smz_pct']:.2f}%)",
+                  f"{drawn_ac:,.0f} ac highlighted, of which {n['smz_ac']:,.0f} of "
+                  f"{n['total_ac']:,.0f} attributed acres ({n['smz_pct']:.2f}%) "
+                  "survive the ownership screen",
                   fontsize=11.5, color=INK, loc="left", pad=8)
     scalebar(axa, 20000, "20 km")
 
@@ -179,7 +188,8 @@ def main() -> None:
                cmap=matplotlib.colors.ListedColormap([C_FOREST]), interpolation="nearest")
     streams = gpd.read_file(OVERLAY.STREAM_LAYER_CACHE).to_crs(profile["crs"])
     streams.plot(ax=axb, color=C_STREAM, lw=0.9, zorder=3)
-    for cls, color in (("ephemeral_intermittent", C_EPHEMERAL), ("perennial_small", C_PERENNIAL)):
+    for cls, color in (("ephemeral_intermittent", C_EPHEMERAL), ("perennial_small", C_PERENNIAL),
+                       ("perennial_large", C_PERENNIAL_LG)):
         sub = buffers[buffers["buffer_class"] == cls]
         if len(sub):
             sub.plot(ax=axb, facecolor=color, edgecolor="none", alpha=0.85, zorder=2)
@@ -206,6 +216,12 @@ def main() -> None:
         mlines.Line2D([], [], color=C_STREAM, lw=1.4,
                       label="NHD flowline — bare where its FCode gets no BMP class"),
     ]
+    # Today classify_stream_fcode never emits perennial_large (the documented classifier
+    # gap), so the class shows up only once a buffer layer or summary actually carries it.
+    if n["perennial_lg_ac"] > 0 or (buffers["buffer_class"] == "perennial_large").any():
+        handles.insert(0, mpatches.Patch(
+            facecolor=C_PERENNIAL_LG,
+            label=f"Perennial large buffer — 75 ft ({n['perennial_lg_ac']:,.0f} ac)"))
     fig.legend(handles=handles, loc="upper left", bbox_to_anchor=(0.03, 0.945), ncol=4,
                frameon=False, fontsize=9.5, labelcolor=INK, handlelength=1.6)
     fig.suptitle("ARTEMIS pilot — the riparian layer, joined for the first time",
