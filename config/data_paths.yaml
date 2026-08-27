@@ -52,9 +52,14 @@ r2:
   # processed outputs) under this prefix: <repo>/data/X is <prefix>/Artemis_data/X.
   repo_data_prefix: "Artemis_data"
 
-  # Directories uploaded under a name other than their name on the drive.
+  # Directories uploaded under a name other than their name on the drive. The value
+  # may contain slashes, for directories filed under a bucket-side parent that has
+  # no counterpart on the drive.
   renames:
     Artemis_project_fvs_copy: "Artemis_project_fvs_copy_no_management"
+    # The LANDFIRE products sit at the drive root but are grouped in the bucket.
+    LF2022_EVT_CONUS: "landfire/LF2022_EVT_CONUS"
+    LF2022_VCC_CONUS: "landfire/LF2022_VCC_CONUS"
 
 raw:
   treemap_2022:

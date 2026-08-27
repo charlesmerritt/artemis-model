@@ -214,14 +214,33 @@ def load_evt2022_lookup(csv_path: str | Path) -> dict[int, dict]:
 # Earth Engine helpers (import ee lazily so the pure helpers stay import-safe offline)
 # --------------------------------------------------------------------------------------
 
-def init_ee():
+def init_ee(project: str | None = None):
+    """Initialize Earth Engine, authenticating interactively only if the token is bad.
+
+    ``project`` is the Cloud project to bill and scope the session to. Earth Engine
+    requires one for all but legacy accounts, and a stored credential does not carry
+    it: a valid token plus no project fails with "no project found".
+
+    That case is raised, not re-authenticated. Re-running ``ee.Authenticate()``
+    cannot supply a project, so the old blanket ``except`` sent a working token to
+    an interactive browser prompt and hung any headless run on it.
+    """
     import ee
 
+    def _initialize():
+        ee.Initialize(project=project) if project else ee.Initialize()
+
     try:
-        ee.Initialize()
-    except Exception:
+        _initialize()
+    except Exception as err:
+        if "no project" in str(err).lower():
+            raise RuntimeError(
+                "Earth Engine credentials are present but name no Cloud project. Pass "
+                "init_ee(project='your-project-id'), or set a default once with "
+                "`uv run earthengine set_project <id>`. Re-authenticating will not help."
+            ) from err
         ee.Authenticate()
-        ee.Initialize()
+        _initialize()
     return ee
 
 

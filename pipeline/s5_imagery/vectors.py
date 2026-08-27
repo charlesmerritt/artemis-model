@@ -106,17 +106,19 @@ def layer_geometry(gdf: gpd.GeoDataFrame) -> BaseGeometry:
     return dissolved
 
 
-def _to_equal_area(geom: BaseGeometry) -> BaseGeometry:
+def to_equal_area(geom: BaseGeometry) -> BaseGeometry:
+    """Reproject a WGS84 geometry into the project's equal-area CRS, for metre math."""
     return gpd.GeoSeries([geom], crs=WGS84).to_crs(EQUAL_AREA_CRS).iloc[0]
 
 
-def _to_wgs84(geom: BaseGeometry) -> BaseGeometry:
+def to_wgs84(geom: BaseGeometry) -> BaseGeometry:
+    """The inverse of `to_equal_area`, back to the CRS Earth Engine and the viewer use."""
     return gpd.GeoSeries([geom], crs=EQUAL_AREA_CRS).to_crs(WGS84).iloc[0]
 
 
 def area_ha(geom: BaseGeometry) -> float:
     """Area in hectares, measured in the equal-area CRS."""
-    return float(_to_equal_area(geom).area / SQ_M_PER_HA)
+    return float(to_equal_area(geom).area / SQ_M_PER_HA)
 
 
 def derive_extent(
@@ -147,7 +149,7 @@ def derive_extent(
     if buffer_m < 0:
         raise ValueError("buffer_m must be >= 0")
 
-    projected = _to_equal_area(aoi_geom)
+    projected = to_equal_area(aoi_geom)
 
     if mode == "bbox":
         base = shape(mapping(projected.envelope))
@@ -159,7 +161,7 @@ def derive_extent(
     if buffer_m > 0:
         base = base.buffer(buffer_m)
 
-    return _to_wgs84(base)
+    return to_wgs84(base)
 
 
 def containment_fraction(inner: BaseGeometry, outer: BaseGeometry) -> float:
@@ -169,10 +171,10 @@ def containment_fraction(inner: BaseGeometry, outer: BaseGeometry) -> float:
     1.0 means fully contained. Used to warn when an AOI pokes outside the imagery
     extent, which would silently drop part of the study area from every product.
     """
-    inner_proj = _to_equal_area(inner)
+    inner_proj = to_equal_area(inner)
     if inner_proj.area <= 0:
         return 0.0
-    outer_proj = _to_equal_area(outer)
+    outer_proj = to_equal_area(outer)
     return float(inner_proj.intersection(outer_proj).area / inner_proj.area)
 
 
@@ -192,7 +194,7 @@ def estimate_pixel_count(geom: BaseGeometry, scale_m: float) -> int:
     """
     if scale_m <= 0:
         raise ValueError("scale_m must be > 0")
-    envelope_m2 = _to_equal_area(geom).envelope.area
+    envelope_m2 = to_equal_area(geom).envelope.area
     return int(envelope_m2 / (scale_m * scale_m))
 
 

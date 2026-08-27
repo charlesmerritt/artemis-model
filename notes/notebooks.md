@@ -20,6 +20,7 @@ traces to one of them, not to a code bug.
 | Notebook | What it does | Needs | Runnable today? |
 |---|---|---|---|
 | [`TreeMap_COG_County_Summary.ipynb`](#treemap_cog_county_summaryipynb) | Clip a remote COG (URL or STAC) and compute zonal stats per polygon (default: TreeMap-like raster × Southeast counties) | network | **Yes** (only one needing neither drive nor GEE) |
+| [`Vector-Guided-Raster-Correction.ipynb`](#vector-guided-raster-correctionipynb) | Correct a classification raster inside a closed polygon: NAIP ±10-year slider for visual QA, then an AlphaEarth classifier reassigns the eligible EVT classes | GEE + LF2022 EVT tif | No (GEE; EVT tif needs staging) — but its three `pipeline/s5_imagery` modules are tested offline |
 | [`Embedding-Similarity-AOI-Finder.ipynb`](#embedding-similarity-aoi-finderipynb) | Pick reference clearcut points → vector layer of all AlphaEarth-similar land in an AOI | GEE | Blocked by GEE re-auth only (no drive needed) |
 | [`Clearcut-vs-Agriculture-Embeddings.ipynb`](#the-clearcut-vs-agriculture-investigation) | Method 1: AlphaEarth embedding separability of clearcut vs farmland | GEE + LF2022 EVT tif | No (GEE; EVT tif needs staging) |
 | [`Clearcut-vs-Agriculture-EVT-Change.ipynb`](#the-clearcut-vs-agriculture-investigation) | Method 2: LANDFIRE EVT 2016→2022 forest→ag/grass change detector + cross-method comparison | GEE + LF2022 EVT tif | No (GEE; EVT tif needs staging) |
@@ -58,6 +59,24 @@ Full findings, data-availability constraints, and run results:
   Reads the local LF2022 EVT tif on `/mnt/d`. Pure helpers unit-tested in
   `tests/test_clearcut_ag_common.py`; output invariants in `tests/test_clearcut_ag_outputs.py`
   (skips when no run outputs exist).
+
+## `Vector-Guided-Raster-Correction.ipynb`
+
+**Added 2026-08-13.** Takes a closed vector polygon, a categorical raster (LF2022 EVT by
+default), and the list of class values that are eligible to be overwritten inside that polygon.
+Shows NAIP for ±10 years around the 2022 target on an `ipywidgets` slider with the polygon drawn
+over it as a transparent fill with a hatched border, then trains a multiclass classifier on
+AlphaEarth embeddings — **trusted labels are every non-eligible pixel, inside the polygon and
+out** — and reassigns the eligible pixels it is confident about. Writes a single-band corrected
+raster in the source dtype, a three-band float32 diagnostics raster (original / confidence /
+changed), and a manifest recording every from→to transition.
+
+Unlike the other notebooks here, the logic is not in the notebook: it lives in
+`pipeline/s5_imagery/raster_correction.py`, `feature_sources.py`, and `naip_viewer.py`, all
+tested offline (56 tests) by substituting a fixture `FeatureSource` for Earth Engine. Blocked
+today only by GEE re-auth and by the 3 GB EVT tif needing deliberate staging. Design decisions,
+the honesty machinery, and the scaling limit:
+→ **[vector-guided-raster-correction.md](vector-guided-raster-correction.md)**.
 
 ## `Embedding-Similarity-AOI-Finder.ipynb`
 

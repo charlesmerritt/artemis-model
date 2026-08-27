@@ -14,6 +14,7 @@ uv run jupyter lab
 | Entry point | Purpose | Main prerequisites |
 |---|---|---|
 | `TreeMap_COG_County_Summary.ipynb` | Windowed zonal summaries from a remote COG or STAC item | Network access |
+| `Vector-Guided-Raster-Correction.ipynb` | Correct a classification raster (LANDFIRE EVT) inside a polygon: NAIP year slider for visual QA, then an embedding classifier reassigns the eligible classes | Earth Engine + the Florida EVT clip (see below) |
 | `Embedding-Similarity-AOI-Finder.ipynb` | Find regions similar to selected clearcut references using AlphaEarth embeddings | Earth Engine authentication |
 | `Clearcut-vs-Agriculture-Embeddings.ipynb` | Test embedding separation between recent clearcuts and agriculture | Earth Engine + local LANDFIRE data |
 | `Clearcut-vs-Agriculture-EVT-Change.ipynb` | Compare forest-to-herb/agriculture/shrub EVT change with LCMS evidence | Earth Engine + local LANDFIRE data |
@@ -24,6 +25,27 @@ uv run jupyter lab
 `clearcut_ag_common.py` contains shared helpers for the embedding and clearcut notebooks. Its pure
 functions are covered by `tests/test_clearcut_ag_common.py`; optional output checks live in
 `tests/test_clearcut_ag_outputs.py`.
+
+`Vector-Guided-Raster-Correction.ipynb` is a thin interface over three
+[`pipeline/s5_imagery/`](../pipeline/s5_imagery/) modules rather than a self-contained notebook —
+`raster_correction.py` (windowing, sampling, spatially blocked CV, correction, manifests),
+`feature_sources.py` (the `FeatureSource` protocol and its AlphaEarth implementation), and
+`naip_viewer.py` (the ±N-year window resolver, the hatched-border geometry, and the slider widget).
+All three are unit-tested offline in `tests/test_s5_{raster_correction,feature_sources,naip_viewer}.py`;
+the correction tests substitute a fixture feature source for Earth Engine and run the whole
+workflow against a synthetic raster. Design and limits:
+[`../notes/vector-guided-raster-correction.md`](../notes/vector-guided-raster-correction.md).
+
+It reads a **Florida clip of the EVT raster** rather than the 2.99 GB CONUS original — 75 MB,
+same CRS and 30 m grid, pixel-identical. Produce it once with:
+
+```bash
+uv run python -m pipeline.raster_clip \
+    --raster raw.landfire.evt_tif --region config/extent.geojson --name LF2022_EVT_FL
+```
+
+The notebook falls back to the CONUS raster when the clip is absent. See
+[`../notes/raster-clips.md`](../notes/raster-clips.md).
 
 ## Before running
 
