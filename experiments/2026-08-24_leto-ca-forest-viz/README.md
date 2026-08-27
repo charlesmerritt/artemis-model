@@ -124,7 +124,8 @@ Two things that only bite at full-region scale, both fixed in this pipeline
 rather than worked around:
 
 - **The riparian/parent-segment split and the parent-segment lookup were
-  O(segments) or O(segments²) in two spots** (`03_ca_segment.py`): a
+  O(segments) or O(segments²) in two spots** (now
+  `pipeline/leto_ca.py`'s `split_management_units` / `uniform_label_lookup`): a
   per-unique-value `ndimage.label` loop to split each parent segment's
   riparian/upland pieces apart, and a `segment_categorical_mode` call used to
   look up each management unit's parent segment. Both were invisible at AOI
@@ -154,7 +155,10 @@ rather than worked around:
 01_stage_aoi.py         R2 pulls + windowed /vsis3/ raster clips (TreeMap, ownership,
                         + county mask for --region full)
 02_build_attributes.py  VAT parse + FIA COND STDAGE → 5 attribute rasters (LETO stage 1)
-03_ca_segment.py        cellular-automata segmentation + riparian split (LETO stage 2)
+03_ca_segment.py        cellular-automata segmentation + riparian split (LETO stage 2);
+                        the CA algorithm itself is the shared `pipeline/leto_ca.py`
+                        library (this experiment's constants are its DEFAULT_CFG),
+                        this script is the I/O driver
 policies.py             random / heuristic harvest-schedule generators
 04_fvs_run.py           weighted FVS inputs, schedules, chunked disk-safe FVSsn runs
                         (--policy, --region, --limit for smoke-testing)
