@@ -64,7 +64,9 @@ def hbar(ax, labels, values, value_labels, color, xlabel: str) -> None:
 def main() -> None:
     county = pd.read_csv(OUT_DIR / "smz_by_county.csv")
     owner = pd.read_csv(OUT_DIR / "smz_by_owner.csv")
-    dist = pd.read_csv(OUT_DIR / "smz_unit_smz_distribution.csv")
+    cut = pd.read_csv(OUT_DIR / "corridor_units_cut.csv")
+    size = pd.read_csv(OUT_DIR / "corridor_size_distribution.csv")
+    corridors = pd.read_csv(OUT_DIR / "riparian_corridors.csv")
     delta = pd.read_csv(OUT_DIR / "library_riparian_delta.csv")
 
     fig, axes = plt.subplots(2, 2, figsize=(14.5, 9.2), facecolor=SURFACE)
@@ -88,33 +90,31 @@ def main() -> None:
     style(ax, "2 · Riparian share by Harris ownership class",
           "Family forest carries 67% of the pilot's riparian acres")
 
-    # ---- 3. Where units sit against the 50% threshold ---------------------------------
+    # ---- 3. What the corridors cut ----------------------------------------------------
     ax = axes[1, 0]
-    bands = dist["smz_pct_band"].tolist()
-    units = dist["units"].tolist()
-    colors = [GREY] * (len(bands) - 1) + [ORANGE]
-    ax.barh(range(len(bands)), units, color=colors, height=0.62, zorder=3)
+    bands = cut["units_cut"].tolist()
+    n = cut["corridors"].tolist()
+    ax.barh(range(len(bands)), n, color=AMBER, height=0.62, zorder=3)
     ax.set_yticks(range(len(bands)))
     ax.set_yticklabels(bands, color=INK, fontsize=9.5)
     ax.invert_yaxis()
-    for i, (u, a) in enumerate(zip(units, dist["acres"])):
-        ax.text(u + max(units) * 0.02, i, f"{u:,} units  ({a:,.0f} ac)",
+    for i, (v, a) in enumerate(zip(n, cut["acres"])):
+        ax.text(v + max(n) * 0.02, i, f"{v:,} corridors  ({a:,.0f} ac)",
                 va="center", ha="left", fontsize=9, color=INK)
-    ax.set_xlim(0, max(units) * 1.42)
-    ax.set_xlabel("scheduling units (TreeMap plot × county × ownership class)",
+    ax.set_xlim(0, max(n) * 1.45)
+    ax.set_ylabel("scheduling units the corridor cuts", fontsize=9, color=MUTED)
+    ax.set_xlabel("riparian corridors (contiguous runs of buffered forest)",
                   fontsize=9, color=MUTED)
-    style(ax, "3 · The 50% threshold is out of reach for today's units",
-          "config/management_regimes.yaml overrides.riparian.min_value = 50.0")
-    ax.legend(handles=[mpatches.Patch(facecolor=ORANGE, label="trips the absolute riparian override")],
-              loc="lower right", frameon=False, fontsize=9, labelcolor=INK)
+    style(ax, "3 · The buffer cuts stands — it is not an attribute of them",
+          f"{size['corridors'].sum():,} corridors, median {corridors['acres'].median():.2f} ac; "
+          f"{int((corridors['units_cut'] > 10).sum())} of them cut more than ten units")
 
     # ---- 4. What the override costs the decision space ---------------------------------
     ax = axes[1, 1]
-    order = ["no_riparian", "unit_mean", "smz_split"]
+    order = ["no_riparian", "riparian_stands"]
     labels = {
-        "no_riparian": "no_riparian\n(2026-08-17 baseline)",
-        "unit_mean": "unit_mean\n(today's units, mean SMZ share)",
-        "smz_split": "smz_split\n(units split at the buffer edge)",
+        "no_riparian": "before the carve\n(2026-08-17 baseline)",
+        "riparian_stands": "after the carve\n(riparian corridors are stands)",
     }
     d = delta.set_index("scenario").loc[order]
     y = range(len(order))
@@ -124,7 +124,7 @@ def main() -> None:
             color=AMBER, height=0.6, zorder=3, label="no-entry riparian acres")
     ax.set_yticks(list(y))
     ax.set_yticklabels(
-        [f"{labels[s]}\n{int(d.loc[s, 'library_rows']):,} library rows · "
+        [f"{labels[s]}\n{int(d.loc[s, 'units']):,} stands · "
          f"{int(d.loc[s, 'fvs_runs']):,} FVS runs" for s in order],
         color=INK, fontsize=8.5)
     ax.invert_yaxis()
@@ -134,8 +134,8 @@ def main() -> None:
                 va="center", ha="left", fontsize=9, color=INK)
     ax.set_xlim(0, d["acres"].max() / 1000 * 1.34)
     ax.set_xlabel("thousand acres of the attributed pilot landscape", fontsize=9, color=MUTED)
-    style(ax, "4 · What the override costs the decision space",
-          "the geometric reading removes 11,155 ac; today's units remove 19")
+    style(ax, "4 · What the carve costs the decision space",
+          "11,155 ac leave the harvestable base; the FVS batch barely moves")
     seg_handles = [
         mpatches.Patch(facecolor=BLUE, label="acres with at least one cutting option"),
         mpatches.Patch(facecolor=AMBER, label="no-entry riparian acres"),
@@ -144,9 +144,9 @@ def main() -> None:
     fig.suptitle("ARTEMIS pilot — joining the Florida BMP riparian layer to the scheduling landscape",
                  x=0.02, y=0.965, ha="left", fontsize=14.5, color=INK, weight="semibold")
     fig.text(0.02, 0.905,
-             "NHD flowlines × config/bmp_rules.yaml buffer widths → SMZ_Pct per unit → "
-             "regime_assignment's absolute riparian override, evaluated against real geometry "
-             "for the first time.",
+             "NHD flowlines × config/bmp_rules.yaml buffer widths → riparian corridors carved "
+             "out as stands in their own right → regime_assignment's absolute no-entry override, "
+             "on real geometry for the first time.",
              ha="left", fontsize=10, color=MUTED)
     fig.legend(handles=seg_handles, loc="upper right", bbox_to_anchor=(0.975, 0.945),
                ncol=2, frameon=False, fontsize=9.5, labelcolor=INK, handlelength=1.6)

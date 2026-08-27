@@ -33,18 +33,16 @@ the library enumeration reuses `weekly-artifact/2026-08-17/make_trajectory_libra
 
 Two mechanics are this driver's own, and both are reported rather than hidden:
 
-1. **Two unit readings, because the answer differs.** The scheduling unit in use today is
-   `TreeMap plot x county x ownership class` — an attribute class, not a contiguous
-   polygon, so its SMZ share is a landscape-wide average and almost nothing crosses a 50%
-   threshold. That is reported as scenario `unit_mean`. The geometric reading — the one
-   the Phase 2.3 polygon units will produce — splits every unit at the buffer edge into
-   its in-SMZ and out-of-SMZ parts, which makes the in-SMZ part 100% riparian by
-   construction. That is scenario `smz_split`. The first says whether today's units trip
-   the rule; the second says what the rule actually costs the decision space.
+1. **The buffer cuts the stand; it is never an attribute of one.** A unit is not
+   "37% riparian". The buffer carves a corridor out of every stand it crosses, the
+   corridor becomes a stand in its own right (`make_corridors.py` builds that layer), and
+   what is left of the original stand is its upland remainder. Every row in the carved
+   landscape is `SMZ_Pct = 100` or `SMZ_Pct = 0`; the field is a derived label, and the
+   threshold in `config/management_regimes.yaml` is only the switch that reads it.
 
-2. **Riparian units get a one-item menu.** `eligible_prescriptions` does not take
-   geometry, so the driver applies the override the way `assign_prescription` does: a unit
-   that trips `_is_riparian` is offered exactly the prescription the override names
+2. **Riparian stands get a one-item menu.** `eligible_prescriptions` does not take
+   geometry, so the driver applies the override the way `assign_prescription` does: a
+   stand that trips `_is_riparian` is offered exactly the prescription the override names
    (`no_management`), which is what the function's own docstring says riparian units get.
    The test and the prescription both come from the config, not from this file.
 
@@ -95,6 +93,7 @@ DATA = REPO / "data"
 NHD_GDB = DATA / "interim/nhd/nhdplus_epasnapshot2022_fl.gdb"
 NHD_FLOWLINE_LAYER = "nhdflowline_fl"
 SMZ_CACHE = DATA / "interim/smz_pixels_attributed.csv"
+RIPARIAN_STANDS = OUT_DIR / "riparian_stands.csv"   # written by make_corridors.py
 SMZ_LAYER_CACHE = DATA / "interim/smz_buffers_5070.gpkg"     # gitignored; map input
 STREAM_LAYER_CACHE = DATA / "interim/smz_streams_5070.gpkg"  # gitignored; map input
 
@@ -264,7 +263,8 @@ def build_units_with_smz() -> tuple[pd.DataFrame, pd.DataFrame]:
         defines it, plus `smz_acres` and `SMZ_Pct`.
       * ``pieces`` — the same landscape split at the buffer edge: one row per
         `unit x buffer_class` (buffer_class `""` = outside every buffer). This is the
-        `smz_split` reading, and its in-SMZ rows carry `SMZ_Pct = 100`.
+        raw material for the carve: `riparian_stand_layer` builds the scheduling
+        landscape from it, and its in-SMZ rows carry `SMZ_Pct = 100`.
     """
     counts = pixel_table()
 
@@ -371,25 +371,50 @@ def enumerate_library(units: pd.DataFrame, riparian_active: bool, scenario: str)
     return lib
 
 
-def smz_split_units(units: pd.DataFrame, pieces: pd.DataFrame) -> pd.DataFrame:
-    """The geometric reading: every unit split at the buffer edge.
+def riparian_stand_layer(units: pd.DataFrame, pieces: pd.DataFrame) -> pd.DataFrame:
+    """The landscape after the carve: upland remainders + riparian stands.
 
-    In-SMZ pieces are 100% inside a stream-management zone by construction, so they trip
-    the override at any threshold; out-of-SMZ pieces are 0%. This is what a polygon unit
-    delineation (Phase 2.3) produces, expressed on today's attribution.
+    A BMP buffer is not an attribute of the stand it falls in. It cuts every stand it
+    crosses, and the corridor becomes a stand of its own, so this layer is
+
+      * the **upland remainder** of each existing scheduling unit — the same unit, minus
+        the acres the buffer took, ``SMZ_Pct = 0``; and
+      * the **riparian stands** from ``make_corridors.py`` — contiguous riparian forest,
+        cut only where a stand genuinely cannot straddle (ownership, county),
+        ``SMZ_Pct = 100``.
+
+    There is no threshold anywhere in it: every row is 100 or 0 and the geometry decides
+    which. `SMZ_Pct` is a derived label here, not a dial.
     """
-    keys = ["unit_id", "tm_id", "county", "owner_class", "owner_name", "owner_group",
-            "OWN_CODE", "PLT_CN", "FORTYPCD", "ForTypName", "in_smz"]
-    split = (pieces.groupby(keys, as_index=False, dropna=False)
-             .agg(pixel_count=("pixel_count", "sum"), acres=("acres", "sum")))
-    split["SMZ_Pct"] = np.where(split["in_smz"], 100.0, 0.0)
-    split["unit_id"] = split["unit_id"] + np.where(split["in_smz"], "_SMZ", "_UPL")
-    split = split.merge(units[["PLT_CN", "stand_age"]].drop_duplicates("PLT_CN"),
+    upland = (pieces[~pieces["in_smz"]]
+              .groupby(["unit_id", "tm_id", "county", "owner_class", "owner_name",
+                        "OWN_CODE", "PLT_CN", "FORTYPCD", "ForTypName"],
+                       as_index=False, dropna=False)
+              .agg(pixel_count=("pixel_count", "sum"), acres=("acres", "sum")))
+    upland["SMZ_Pct"] = 0.0
+
+    stands = pd.read_csv(RIPARIAN_STANDS, dtype={"PLT_CN": "string"})
+    fortyp = (pd.read_csv(PRIOR_10.CROSSWALK, usecols=["Value", "FORTYPCD", "ForTypName"])
+              .rename(columns={"Value": "majority_tm_id"}).drop_duplicates("majority_tm_id"))
+    stands = (stands.merge(fortyp, on="majority_tm_id", how="left")
+              .rename(columns={"stand_id": "unit_id", "majority_tm_id": "tm_id",
+                               "pixels": "pixel_count"}))
+    stands["OWN_CODE"] = stands["owner_class"]
+    stands["SMZ_Pct"] = 100.0
+
+    cols = ["unit_id", "tm_id", "county", "owner_class", "owner_name", "OWN_CODE",
+            "PLT_CN", "FORTYPCD", "ForTypName", "pixel_count", "acres", "SMZ_Pct"]
+    layer = pd.concat([upland[cols], stands[cols]], ignore_index=True)
+    layer = layer.merge(units[["PLT_CN", "stand_age"]].drop_duplicates("PLT_CN"),
                         on="PLT_CN", how="left")
-    log.info("SMZ-split pieces: %d (%d in-SMZ, %.0f ac in-SMZ of %.0f ac)",
-             len(split), int(split["in_smz"].sum()),
-             split.loc[split["in_smz"], "acres"].sum(), split["acres"].sum())
-    return split
+    log.info("Carved landscape: %d upland remainders + %d riparian stands = %d stands, "
+             "%.0f ac (%.0f ac riparian)", len(upland), len(stands), len(layer),
+             layer["acres"].sum(), stands["acres"].sum())
+    if abs(layer["acres"].sum() - units["acres"].sum()) > 1.0:
+        raise RuntimeError(
+            f"the carve did not conserve area: {layer['acres'].sum():.0f} ac against "
+            f"{units['acres'].sum():.0f} ac before it")
+    return layer
 
 
 # --------------------------------------------------------------------------------------
@@ -432,27 +457,8 @@ def summarize_smz(units: pd.DataFrame, pieces: pd.DataFrame, streams) -> dict[st
                  .rename(columns={"buffer_class": "buffer_class"}))
     by_class = by_class.merge(stream_km, on="buffer_class", how="outer").fillna(0.0)
 
-    unit_dist = pd.DataFrame({
-        "smz_pct_band": ["0 (no SMZ pixel)", "0-5", "5-10", "10-25", "25-50", ">=50 (riparian)"],
-        "units": [
-            int((units["SMZ_Pct"] == 0).sum()),
-            int(((units["SMZ_Pct"] > 0) & (units["SMZ_Pct"] < 5)).sum()),
-            int(((units["SMZ_Pct"] >= 5) & (units["SMZ_Pct"] < 10)).sum()),
-            int(((units["SMZ_Pct"] >= 10) & (units["SMZ_Pct"] < 25)).sum()),
-            int(((units["SMZ_Pct"] >= 25) & (units["SMZ_Pct"] < 50)).sum()),
-            int((units["SMZ_Pct"] >= 50).sum()),
-        ],
-    })
-    unit_dist["acres"] = [
-        units.loc[units["SMZ_Pct"] == 0, "acres"].sum(),
-        units.loc[(units["SMZ_Pct"] > 0) & (units["SMZ_Pct"] < 5), "acres"].sum(),
-        units.loc[(units["SMZ_Pct"] >= 5) & (units["SMZ_Pct"] < 10), "acres"].sum(),
-        units.loc[(units["SMZ_Pct"] >= 10) & (units["SMZ_Pct"] < 25), "acres"].sum(),
-        units.loc[(units["SMZ_Pct"] >= 25) & (units["SMZ_Pct"] < 50), "acres"].sum(),
-        units.loc[units["SMZ_Pct"] >= 50, "acres"].sum(),
-    ]
     return {"by_county": by_county, "by_owner": by_owner, "by_forest_branch": by_branch,
-            "by_buffer_class": by_class, "unit_smz_distribution": unit_dist}
+            "by_buffer_class": by_class}
 
 
 def library_delta(libs: dict[str, pd.DataFrame], cfg: dict) -> pd.DataFrame:
@@ -496,10 +502,9 @@ def main() -> None:
 
     libs = {
         "no_riparian": enumerate_library(units.assign(SMZ_Pct=0.0), False, "no_riparian"),
-        "unit_mean": enumerate_library(units, True, "unit_mean"),
+        "riparian_stands": enumerate_library(
+            riparian_stand_layer(units, pieces), True, "riparian_stands"),
     }
-    split = smz_split_units(units, pieces)
-    libs["smz_split"] = enumerate_library(split, True, "smz_split")
 
     # The map layers were written by build_smz_layer(); re-read for the summaries.
     import geopandas as gpd
@@ -517,9 +522,9 @@ def main() -> None:
         df.to_csv(OUT_DIR / f"smz_{name}.csv", index=False)
     delta.to_csv(OUT_DIR / "library_riparian_delta.csv", index=False)
 
-    # The riparian decision space under the geometric reading, at unit-piece resolution.
-    rip = libs["smz_split"]
-    rip[rip["riparian"]].to_csv(OUT_DIR / "riparian_pieces.csv", index=False)
+    # The riparian half of the carved decision space: one row per riparian stand.
+    rip = libs["riparian_stands"]
+    rip[rip["riparian"]].to_csv(OUT_DIR / "riparian_decision_space.csv", index=False)
 
     log.info("=" * 86)
     for name, df in summaries.items():
