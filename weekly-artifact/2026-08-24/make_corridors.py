@@ -88,6 +88,12 @@ def grids() -> dict:
         out_shape=tm.shape, transform=profile["transform"], fill=0, dtype="uint8",
     )
 
+    if not OVERLAY.SMZ_LAYER_CACHE.exists():
+        # On a clean checkout this driver can run before make_riparian_overlay.py ever
+        # has — the buffer cache is only a side effect of that script's own pixel pass.
+        # Build it directly rather than requiring a particular run order.
+        log.info("SMZ buffer cache missing — building it via build_smz_layer() (first run)")
+        OVERLAY.build_smz_layer()
     buffers = gpd.read_file(OVERLAY.SMZ_LAYER_CACHE).to_crs(profile["crs"])
     smz_codes = {cls: i + 1 for i, cls in enumerate(OVERLAY.RIPARIAN_BUFFER_PRIORITY)}
     smz_grid = rasterize(

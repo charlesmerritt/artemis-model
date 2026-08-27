@@ -41,7 +41,7 @@ had never been measured is what the carve does to the *scheduling* landscape.
 | `smz_by_unit.csv` | The measured SMZ acreage of each pre-carve scheduling unit — the raw material for the carve. |
 | `smz_by_county.csv` · `smz_by_owner.csv` · `smz_by_forest_branch.csv` · `smz_by_buffer_class.csv` | Riparian acres and share, cut four ways. |
 | `library_riparian_delta.csv` | The decision space before and after the carve. |
-| `make_riparian_overlay.py` · `make_corridors.py` | The drivers. Corridors first, then the overlay reads `riparian_stands.csv`. |
+| `make_riparian_overlay.py` · `make_corridors.py` | The drivers. The overlay reads `riparian_stands.csv`; each script bootstraps whatever cache the other one owns if it's missing, so either can run first on a clean checkout. |
 | `make_map.py` · `make_mechanic.py` · `make_figure.py` | The three renders. `make_figure.py` needs only the committed CSVs. |
 
 **Why this artifact.** It is the oldest standing caveat in the weekly series and the one
@@ -218,9 +218,12 @@ rclone copy r2:artemis-r2/data/county_p010g.shp_nt00934/ data/interim/counties/ 
 rclone copy r2:artemis-r2/data/Artemis_project_fvs_copy_no_management/fvs_trajectory.csv \
   data/interim/no_management_fl5co_fvs_output/
 
-# the run — corridors first: the overlay driver reads riparian_stands.csv
-uv run python weekly-artifact/2026-08-24/make_corridors.py          # the riparian stand layer
+# the run — either order works, each driver bootstraps what the other needs on a clean
+# checkout (make_corridors builds the buffer cache if missing; make_riparian_overlay runs
+# make_corridors if riparian_stands.csv is missing). Overlay-first is the cheaper order:
+# it avoids rebuilding the buffer layer a second time (see the Caveats note below).
 uv run python weekly-artifact/2026-08-24/make_riparian_overlay.py   # the carved decision space
+uv run python weekly-artifact/2026-08-24/make_corridors.py          # the riparian stand layer (already built if it ran above)
 uv run python weekly-artifact/2026-08-24/make_mechanic.py           # riparian_stand_mechanic.png
 uv run python weekly-artifact/2026-08-24/make_map.py                # riparian_map.png
 uv run python weekly-artifact/2026-08-24/make_figure.py             # riparian_overlay.png
@@ -236,7 +239,10 @@ shapely, scipy (connected-component labelling), matplotlib, PyYAML. `uv sync` re
 
 ```bash
 uv sync
-# stage the R2 inputs with the rclone commands above, then run the five scripts in order.
+# stage the R2 inputs with the rclone commands above, then run the five scripts. Order
+# between make_riparian_overlay.py and make_corridors.py doesn't matter — each bootstraps
+# the other's cache if it's missing — but overlay-first avoids rebuilding the buffer layer
+# a second time (see Caches below).
 ```
 
 Caches, all gitignored: `data/interim/smz_pixels_attributed.csv` (pixel attribution),

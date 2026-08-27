@@ -406,6 +406,17 @@ def riparian_stand_layer(units: pd.DataFrame, pieces: pd.DataFrame) -> pd.DataFr
               .agg(pixel_count=("pixel_count", "sum"), acres=("acres", "sum")))
     upland["SMZ_Pct"] = 0.0
 
+    if not RIPARIAN_STANDS.exists():
+        # Symmetric to build_smz_layer() above: on a clean checkout this driver can run
+        # before make_corridors.py ever has. Build the stand layer directly rather than
+        # requiring a particular run order — by the time we're here, build_units_with_smz()
+        # has already written SMZ_LAYER_CACHE, so make_corridors.grids() finds it cached
+        # and does not rebuild it.
+        log.info("Riparian stand layer missing — running make_corridors.py (first run)")
+        corridors = load_driver("weekly-artifact/2026-08-24/make_corridors.py",
+                                 "make_corridors_20260824")
+        corridors.main()
+
     stands = pd.read_csv(RIPARIAN_STANDS, dtype={"PLT_CN": "string"})
     fortyp = (pd.read_csv(PRIOR_10.CROSSWALK, usecols=["Value", "FORTYPCD", "ForTypName"])
               .rename(columns={"Value": "majority_tm_id"}).drop_duplicates("majority_tm_id"))
