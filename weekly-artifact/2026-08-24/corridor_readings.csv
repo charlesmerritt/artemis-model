@@ -1,0 +1,7 @@
+reading,stands,acres,note
+contiguity alone (the corridor as drawn),6092,11154.65815642375,one stand per contiguous run of riparian forest
+corridors spanning >1 ownership class,452,3079.9461851448955,must be cut: a stand cannot straddle two owners
+corridors spanning >1 county,37,258.8675976250024,must be cut: TPO caps are per county
+riparian stands (corridor x county x ownership class),6602,11154.65815642375,the layer as it would enter the scheduler
+"...of those, below MIN_UNIT_AREA_HA (2 ha = 4.94 ac)",6112,6047.138184726324,slivers by construction; sliver_merge must never absorb them
+corridors drawing on >1 TreeMap plot,4143,10541.960363075914,not a cut — assign_plt_cn imputes from the area-weighted plot mix
