@@ -1,0 +1,21 @@
+{
+  "valid_cells": 160730,
+  "parent_segments": 4279,
+  "management_units": 6944,
+  "riparian_units": 1523,
+  "total_acres": 35745.523099317,
+  "acres_by_owner_class": {
+    "federal": 7936.8,
+    "local": 1425.3,
+    "private_family": 14789.9,
+    "private_industrial": 6381.0,
+    "state": 950.3,
+    "unknown": 4262.2
+  },
+  "homogeneity_scales": {
+    "STDAGE": 24.46256486286138,
+    "BALIVE": 25.132243592620693,
+    "QMD": 3.150482191873357,
+    "TPA": 284.3588001203148
+  }
+}

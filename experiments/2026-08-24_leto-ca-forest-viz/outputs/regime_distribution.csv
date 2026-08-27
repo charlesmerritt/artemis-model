@@ -1,0 +1,14 @@
+owner_class,prescription,units,acres
+federal,no_management,200,460.4
+federal,public_selection_light,480,7476.5
+local,no_management,152,1425.3
+private_family,family_light_thin,1760,13708.2
+private_family,no_management,712,1081.7
+private_industrial,hardwood_clearcut_regen,298,1356.6
+private_industrial,no_management,321,444.3
+private_industrial,pine_plantation_short_rotation,443,4580.0
+state,no_management,24,78.5
+state,public_selection_light,34,171.7
+state,public_thin_restore,64,700.1
+unknown,family_light_thin,2229,4154.6
+unknown,no_management,227,107.6
