@@ -49,6 +49,7 @@ OWNER_COLORS = {  # mockup-anchored; CVD-separation validated (see README)
     "federal": "#3d55c9",
     "state": "#c273b3",
     "local": "#0f8a6d",
+    "tribal": "#6a3d9a",
     "unknown": "#a3a3a3",
 }
 OWNER_LABELS = {
@@ -57,6 +58,7 @@ OWNER_LABELS = {
     "federal": "Federal (Osceola NF)",
     "state": "State (Big Shoals SF)",
     "local": "Local government",
+    "tribal": "Tribal forest",
     "unknown": "Unknown forest",
 }
 HARVEST_COLORS = {

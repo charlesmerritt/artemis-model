@@ -136,7 +136,7 @@ def clip_rasters(bounds_4269, paths) -> None:
         with rasterio.open(paths.treemap_tif, "w", **profile) as dst:
             dst.write(tm, 1)
     print(f"TreeMap clip {tm.shape} ({tm.size:,} cells), "
-          f"{int((tm != src.nodata).sum()):,} forested")
+          f"{int((tm != profile['nodata']).sum()):,} forested")
 
     own = np.full(tm.shape, OWNERSHIP_NODATA, dtype=np.uint8)
     with rasterio.open("/vsis3/artemis-r2/data/RDS-2025-0045/Data/US_forest_ownership.tif") as osrc:
