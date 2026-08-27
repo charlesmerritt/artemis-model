@@ -30,6 +30,18 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import FIA_DB, TREEMAP_NODATA, TREEMAP_VAT_DBF, region_paths
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from pipeline.ids import as_id_series  # noqa: E402
+
+# PLT_CN is an FIA control number (an identifier, not a numeric attribute), so it is kept as
+# exact text even though the DBF stores it as an "N" field. Coercing it through
+# pd.to_numeric like the other numeric fields is the exact defect notes/identifier-precision.md
+# documents: pd.to_numeric(..., errors="coerce") silently upcasts the *whole* column to
+# float64 the moment any single row's PLT_CN is blank or malformed (routine for a nationwide
+# VAT's non-forest/water sentinel rows), and float64 loses digits above 2**53 — a 16+ digit
+# control number is truncated before this script ever sees a string.
+_TEXT_FIELDS = {"PLT_CN"}
+
 
 def read_vat(path: Path) -> pd.DataFrame:
     """Read the TreeMap VAT .dbf (numeric + character fields, dBase III layout)."""
@@ -51,7 +63,10 @@ def read_vat(path: Path) -> pd.DataFrame:
     for name, ftype, flen in fields:
         col = arr[:, pos:pos + flen].view(f"S{flen}").ravel()
         text = pd.Series(col).str.decode("ascii").str.strip()
-        out[name] = pd.to_numeric(text, errors="coerce") if ftype == "N" else text
+        if ftype == "N" and name not in _TEXT_FIELDS:
+            out[name] = pd.to_numeric(text, errors="coerce")
+        else:
+            out[name] = text
         pos += flen
     return pd.DataFrame(out)
 
@@ -73,7 +88,7 @@ def main() -> None:
 
     aoi_values = np.unique(tm[valid])
     vat_aoi = vat[vat["Value"].isin(aoi_values)].copy()
-    vat_aoi["PLT_CN"] = vat_aoi["PLT_CN"].astype("int64").astype(str)
+    vat_aoi["PLT_CN"] = as_id_series(vat_aoi["PLT_CN"], column="PLT_CN")
 
     # STDAGE per PLT_CN from FIA COND, dominant condition per LETO
     # (largest CONDPROP_UNADJ, live forest condition).
