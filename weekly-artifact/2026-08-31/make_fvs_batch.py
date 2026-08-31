@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import json
 import logging
 import os
 import shutil
@@ -55,6 +56,7 @@ import subprocess
 import sys
 import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -136,6 +138,7 @@ DELTA = REPO / "weekly-artifact/2026-08-24/library_riparian_delta.csv"
 
 FIA_DB = STAGE / "FIA_5county_consolidated.db"
 FVS_DATA_DB = WORK / "FVS_Data.db"
+MANIFEST = WORK / "batch_manifest.json"
 FVS_BIN = Path(os.environ.get("FVSSN_BIN", REPO / "fvs/bin/FVSsn"))
 
 INV_YEAR = DEFAULT_INV_YEAR          # 2022
@@ -508,6 +511,13 @@ def main() -> None:
     if not FVS_BIN.exists():
         raise SystemExit(f"FVSsn not found at {FVS_BIN}; set FVSSN_BIN or build it (see README)")
 
+    # Invalidate the previous run's marker first. Everything downstream reads the library
+    # tables under WORK, and a rebuild that fails partway must not leave a manifest
+    # vouching for a *predecessor's* files — the annealer would then happily plan over a
+    # library nobody meant to publish.
+    WORK.mkdir(parents=True, exist_ok=True)
+    MANIFEST.unlink(missing_ok=True)
+
     stands, carved_lib = carved_landscape()
 
     plots = set(carved_lib["PLT_CN"].dropna().astype(str))
@@ -585,6 +595,21 @@ def main() -> None:
     harvest.to_csv(OUT_DIR / "trajectory_harvest_by_cycle.csv", index=False)
     log.info("Artifact tables: trajectory_index.csv (%d), "
              "trajectory_harvest_by_cycle.csv (%d)", len(idx), len(harvest))
+
+    # The success marker, written last: validation has passed and every output is on disk.
+    # `make_annealed_plan.py` refuses to run without it and checks the row counts match,
+    # so a failed or half-finished rebuild cannot be planned over.
+    MANIFEST.write_text(json.dumps({
+        "completed_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "trajectory_cycles_rows": int(len(cyc)),
+        "trajectory_index_rows": int(len(idx)),
+        "carved_stands_rows": int(len(stands)),
+        "carved_library_rows": int(len(carved_lib)),
+        "excluded_runs": int(len(excluded)),
+        "num_cycle": NUM_CYCLE,
+        "inv_year": INV_YEAR,
+    }, indent=2))
+    log.info("Wrote %s — the batch is complete and safe to plan over", MANIFEST.name)
 
 
 if __name__ == "__main__":

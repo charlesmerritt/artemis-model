@@ -371,3 +371,35 @@ def test_harvest_year_merge_handles_a_clearcut_to_zero():
     assert row.RMCuFt == pytest.approx(143.65)     # the whole stand was removed
     assert row.BA == pytest.approx(0.0)            # and nothing is left standing
     assert row.MCuFt == pytest.approx(0.0)
+
+
+@pytest.mark.skipif(not BATCH_DRIVER.exists(), reason="2026-08-31 batch driver not present")
+def test_batch_manifest_gate_refuses_an_unvouched_library(tmp_path, monkeypatch):
+    """The annealer must not plan over a library no completed batch vouches for."""
+    monkeypatch.setattr(m, "WORK", tmp_path)
+    monkeypatch.setattr(m, "MANIFEST", tmp_path / "batch_manifest.json")
+    with pytest.raises(SystemExit) as exc:
+        m.require_fresh_batch()
+    assert "has not completed successfully" in str(exc.value)
+
+    (tmp_path / "batch_manifest.json").write_text(
+        '{"completed_utc": "2026-08-31T00:00:00+00:00", "excluded_runs": 1,'
+        ' "carved_stands_rows": 2, "carved_library_rows": 3,'
+        ' "trajectory_cycles_rows": 4}')
+    manifest = m.require_fresh_batch()
+    assert manifest["excluded_runs"] == 1
+
+
+@pytest.mark.skipif(not BATCH_DRIVER.exists(), reason="2026-08-31 batch driver not present")
+def test_batch_manifest_gate_rejects_row_counts_that_have_drifted():
+    """A library edited or half-rewritten since the batch completed must not be planned over."""
+    manifest = {"carved_stands_rows": 2, "carved_library_rows": 3,
+                "trajectory_cycles_rows": 4, "completed_utc": "x", "excluded_runs": 0}
+    stands = pd.DataFrame({"a": [1, 2]})
+    library = pd.DataFrame({"a": [1, 2, 3]})
+    cycles = pd.DataFrame({"a": [1, 2, 3, 4]})
+    m.check_batch_matches(manifest, stands, library, cycles)      # matches: no raise
+
+    with pytest.raises(SystemExit) as exc:
+        m.check_batch_matches(manifest, stands.head(1), library, cycles)
+    assert "carved_stands_rows" in str(exc.value)

@@ -68,6 +68,8 @@ OUT_DIR = Path(__file__).resolve().parent
 DATA = REPO / "data"
 WORK = DATA / "interim/fvs_batch"
 
+MANIFEST = WORK / "batch_manifest.json"
+
 PROJECTION = REPO / "config/projection.yaml"
 TPO_TARGETS = REPO / "config/tpo_targets.yaml"
 
@@ -552,15 +554,35 @@ def greedy_seed(land: Landscape, stands: pd.DataFrame, caps: dict) -> list[int]:
         )
     cand = pd.DataFrame(rows)
     annual = {dim: {k: v / CYCLE_YEARS for k, v in caps[dim].items()} for dim in caps}
-    result = hs.schedule_harvests(cand, annual, dims=(hs.TOTAL, hs.COUNTY, hs.OWNER))
-    if "harvested" not in result:
-        raise AssertionError("harvest_scheduler returned no `harvested` column")
-    per_stand = result.groupby("unit_id")["harvested"].agg(["sum", "count"])
-    fully = set(per_stand.index[per_stand["sum"] == per_stand["count"]])
-    partial = int(((per_stand["sum"] > 0) & (per_stand["sum"] < per_stand["count"])).sum())
-    log.info("Greedy allocator: %d/%d candidate stands had every harvest event admitted, "
-             "%d were partially blocked and fall back to no_management",
-             len(fully), len(per_stand), partial)
+
+    # Iterate the allocator to a fixed point. A trajectory is all-or-nothing, so a stand
+    # whose events were only partly admitted cannot take its prescription — but on the
+    # allocator's first pass those admitted events *did* consume county, owner and total
+    # budget, blocking other stands with volume the baseline then never harvests. Dropping
+    # the partly-admitted stands and re-allocating releases that capacity to stands that
+    # can actually use it. The candidate set shrinks monotonically, so this terminates;
+    # oldest-first priority and every active constraint dimension are unchanged.
+    dropped_total, passes = 0, 0
+    while True:
+        passes += 1
+        result = hs.schedule_harvests(cand, annual, dims=(hs.TOTAL, hs.COUNTY, hs.OWNER))
+        if "harvested" not in result:
+            raise AssertionError("harvest_scheduler returned no `harvested` column")
+        per_stand = result.groupby("unit_id")["harvested"].agg(["sum", "count"])
+        partial_ids = set(per_stand.index[(per_stand["sum"] > 0)
+                                          & (per_stand["sum"] < per_stand["count"])])
+        blocked_ids = set(per_stand.index[per_stand["sum"] == 0])
+        drop = partial_ids | blocked_ids
+        if not drop:
+            break
+        dropped_total += len(drop)
+        cand = cand[~cand["unit_id"].isin(drop)]
+        if cand.empty:
+            break
+    fully = set(per_stand.index[per_stand["sum"] == per_stand["count"]]) if len(per_stand) else set()
+    log.info("Greedy allocator: converged in %d pass(es); %d stands take their default "
+             "trajectory, %d were dropped as partly or wholly blocked (their budget "
+             "released to stands that could use it)", passes, len(fully), dropped_total)
 
     choice = []
     for i, sid in enumerate(land.stand_ids):
@@ -743,6 +765,41 @@ def anneal(land: Landscape, obj: Objective, cfg: dict, seed: int,
 # Driver
 # --------------------------------------------------------------------------------------
 
+def require_fresh_batch() -> dict:
+    """Refuse to plan over a library that no completed batch vouches for.
+
+    `make_fvs_batch.py` deletes this marker before it starts and writes it last, once
+    validation has passed and every table is on disk. Without the check, a rebuild that
+    aborted — on the fail-closed exclusion gate, say — would leave the *previous* run's
+    CSVs in place and the annealer would silently plan over them.
+    """
+    if not MANIFEST.exists():
+        raise SystemExit(
+            f"no {MANIFEST.name} in {WORK}: the FVS batch has not completed successfully. "
+            f"Run make_fvs_batch.py first; if it aborted, the library on disk belongs to an "
+            f"earlier run and must not be planned over."
+        )
+    return json.loads(MANIFEST.read_text())
+
+
+def check_batch_matches(manifest: dict, stands: pd.DataFrame, library: pd.DataFrame,
+                        cycles: pd.DataFrame) -> None:
+    """The tables on disk must be the ones the manifest describes."""
+    actual = {
+        "carved_stands_rows": len(stands),
+        "carved_library_rows": len(library),
+        "trajectory_cycles_rows": len(cycles),
+    }
+    for key, got in actual.items():
+        want = manifest.get(key)
+        if want is not None and got != want:
+            raise SystemExit(
+                f"{key}: {got} rows on disk but the batch manifest records {want}. The "
+                f"library has changed since the batch completed; re-run make_fvs_batch.py."
+            )
+    log.info("Batch manifest verified (completed %s, %d excluded runs)",
+             manifest.get("completed_utc", "?"), manifest.get("excluded_runs", 0))
+
 def plan_frame(land: Landscape, choice: list[int], stands: pd.DataFrame) -> pd.DataFrame:
     """The selected plan: stand_id -> trajectory, with its per-cycle volumes.
 
@@ -798,9 +855,12 @@ def main() -> None:
     log.info("Target period %s; per-cycle total target %.4g cuft",
              cfg["target_period"], caps[hs.TOTAL][""])
 
+    manifest = require_fresh_batch()
+
     stands = pd.read_csv(WORK / "carved_stands.csv", dtype={"PLT_CN": str, "unit_id": str})
     library = pd.read_csv(WORK / "carved_library.csv", dtype={"PLT_CN": str, "unit_id": str})
     cycles = pd.read_csv(WORK / "trajectory_cycles.csv", dtype={"PLT_CN": str})
+    check_batch_matches(manifest, stands, library, cycles)
 
     land = Landscape(stands, library, cycles, cfg["n_cycles"])
     obj = Objective(land, caps, cfg)
