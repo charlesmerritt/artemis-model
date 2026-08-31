@@ -51,20 +51,21 @@ repeat of any of them: those built the decision space, this one *decides*.
 | | Objective (lower is better) | |
 |---|---:|---|
 | Random selection (mean of 5 draws) | 379.75 | |
-| **Greedy baseline** (`harvest_scheduler.py`) | **363.70** | §6.3 requires it beside the plan |
-| **Annealed plan** (best of 5 seeds) | **190.40** | seed 45 |
-| Relaxation bound | 153.74 | gap 36.66 |
+| **Greedy baseline** (`harvest_scheduler.py`) | **363.68** | §6.3 requires it beside the plan |
+| **Annealed plan** (best of 5 seeds) | **190.41** | seed 45 |
+| Relaxation bound | 153.74 | gap 36.67 |
 
-Seed spread across all five seeds is **0.150** on an objective of 190.40 — a 0.08% range,
+Seed spread across all five seeds is **0.088** on an objective of 190.41 — a 0.05% range,
 so the search has converged rather than got lucky once. `T₀` calibrated per seed to
-0.081–0.138, 131–141 temperature levels, ~41% of proposals accepted.
+0.081–0.139, 131–142 temperature levels, ~41% of proposals accepted.
 
 **The greedy allocator is a real baseline here, and the annealer beats it by 48%.** The
-TPO caps genuinely bind: of 4,309 stands whose owner-class default schedules a harvest,
-the allocator admits every event for 3,827 and partially blocks 42, refusing units in
-most cycles (1,249 of 1,270 candidates in the first, 765 of 1,211 in the fourth). Greedy
-lands at 363.70, a little ahead of random selection's 379.75 — it is a sensible plan, not
-a strawman — and the annealed plan is still roughly half its objective. That gap is the
+TPO caps genuinely bind, and the allocator is iterated to a fixed point so that a stand it
+can only *partly* admit does not leave its consumed budget stranded: 31 passes, after
+which 3,840 of 4,309 candidate stands take their whole default trajectory, 386 are dropped
+as partly admitted, and 83 are left wholly blocked by the caps. Greedy lands at 363.68, a
+little ahead of random selection's 379.75 — it is a sensible plan, not a strawman — and the
+annealed plan is still roughly half its objective. That gap is the
 measured answer to "what is the optimizer for": choosing *which* trajectory each stand
 runs, rather than committing every stand to its default and then rationing by cycle, is
 worth about as much as the entire greedy allocation step.
@@ -109,16 +110,16 @@ single highest-value next increment, and it costs FVS runs, not scheduler work.
 |---|---|
 | Stands | **11,831** (5,228 upland with a real choice, 6,602 riparian with one) |
 | Acres | 925,098 total; 913,943 with at least one cutting option |
-| Removed volume, 50 years | **1.88 billion ft³** merchantable |
-| Best cycle against target | 2052, −17% |
+| Removed volume, 50 years | **1.89 billion ft³** merchantable |
+| Best cycle against target | 2052, −16% |
 | Worst | 2072, −100% (nothing in the library cuts then) |
 
-Chosen mix, by acreage: `family_uneven_aged_selection` 332k ac · `pine_plantation_long_rotation`
-224k ac · `no_management` 112k ac (101k upland + 11k riparian) · `hardwood_clearcut_regen`
-67k ac · `public_thin_restore` 65k ac · `family_light_thin` 47k ac ·
-`public_selection_light` 44k ac · `pine_plantation_short_rotation` 33k ac.
+Chosen mix, by acreage: `family_uneven_aged_selection` 335k ac · `pine_plantation_long_rotation`
+223k ac · `no_management` 127k ac (116k upland + 11k riparian) · `hardwood_clearcut_regen`
+68k ac · `public_thin_restore` 66k ac · `public_selection_light` 46k ac ·
+`pine_plantation_short_rotation` 34k ac · `family_light_thin` 27k ac.
 
-Note the 101k upland acres the scheduler leaves unmanaged **by choice** — `no_management` is
+Note the 116k upland acres the scheduler leaves unmanaged **by choice** — `no_management` is
 in every non-riparian library precisely so that a binding volume target can be satisfied by
 not cutting (§3 rule 1), and the search uses it.
 
@@ -211,7 +212,7 @@ made to pass. Its effect on the plan is one upland stand losing one of its optio
 (`stands_with_a_choice` 5,229 → 5,228), reported in `solution_quality.json` as
 `options_dropped_no_trajectory`.
 
-### Five corrections made to the run rather than worked around
+### Six corrections made to the run rather than worked around
 
 1. **FVS aborted on 472 of 3,782 runs (12.5%) with a floating-point exception** in
    `r9clark.f:1286` — `R9ht`, computing `(1.0 - 17.3/totht)**p`. That is the exact condition
@@ -256,11 +257,11 @@ made to pass. Its effect on the plan is one upland stand losing one of its optio
    Both are fixed: the carved-stand table now carries `OWN_CODE` and `FORTYPCD`, the
    swallow is gone (a stand that cannot resolve a default now stops the run), and the
    baseline is genuinely `schedule_harvests`'s output. **The published numbers changed as a
-   result** — greedy is 363.70, not the 1371.05 first reported, and it *beats* random
-   selection rather than losing to it, so the earlier "greedy is worse than random" reading
-   was an artifact of this bug and has been removed. The annealed plan is essentially
-   unmoved (190.40 against 190.34), and no finding in this artifact depended on the wrong
-   figure.
+   result** — greedy came out at 363.70 rather than the 1371.05 first reported (363.68
+   after the fixed-point fix in correction 6 below), and it *beats* random selection rather
+   than losing to it, so the earlier "greedy is worse than random" reading was an artifact
+   of this bug and has been removed. The annealed plan barely moved, and no finding in this
+   artifact depended on the wrong figure.
 
 5. **A harvest cycle's state fields were the state *before* the cut.** FVS_Summary2 emits
    two rows for a cut year: `RmvCode = 1` carries the removal alongside the pre-cut state
@@ -275,10 +276,21 @@ made to pass. Its effect on the plan is one upland stand losing one of its optio
    stays in gitignored `data/interim/`; the two published library tables carry removals and
    endpoint state, and the endpoint is always a non-harvest year because nothing in this
    library cuts in cycle 10. Every committed CSV is byte-identical after the fix, and the
-   plan re-runs to the same objective (190.396043, seed 45). It is fixed because it would
+   plan re-runs to the same objective it had before that fix. It is fixed because it would
    have mattered the moment a trajectory harvested in the final cycle — the
    `standing_volume` objective reads exactly that field — or the moment anyone read the
    state table.
+
+6. **The greedy baseline stranded cycle budget.** A trajectory is all-or-nothing, so a
+   stand the allocator could only *partly* admit cannot take its prescription — but its
+   admitted events had already consumed county, owner and total budget, blocking other
+   stands with volume the baseline then never harvests. `schedule_harvests` is now iterated
+   to a fixed point, dropping the partly-admitted stands and re-allocating so that budget
+   is released. Wholly blocked stands are deliberately *kept* as candidates: they consumed
+   nothing, and dropping them would deny them the very capacity the loop frees. It settles
+   after 31 passes, admits 13 more stands than the single-pass mapping did, and moves the
+   baseline from 363.695 to **363.676** — and, because the annealer seeds from it, the plan
+   from 190.396 to **190.414**.
 
 Findings 1 and 3 and the fail-closed batch above were raised by Devin Review on the PR;
 finding 4 surfaced while verifying its critique of the greedy mapping. Each was reproduced

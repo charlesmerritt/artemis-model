@@ -1,6 +1,6 @@
 {
-  "objective_best": 190.3960428579375,
-  "objective_greedy_baseline": 363.6951034956314,
+  "objective_best": 190.41409871907317,
+  "objective_greedy_baseline": 363.67632968564254,
   "objective_random_baseline_mean": 379.75443260341416,
   "objective_random_baseline_all": [
     382.86510868837325,
@@ -11,13 +11,13 @@
   ],
   "relaxation_bound": 153.73921041018934,
   "relaxation_bound_strategy": "per-cycle per-dimension interval relaxation",
-  "gap_to_bound_absolute": 36.656832447748144,
+  "gap_to_bound_absolute": 36.67488830888382,
   "beats_greedy": true,
   "beats_random": true,
   "seed_spread": {
-    "min": 190.3960428579389,
-    "max": 190.54640256903502,
-    "range": 0.15035971109611523
+    "min": 190.41409871907086,
+    "max": 190.50171978020919,
+    "range": 0.08762106113832147
   },
   "target_period": "2013_2024",
   "random_seed": 42,

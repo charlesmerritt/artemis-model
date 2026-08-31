@@ -569,20 +569,25 @@ def greedy_seed(land: Landscape, stands: pd.DataFrame, caps: dict) -> list[int]:
         if "harvested" not in result:
             raise AssertionError("harvest_scheduler returned no `harvested` column")
         per_stand = result.groupby("unit_id")["harvested"].agg(["sum", "count"])
+        # Only *partly* admitted stands are dropped. They are the ones that consumed
+        # budget for a trajectory they cannot take, so removing them is what releases
+        # capacity. A wholly blocked stand consumed nothing, and dropping it would deny
+        # it the capacity this very loop frees up — it stays a candidate and may be
+        # admitted on a later pass. Each pass removes at least one partial stand, so the
+        # candidate set shrinks monotonically and this terminates.
         partial_ids = set(per_stand.index[(per_stand["sum"] > 0)
                                           & (per_stand["sum"] < per_stand["count"])])
-        blocked_ids = set(per_stand.index[per_stand["sum"] == 0])
-        drop = partial_ids | blocked_ids
-        if not drop:
+        if not partial_ids:
             break
-        dropped_total += len(drop)
-        cand = cand[~cand["unit_id"].isin(drop)]
+        dropped_total += len(partial_ids)
+        cand = cand[~cand["unit_id"].isin(partial_ids)]
         if cand.empty:
             break
     fully = set(per_stand.index[per_stand["sum"] == per_stand["count"]]) if len(per_stand) else set()
+    blocked = len(per_stand) - len(fully) if len(per_stand) else 0
     log.info("Greedy allocator: converged in %d pass(es); %d stands take their default "
-             "trajectory, %d were dropped as partly or wholly blocked (their budget "
-             "released to stands that could use it)", passes, len(fully), dropped_total)
+             "trajectory, %d dropped as partly admitted (capacity released), %d left "
+             "wholly blocked by the caps", passes, len(fully), dropped_total, blocked)
 
     choice = []
     for i, sid in enumerate(land.stand_ids):
