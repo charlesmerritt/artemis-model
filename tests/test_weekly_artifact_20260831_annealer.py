@@ -403,3 +403,15 @@ def test_batch_manifest_gate_rejects_row_counts_that_have_drifted():
     with pytest.raises(SystemExit) as exc:
         m.check_batch_matches(manifest, stands.head(1), library, cycles)
     assert "carved_stands_rows" in str(exc.value)
+
+
+@pytest.mark.skipif(not BATCH_DRIVER.exists(), reason="2026-08-31 batch driver not present")
+def test_plt_cn_normalisation_is_exact_not_astype_str():
+    """IDs crossing the FVS_Out.db / worker boundary must keep every digit (AGENTS.md)."""
+    from pipeline.ids import as_id_series
+    # A 15-digit PLT_CN that has been through a float loses digits under `str(int(...))`
+    # but survives `as_id_series`; both must agree for values that are still exact.
+    exact = pd.Series([134677819010854, 473803917489998], dtype="int64")
+    assert list(as_id_series(exact, column="PLT_CN")) == ["134677819010854",
+                                                          "473803917489998"]
+    assert list(as_id_series(exact, column="PLT_CN")) == list(exact.astype(str))

@@ -473,7 +473,9 @@ def build_library_tables(cycles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
     Volumes are per-acre; the scheduler multiplies by stand acres.
     """
     df = cycles.copy()
-    df["PLT_CN"] = df["PLT_CN"].astype(str)
+    # AGENTS.md again: exact-string IDs, never `.astype(str)`. These come back through
+    # FVS_Out.db and a worker boundary, so the dtype is not guaranteed here either.
+    df["PLT_CN"] = as_id_series(df["PLT_CN"], column="PLT_CN")
     df = merge_harvest_year_rows(df)
     df = df[df["Year"] >= INV_YEAR].copy()
     df["cycle"] = ((df["Year"] - INV_YEAR) // CYCLE_YEARS).astype(int)

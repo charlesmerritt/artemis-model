@@ -179,13 +179,13 @@ Every number above comes from committed repository code or from FVS output.
   full 2022→2072 grid — 3,781 × 11 = 41,591 rows exactly, asserted, so no trajectory can
   enter the objective truncated.
 - **The annealer's numerics carry their own tests.** `tests/test_weekly_artifact_20260831_annealer.py`
-  builds a three-stand synthetic landscape (18 tests) and checks the pieces the real run can only
+  builds a three-stand synthetic landscape (19 tests) and checks the pieces the real run can only
   assert end-to-end: `Objective.delta_and_apply` against a from-scratch `reset()` +
   `total()` recompute for every reachable move and every dimension subset, the swap move's
   apply→reject→reverse path being exactly reversible, riparian structural enforcement, an
   option with no trajectory being dropped rather than zero-filled, the relaxation bound
   actually lower-bounding the enumerated decision space, and the reporting contracts.
-- `uv run pytest tests/ -q` → **912 passed, 10 skipped**. `uv run ruff check .` clean.
+- `uv run pytest tests/ -q` → **913 passed, 10 skipped**. `uv run ruff check .` clean.
 
 ### The batch fails closed
 

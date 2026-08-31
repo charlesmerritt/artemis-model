@@ -851,6 +851,15 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     cfg = load_config()
+    # Resolved and validated before any expensive work: an invalid restart count should
+    # not surface only after the FVS library is loaded and both baselines are computed.
+    restarts = args.restarts if args.restarts is not None else int(cfg["anneal"]["restarts"])
+    if restarts < 1:
+        raise SystemExit(
+            f"--restarts must be at least 1 (got {restarts}); §6 requires reporting the "
+            f"best of R restarts with every seed logged, and there is no plan to report "
+            f"from zero searches."
+        )
     caps = tpo_caps(cfg["target_period"])
     log.info("Target period %s; per-cycle total target %.4g cuft",
              cfg["target_period"], caps[hs.TOTAL][""])
@@ -888,7 +897,6 @@ def main() -> None:
     log.info("Random baseline objective: mean %.6f over 5 draws", sum(random_objs) / 5)
 
     # --- the search -------------------------------------------------------------------
-    restarts = args.restarts if args.restarts is not None else int(cfg["anneal"]["restarts"])
     runs = []
     for r in range(restarts):
         seed = cfg["seed"] + r
