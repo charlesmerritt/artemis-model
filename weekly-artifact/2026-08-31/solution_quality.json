@@ -1,0 +1,59 @@
+{
+  "objective_best": 190.34158672349108,
+  "objective_greedy_baseline": 1371.053281080947,
+  "objective_random_baseline_mean": 379.7544324748618,
+  "objective_random_baseline_all": [
+    382.86510868837325,
+    419.0512059086841,
+    303.1415535628198,
+    368.4653458152102,
+    425.2489483992215
+  ],
+  "relaxation_bound": 153.73921041018934,
+  "relaxation_bound_strategy": "per-cycle per-dimension interval relaxation",
+  "gap_to_bound_absolute": 36.60237631330173,
+  "beats_greedy": true,
+  "beats_random": true,
+  "seed_spread": {
+    "min": 190.34158672346246,
+    "max": 190.45495792154298,
+    "range": 0.11337119808052876
+  },
+  "target_period": "2013_2024",
+  "random_seed": 42,
+  "cooling": {
+    "cooling_factor": 0.95,
+    "iterations_per_temperature": 10,
+    "min_temperature": 0.0001,
+    "stall_temperature_levels": 20,
+    "initial_accept_rate": 0.8
+  },
+  "objective_weights": {
+    "harvest_volume": 6.0,
+    "standing_volume": 1.0
+  },
+  "move_weights_effective": {
+    "single_stand": 0.7,
+    "period_swap": 0.1,
+    "block": "unavailable"
+  },
+  "spatial_penalties": {
+    "available": false,
+    "reason": "no polygon adjacency: stands are pixel classes (TreeMap plot x county x ownership), not contiguous units",
+    "declared": {
+      "adjacency_greenup": 1.0,
+      "max_opening_size": 1.0,
+      "treatment_budget": 0.0
+    }
+  },
+  "riparian_structural": {
+    "riparian_stands": 6602,
+    "with_a_cutting_option": 0,
+    "structurally_enforced": true
+  },
+  "stands": 11831,
+  "stands_with_a_choice": 5229,
+  "stands_dropped": 0,
+  "targets_unreachable_from_library": 47,
+  "targets_total": 80
+}

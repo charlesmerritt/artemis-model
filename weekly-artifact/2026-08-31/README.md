@@ -1,0 +1,287 @@
+# Weekly artifact — 2026-08-31
+
+## Artifact
+
+**The first simulated-annealing harvest plan — the thing ARTEMIS exists to produce.**
+11,831 stands, one trajectory each, selected by the scheduler `PLAN.md` and
+`notes/trajectory-library-and-annealing.md` have specified since 2026-08-06 and that
+nothing in `pipeline/` had implemented.
+
+The design note's own status line has read the same sentence for three weeks:
+
+> Nothing in `pipeline/` implements the annealer yet.
+
+Meanwhile `config/projection.yaml` declared the whole thing as executable policy —
+`selection_method: "simulated_annealing"`, a cooling schedule, a move mixture, four
+objective forms with weights, three priced spatial penalties — and
+`harvest_scheduler.py` carried a docstring describing itself as "the annealer's initial
+solution" for a scheduler that did not exist. This artifact closes that gap and runs it.
+
+Getting there needed one thing first. The 2026-08-17 artifact enumerated the decision
+space but could not price it: §5 of the design note names `harvest_cuft[cycle]` as "the
+constraint currency", and no FVS run had ever been made, so the library had a schema and a
+row count but not a single volume. **So this artifact also compiles FVS and runs the
+batch** — 3,782 trajectories, zero failures — and the library has volumes for the first
+time.
+
+| File | What it is |
+|---|---|
+| `annealed_plan.png` | The four-panel figure: the plan against its target, attainability by county × cycle, the chosen prescription mix, and solution quality. |
+| `annealed_plan.csv` | **The plan.** One row per stand: `stand_id → trajectory_id`, its prescription, county, owner class, acres, and its removed volume in each of the ten cycles. 11,831 rows. |
+| `trajectory_harvest_by_cycle.csv` | **`harvest_cuft[cycle]` — the column that did not exist last week.** Removed merchantable ft³/acre per `(plot, prescription, cycle)`. 41,598 rows. |
+| `trajectory_index.csv` | §5's narrow `trajectory_index`: one row per FVS run, with total removed volume, harvest-cycle count, and ending state. 3,782 rows. |
+| `solution_quality.json` | The §6 quality report — baselines, bound, seed spread, and what was structurally unavailable. |
+| `constraint_violations.csv` | The full constraint-violation vector, per dimension per cycle (§6.1). 80 rows. |
+| `attainable_envelope.csv` | What each dimension × cycle *could* reach from this library, at any selection. The table that separates a search failure from a decision-space limit. |
+| `seed_spread.csv` | All five seeds, each with its calibrated `T₀`, level count, and accept rate (§6.4). |
+| `harvest_by_cycle.csv` · `prescription_mix.csv` · `plan_by_dimension.csv` | The plan summarised three ways. |
+| `make_fvs_batch.py` · `make_annealed_plan.py` · `make_figure.py` | The three drivers. |
+
+**Why this artifact.** It is the terminal node of the pipeline diagram in §1.1 — every
+weekly artifact since 2026-08-10 has been an input to it. `2026-08-10` produced the greedy
+schedule that seeds it and is its reported baseline; `2026-08-17` enumerated the library it
+selects from; `2026-08-24` carved the riparian landscape it selects over. It is not a
+repeat of any of them: those built the decision space, this one *decides*.
+
+## Headline results
+
+**The annealed plan beats both required baselines, and the search has converged.**
+
+| | Objective (lower is better) | |
+|---|---:|---|
+| Random selection (mean of 5 draws) | 379.75 | |
+| **Greedy baseline** (`harvest_scheduler.py`) | **1371.05** | §6.3 requires it beside the plan |
+| **Annealed plan** (best of 5 seeds) | **190.34** | seed 43 |
+| Relaxation bound | 153.74 | gap 36.60 |
+
+Seed spread across all five seeds is **0.113** on an objective of 190.34 — a 0.06% range,
+so the search has converged rather than got lucky once. `T₀` calibrated per seed to
+0.054–0.082, 123–131 temperature levels, ~40% of proposals accepted.
+
+**The greedy baseline is worse than random, and that is a real result rather than a bug.**
+On this landscape the TPO caps never bind hard enough to exclude any stand: the allocator
+admitted at least one harvest event for all 5,229 upland stands, so the greedy seed reduces
+to *every stand runs its deterministic owner-class default*. Because those defaults'
+entry years are resolved from stand age, they clump — greedy delivers −27%, −42%, −93%,
+−56%, −86%, −73%, −98%, −73%, −98%, −100% against target across the ten cycles. Random
+selection spreads stands across their eligible menus and incidentally smooths flow better
+than everyone-takes-their-default. That is precisely the "what the optimizer is for"
+argument, measured.
+
+### The finding that matters: the decision space cannot supply the targets
+
+**47 of the 80 (dimension × cycle) targets lie outside the range this library can reach at
+*any* selection.** Not "the search missed them" — unreachable, by construction.
+
+| Cycle | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Reachable county+owner targets (of 8) | 6 | 4 | 5 | 5 | **0** | 7 | **1** | 2 | 3 | **0** |
+
+The ceiling — every stand simultaneously choosing its highest-volume trajectory — swings
+from 413% of Baker's target in cycle 1 to 27% in cycle 5, and to **zero everywhere in
+cycle 10**. No prescription in the enumerated library schedules an entry in 2072 at all.
+
+The cause is timing, and the design note already names it. §4, "Timing is deliberate, not
+padding": Diaz et al. offered delayed activity starts *specifically* so the optimizer could
+choose both what and when. ARTEMIS's library currently offers **what** and almost no
+**when** — entry years are resolved deterministically from stand age, with no offset
+variants, so harvests pile into the cycles the age distribution happens to select and leave
+the others empty.
+
+The library sizes say the same thing. §4 targets **6–12 trajectories per stand**:
+
+| Trajectories per stand | 1 | 2 | 3 | 4 |
+|---|---:|---:|---:|---:|
+| Stands | 6,602 | 910 | 3,381 | 938 |
+
+The 6,602 ones are riparian and correctly have exactly one. The most any stand in the pilot
+gets is **four** — a third to a half of the design target, and none of the missing variants
+are timing offsets. **Even flow is a timing property, so a library without timing variants
+cannot deliver even flow however good the search is.** Adding the offset grid from §4 is the
+single highest-value next increment, and it costs FVS runs, not scheduler work.
+
+### The plan itself
+
+| | |
+|---|---|
+| Stands | **11,831** (5,229 upland with a real choice, 6,602 riparian with one) |
+| Acres | 925,098 total; 913,943 with at least one cutting option |
+| Removed volume, 50 years | **1.88 billion ft³** merchantable |
+| Best cycle against target | 2052, −17% |
+| Worst | 2072, −100% (nothing in the library cuts then) |
+
+Chosen mix, by acreage: `family_uneven_aged_selection` 335k ac · `pine_plantation_long_rotation`
+226k ac · `no_management` 125k ac (114k upland + 11k riparian) · `hardwood_clearcut_regen`
+68k ac · `public_thin_restore` 65k ac · `public_selection_light` 41k ac ·
+`pine_plantation_short_rotation` 35k ac · `family_light_thin` 30k ac.
+
+Note the 114k upland acres the scheduler leaves unmanaged **by choice** — `no_management` is
+in every non-riparian library precisely so that a binding volume target can be satisfied by
+not cutting (§3 rule 1), and the search uses it.
+
+### Riparian no-entry survived contact with an optimizer
+
+This is the first run in which the 2026-08-24 carve met a scheduler that could, in
+principle, have traded it away. It could not: all 6,602 riparian stands carry a library of
+exactly `{no_management}`, so there is no alternative for any objective weight to select.
+The driver asserts this rather than assuming it. That is §3 rule 2's claim — "enforced by
+the absence of an alternative rather than by a constraint the search could violate" —
+verified end to end for the first time.
+
+## What is structurally unavailable, and why it is not papered over
+
+**The two spatial penalties cannot be evaluated on this landscape, and are reported as
+unavailable rather than given a manufactured number.** `adjacency_greenup` and
+`max_opening_size` need a neighbour relation between stands. A "stand" here is still a
+pixel class (`TreeMap plot × county × ownership`) — a scattered set of pixels across a
+county, not a compact polygon — which is the caveat `2026-08-24` recorded about its own
+geometry. Two such classes are adjacent *somewhere* almost by definition, so a green-up
+penalty computed on them would not mean green-up. The `block` move goes with them, since
+blocks are adjacency components; the mixture renormalises over `single_stand` and
+`period_swap`. **This is the single largest caveat on the plan**, it is a property of the
+input rather than of the scheduler, and it clears when the Phase 2.3 unit × stand crosswalk
+lands.
+
+**The relaxation bound uses a declared strategy.** §6.2 asks for an objective-specific
+bound and forbids manufacturing a denominator when none is validated. The recipe it names
+first — remove the spatial penalties, keep the aggregate objective — is the *identity* here,
+because the spatial penalties are already absent, so it yields no bound. The reported bound
+instead uses a **per-cycle per-dimension interval relaxation**: every key and cycle is
+minimised independently and every stand may pick a different trajectory for each cycle and
+each dimension at once. That is a strict relaxation of the real problem, so 153.74 is a
+valid lower bound; the 36.60 gap is an upper bound on what the search left on the table,
+and most of it is the relaxation's own looseness rather than search error.
+
+## Not fabricated
+
+Every number above comes from committed repository code or from FVS output.
+
+- **The scheduler reads its configuration, it does not embed it.** Cooling schedule, move
+  weights, restarts, seed, objective forms, weights, and the target period all come from
+  `config/projection.yaml`; the targets from `config/tpo_targets.yaml`; the initial solution
+  from `pipeline/s3_management/harvest_scheduler.py`; the default prescriptions from
+  `regime_assignment.assign_prescription`. The driver asserts the harvest objective is still
+  `evenflow_target` on import, and takes `target_period: 2013_2024` explicitly — §6 forbids
+  inferring a period. (`2026-08-10` used `all_years`; the config selects `2013_2024` for
+  forward projection, which is the difference between the two baselines' caps.)
+- **The keyfiles are the repo's.** `pipeline.s4_fvs.regime_templates.render_keyfile` renders
+  all 3,782, the same committed renderer the 2026-08-17 artifact used. The run count matches
+  that artifact's carved figure exactly (`library_riparian_delta.csv`, `fvs_runs = 3782`).
+- **The carved landscape reproduces 2026-08-24 exactly**, asserted in the driver before
+  anything else runs: 5,240 pre-carve units and 925,097.8 acres in, 11,831 stands, 22,317
+  library rows, 6,602 riparian, 5,229 upland, 913,943.2 harvestable acres out — every one an
+  equality check against the committed `library_riparian_delta.csv`, not a tolerance.
+- **The FVS batch is real and complete**: 3,782 runs, **0 failures**, 48,560 `FVS_Summary2`
+  rows, every trajectory 2022→2072 on the 5-year cycle grid.
+- `uv run pytest tests/ -q` → **894 passed, 10 skipped**. `uv run ruff check .` clean.
+
+### Two corrections made to the run rather than worked around
+
+1. **FVS aborted on 472 of 3,782 runs (12.5%) with a floating-point exception** in
+   `r9clark.f:1286` — `R9ht`, computing `(1.0 - 17.3/totht)**p`. That is the exact condition
+   NVEL's own `volume/NVEL_Patches.txt` documents as an underflow. The cause was the build,
+   not the model: the FVS makefile ships
+   `-ffpe-trap=invalid,zero,underflow,overflow,denormal`, which promotes benign
+   gradual-underflow-to-zero — well-defined IEEE behaviour that this code relies on — into a
+   fatal trap. Rebuilt with `-ffpe-trap=invalid,zero,overflow`, keeping the traps that catch
+   genuine numerical errors. All 472 then completed. **No run was dropped, excluded, or
+   substituted to get a clean batch.**
+2. **Natural regeneration was falling back to a single loblolly pine record**, because
+   `render_keyfile` was not given `stand_sdi`. That would have regenerated every bottomland
+   hardwood clearcut as pine plantation and biased the volumes it produced. Fixed by
+   supplying per-plot species SDI shares, which is the repo's own rule — natural
+   regeneration apportioned across the stand's own species by SDI share (Diaz et al. 2015),
+   implemented in `experiments/2026-08-24_leto-ca-forest-viz/04_fvs_run.py`. 671 of 676
+   donor plots have a live-tree SDI table; the 20 runs on the other 5 plots (non-stocked,
+   no live trees) still use the single-record fallback.
+
+## R2 inputs pulled
+
+**One file.** The carved landscape and the enumerated library are already committed
+artifacts, so nothing spatial had to be re-derived — no NHD, no parcels, no ownership
+raster, no county geometry.
+
+| R2 key | Local path | Size |
+|---|---|---|
+| `data/Lowe_TreeMap_Chaz/output/FIA_5county_consolidated.db` | `data/interim/stage/` | 1.004 GiB |
+
+It supplies `FVS_STANDINIT_PLOT` / `FVS_TREEINIT_PLOT` for the 676 donor plots — the tree
+lists FVS grows. All 676 were present; none was missing or imputed.
+
+*(`TreeMap2022_CONUS_5FlCntys.tif`, `FL_5county_TreeMap_TMIDs.csv` and the county shapefile
+were also staged while scouting, then not needed once the carve proved reconstructible from
+the committed CSVs. They are not read by any driver here.)*
+
+No downloaded data is committed; everything lands under gitignored `data/`.
+
+## Exact commands
+
+```bash
+# 1. Build FVS Southern variant (the container has no FVS; the repo expects one at fvs/bin/)
+apt-get install -y gfortran
+git clone --depth 1 https://github.com/USDAForestService/ForestVegetationSimulator.git fvs/src
+git -C fvs/src submodule update --init --depth 1 volume/NVEL      # NVEL volume library
+sed -i 's/FVSbc_sourceList.txt/FVSsn_sourceList.txt/' fvs/src/bin/CMakeLists.txt
+# Drop the underflow/denormal traps -- see "Two corrections" above.
+sed -i 's/-ffpe-trap=invalid,zero,underflow,overflow,denormal/-ffpe-trap=invalid,zero,overflow/' \
+  fvs/src/bin/makefile
+make -C fvs/src/bin FVSsn -j4
+mkdir -p fvs/bin && cp fvs/src/bin/FVSsn fvs/src/bin/FVSsn.so fvs/bin/
+
+# 2. The one input (rclone remote `r2` is preconfigured via RCLONE_CONFIG_R2_* env vars)
+rclone copyto r2:artemis-r2/data/Lowe_TreeMap_Chaz/output/FIA_5county_consolidated.db \
+  data/interim/stage/FIA_5county_consolidated.db
+
+# 3. The run
+uv run python weekly-artifact/2026-08-31/make_fvs_batch.py --workers 4   # ~6 min, 3782 FVS runs
+uv run python weekly-artifact/2026-08-31/make_annealed_plan.py           # ~7 min, 5 restarts
+uv run python weekly-artifact/2026-08-31/make_figure.py                  # reads only committed CSVs
+```
+
+## Dependencies
+
+`gfortran` (apt) to compile FVS; nothing else new. The committed `uv.lock` environment was
+used as-is: Python 3.14, pandas, PyYAML, matplotlib. `uv sync` reproduces it. The annealer
+is plain Python and the standard library's `random` — the inner loop touches one stand's
+ten-element vector per proposal, where numpy's per-call overhead costs more than the
+arithmetic saves.
+
+`FVSSN_BIN` overrides the binary location if it is not at `fvs/bin/FVSsn`.
+
+## How to regenerate
+
+```bash
+uv sync
+# build FVS and stage the one input per the commands above, then run the three drivers.
+```
+
+Output is deterministic: FVS is deterministic, and the annealer takes its seed
+(`harvest.random_seed: 42`) and its restart count from `config/projection.yaml`, running
+seeds 42–46 and reporting all five. Same seed + same library + same weights gives the same
+plan, which §6 asks to be a test rather than an aspiration. Intermediates, all gitignored:
+`data/interim/fvs_batch/` (the FVS input DB, 3,782 keyfiles, the full `trajectory_cycles`
+state table, and the carved landscape tables) and `data/interim/stage/` (the FIA database).
+Delete `data/interim/fvs_batch/` to force the batch to re-run.
+
+Figure colours are the Okabe–Ito-derived categorical set used across this series, validated
+with the dataviz palette checker against the light surface `#fcfcfb`: lightness band, chroma
+floor and normal-vision floor all pass; the worst adjacent CVD pair sits in the 6–8 floor
+band, which is legal with the secondary encoding used here — every low-contrast hue carries
+a direct value label, and every plotted number is also in a committed CSV. Panel (c) is a
+magnitude ranking, so it uses one hue rather than cycling categorical hues past six.
+
+## What this hands the next run
+
+1. **Add the timing-offset grid to the library** (§4). It is the direct cause of 47
+   unreachable targets and of an empty final cycle, it is already specified, and it costs
+   FVS runs rather than scheduler work. Nothing else in the plan will improve much until
+   the decision space carries "when".
+2. **Land the Phase 2.3 unit × stand crosswalk**, which turns the pixel classes into
+   polygons and switches on adjacency, green-up, opening size, and the block move — the
+   whole LAMPS half of the architecture, currently dark.
+3. **Re-check `pipeline/`'s status lines.** `harvest_scheduler.py`, the README's "Current
+   implementation", and `notes/trajectory-library-and-annealing.md` all still say the
+   annealer is not built. A driver in `weekly-artifact/` is not the same as a module in
+   `pipeline/`, and promoting this one — as `pipeline/leto_ca.py` was promoted out of an
+   experiment — is the obvious follow-up. It was deliberately not done here: an artifact PR
+   should not quietly become an architecture PR.
