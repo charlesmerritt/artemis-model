@@ -140,6 +140,9 @@ FVS_BIN = Path(os.environ.get("FVSSN_BIN", REPO / "fvs/bin/FVSsn"))
 INV_YEAR = DEFAULT_INV_YEAR          # 2022
 CYCLE_YEARS = 5
 NUM_CYCLE = 10                       # 2022 -> 2072, the ~50 yr horizon in README
+# FVS ends normally through a Fortran STOP; both codes appear across this batch. Anything
+# else -- and any negative code, i.e. death by signal -- is abnormal termination.
+FVS_OK_RETURNCODES = frozenset({0, 10})
 ID_COLS = {"PLT_CN": str, "unit_id": str, "tm_id": str}
 
 
@@ -310,7 +313,19 @@ def render_batch(carved_lib: pd.DataFrame, sdi: dict[str, dict[str, float]]) -> 
 # --------------------------------------------------------------------------------------
 
 def _run_one(args: tuple[str, str, str]) -> tuple[str, str, str | None, list[dict]]:
-    """Run one keyfile in an isolated temp dir; return its FVS_Summary2 rows."""
+    """Run one keyfile in an isolated temp dir; return its FVS_Summary2 rows.
+
+    **Fails closed on abnormal termination.** FVS writes each cycle's summary as it goes,
+    so a run killed mid-horizon leaves a *partial* trajectory in `FVS_Out.db`; accepting it
+    would silently hand the scheduler a stand that stops being harvested at the crash
+    cycle. A run terminated by a signal (`returncode < 0` — e.g. -8, SIGFPE) is therefore
+    rejected outright however many rows it managed to write.
+
+    Note that a nonzero exit is *not* by itself a failure: FVS ends normally via a Fortran
+    `STOP`, and both `STOP 0` and `STOP 10` are ordinary end-of-run codes seen across this
+    batch. Only signals and unknown stop codes are treated as abnormal; completeness of the
+    cycle grid is the real invariant and is checked separately in `validate_runs`.
+    """
     plt_cn, prescription, keyfile = args
     tmp = Path(tempfile.mkdtemp(prefix="fvs_"))
     try:
@@ -319,6 +334,13 @@ def _run_one(args: tuple[str, str, str]) -> tuple[str, str, str | None, list[dic
         proc = subprocess.run([str(FVS_BIN), "--keywordfile=run.key"], cwd=tmp,
                               capture_output=True, text=True, timeout=900)
         out_db = tmp / "FVS_Out.db"
+        if proc.returncode < 0 or proc.returncode not in FVS_OK_RETURNCODES:
+            tail = (proc.stdout or proc.stderr or "").strip().splitlines()
+            detail = next((ln for ln in tail if "signal" in ln.lower() or "error" in ln.lower()),
+                          tail[0] if tail else "")
+            kind = f"killed by signal {-proc.returncode}" if proc.returncode < 0 \
+                else f"unexpected stop code {proc.returncode}"
+            return plt_cn, prescription, f"FVS {kind}: {detail[:160]}", []
         if not out_db.exists():
             return plt_cn, prescription, f"no FVS_Out.db (rc={proc.returncode})", []
         con = sqlite3.connect(out_db)
@@ -352,6 +374,31 @@ def run_batch(runs: pd.DataFrame, workers: int) -> tuple[pd.DataFrame, pd.DataFr
             if done % 250 == 0:
                 log.info("  %d/%d runs complete (%d failed)", done, len(tasks), len(failures))
     return pd.DataFrame(cycles), pd.DataFrame(failures)
+
+
+def validate_runs(cyc: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Drop any trajectory that does not carry the whole 2022→2072 cycle grid.
+
+    The scheduler reads a trajectory as a dense vector over cycles 1..`n_cycles`, filling
+    absent cycles with zero. That is only sound when every accepted run is *complete*: a
+    trajectory truncated by a crash would otherwise enter the objective as a stand that
+    grows on untouched after the crash cycle, which is a silent data error rather than a
+    missing option. Incomplete runs are removed and reported, never zero-filled.
+    """
+    expected = set(range(0, NUM_CYCLE + 1))          # 2022 plus NUM_CYCLE five-year steps
+    have = cyc.groupby(["PLT_CN", "prescription"])["cycle"].apply(lambda s: set(s.astype(int)))
+    incomplete = have[have.apply(lambda s: s != expected)]
+    if incomplete.empty:
+        return cyc, pd.DataFrame(columns=["PLT_CN", "prescription", "error"])
+    bad = pd.DataFrame({
+        "PLT_CN": [k[0] for k in incomplete.index],
+        "prescription": [k[1] for k in incomplete.index],
+        "error": [f"incomplete cycle grid: {len(s)}/{len(expected)} cycles "
+                  f"(missing {sorted(expected - s)})" for s in incomplete],
+    })
+    keys = set(incomplete.index)
+    keep = ~cyc.set_index(["PLT_CN", "prescription"]).index.isin(keys)
+    return cyc[keep].copy(), bad
 
 
 def build_library_tables(cycles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -388,6 +435,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2)))
     ap.add_argument("--limit", type=int, default=None, help="smoke-test a subset of runs")
+    ap.add_argument("--allow-excluded-runs", type=int, default=0,
+                    help="publish even though this many (plot, prescription) trajectories "
+                         "could not be simulated. The batch fails closed by default; the "
+                         "number must be stated deliberately, and every exclusion is "
+                         "written to fvs_failures.csv and carried into the plan.")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -407,14 +459,40 @@ def main() -> None:
 
     log.info("Running %d FVS trajectories on %d workers", len(runs), args.workers)
     cycles, failures = run_batch(runs, args.workers)
-    if len(failures):
-        failures.to_csv(OUT_DIR / "fvs_failures.csv", index=False)
-        log.warning("%d runs failed; see fvs_failures.csv", len(failures))
-    log.info("Collected %d FVS_Summary2 rows from %d successful runs",
-             len(cycles), len(runs) - len(failures))
+    log.info("Collected %d FVS_Summary2 rows; %d runs failed outright",
+             len(cycles), len(failures))
 
     cyc, idx = build_library_tables(cycles)
+    cyc, incomplete = validate_runs(cyc)
+    if len(incomplete):
+        idx = idx.merge(incomplete[["PLT_CN", "prescription"]], on=["PLT_CN", "prescription"],
+                        how="left", indicator=True)
+        idx = idx[idx["_merge"] == "left_only"].drop(columns="_merge")
+    excluded = pd.concat([failures, incomplete], ignore_index=True) if len(incomplete) \
+        else failures
+
+    # Fail closed. A partial library is not a smaller library: the scheduler would read a
+    # missing trajectory as an option the stand does not have, and the plan would be
+    # quietly built over a decision space nobody chose.
+    if len(excluded):
+        excluded.to_csv(OUT_DIR / "fvs_failures.csv", index=False)
+        log.warning("%d trajectories could not be simulated; see fvs_failures.csv",
+                    len(excluded))
+        for row in excluded.itertuples(index=False):
+            log.warning("  excluded %s / %s — %s", row.PLT_CN, row.prescription, row.error)
+        if len(excluded) > args.allow_excluded_runs:
+            raise SystemExit(
+                f"{len(excluded)} trajectories failed or came back incomplete, but "
+                f"--allow-excluded-runs is {args.allow_excluded_runs}. Refusing to publish a "
+                f"partial library. Re-run with --allow-excluded-runs {len(excluded)} to "
+                f"accept these exclusions; they are listed in fvs_failures.csv and are "
+                f"carried into the plan and the quality report."
+            )
+    else:
+        (OUT_DIR / "fvs_failures.csv").unlink(missing_ok=True)
+
     WORK.mkdir(parents=True, exist_ok=True)
+    excluded.to_csv(WORK / "excluded_runs.csv", index=False)
     cyc.to_csv(WORK / "trajectory_cycles.csv", index=False)
     idx.to_csv(WORK / "trajectory_index.csv", index=False)
     stands.to_csv(WORK / "carved_stands.csv", index=False)

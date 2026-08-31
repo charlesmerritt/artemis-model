@@ -21,20 +21,21 @@ Getting there needed one thing first. The 2026-08-17 artifact enumerated the dec
 space but could not price it: §5 of the design note names `harvest_cuft[cycle]` as "the
 constraint currency", and no FVS run had ever been made, so the library had a schema and a
 row count but not a single volume. **So this artifact also compiles FVS and runs the
-batch** — 3,782 trajectories, zero failures — and the library has volumes for the first
-time.
+batch** — 3,781 of 3,782 trajectories complete, one excluded and recorded — and the library
+has volumes for the first time.
 
 | File | What it is |
 |---|---|
 | `annealed_plan.png` | The four-panel figure: the plan against its target, attainability by county × cycle, the chosen prescription mix, and solution quality. |
 | `annealed_plan.csv` | **The plan.** One row per stand: `stand_id → trajectory_id`, its prescription, county, owner class, acres, and its removed volume in each of the ten cycles. 11,831 rows. |
-| `trajectory_harvest_by_cycle.csv` | **`harvest_cuft[cycle]` — the column that did not exist last week.** Removed merchantable ft³/acre per `(plot, prescription, cycle)`. 41,598 rows. |
-| `trajectory_index.csv` | §5's narrow `trajectory_index`: one row per FVS run, with total removed volume, harvest-cycle count, and ending state. 3,782 rows. |
+| `trajectory_harvest_by_cycle.csv` | **`harvest_cuft[cycle]` — the column that did not exist last week.** Removed merchantable ft³/acre per `(plot, prescription, cycle)`. 41,591 rows — 3,781 complete trajectories × 11 cycles. |
+| `trajectory_index.csv` | §5's narrow `trajectory_index`: one row per FVS run, with total removed volume, harvest-cycle count, and ending state. 3,781 rows. |
 | `solution_quality.json` | The §6 quality report — baselines, bound, seed spread, and what was structurally unavailable. |
 | `constraint_violations.csv` | The full constraint-violation vector, per dimension per cycle (§6.1). 80 rows. |
 | `attainable_envelope.csv` | What each dimension × cycle *could* reach from this library, at any selection. The table that separates a search failure from a decision-space limit. |
 | `seed_spread.csv` | All five seeds, each with its calibrated `T₀`, level count, and accept rate (§6.4). |
 | `harvest_by_cycle.csv` · `prescription_mix.csv` · `plan_by_dimension.csv` | The plan summarised three ways. |
+| `fvs_failures.csv` | The one trajectory FVS could not simulate, and why. Written whenever the batch excludes anything; absent when nothing is excluded. |
 | `make_fvs_batch.py` · `make_annealed_plan.py` · `make_figure.py` | The three drivers. |
 
 **Why this artifact.** It is the terminal node of the pipeline diagram in §1.1 — every
@@ -51,16 +52,16 @@ repeat of any of them: those built the decision space, this one *decides*.
 |---|---:|---|
 | Random selection (mean of 5 draws) | 379.75 | |
 | **Greedy baseline** (`harvest_scheduler.py`) | **1371.05** | §6.3 requires it beside the plan |
-| **Annealed plan** (best of 5 seeds) | **190.34** | seed 43 |
-| Relaxation bound | 153.74 | gap 36.60 |
+| **Annealed plan** (best of 5 seeds) | **190.35** | seed 43 |
+| Relaxation bound | 153.74 | gap 36.61 |
 
-Seed spread across all five seeds is **0.113** on an objective of 190.34 — a 0.06% range,
+Seed spread across all five seeds is **0.213** on an objective of 190.35 — a 0.11% range,
 so the search has converged rather than got lucky once. `T₀` calibrated per seed to
-0.054–0.082, 123–131 temperature levels, ~40% of proposals accepted.
+0.054–0.081, 123–131 temperature levels, ~40% of proposals accepted.
 
 **The greedy baseline is worse than random, and that is a real result rather than a bug.**
 On this landscape the TPO caps never bind hard enough to exclude any stand: the allocator
-admitted at least one harvest event for all 5,229 upland stands, so the greedy seed reduces
+admitted at least one harvest event for all 5,228 upland stands with a choice, so the greedy seed reduces
 to *every stand runs its deterministic owner-class default*. Because those defaults'
 entry years are resolved from stand age, they clump — greedy delivers −27%, −42%, −93%,
 −56%, −86%, −73%, −98%, −73%, −98%, −100% against target across the ten cycles. Random
@@ -92,9 +93,11 @@ The library sizes say the same thing. §4 targets **6–12 trajectories per stan
 
 | Trajectories per stand | 1 | 2 | 3 | 4 |
 |---|---:|---:|---:|---:|
-| Stands | 6,602 | 910 | 3,381 | 938 |
+| Stands | 6,603 | 909 | 3,381 | 938 |
 
-The 6,602 ones are riparian and correctly have exactly one. The most any stand in the pilot
+6,602 of the single-option stands are riparian and correctly have exactly one; the
+6,603rd is the upland stand that lost an option to the excluded FVS run below. The most
+any stand in the pilot
 gets is **four** — a third to a half of the design target, and none of the missing variants
 are timing offsets. **Even flow is a timing property, so a library without timing variants
 cannot deliver even flow however good the search is.** Adding the offset grid from §4 is the
@@ -104,18 +107,18 @@ single highest-value next increment, and it costs FVS runs, not scheduler work.
 
 | | |
 |---|---|
-| Stands | **11,831** (5,229 upland with a real choice, 6,602 riparian with one) |
+| Stands | **11,831** (5,228 upland with a real choice, 6,602 riparian with one) |
 | Acres | 925,098 total; 913,943 with at least one cutting option |
-| Removed volume, 50 years | **1.88 billion ft³** merchantable |
+| Removed volume, 50 years | **1.89 billion ft³** merchantable |
 | Best cycle against target | 2052, −17% |
 | Worst | 2072, −100% (nothing in the library cuts then) |
 
-Chosen mix, by acreage: `family_uneven_aged_selection` 335k ac · `pine_plantation_long_rotation`
-226k ac · `no_management` 125k ac (114k upland + 11k riparian) · `hardwood_clearcut_regen`
-68k ac · `public_thin_restore` 65k ac · `public_selection_light` 41k ac ·
-`pine_plantation_short_rotation` 35k ac · `family_light_thin` 30k ac.
+Chosen mix, by acreage: `family_uneven_aged_selection` 339k ac · `pine_plantation_long_rotation`
+216k ac · `no_management` 120k ac (109k upland + 11k riparian) · `public_thin_restore`
+67k ac · `hardwood_clearcut_regen` 66k ac · `family_light_thin` 41k ac ·
+`public_selection_light` 41k ac · `pine_plantation_short_rotation` 36k ac.
 
-Note the 114k upland acres the scheduler leaves unmanaged **by choice** — `no_management` is
+Note the 109k upland acres the scheduler leaves unmanaged **by choice** — `no_management` is
 in every non-riparian library precisely so that a binding volume target can be satisfied by
 not cutting (§3 rule 1), and the search uses it.
 
@@ -171,11 +174,37 @@ Every number above comes from committed repository code or from FVS output.
   anything else runs: 5,240 pre-carve units and 925,097.8 acres in, 11,831 stands, 22,317
   library rows, 6,602 riparian, 5,229 upland, 913,943.2 harvestable acres out — every one an
   equality check against the committed `library_riparian_delta.csv`, not a tolerance.
-- **The FVS batch is real and complete**: 3,782 runs, **0 failures**, 48,560 `FVS_Summary2`
-  rows, every trajectory 2022→2072 on the 5-year cycle grid.
+- **The FVS batch is validated and fails closed**: of 3,782 runs, **3,781 completed** and
+  one was killed by SIGFPE and excluded (below). Every published trajectory carries the
+  full 2022→2072 grid — 3,781 × 11 = 41,591 rows exactly, asserted, so no trajectory can
+  enter the objective truncated.
 - `uv run pytest tests/ -q` → **894 passed, 10 skipped**. `uv run ruff check .` clean.
 
-### Two corrections made to the run rather than worked around
+### The batch fails closed
+
+A trajectory that FVS could not finish is **excluded and recorded**, never zero-filled. This
+matters because the scheduler reads a trajectory as a dense vector over the ten cycles: a
+run truncated by a crash would otherwise enter the objective as a stand that quietly stops
+being harvested after the crash cycle — a silent data error, not a missing option. So:
+
+- a run killed by a signal is rejected however many rows it already wrote (a nonzero exit is
+  *not* itself a failure — FVS ends normally through a Fortran `STOP`, and both `STOP 0` and
+  `STOP 10` occur across this batch; only signals and unknown stop codes are abnormal);
+- every published trajectory is asserted to carry the whole 2022→2072 grid;
+- and the driver **refuses to publish** a partial library unless the operator states the
+  number of exclusions with `--allow-excluded-runs N`, which is how this run was produced
+  (`N = 1`), with the exclusion listed in `fvs_failures.csv` and surfaced again by the
+  annealer.
+
+**One trajectory is excluded**: `473803917489998 / hardwood_clearcut_regen`, killed by SIGFPE
+in `varmrt.f:176` — `ADJUST = TEMKIL/TEMSUM`, a division by zero in the SN mortality routine
+on a nearly-empty post-clearcut hardwood stand. Unlike the underflow below, that is a
+genuine numerical error, so the `zero` trap was **kept** and the run dropped rather than
+made to pass. Its effect on the plan is one upland stand losing one of its options
+(`stands_with_a_choice` 5,229 → 5,228), reported in `solution_quality.json` as
+`options_dropped_no_trajectory`.
+
+### Three corrections made to the run rather than worked around
 
 1. **FVS aborted on 472 of 3,782 runs (12.5%) with a floating-point exception** in
    `r9clark.f:1286` — `R9ht`, computing `(1.0 - 17.3/totht)**p`. That is the exact condition
@@ -194,6 +223,18 @@ Every number above comes from committed repository code or from FVS output.
    implemented in `experiments/2026-08-24_leto-ca-forest-viz/04_fvs_run.py`. 671 of 676
    donor plots have a live-tree SDI table; the 20 runs on the other 5 plots (non-stocked,
    no live trees) still use the single-record fallback.
+3. **The plan's `trajectory_id` was not unique.** It was keyed `PLT_CN::prescription` — the
+   *FVS run* key — so the 11,831 stands carried only 2,482 distinct values, and a join on
+   the documented primary key would have expanded or misassigned stand results. §5 defines
+   `trajectory_id` as a hash of `(stand_id, prescription_id)`, and §4 is explicit that
+   "deduplication is a cache, never a reporting decision ... every polygon keeps its own
+   identity in the outputs". The plan now carries **two** keys: `trajectory_id`, unique per
+   stand (11,831 distinct, verified), and `fvs_run_id`, the shared run cache key that joins
+   many-to-one onto `trajectory_index.csv` and `trajectory_harvest_by_cycle.csv` (2,482
+   distinct, 0 unmatched, verified).
+
+Findings 1 and 3 and the fail-closed batch above were raised by Devin Review on the PR;
+each was reproduced against the data before being fixed.
 
 ## R2 inputs pulled
 
@@ -233,7 +274,10 @@ rclone copyto r2:artemis-r2/data/Lowe_TreeMap_Chaz/output/FIA_5county_consolidat
   data/interim/stage/FIA_5county_consolidated.db
 
 # 3. The run
-uv run python weekly-artifact/2026-08-31/make_fvs_batch.py --workers 4   # ~6 min, 3782 FVS runs
+# Fails closed: refuses to publish a partial library. One trajectory (473803917489998 /
+# hardwood_clearcut_regen) dies of a genuine div-by-zero in FVS's mortality routine, so the
+# exclusion is stated deliberately rather than silently absorbed.
+uv run python weekly-artifact/2026-08-31/make_fvs_batch.py --workers 4 --allow-excluded-runs 1
 uv run python weekly-artifact/2026-08-31/make_annealed_plan.py           # ~7 min, 5 restarts
 uv run python weekly-artifact/2026-08-31/make_figure.py                  # reads only committed CSVs
 ```

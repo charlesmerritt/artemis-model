@@ -45,6 +45,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import math
@@ -166,6 +167,8 @@ class Landscape:
         self.acres: list[float] = []
         self.unit_class: list[str] = []
         self.dropped_no_trajectory = 0
+        self.dropped_options = 0
+        self.dropped_option_keys: list[tuple[str, str]] = []
 
         counties = sorted({COUNTY_TO_TPO[c] for c in stands["county"].unique()
                            if c in COUNTY_TO_TPO})
@@ -182,7 +185,12 @@ class Landscape:
             for presc in presc_list:
                 key = (plt, presc)
                 if key not in vol_lookup:
-                    continue          # no FVS trajectory for this pair — never guessed at
+                    # No complete FVS trajectory for this pair. The batch fails closed and
+                    # records every exclusion, so this is a stated gap, never a guess — and
+                    # counted here so it cannot silently shrink a stand's decision space.
+                    self.dropped_options += 1
+                    self.dropped_option_keys.append((row.unit_id, presc))
+                    continue
                 acres = float(row.acres)
                 opts.append(presc)
                 vols.append([v * acres for v in vol_lookup[key]])
@@ -207,6 +215,10 @@ class Landscape:
         log.info("Landscape: %d stands (%d with a real choice), %d dropped for want of a "
                  "trajectory or a TPO dimension", self.n, len(self.decision_stands),
                  self.dropped_no_trajectory)
+        if self.dropped_options:
+            log.warning("%d (stand, prescription) options dropped: no complete FVS "
+                        "trajectory. Affected prescriptions: %s", self.dropped_options,
+                        sorted({p for _, p in self.dropped_option_keys}))
 
     def verify_riparian_structural(self) -> dict:
         """§3 rule 2: a riparian stand's library must be exactly {no_management}."""
@@ -639,18 +651,32 @@ def anneal(land: Landscape, obj: Objective, cfg: dict, seed: int,
 # --------------------------------------------------------------------------------------
 
 def plan_frame(land: Landscape, choice: list[int], stands: pd.DataFrame) -> pd.DataFrame:
-    """The selected plan: stand_id -> trajectory, with its per-cycle volumes."""
+    """The selected plan: stand_id -> trajectory, with its per-cycle volumes.
+
+    Two keys, because they answer different questions and §4 is explicit that conflating
+    them is a mistake — "deduplication is a cache, never a reporting decision ... every
+    polygon keeps its own identity in the outputs":
+
+    * `trajectory_id` — §5's primary key, a deterministic hash of `(stand_id,
+      prescription_id)`. Unique per row; this is what downstream joins key on.
+    * `fvs_run_id` — the `(donor plot, prescription)` pair that was actually simulated.
+      Many stands share one, by design: that is the run cache. It is the join key onto
+      `trajectory_index.csv` and `trajectory_harvest_by_cycle.csv`, and the join is
+      many-to-one, so it never expands the plan.
+    """
     attrs = stands.set_index("unit_id")
     rows = []
     for i, k in enumerate(choice):
         sid = land.stand_ids[i]
         a = attrs.loc[sid]
+        presc = land.options[i][k]
         vols = land.volumes[i][k]
         rows.append({
             "stand_id": sid,
-            "trajectory_id": f"{a['PLT_CN']}::{land.options[i][k]}",
+            "trajectory_id": hashlib.sha256(f"{sid}::{presc}".encode()).hexdigest()[:16],
+            "fvs_run_id": f"{a['PLT_CN']}::{presc}",
             "PLT_CN": a["PLT_CN"],
-            "prescription": land.options[i][k],
+            "prescription": presc,
             "county": a["county"],
             "owner_class": a["owner_class"],
             "owner_group": OWNER_GROUP[a["owner_class"]],
@@ -772,6 +798,7 @@ def main() -> None:
         "stands": land.n,
         "stands_with_a_choice": len(land.decision_stands),
         "stands_dropped": land.dropped_no_trajectory,
+        "options_dropped_no_trajectory": land.dropped_options,
         "targets_unreachable_from_library": unreachable,
         "targets_total": len(envelope),
     }

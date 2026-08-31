@@ -1,23 +1,23 @@
 {
-  "objective_best": 190.34158672349108,
-  "objective_greedy_baseline": 1371.053281080947,
-  "objective_random_baseline_mean": 379.7544324748618,
+  "objective_best": 190.34514742063007,
+  "objective_greedy_baseline": 1371.053281179485,
+  "objective_random_baseline_mean": 379.75443260341416,
   "objective_random_baseline_all": [
     382.86510868837325,
     419.0512059086841,
-    303.1415535628198,
-    368.4653458152102,
-    425.2489483992215
+    303.14155389958916,
+    368.46534598621326,
+    425.2489485342111
   ],
   "relaxation_bound": 153.73921041018934,
   "relaxation_bound_strategy": "per-cycle per-dimension interval relaxation",
-  "gap_to_bound_absolute": 36.60237631330173,
+  "gap_to_bound_absolute": 36.60593701044073,
   "beats_greedy": true,
   "beats_random": true,
   "seed_spread": {
-    "min": 190.34158672346246,
-    "max": 190.45495792154298,
-    "range": 0.11337119808052876
+    "min": 190.34514742063777,
+    "max": 190.55859256178212,
+    "range": 0.21344514114434787
   },
   "target_period": "2013_2024",
   "random_seed": 42,
@@ -52,8 +52,9 @@
     "structurally_enforced": true
   },
   "stands": 11831,
-  "stands_with_a_choice": 5229,
+  "stands_with_a_choice": 5228,
   "stands_dropped": 0,
+  "options_dropped_no_trajectory": 1,
   "targets_unreachable_from_library": 47,
   "targets_total": 80
 }
