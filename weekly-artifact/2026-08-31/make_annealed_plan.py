@@ -573,23 +573,30 @@ def greedy_seed(land: Landscape, stands: pd.DataFrame, caps: dict) -> list[int]:
     return choice
 
 
+# Cached per (frame identity, column) rather than per column alone. Keying on the column
+# name only is correct while exactly one `stands` frame exists per process, and silently
+# wrong the moment a second one appears — a caller (a test, say) would get the first
+# frame's values back for the second frame's stand ids.
+_LOOKUPS: dict[tuple[int, str], dict] = {}
+
+
 def _attr_lookup(stands: pd.DataFrame, col: str) -> dict:
-    return dict(zip(stands["unit_id"], stands[col]))
-
-
-_LOOKUPS: dict[str, dict] = {}
+    key = (id(stands), col)
+    if key not in _LOOKUPS:
+        _LOOKUPS[key] = dict(zip(stands["unit_id"], stands[col]))
+    return _LOOKUPS[key]
 
 
 def stands_county(stands, sid):
-    return _LOOKUPS.setdefault("county", _attr_lookup(stands, "county"))[sid]
+    return _attr_lookup(stands, "county")[sid]
 
 
 def stands_owner(stands, sid):
-    return _LOOKUPS.setdefault("owner_class", _attr_lookup(stands, "owner_class"))[sid]
+    return _attr_lookup(stands, "owner_class")[sid]
 
 
 def stands_age(stands, sid):
-    return _LOOKUPS.setdefault("stand_age", _attr_lookup(stands, "stand_age"))[sid]
+    return _attr_lookup(stands, "stand_age")[sid]
 
 
 def random_choice(land: Landscape, rng: random.Random) -> list[int]:
@@ -717,6 +724,14 @@ def anneal(land: Landscape, obj: Objective, cfg: dict, seed: int,
         levels += 1
         stalls = 0 if improved else stalls + 1
         temp *= alpha
+        # `cur` is carried forward by summing ~10^5 incremental deltas per temperature
+        # level, and the period-swap move applies, rejects and reverses a delta in place.
+        # Neither is lossy in principle, but float addition is not associative, so resync
+        # from a full recompute once per level. Cheap (one pass over the plan against
+        # ~10^5 proposals) and it removes the drift question entirely rather than arguing
+        # the error is small.
+        obj.reset(choice)
+        cur = obj.total()
 
     return {"seed": seed, "objective": best, "choice": best_choice,
             "levels": levels, "proposed": proposed, "accepted": accepted,

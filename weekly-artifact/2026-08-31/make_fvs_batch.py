@@ -528,9 +528,16 @@ def main() -> None:
     # `harvest_cuft[cycle]` itself — the constraint currency, and the column the
     # 2026-08-17 enumeration could not supply. The full per-cycle FVS state
     # (`trajectory_cycles`, with BA/TPA/QMD/SDI) stays in gitignored `data/interim`.
-    idx.to_csv(OUT_DIR / "trajectory_index.csv", index=False)
+    # Both published tables carry `fvs_run_id` explicitly, so a consumer can join the
+    # plan to the library on the documented key without reconstructing it by hand. The
+    # join is many-to-one: many stands share one donor plot's run, which is the dedup
+    # cache §4 describes, not a duplicate.
+    idx_out = idx.assign(fvs_run_id=idx["PLT_CN"] + "::" + idx["prescription"])
+    idx_out = idx_out[["fvs_run_id"] + [c for c in idx_out.columns if c != "fvs_run_id"]]
+    idx_out.to_csv(OUT_DIR / "trajectory_index.csv", index=False)
     harvest = cyc[["PLT_CN", "prescription", "cycle", "calendar_year",
-                   "removed_merch_cuft_per_ac"]]
+                   "removed_merch_cuft_per_ac"]].copy()
+    harvest.insert(0, "fvs_run_id", harvest["PLT_CN"] + "::" + harvest["prescription"])
     harvest.to_csv(OUT_DIR / "trajectory_harvest_by_cycle.csv", index=False)
     log.info("Artifact tables: trajectory_index.csv (%d), "
              "trajectory_harvest_by_cycle.csv (%d)", len(idx), len(harvest))

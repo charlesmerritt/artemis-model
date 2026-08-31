@@ -15,9 +15,9 @@
   "beats_greedy": true,
   "beats_random": true,
   "seed_spread": {
-    "min": 190.39604285793715,
-    "max": 190.5464025690315,
-    "range": 0.1503597110943531
+    "min": 190.3960428579389,
+    "max": 190.54640256903502,
+    "range": 0.15035971109611523
   },
   "target_period": "2013_2024",
   "random_seed": 42,

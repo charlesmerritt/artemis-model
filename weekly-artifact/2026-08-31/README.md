@@ -27,9 +27,9 @@ has volumes for the first time.
 | File | What it is |
 |---|---|
 | `annealed_plan.png` | The four-panel figure: the plan against its target, attainability by county × cycle, the chosen prescription mix, and solution quality. |
-| `annealed_plan.csv` | **The plan.** One row per stand: `stand_id → trajectory_id`, its prescription, county, owner class, acres, and its removed volume in each of the ten cycles. 11,831 rows. |
-| `trajectory_harvest_by_cycle.csv` | **`harvest_cuft[cycle]` — the column that did not exist last week.** Removed merchantable ft³/acre per `(plot, prescription, cycle)`. 41,591 rows — 3,781 complete trajectories × 11 cycles. |
-| `trajectory_index.csv` | §5's narrow `trajectory_index`: one row per FVS run, with total removed volume, harvest-cycle count, and ending state. 3,781 rows. |
+| `annealed_plan.csv` | **The plan.** One row per stand: `stand_id → trajectory_id`, its prescription, county, owner class, acres, and its removed volume in each of the ten cycles. 11,831 rows. Carries two keys — `trajectory_id` (§5's primary key, unique per stand) and `fvs_run_id` (the `(plot, prescription)` run the stand shares with others), which joins many-to-one onto the two library tables. |
+| `trajectory_harvest_by_cycle.csv` | **`harvest_cuft[cycle]` — the column that did not exist last week.** Removed merchantable ft³/acre per `(plot, prescription, cycle)`, keyed by `fvs_run_id`. 41,591 rows — 3,781 complete trajectories × 11 cycles. |
+| `trajectory_index.csv` | §5's narrow `trajectory_index`: one row per FVS run, keyed by `fvs_run_id`, with total removed volume, harvest-cycle count, and ending state. 3,781 rows. |
 | `solution_quality.json` | The §6 quality report — baselines, bound, seed spread, and what was structurally unavailable. |
 | `constraint_violations.csv` | The full constraint-violation vector, per dimension per cycle (§6.1). 80 rows. |
 | `attainable_envelope.csv` | What each dimension × cycle *could* reach from this library, at any selection. The table that separates a search failure from a decision-space limit. |
@@ -178,7 +178,14 @@ Every number above comes from committed repository code or from FVS output.
   one was killed by SIGFPE and excluded (below). Every published trajectory carries the
   full 2022→2072 grid — 3,781 × 11 = 41,591 rows exactly, asserted, so no trajectory can
   enter the objective truncated.
-- `uv run pytest tests/ -q` → **894 passed, 10 skipped**. `uv run ruff check .` clean.
+- **The annealer's numerics carry their own tests.** `tests/test_weekly_artifact_20260831_annealer.py`
+  builds a three-stand synthetic landscape and checks the pieces the real run can only
+  assert end-to-end: `Objective.delta_and_apply` against a from-scratch `reset()` +
+  `total()` recompute for every reachable move and every dimension subset, the swap move's
+  apply→reject→reverse path being exactly reversible, riparian structural enforcement, an
+  option with no trajectory being dropped rather than zero-filled, the relaxation bound
+  actually lower-bounding the enumerated decision space, and the reporting contracts.
+- `uv run pytest tests/ -q` → **908 passed, 10 skipped**. `uv run ruff check .` clean.
 
 ### The batch fails closed
 
