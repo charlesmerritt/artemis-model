@@ -211,7 +211,7 @@ made to pass. Its effect on the plan is one upland stand losing one of its optio
 (`stands_with_a_choice` 5,229 → 5,228), reported in `solution_quality.json` as
 `options_dropped_no_trajectory`.
 
-### Four corrections made to the run rather than worked around
+### Five corrections made to the run rather than worked around
 
 1. **FVS aborted on 472 of 3,782 runs (12.5%) with a floating-point exception** in
    `r9clark.f:1286` — `R9ht`, computing `(1.0 - 17.3/totht)**p`. That is the exact condition
@@ -262,6 +262,24 @@ made to pass. Its effect on the plan is one upland stand losing one of its optio
    unmoved (190.40 against 190.34), and no finding in this artifact depended on the wrong
    figure.
 
+5. **A harvest cycle's state fields were the state *before* the cut.** FVS_Summary2 emits
+   two rows for a cut year: `RmvCode = 1` carries the removal alongside the pre-cut state
+   (BA 50.2, Tpa 4741, having removed 1,894 trees), and `RmvCode = 2` carries the post-cut
+   state with the removal columns zeroed (BA 31.2, Tpa 2,848). Collapsing the year by
+   largest `RMCuFt` kept the correct removal and the wrong state, so every harvest cycle in
+   the per-cycle state table reported standing volume as though the trees were still there.
+   The two rows are now merged — removals from the cut row, state from after it — with a
+   clearcut's genuinely-zero post state preserved.
+
+   **This changed no published number.** The bug reached only `trajectory_cycles`, which
+   stays in gitignored `data/interim/`; the two published library tables carry removals and
+   endpoint state, and the endpoint is always a non-harvest year because nothing in this
+   library cuts in cycle 10. Every committed CSV is byte-identical after the fix, and the
+   plan re-runs to the same objective (190.396043, seed 45). It is fixed because it would
+   have mattered the moment a trajectory harvested in the final cycle — the
+   `standing_volume` objective reads exactly that field — or the moment anyone read the
+   state table.
+
 Findings 1 and 3 and the fail-closed batch above were raised by Devin Review on the PR;
 finding 4 surfaced while verifying its critique of the greedy mapping. Each was reproduced
 against the data before being fixed. Four further review points are also addressed in the
@@ -271,7 +289,11 @@ the sampler actually used (0.875 / 0.125) instead of the pre-renormalisation con
 a worker that dies outright is recorded as a failure instead of discarding the whole batch;
 `trajectory_index`'s `cycles` column no longer counts the cycle-0 inventory row; and IDs
 read out of SQLite go through `pipeline.ids.as_id_series` rather than `.astype(str)`, per
-`AGENTS.md`.
+`AGENTS.md`. A later round added two more: the harvest-year state merge above, and
+`--allow-excluded-runs` becoming an *exact* acknowledgement rather than a ceiling — the
+flag records that an operator looked at a specific set of exclusions and accepted them, so
+a count that moves in either direction (including down) now stops publication until a
+human looks again.
 
 ## R2 inputs pulled
 

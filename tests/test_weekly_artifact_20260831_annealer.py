@@ -293,3 +293,81 @@ def test_spatial_penalties_report_unavailable_with_a_reason():
     available, reason = m.spatial_penalties_available(land)
     assert available is False
     assert "adjacency" in reason
+
+
+# --------------------------------------------------------------------------------------
+# FVS_Summary2 harvest-year merge (weekly-artifact/2026-08-31/make_fvs_batch.py)
+# --------------------------------------------------------------------------------------
+
+BATCH_DRIVER = REPO / "weekly-artifact/2026-08-31/make_fvs_batch.py"
+
+
+def _load_batch_driver():
+    spec = importlib.util.spec_from_file_location("wa_20260831_batch", BATCH_DRIVER)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.skipif(not BATCH_DRIVER.exists(), reason="2026-08-31 batch driver not present")
+def test_harvest_year_merge_takes_removals_from_cut_and_state_from_after_it():
+    """A harvest year emits two FVS rows; neither alone describes the cycle.
+
+    Values are the real shape observed in this batch: `RmvCode 1` carries the removal with
+    the *pre*-cut state, `RmvCode 2` carries the *post*-cut state with removals zeroed.
+    """
+    b = _load_batch_driver()
+    rows = pd.DataFrame([
+        # non-harvest year: single row, passes through untouched
+        {"PLT_CN": "1", "prescription": "p", "Year": 2022, "RmvCode": 0, "Age": 5,
+         "BA": 19.2, "Tpa": 4812.0, "QMD": 1.0, "SDI": 10.0, "TCuFt": 22.0, "MCuFt": 22.2,
+         "BdFt": 0.0, "RTpa": 0.0, "RTCuFt": 0.0, "RMCuFt": 0.0, "RBdFt": 0.0},
+        # harvest year: pre-cut state + removals
+        {"PLT_CN": "1", "prescription": "p", "Year": 2027, "RmvCode": 1, "Age": 10,
+         "BA": 50.24, "Tpa": 4741.4, "QMD": 2.0, "SDI": 20.0, "TCuFt": 52.0,
+         "MCuFt": 52.16, "BdFt": 0.0, "RTpa": 1893.9, "RTCuFt": 7.0, "RMCuFt": 6.84,
+         "RBdFt": 0.0},
+        # harvest year: post-cut state, removals zeroed
+        {"PLT_CN": "1", "prescription": "p", "Year": 2027, "RmvCode": 2, "Age": 10,
+         "BA": 31.18, "Tpa": 2847.5, "QMD": 2.5, "SDI": 15.0, "TCuFt": 45.0,
+         "MCuFt": 45.32, "BdFt": 0.0, "RTpa": 0.0, "RTCuFt": 0.0, "RMCuFt": 0.0,
+         "RBdFt": 0.0},
+    ])
+    merged = b.merge_harvest_year_rows(rows)
+    assert len(merged) == 2                        # one row per (run, year)
+
+    cut = merged[merged.Year == 2027].iloc[0]
+    # Removals come from the RmvCode 1 row ...
+    assert cut.RMCuFt == pytest.approx(6.84)
+    assert cut.RTpa == pytest.approx(1893.9)
+    # ... and every state field from the RmvCode 2 row, i.e. after the trees were removed.
+    assert cut.BA == pytest.approx(31.18)
+    assert cut.Tpa == pytest.approx(2847.5)
+    assert cut.MCuFt == pytest.approx(45.32)
+    assert cut.TCuFt == pytest.approx(45.0)
+
+    grown = merged[merged.Year == 2022].iloc[0]
+    assert grown.BA == pytest.approx(19.2)
+    assert grown.RMCuFt == pytest.approx(0.0)
+
+
+@pytest.mark.skipif(not BATCH_DRIVER.exists(), reason="2026-08-31 batch driver not present")
+def test_harvest_year_merge_handles_a_clearcut_to_zero():
+    """A clearcut's post-removal state is genuinely zero and must not be replaced."""
+    b = _load_batch_driver()
+    rows = pd.DataFrame([
+        {"PLT_CN": "1", "prescription": "p", "Year": 2032, "RmvCode": 1, "Age": 15,
+         "BA": 75.98, "Tpa": 4255.2, "QMD": 3.0, "SDI": 30.0, "TCuFt": 143.6,
+         "MCuFt": 143.65, "BdFt": 0.0, "RTpa": 4255.2, "RTCuFt": 143.6,
+         "RMCuFt": 143.65, "RBdFt": 0.0},
+        {"PLT_CN": "1", "prescription": "p", "Year": 2032, "RmvCode": 2, "Age": 15,
+         "BA": 0.0, "Tpa": 0.0, "QMD": 0.0, "SDI": 0.0, "TCuFt": 0.0, "MCuFt": 0.0,
+         "BdFt": 0.0, "RTpa": 0.0, "RTCuFt": 0.0, "RMCuFt": 0.0, "RBdFt": 0.0},
+    ])
+    merged = b.merge_harvest_year_rows(rows)
+    assert len(merged) == 1
+    row = merged.iloc[0]
+    assert row.RMCuFt == pytest.approx(143.65)     # the whole stand was removed
+    assert row.BA == pytest.approx(0.0)            # and nothing is left standing
+    assert row.MCuFt == pytest.approx(0.0)

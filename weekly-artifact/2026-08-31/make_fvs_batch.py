@@ -421,18 +421,57 @@ def validate_runs(cyc: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return cyc[keep].copy(), bad
 
 
+REMOVAL_COLS = ("RTpa", "RTCuFt", "RMCuFt", "RBdFt")
+STATE_COLS = ("Age", "BA", "Tpa", "QMD", "SDI", "TCuFt", "MCuFt", "BdFt")
+
+
+def merge_harvest_year_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Collapse each `(run, year)` to one row: removals from the cut, state from after it.
+
+    A non-harvest year has a single `RmvCode = 0` row and passes through unchanged. A
+    harvest year has `RmvCode = 1` (removals + pre-cut state) and `RmvCode = 2` (post-cut
+    state, removals zeroed); the merged row takes `REMOVAL_COLS` from the first and
+    `STATE_COLS` from the second, which is the only combination that describes the cycle.
+    """
+    key = ["PLT_CN", "prescription", "Year"]
+    df = df.sort_values([*key, "RmvCode"], kind="stable")
+    # Post-cut state where it exists, else the row's own state.
+    post = df.drop_duplicates(key, keep="last")
+    # The row carrying the removals: the largest RMCuFt in the year.
+    removals = (df.sort_values([*key, "RMCuFt"], ascending=[True, True, True, False],
+                               kind="stable")
+                  .drop_duplicates(key, keep="first"))
+
+    merged = post.set_index(key).copy()
+    rem = removals.set_index(key)
+    for col in REMOVAL_COLS:
+        if col in merged.columns and col in rem.columns:
+            merged[col] = rem[col]
+    return merged.reset_index()
+
+
 def build_library_tables(cycles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """`trajectory_cycles` and the narrow `trajectory_index`, per §5 of the design note.
 
-    FVS_Summary2 emits two rows for a cycle in which a harvest occurs — the pre-removal
-    state (`RmvCode` > 0 carries the removal) and the post-removal state. Volumes are
-    per-acre; the scheduler multiplies by stand acres.
+    FVS_Summary2 emits **two rows** for a cycle in which a harvest occurs, and they carry
+    different things:
+
+      * `RmvCode = 1` — the removal quantities (`RMCuFt`, `RTpa`, …) alongside the state
+        *before* the cut. Observed: BA 50.2, Tpa 4741, having removed 1894 trees.
+      * `RmvCode = 2` — the state *after* the cut, with the removal columns back at zero.
+        Same year: BA 31.2, Tpa 2847.
+
+    So neither row alone describes the cycle. Taking whichever has the larger `RMCuFt`
+    keeps the right removal and the wrong state — the trajectory would report a harvest
+    cycle's standing volume as if the trees were still there, which matters for the
+    `standing_volume` objective and for anyone reading the state table. The two are merged:
+    removal columns from the `RmvCode = 1` row, endpoint state from the `RmvCode = 2` row.
+
+    Volumes are per-acre; the scheduler multiplies by stand acres.
     """
     df = cycles.copy()
     df["PLT_CN"] = df["PLT_CN"].astype(str)
-    # One row per (run, year): keep the removal record where a cycle has both.
-    df = (df.sort_values(["PLT_CN", "prescription", "Year", "RMCuFt"], ascending=[True, True, True, False])
-            .drop_duplicates(["PLT_CN", "prescription", "Year"], keep="first"))
+    df = merge_harvest_year_rows(df)
     df = df[df["Year"] >= INV_YEAR].copy()
     df["cycle"] = ((df["Year"] - INV_YEAR) // CYCLE_YEARS).astype(int)
 
@@ -503,15 +542,20 @@ def main() -> None:
                     len(excluded))
         for row in excluded.itertuples(index=False):
             log.warning("  excluded %s / %s — %s", row.PLT_CN, row.prescription, row.error)
-        if len(excluded) > args.allow_excluded_runs:
-            raise SystemExit(
-                f"{len(excluded)} trajectories failed or came back incomplete, but "
-                f"--allow-excluded-runs is {args.allow_excluded_runs}. Refusing to publish a "
-                f"partial library. Re-run with --allow-excluded-runs {len(excluded)} to "
-                f"accept these exclusions; they are listed in fvs_failures.csv and are "
-                f"carried into the plan and the quality report."
-            )
-    else:
+    # The flag is an *exact* acknowledgement, not a ceiling: it records that an operator
+    # looked at this many exclusions and accepted them. If the count moves in either
+    # direction the FVS outcomes have changed and that acknowledgement no longer describes
+    # the run, so publication stops until a human looks again — including the case where
+    # fewer runs failed than declared.
+    if len(excluded) != args.allow_excluded_runs:
+        raise SystemExit(
+            f"{len(excluded)} trajectories failed or came back incomplete, but "
+            f"--allow-excluded-runs declares {args.allow_excluded_runs}. Refusing to "
+            f"publish: the exclusion set has changed since it was last acknowledged. "
+            f"Inspect fvs_failures.csv, then re-run with --allow-excluded-runs "
+            f"{len(excluded)} if these exclusions are acceptable."
+        )
+    if not len(excluded):
         (OUT_DIR / "fvs_failures.csv").unlink(missing_ok=True)
 
     WORK.mkdir(parents=True, exist_ok=True)
