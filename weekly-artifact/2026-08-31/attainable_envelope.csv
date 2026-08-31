@@ -1,4 +1,4 @@
-dimension,key,cycle,calendar_year,min_attainable_cuft,max_attainable_cuft,target_cuft,target_reachable,max_as_pct_of_target
+dimension,key,cycle,calendar_year,min_attainable_cuft,max_attainable_cuft,target_cuft,target_within_envelope,max_as_pct_of_target
 county,Baker,1,2027,0.0,236285178.22237572,57256000.0,True,412.6819516249401
 county,Baker,2,2032,0.0,102610898.603048,57256000.0,True,179.2142283831354
 county,Baker,3,2037,0.0,157191655.44779167,57256000.0,True,274.54180426119825

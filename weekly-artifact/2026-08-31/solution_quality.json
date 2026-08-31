@@ -61,5 +61,7 @@
   "stands_dropped": 0,
   "options_dropped_no_trajectory": 1,
   "targets_unreachable_from_library": 47,
-  "targets_total": 80
+  "targets_total": 80,
+  "targets_unreachable_is_a_proof": true,
+  "targets_within_envelope_note": "membership in the relaxed envelope does not prove a target attainable \u2014 the choices are discrete and the relaxation lets a stand vary per cycle and per dimension; only the unreachable count is a proof"
 }

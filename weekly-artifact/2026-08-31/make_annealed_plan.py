@@ -378,6 +378,16 @@ class Objective:
         property of the decision space, not of the search. Computed by letting every stand
         pick its lowest- and highest-volume trajectory independently per cycle, which is
         the same relaxation `relaxation_bound` scores.
+
+        **The bound is one-directional, and the column name says so.** Because the interval
+        comes from a relaxation — each stand free to choose per cycle and per dimension,
+        which the real problem forbids — and because the choices are discrete, membership
+        proves nothing: the attainable set inside [min, max] has gaps, and a target sitting
+        in one of them has no plan that hits it. So `target_within_envelope = False` is a
+        proof of unreachability, while `True` means only "not proven unreachable". The
+        headline count this artifact reports is the `False` side, which is the sound one.
+        Deciding attainability exactly is a subset-sum problem per (dimension, cycle) and
+        is not attempted here rather than approximated and labelled as fact.
         """
         land = self.land
         rows = []
@@ -402,7 +412,7 @@ class Objective:
                         "calendar_year": 2022 + (c + 1) * CYCLE_YEARS,
                         "min_attainable_cuft": lo_row[c], "max_attainable_cuft": hi_row[c],
                         "target_cuft": t,
-                        "target_reachable": bool(lo_row[c] <= t <= hi_row[c]),
+                        "target_within_envelope": bool(lo_row[c] <= t <= hi_row[c]),
                         "max_as_pct_of_target": 100.0 * hi_row[c] / t,
                     })
         return pd.DataFrame(rows)
@@ -929,7 +939,7 @@ def main() -> None:
 
     envelope = obj.attainable_envelope()
     envelope.to_csv(OUT_DIR / "attainable_envelope.csv", index=False)
-    unreachable = int((~envelope["target_reachable"]).sum())
+    unreachable = int((~envelope["target_within_envelope"]).sum())
     log.info("Attainability: %d of %d (dimension, cycle) targets lie outside the library's "
              "attainable range", unreachable, len(envelope))
 
@@ -973,6 +983,12 @@ def main() -> None:
         "options_dropped_no_trajectory": land.dropped_options,
         "targets_unreachable_from_library": unreachable,
         "targets_total": len(envelope),
+        "targets_unreachable_is_a_proof": True,
+        "targets_within_envelope_note": (
+            "membership in the relaxed envelope does not prove a target attainable — the "
+            "choices are discrete and the relaxation lets a stand vary per cycle and per "
+            "dimension; only the unreachable count is a proof"
+        ),
     }
     (OUT_DIR / "solution_quality.json").write_text(json.dumps(quality, indent=2))
 

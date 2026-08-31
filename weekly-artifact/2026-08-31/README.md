@@ -77,7 +77,16 @@ worth about as much as the entire greedy allocation step.
 
 | Cycle | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Reachable county+owner targets (of 8) | 6 | 4 | 5 | 5 | **0** | 7 | **1** | 2 | 3 | **0** |
+| County+owner targets **proven unreachable** (of 8) | 2 | 4 | 3 | 3 | **8** | 1 | **7** | 6 | 5 | **8** |
+
+**The bound only runs one way, and the count above is the direction that holds.** The
+envelope comes from a relaxation — every stand free to pick a different trajectory in each
+cycle and for each dimension at once, which the real problem forbids — so a target *outside*
+it is unreachable by any selection, a proof. A target *inside* it is merely not proven
+unreachable: the choices are discrete, the attainable set has gaps, and a target may sit in
+one. Deciding attainability exactly is a subset-sum problem per (dimension, cycle); it is
+not attempted rather than approximated and reported as fact. `attainable_envelope.csv`
+names the column `target_within_envelope` for the same reason.
 
 The ceiling — every stand simultaneously choosing its highest-volume trajectory — swings
 from 413% of Baker's target in cycle 1 to 27% in cycle 5, and to **zero everywhere in
