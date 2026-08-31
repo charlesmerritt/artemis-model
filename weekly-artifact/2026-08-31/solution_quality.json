@@ -1,6 +1,6 @@
 {
-  "objective_best": 190.34514742063007,
-  "objective_greedy_baseline": 1371.053281179485,
+  "objective_best": 190.3960428579375,
+  "objective_greedy_baseline": 363.6951034956314,
   "objective_random_baseline_mean": 379.75443260341416,
   "objective_random_baseline_all": [
     382.86510868837325,
@@ -11,13 +11,13 @@
   ],
   "relaxation_bound": 153.73921041018934,
   "relaxation_bound_strategy": "per-cycle per-dimension interval relaxation",
-  "gap_to_bound_absolute": 36.60593701044073,
+  "gap_to_bound_absolute": 36.656832447748144,
   "beats_greedy": true,
   "beats_random": true,
   "seed_spread": {
-    "min": 190.34514742063777,
-    "max": 190.55859256178212,
-    "range": 0.21344514114434787
+    "min": 190.39604285793715,
+    "max": 190.5464025690315,
+    "range": 0.1503597110943531
   },
   "target_period": "2013_2024",
   "random_seed": 42,
@@ -32,10 +32,15 @@
     "harvest_volume": 6.0,
     "standing_volume": 1.0
   },
-  "move_weights_effective": {
+  "move_weights_declared": {
     "single_stand": 0.7,
-    "period_swap": 0.1,
-    "block": "unavailable"
+    "block": 0.2,
+    "period_swap": 0.1
+  },
+  "move_probabilities_effective": {
+    "single_stand": 0.875,
+    "period_swap": 0.12500000000000003,
+    "block": "unavailable \u2014 no adjacency components on a pixel-class landscape"
   },
   "spatial_penalties": {
     "available": false,

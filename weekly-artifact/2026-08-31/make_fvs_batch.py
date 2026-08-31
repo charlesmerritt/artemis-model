@@ -62,6 +62,7 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
+from pipeline.ids import as_id_series  # noqa: E402
 from pipeline.s4_fvs.regime_templates import (  # noqa: E402
     DEFAULT_INV_YEAR,
     render_keyfile,
@@ -162,7 +163,8 @@ def carved_landscape() -> tuple[pd.DataFrame, pd.DataFrame]:
     smz = pd.read_csv(SMZ_BY_UNIT, dtype=ID_COLS)[["unit_id", "smz_acres"]]
 
     units = lib.drop_duplicates("unit_id")[
-        ["unit_id", "tm_id", "PLT_CN", "county", "owner_class", "forest_branch", "acres", "stand_age"]
+        ["unit_id", "tm_id", "PLT_CN", "county", "owner_class", "forest_branch", "acres",
+         "stand_age", "OWN_CODE", "FORTYPCD"]
     ].copy()
     pre_units, pre_acres = len(units), units["acres"].sum()
 
@@ -175,9 +177,15 @@ def carved_landscape() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     rip = pd.read_csv(RIPARIAN_DECISION, dtype=ID_COLS)
     rip_stands = rip.drop_duplicates("unit_id")[
-        ["unit_id", "tm_id", "PLT_CN", "county", "owner_class", "forest_branch", "acres", "stand_age"]
+        ["unit_id", "tm_id", "PLT_CN", "county", "owner_class", "forest_branch", "acres",
+         "stand_age"]
     ].copy()
     rip_stands["unit_class"] = "riparian"
+    # The 2026-08-24 riparian frame carries no OWN_CODE/FORTYPCD, and does not need them:
+    # `assign_prescription` applies the riparian override ahead of ownership and forest
+    # type, so these stands resolve to `no_management` on SMZ_Pct alone.
+    rip_stands["OWN_CODE"] = pd.NA
+    rip_stands["FORTYPCD"] = pd.NA
 
     stands = pd.concat([upland, rip_stands], ignore_index=True)
 
@@ -243,8 +251,11 @@ def build_input_db(plots: set[str]) -> dict[str, dict[str, float]]:
     tree = pd.read_sql("SELECT * FROM FVS_TREEINIT_PLOT", src)
     src.close()
 
-    stand["STAND_CN"] = stand["STAND_CN"].astype(str)
-    tree["STAND_CN"] = tree["STAND_CN"].astype(str)
+    # AGENTS.md: never `.astype(str)` on an ID column whose dtype is not already
+    # guaranteed exact. SQLite may hand back a numeric STAND_CN, and a PLT_CN that has
+    # been through a float silently loses digits and then fails to join.
+    stand["STAND_CN"] = as_id_series(stand["STAND_CN"], column="STAND_CN")
+    tree["STAND_CN"] = as_id_series(tree["STAND_CN"], column="STAND_CN")
     stand = stand[stand["STAND_CN"].isin(plots)].copy()
     tree = tree[tree["STAND_CN"].isin(plots)].copy()
 
@@ -363,7 +374,16 @@ def run_batch(runs: pd.DataFrame, workers: int) -> tuple[pd.DataFrame, pd.DataFr
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_run_one, t): t for t in tasks}
         for fut in as_completed(futures):
-            plt_cn, prescription, err, rows = fut.result()
+            task = futures[fut]
+            try:
+                plt_cn, prescription, err, rows = fut.result()
+            except Exception as exc:  # noqa: BLE001
+                # A worker that dies outright (BrokenProcessPool, OOM kill) raises here
+                # rather than inside `_run_one`. Record it as a failure like any other:
+                # nothing is written until main() finishes, so letting this propagate
+                # would discard every result already collected in a ~6-minute batch.
+                plt_cn, prescription = task[0], task[1]
+                err, rows = f"{type(exc).__name__}: {exc}", []
             done += 1
             if err:
                 failures.append({"PLT_CN": plt_cn, "prescription": prescription, "error": err})
@@ -420,7 +440,10 @@ def build_library_tables(cycles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
               "TCuFt", "MCuFt", "BdFt", "RTpa", "RTCuFt", "RMCuFt", "RBdFt", "RmvCode"]].copy()
     cyc = cyc.rename(columns={"Year": "calendar_year", "RMCuFt": "removed_merch_cuft_per_ac"})
 
-    idx = (cyc.groupby(["PLT_CN", "prescription"], as_index=False)
+    # `cycle` 0 is the 2022 inventory state, not a simulated cycle: including it would
+    # make `cycles` read 11 where the horizon is ten five-year steps.
+    simulated = cyc[cyc["cycle"] >= 1]
+    idx = (simulated.groupby(["PLT_CN", "prescription"], as_index=False)
               .agg(cycles=("cycle", "nunique"),
                    first_year=("calendar_year", "min"),
                    last_year=("calendar_year", "max"),

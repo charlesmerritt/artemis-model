@@ -51,23 +51,23 @@ repeat of any of them: those built the decision space, this one *decides*.
 | | Objective (lower is better) | |
 |---|---:|---|
 | Random selection (mean of 5 draws) | 379.75 | |
-| **Greedy baseline** (`harvest_scheduler.py`) | **1371.05** | §6.3 requires it beside the plan |
-| **Annealed plan** (best of 5 seeds) | **190.35** | seed 43 |
-| Relaxation bound | 153.74 | gap 36.61 |
+| **Greedy baseline** (`harvest_scheduler.py`) | **363.70** | §6.3 requires it beside the plan |
+| **Annealed plan** (best of 5 seeds) | **190.40** | seed 45 |
+| Relaxation bound | 153.74 | gap 36.66 |
 
-Seed spread across all five seeds is **0.213** on an objective of 190.35 — a 0.11% range,
+Seed spread across all five seeds is **0.150** on an objective of 190.40 — a 0.08% range,
 so the search has converged rather than got lucky once. `T₀` calibrated per seed to
-0.054–0.081, 123–131 temperature levels, ~40% of proposals accepted.
+0.081–0.138, 131–141 temperature levels, ~41% of proposals accepted.
 
-**The greedy baseline is worse than random, and that is a real result rather than a bug.**
-On this landscape the TPO caps never bind hard enough to exclude any stand: the allocator
-admitted at least one harvest event for all 5,228 upland stands with a choice, so the greedy seed reduces
-to *every stand runs its deterministic owner-class default*. Because those defaults'
-entry years are resolved from stand age, they clump — greedy delivers −27%, −42%, −93%,
-−56%, −86%, −73%, −98%, −73%, −98%, −100% against target across the ten cycles. Random
-selection spreads stands across their eligible menus and incidentally smooths flow better
-than everyone-takes-their-default. That is precisely the "what the optimizer is for"
-argument, measured.
+**The greedy allocator is a real baseline here, and the annealer beats it by 48%.** The
+TPO caps genuinely bind: of 4,309 stands whose owner-class default schedules a harvest,
+the allocator admits every event for 3,827 and partially blocks 42, refusing units in
+most cycles (1,249 of 1,270 candidates in the first, 765 of 1,211 in the fourth). Greedy
+lands at 363.70, a little ahead of random selection's 379.75 — it is a sensible plan, not
+a strawman — and the annealed plan is still roughly half its objective. That gap is the
+measured answer to "what is the optimizer for": choosing *which* trajectory each stand
+runs, rather than committing every stand to its default and then rationing by cycle, is
+worth about as much as the entire greedy allocation step.
 
 ### The finding that matters: the decision space cannot supply the targets
 
@@ -109,16 +109,16 @@ single highest-value next increment, and it costs FVS runs, not scheduler work.
 |---|---|
 | Stands | **11,831** (5,228 upland with a real choice, 6,602 riparian with one) |
 | Acres | 925,098 total; 913,943 with at least one cutting option |
-| Removed volume, 50 years | **1.89 billion ft³** merchantable |
+| Removed volume, 50 years | **1.88 billion ft³** merchantable |
 | Best cycle against target | 2052, −17% |
 | Worst | 2072, −100% (nothing in the library cuts then) |
 
-Chosen mix, by acreage: `family_uneven_aged_selection` 339k ac · `pine_plantation_long_rotation`
-216k ac · `no_management` 120k ac (109k upland + 11k riparian) · `public_thin_restore`
-67k ac · `hardwood_clearcut_regen` 66k ac · `family_light_thin` 41k ac ·
-`public_selection_light` 41k ac · `pine_plantation_short_rotation` 36k ac.
+Chosen mix, by acreage: `family_uneven_aged_selection` 332k ac · `pine_plantation_long_rotation`
+224k ac · `no_management` 112k ac (101k upland + 11k riparian) · `hardwood_clearcut_regen`
+67k ac · `public_thin_restore` 65k ac · `family_light_thin` 47k ac ·
+`public_selection_light` 44k ac · `pine_plantation_short_rotation` 33k ac.
 
-Note the 109k upland acres the scheduler leaves unmanaged **by choice** — `no_management` is
+Note the 101k upland acres the scheduler leaves unmanaged **by choice** — `no_management` is
 in every non-riparian library precisely so that a binding volume target can be satisfied by
 not cutting (§3 rule 1), and the search uses it.
 
@@ -204,7 +204,7 @@ made to pass. Its effect on the plan is one upland stand losing one of its optio
 (`stands_with_a_choice` 5,229 → 5,228), reported in `solution_quality.json` as
 `options_dropped_no_trajectory`.
 
-### Three corrections made to the run rather than worked around
+### Four corrections made to the run rather than worked around
 
 1. **FVS aborted on 472 of 3,782 runs (12.5%) with a floating-point exception** in
    `r9clark.f:1286` — `R9ht`, computing `(1.0 - 17.3/totht)**p`. That is the exact condition
@@ -233,8 +233,38 @@ made to pass. Its effect on the plan is one upland stand losing one of its optio
    many-to-one onto `trajectory_index.csv` and `trajectory_harvest_by_cycle.csv` (2,482
    distinct, 0 unmatched, verified).
 
+4. **The greedy baseline was not the greedy baseline.** This one was found while working
+   the review and is the most consequential. `regime_assignment.assign_prescription`
+   returns a record exposing `prescription_id`; the driver read `.prescription`, and a bare
+   `except Exception: continue` around the loop swallowed the resulting `AttributeError`
+   for all 11,831 stands. `default_prescriptions` therefore returned `{}`,
+   `greedy_seed` hit its empty-input fallback, and **`harvest_scheduler.schedule_harvests`
+   was never called** — the "greedy baseline" was really "option index 0 for every stand",
+   and the annealer seeded from it. A second contract error compounded it: the unit mapping
+   passed the already-resolved `owner_class` / `forest_branch` strings, but `classify_owner`
+   reads `OWN_CODE` and `forest_type_branch` reads `FORTYPCD`, so every stand degraded to
+   the `unknown` owner and the `other` branch — silently, since that function is documented
+   to degrade rather than raise.
+
+   Both are fixed: the carved-stand table now carries `OWN_CODE` and `FORTYPCD`, the
+   swallow is gone (a stand that cannot resolve a default now stops the run), and the
+   baseline is genuinely `schedule_harvests`'s output. **The published numbers changed as a
+   result** — greedy is 363.70, not the 1371.05 first reported, and it *beats* random
+   selection rather than losing to it, so the earlier "greedy is worse than random" reading
+   was an artifact of this bug and has been removed. The annealed plan is essentially
+   unmoved (190.40 against 190.34), and no finding in this artifact depended on the wrong
+   figure.
+
 Findings 1 and 3 and the fail-closed batch above were raised by Devin Review on the PR;
-each was reproduced against the data before being fixed.
+finding 4 surfaced while verifying its critique of the greedy mapping. Each was reproduced
+against the data before being fixed. Four further review points are also addressed in the
+drivers: `Objective` now scores exactly the dimensions `config/projection.yaml` declares
+rather than always both; the quality report states the *renormalised* move probabilities
+the sampler actually used (0.875 / 0.125) instead of the pre-renormalisation config values;
+a worker that dies outright is recorded as a failure instead of discarding the whole batch;
+`trajectory_index`'s `cycles` column no longer counts the cycle-0 inventory row; and IDs
+read out of SQLite go through `pipeline.ids.as_id_series` rather than `.astype(str)`, per
+`AGENTS.md`.
 
 ## R2 inputs pulled
 

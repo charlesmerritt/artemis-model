@@ -253,7 +253,18 @@ class Objective:
         weights = {o["metric"]: float(o["weight"]) for o in cfg["objectives"]}
         self.w_vol = weights["harvest_volume"]
         self.w_standing = weights.get("standing_volume", 0.0)
-        self.dimensions = cfg["dimensions"]
+        # §6 "targets must stay dimensioned": score exactly the dimensions the scenario
+        # declares. Scoring a dimension the config switched off would optimise a different
+        # objective than the run reports.
+        self.dimensions = list(cfg["dimensions"])
+        unknown = set(self.dimensions) - {hs.COUNTY, hs.OWNER}
+        if unknown:
+            raise AssertionError(f"unsupported harvest_volume dimensions: {sorted(unknown)}")
+        if not self.dimensions:
+            raise AssertionError("harvest_volume declares no dimensions; §6 forbids "
+                                 "collapsing the target to a bare landscape total here")
+        self.use_county = hs.COUNTY in self.dimensions
+        self.use_owner = hs.OWNER in self.dimensions
 
         self.county_target = [caps[hs.COUNTY][k] for k in land.counties]
         self.owner_target = [caps[hs.OWNER][k] for k in land.owners]
@@ -283,14 +294,16 @@ class Objective:
 
     def _dim_cost(self) -> float:
         cost = 0.0
-        for row, t in zip(self.county_v, self.county_target):
-            for v in row:
-                d = (v - t) / t
-                cost += d * d
-        for row, t in zip(self.owner_v, self.owner_target):
-            for v in row:
-                d = (v - t) / t
-                cost += d * d
+        if self.use_county:
+            for row, t in zip(self.county_v, self.county_target):
+                for v in row:
+                    d = (v - t) / t
+                    cost += d * d
+        if self.use_owner:
+            for row, t in zip(self.owner_v, self.owner_target):
+                for v in row:
+                    d = (v - t) / t
+                    cost += d * d
         return cost
 
     def total(self) -> float:
@@ -307,17 +320,21 @@ class Objective:
         ct = self.county_target[land.county_ix[i]]
         ot = self.owner_target[land.owner_ix[i]]
 
+        # Both aggregates are always maintained (violation_vector reports either), but only
+        # the declared dimensions are scored.
         before = after = 0.0
         for c in range(self.n_cycles):
             dv = new_v[c] - old_v[c]
             if dv == 0.0:
                 continue
-            a, b = cv[c], cv[c] + dv
-            before += ((a - ct) / ct) ** 2
-            after += ((b - ct) / ct) ** 2
-            a, b = ov[c], ov[c] + dv
-            before += ((a - ot) / ot) ** 2
-            after += ((b - ot) / ot) ** 2
+            if self.use_county:
+                a, b = cv[c], cv[c] + dv
+                before += ((a - ct) / ct) ** 2
+                after += ((b - ct) / ct) ** 2
+            if self.use_owner:
+                a, b = ov[c], ov[c] + dv
+                before += ((a - ot) / ot) ** 2
+                after += ((b - ot) / ot) ** 2
         d_standing = land.standing[i][new_k] - land.standing[i][old_k]
         delta = (self.w_vol * (after - before)
                  - self.w_standing * (d_standing / self.standing_max))
@@ -336,10 +353,12 @@ class Objective:
         """§6.1 — the full constraint-violation vector, per dimension per cycle."""
         self.reset(choice)
         rows = []
-        for name, keys, agg, targets in (
-            ("county", self.land.counties, self.county_v, self.county_target),
-            ("owner_group", self.land.owners, self.owner_v, self.owner_target),
-        ):
+        active = []
+        if self.use_county:
+            active.append(("county", self.land.counties, self.county_v, self.county_target))
+        if self.use_owner:
+            active.append(("owner_group", self.land.owners, self.owner_v, self.owner_target))
+        for name, keys, agg, targets in active:
             for key, row, t in zip(keys, agg, targets):
                 for c, v in enumerate(row, start=1):
                     rows.append({"dimension": name, "key": key, "cycle": c,
@@ -360,10 +379,12 @@ class Objective:
         """
         land = self.land
         rows = []
-        for name, ixs, keys, targets in (
-            ("county", land.county_ix, land.counties, self.county_target),
-            ("owner_group", land.owner_ix, land.owners, self.owner_target),
-        ):
+        active = []
+        if self.use_county:
+            active.append(("county", land.county_ix, land.counties, self.county_target))
+        if self.use_owner:
+            active.append(("owner_group", land.owner_ix, land.owners, self.owner_target))
+        for name, ixs, keys, targets in active:
             lo = [[0.0] * self.n_cycles for _ in keys]
             hi = [[0.0] * self.n_cycles for _ in keys]
             for i in range(land.n):
@@ -419,8 +440,12 @@ class Objective:
                 o_max[oi][c] += hi
 
         cost = 0.0
-        for mins, maxs, targets in ((c_min, c_max, self.county_target),
-                                    (o_min, o_max, self.owner_target)):
+        active = []
+        if self.use_county:
+            active.append((c_min, c_max, self.county_target))
+        if self.use_owner:
+            active.append((o_min, o_max, self.owner_target))
+        for mins, maxs, targets in active:
             for lo_row, hi_row, t in zip(mins, maxs, targets):
                 for lo, hi in zip(lo_row, hi_row):
                     gap = max(0.0, t - hi, lo - t)
@@ -453,15 +478,37 @@ def spatial_penalties_available(land: Landscape) -> tuple[bool, str]:
 # --------------------------------------------------------------------------------------
 
 def default_prescriptions(stands: pd.DataFrame) -> dict[str, str]:
-    """The deterministic owner-class default from `regime_assignment.assign_prescription`."""
-    out = {}
+    """The deterministic owner-class default from `regime_assignment.assign_prescription`.
+
+    Deliberately unguarded. An earlier version wrapped this loop in a bare
+    `except Exception: continue`, which swallowed an `AttributeError` on every row (the
+    returned record exposes `prescription_id`, not `prescription`) and left the mapping
+    empty — so the greedy baseline silently degenerated to "option 0 for every stand" and
+    `harvest_scheduler` was never called at all. A stand that cannot resolve a default is
+    a fault in the policy configuration, and it should stop the run rather than quietly
+    hollow out the baseline the plan is judged against.
+
+    The unit mapping must carry the fields `assign_prescription` actually reads —
+    `OWN_CODE` for `classify_owner` and `FORTYPCD` for `forest_type_branch`, not the
+    already-resolved `owner_class` / `forest_branch` strings. Passing the resolved names
+    is silently accepted and degrades every stand to the `unknown` owner and the `other`
+    forest branch, which is a different (and much smaller) default menu.
+    """
+    out, mismatched = {}, 0
     for row in stands.itertuples(index=False):
-        unit = {"owner_class": row.owner_class, "forest_branch": row.forest_branch,
-                "stand_age": row.stand_age, "SMZ_Pct": 100.0 if row.unit_class == "riparian" else 0.0}
-        try:
-            out[row.unit_id] = assign_prescription(unit).prescription
-        except Exception:  # noqa: BLE001 - a stand with no resolvable default keeps none
-            continue
+        riparian = row.unit_class == "riparian"
+        unit = {"OWN_CODE": row.OWN_CODE, "FORTYPCD": row.FORTYPCD,
+                "stand_age": row.stand_age,
+                "SMZ_Pct": 100.0 if riparian else 0.0}
+        p = assign_prescription(unit)
+        # The library's own owner class is the ground truth; a disagreement means the raw
+        # attribution and the resolved column have drifted apart.
+        if not riparian and p.owner_class != row.owner_class:
+            mismatched += 1
+        out[row.unit_id] = p.prescription_id
+    if mismatched:
+        log.warning("%d stands resolved an owner class differing from the library's own "
+                    "`owner_class` column", mismatched)
     return out
 
 
@@ -470,12 +517,20 @@ def greedy_seed(land: Landscape, stands: pd.DataFrame, caps: dict) -> list[int]:
 
     `harvest_scheduler.schedule_harvests` decides *which units cut in which cycle* against
     the TPO budgets; it does not choose trajectories. The mapping onto the library is
-    stated rather than inferred: a stand whose default cutting prescription had at least
-    one harvest event admitted by the allocator takes that prescription; every other stand
-    takes `no_management`. Stands are walked oldest-first, which is the allocator's own
-    priority rule.
+    stated rather than inferred: a stand takes its default cutting prescription only when
+    the allocator admitted **every** one of that trajectory's harvest events; every other
+    stand takes `no_management`. Requiring all of them matters — a trajectory is
+    all-or-nothing here, so selecting it after the allocator blocked some of its cycles
+    would credit the greedy plan with volume the allocator actually refused, and the
+    baseline would no longer be `schedule_harvests`'s own output. Stands are walked
+    oldest-first, which is the allocator's own priority rule.
     """
     defaults = default_prescriptions(stands)
+    if not defaults:
+        raise AssertionError(
+            "no stand resolved a default prescription; the greedy baseline would be "
+            "meaningless. Check regime_assignment.assign_prescription's contract."
+        )
     ix = {sid: i for i, sid in enumerate(land.stand_ids)}
     rows = []
     for sid, presc in defaults.items():
@@ -491,17 +546,26 @@ def greedy_seed(land: Landscape, stands: pd.DataFrame, caps: dict) -> list[int]:
                              hs.OWNER: OWNER_GROUP[stands_owner(stands, sid)],
                              "stand_age": stands_age(stands, sid)})
     if not rows:
-        return [0] * land.n
+        raise AssertionError(
+            "no default trajectory carries a harvest event; the greedy allocator would "
+            "have nothing to allocate and the baseline would be vacuous."
+        )
     cand = pd.DataFrame(rows)
     annual = {dim: {k: v / CYCLE_YEARS for k, v in caps[dim].items()} for dim in caps}
     result = hs.schedule_harvests(cand, annual, dims=(hs.TOTAL, hs.COUNTY, hs.OWNER))
-    harvested = set(result.loc[result["harvested"], "unit_id"]) if "harvested" in result \
-        else set(result["unit_id"])
+    if "harvested" not in result:
+        raise AssertionError("harvest_scheduler returned no `harvested` column")
+    per_stand = result.groupby("unit_id")["harvested"].agg(["sum", "count"])
+    fully = set(per_stand.index[per_stand["sum"] == per_stand["count"]])
+    partial = int(((per_stand["sum"] > 0) & (per_stand["sum"] < per_stand["count"])).sum())
+    log.info("Greedy allocator: %d/%d candidate stands had every harvest event admitted, "
+             "%d were partially blocked and fall back to no_management",
+             len(fully), len(per_stand), partial)
 
     choice = []
     for i, sid in enumerate(land.stand_ids):
         presc = defaults.get(sid)
-        if sid in harvested and presc in land.options[i]:
+        if sid in fully and presc in land.options[i]:
             choice.append(land.options[i].index(presc))
         else:
             k = land.options[i].index("no_management") if "no_management" in land.options[i] else 0
@@ -535,6 +599,23 @@ def random_choice(land: Landscape, rng: random.Random) -> list[int]:
 # --------------------------------------------------------------------------------------
 # The annealer
 # --------------------------------------------------------------------------------------
+
+def effective_move_probabilities(move_weights: dict) -> dict[str, float]:
+    """The probabilities the sampler actually uses, after dropping the `block` move.
+
+    `config/projection.yaml` declares 0.70 / 0.20 / 0.10 over single_stand / block /
+    period_swap. Blocks are adjacency components, which this landscape cannot supply, so
+    `block` is dropped and the remainder renormalised — making the real probabilities
+    0.875 and 0.125, not 0.70 and 0.10. Reported from here rather than from the raw
+    config, because a quality report that states the pre-renormalisation numbers
+    misrecords the search it is meant to make reproducible.
+    """
+    mw = {k: float(v) for k, v in move_weights.items() if k != "block"}
+    total = sum(mw.values())
+    if total <= 0:
+        raise AssertionError("move weights sum to zero once `block` is removed")
+    return {k: v / total for k, v in mw.items()}
+
 
 def calibrate_t0(land: Landscape, obj: Objective, choice: list[int],
                  rng: random.Random, accept_rate: float, samples: int = 4000) -> float:
@@ -583,10 +664,7 @@ def anneal(land: Landscape, obj: Objective, cfg: dict, seed: int,
 
     # §6 move mixture. `block` needs adjacency components, which this landscape cannot
     # supply, so its weight is redistributed over the two moves that remain well defined.
-    mw = dict(a["move_weights"])
-    mw.pop("block", None)
-    total_w = sum(mw.values())
-    p_single = mw["single_stand"] / total_w
+    p_single = effective_move_probabilities(a["move_weights"])["single_stand"]
     decision = land.decision_stands
     if not decision:
         raise AssertionError("no stand has more than one trajectory; nothing to search")
@@ -664,6 +742,10 @@ def plan_frame(land: Landscape, choice: list[int], stands: pd.DataFrame) -> pd.D
       `trajectory_index.csv` and `trajectory_harvest_by_cycle.csv`, and the join is
       many-to-one, so it never expands the plan.
     """
+    # A duplicate unit_id would make `attrs.loc[sid]` a frame, silently baking Series
+    # objects into the output columns. Assert rather than assume, as the carve checks do.
+    if not stands["unit_id"].is_unique:
+        raise AssertionError("carved stands carry a duplicate unit_id")
     attrs = stands.set_index("unit_id")
     rows = []
     for i, k in enumerate(choice):
@@ -789,9 +871,11 @@ def main() -> None:
                     ("cooling_factor", "iterations_per_temperature", "min_temperature",
                      "stall_temperature_levels", "initial_accept_rate")},
         "objective_weights": {o["metric"]: o["weight"] for o in cfg["objectives"]},
-        "move_weights_effective": {"single_stand": cfg["anneal"]["move_weights"]["single_stand"],
-                                   "period_swap": cfg["anneal"]["move_weights"]["period_swap"],
-                                   "block": "unavailable"},
+        "move_weights_declared": cfg["anneal"]["move_weights"],
+        "move_probabilities_effective": {
+            **effective_move_probabilities(cfg["anneal"]["move_weights"]),
+            "block": "unavailable — no adjacency components on a pixel-class landscape",
+        },
         "spatial_penalties": {"available": avail, "reason": why,
                               "declared": cfg["penalties"]},
         "riparian_structural": rip,
