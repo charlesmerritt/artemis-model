@@ -1,0 +1,89 @@
+{
+  "objective_best": 94.54280446513248,
+  "objective_greedy_baseline": 363.67878260105505,
+  "objective_random_baseline_mean": 293.81872043693363,
+  "objective_random_baseline_all": [
+    316.09879680925246,
+    294.20660685344643,
+    298.9762978377133,
+    285.9421852443991,
+    273.8697154398571
+  ],
+  "relaxation_bound": 48.10517792230119,
+  "relaxation_bound_strategy": "per-cycle per-dimension interval relaxation",
+  "gap_to_bound_absolute": 46.43762654283129,
+  "beats_greedy": true,
+  "beats_random": true,
+  "seed_spread": {
+    "min": 94.54280446513279,
+    "max": 96.37940936627051,
+    "range": 1.8366049011377186
+  },
+  "target_period": "2013_2024",
+  "random_seed": 42,
+  "cooling": {
+    "cooling_factor": 0.95,
+    "iterations_per_temperature": 10,
+    "min_temperature": 0.0001,
+    "stall_temperature_levels": 20,
+    "initial_accept_rate": 0.8
+  },
+  "objective_weights": {
+    "harvest_volume": 6.0,
+    "standing_volume": 1.0
+  },
+  "move_weights_declared": {
+    "single_stand": 0.7,
+    "block": 0.2,
+    "period_swap": 0.1
+  },
+  "move_probabilities_effective": {
+    "single_stand": 0.875,
+    "period_swap": 0.12500000000000003,
+    "block": "unavailable \u2014 no adjacency components on a pixel-class landscape"
+  },
+  "spatial_penalties": {
+    "available": false,
+    "reason": "no polygon adjacency: stands are pixel classes (TreeMap plot x county x ownership), not contiguous units",
+    "declared": {
+      "adjacency_greenup": 1.0,
+      "max_opening_size": 1.0,
+      "treatment_budget": 0.0
+    }
+  },
+  "riparian_structural": {
+    "riparian_stands": 6602,
+    "with_a_cutting_option": 0,
+    "structurally_enforced": true
+  },
+  "stands": 11831,
+  "stands_with_a_choice": 5229,
+  "stands_dropped": 0,
+  "options_dropped_no_trajectory": 1,
+  "targets_unreachable_from_library": 10,
+  "targets_total": 80,
+  "attainability_vs_2026_08_31": {
+    "unreachable_prev": 47,
+    "unreachable_now": 10,
+    "recovered": 37,
+    "newly_unreachable": 0,
+    "still_unreachable": 10
+  },
+  "objective_vs_2026_08_31": {
+    "best_prev": 190.41409871907317,
+    "best_now": 94.54280446513248,
+    "greedy_prev": 363.67632968564254,
+    "greedy_now": 363.67878260105505,
+    "bound_prev": 153.73921041018934,
+    "bound_now": 48.10517792230119,
+    "note": "the greedy baseline is computed from base prescriptions only and should be unchanged; a difference here would mean the control moved"
+  },
+  "library": {
+    "options_total": 53457,
+    "options_per_stand_max": 13,
+    "options_per_upland_stand_median": 9,
+    "design_target_per_stand": "6-12 (\u00a74)"
+  },
+  "targets_unreachable_is_a_proof": true,
+  "targets_within_envelope_note": "membership in the relaxed envelope does not prove a target attainable \u2014 the choices are discrete and the relaxation lets a stand vary per cycle and per dimension; only the unreachable count is a proof"
+}
