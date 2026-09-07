@@ -313,6 +313,94 @@ def test_envelope_delta_classifies_each_target(plan, tmp_path, monkeypatch):
     assert delta["ceiling_ratio"].iloc[0] == pytest.approx(3.0)
 
 
+def test_planning_refuses_without_a_batch_marker(plan, tmp_path, monkeypatch):
+    """The other half of the smoke-mode fix.
+
+    `make_offset_library.py --limit` now unlinks the marker and refuses to rewrite it, so
+    the library left on disk is a partial one that nothing vouches for. That is only safe
+    because planning stops dead without the marker rather than reading whatever tables
+    happen to be there.
+    """
+    monkeypatch.setattr(plan, "MANIFEST", tmp_path / "batch_manifest.json")
+    with pytest.raises(SystemExit, match="has not completed successfully"):
+        plan.require_fresh_batch()
+
+
+def test_planning_refuses_a_marker_that_does_not_match_the_tables(plan):
+    """And a marker from a different batch is rejected on row counts."""
+    manifest = {"carved_stands_rows": 11831, "carved_library_rows": 53458,
+                "trajectory_cycles_rows": 142791}
+    frames = {"stands": pd.DataFrame({"a": range(11831)}),
+              "library": pd.DataFrame({"a": range(53458)}),
+              "cycles": pd.DataFrame({"a": range(40)})}      # truncated, as a smoke run
+    with pytest.raises(SystemExit, match="library has changed since the batch completed"):
+        plan.check_batch_matches(manifest, frames["stands"], frames["library"],
+                                 frames["cycles"])
+
+
+def test_envelope_delta_refuses_a_changed_target_amount(plan, tmp_path, monkeypatch):
+    """Matching keys are not enough — the *amounts* must match too.
+
+    `config/tpo_targets.yaml` can change a target's value without touching any
+    (dimension, key, cycle). A ceiling that never moved would then cross a target that
+    did, and be reported here as a timing-grid recovery: a fabricated result, and the one
+    this artifact's headline rests on.
+    """
+    base = {"dimension": ["county"], "key": ["Baker"], "cycle": [1],
+            "calendar_year": [2027], "min_attainable_cuft": [0.0],
+            "max_attainable_cuft": [120.0], "max_as_pct_of_target": [120.0]}
+    prev = pd.DataFrame({**base, "target_cuft": [100.0],
+                         "target_within_envelope": [False]})
+    # Same ceiling, same key, a target that moved down: "recovered" without the guard.
+    now = pd.DataFrame({**base, "target_cuft": [90.0],
+                        "target_within_envelope": [True]})
+    path = tmp_path / "prev_envelope.csv"
+    prev.to_csv(path, index=False)
+    monkeypatch.setattr(plan, "PREV_ENVELOPE", path)
+    with pytest.raises(AssertionError, match="targets changed target_cuft"):
+        plan.envelope_delta(now)
+
+
+def test_envelope_delta_refuses_a_changed_calendar_year(plan, tmp_path, monkeypatch):
+    """A cycle that maps to a different year is a different projection grid."""
+    base = {"dimension": ["county"], "key": ["Baker"], "cycle": [1],
+            "target_cuft": [100.0], "min_attainable_cuft": [0.0],
+            "max_attainable_cuft": [120.0], "max_as_pct_of_target": [120.0],
+            "target_within_envelope": [True]}
+    prev = pd.DataFrame({**base, "calendar_year": [2027]})
+    now = pd.DataFrame({**base, "calendar_year": [2028]})
+    path = tmp_path / "prev_envelope.csv"
+    prev.to_csv(path, index=False)
+    monkeypatch.setattr(plan, "PREV_ENVELOPE", path)
+    with pytest.raises(AssertionError, match="targets changed calendar_year"):
+        plan.envelope_delta(now)
+
+
+def test_attribute_lookup_survives_a_reused_frame_id(plan):
+    """`id()` is unique only among *live* objects.
+
+    The cache is keyed on `id(stands)`, so once a frame is collected CPython may hand its
+    address to the next allocation and a stale entry would answer for a different
+    landscape — the greedy baseline would then read another frame's county, owner or age.
+    Constructed here by deliberately reusing the key an expired frame left behind, which
+    is the same state an `id` collision produces without depending on the allocator
+    actually colliding.
+    """
+    first = pd.DataFrame({"unit_id": ["U1"], "county": ["Baker"]})
+    assert plan._attr_lookup(first, "county") == {"U1": "Baker"}
+
+    second = pd.DataFrame({"unit_id": ["U1"], "county": ["Union"]})
+    # Force the collision: give `second` the entry `first` would have left at a shared id.
+    plan._LOOKUPS[(id(second), "county")] = plan._LOOKUPS[(id(first), "county")]
+    assert plan._attr_lookup(second, "county") == {"U1": "Union"}
+
+
+def test_attribute_lookup_still_caches(plan):
+    """The weak reference must not defeat the cache it guards."""
+    stands = pd.DataFrame({"unit_id": ["U1"], "county": ["Baker"]})
+    assert plan._attr_lookup(stands, "county") is plan._attr_lookup(stands, "county")
+
+
 def test_envelope_delta_refuses_a_changed_target_set(plan, tmp_path, monkeypatch):
     """Comparing envelopes over different targets would be a meaningless headline."""
     prev = pd.DataFrame({"dimension": ["county"], "key": ["Baker"], "cycle": [1],

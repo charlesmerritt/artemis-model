@@ -49,6 +49,7 @@ import logging
 import math
 import random
 import sys
+import weakref
 from pathlib import Path
 
 import pandas as pd
@@ -618,14 +619,25 @@ def greedy_seed(land: Landscape, stands: pd.DataFrame, caps: dict) -> list[int]:
 # name only is correct while exactly one `stands` frame exists per process, and silently
 # wrong the moment a second one appears — a caller (a test, say) would get the first
 # frame's values back for the second frame's stand ids.
-_LOOKUPS: dict[tuple[int, str], dict] = {}
+#
+# Keying on `id(frame)` alone does not finish the job, because `id` is only unique among
+# *live* objects: once a frame is collected CPython is free to hand its address to the
+# next allocation, and a cache entry left behind by a dead frame would then answer for a
+# completely different one. So each entry keeps a weak reference to the frame it was
+# built from and is only trusted while that reference still resolves to the frame being
+# asked about. A weak reference is used rather than a strong one deliberately: holding
+# the frame alive would leak every `stands` table a long-lived process ever saw.
+_LOOKUPS: dict[tuple[int, str], tuple[weakref.ref, dict]] = {}
 
 
 def _attr_lookup(stands: pd.DataFrame, col: str) -> dict:
     key = (id(stands), col)
-    if key not in _LOOKUPS:
-        _LOOKUPS[key] = dict(zip(stands["unit_id"], stands[col]))
-    return _LOOKUPS[key]
+    cached = _LOOKUPS.get(key)
+    if cached is not None and cached[0]() is stands:
+        return cached[1]
+    mapping = dict(zip(stands["unit_id"], stands[col]))
+    _LOOKUPS[key] = (weakref.ref(stands), mapping)
+    return mapping
 
 
 def stands_county(stands, sid):
@@ -795,8 +807,9 @@ def require_fresh_batch() -> dict:
     if not MANIFEST.exists():
         raise SystemExit(
             f"no {MANIFEST.name} in {WORK}: the FVS batch has not completed successfully. "
-            f"Run make_fvs_batch.py first; if it aborted, the library on disk belongs to an "
-            f"earlier run and must not be planned over."
+            f"Run make_offset_library.py first, without --limit; if it aborted or ran in "
+            f"smoke mode, the library on disk is a partial one that nothing vouches for "
+            f"and must not be planned over."
         )
     return json.loads(MANIFEST.read_text())
 
@@ -844,6 +857,24 @@ def envelope_delta(envelope: pd.DataFrame) -> tuple[pd.DataFrame, int]:
             "not comparable and the headline difference would be meaningless"
         )
     merged = merged.drop(columns="_merge")
+
+    # Matching keys are not enough. `config/tpo_targets.yaml` could change a target's
+    # *amount* without touching any (dimension, key, cycle), and then a ceiling that
+    # never moved would cross a target that did — reported here as a timing-grid
+    # recovery, which would be a fabricated result. Exact equality, not a tolerance:
+    # both sides are the same YAML figure through the same `to_cycle_budget`, so any
+    # difference at all means the targets are not the same targets.
+    for col in ("target_cuft", "calendar_year"):
+        differing = merged[merged[f"{col}_prev"] != merged[f"{col}_now"]]
+        if len(differing):
+            row = differing.iloc[0]
+            raise AssertionError(
+                f"{len(differing)} targets changed {col} between 2026-08-31 and this run "
+                f"(e.g. {row['dimension']}/{row['key']} cycle {row['cycle']}: "
+                f"{row[f'{col}_prev']} → {row[f'{col}_now']}). The envelopes are built "
+                f"against different targets, so no difference between them is "
+                f"attributable to the decision space."
+            )
     was = merged["target_within_envelope_prev"]
     now = merged["target_within_envelope_now"]
     merged["change"] = [

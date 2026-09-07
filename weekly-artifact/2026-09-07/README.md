@@ -171,6 +171,41 @@ means the two weeks' objective values are not on a perfectly identical scale, an
 worth stating rather than leaving for someone to find. The attainability counts, which are
 the headline, are unaffected: they are volumes against targets, with no normaliser.
 
+## Three guards added in review
+
+Devin Review raised three findings on the first push. Each was reproduced against the
+code before being fixed, and **the published tables are byte-identical after all three** —
+the annealer was re-run and all 14 committed CSV/JSON outputs compared, so no number in
+this README moved.
+
+1. **A smoke run could authorize a partial plan.** `--limit N` runs a prefix of the batch,
+   but `main` still wrote the success marker with the truncated row counts, and
+   `check_batch_matches` would then confirm them — so a later planning run could publish a
+   plan over a 20-run library. This is not hypothetical: a `--limit` run earlier in this
+   session overwrote the *previous week's* committed tables, which is the same defect in
+   its other direction. Smoke mode now writes neither the marker nor the published tables,
+   and because the marker is unlinked before the batch starts, a smoke run leaves any
+   predecessor's marker invalidated too. `fvs_failures.csv` is guarded the same way, and
+   for a sharper reason: a 20-run prefix that excludes nothing is not evidence that the
+   batch excludes nothing, and the "no exclusions" branch *deletes* that file — which it
+   duly did to the committed one while this fix was being verified. Verified end to end:
+   after `--limit 20` the marker is absent, all 14 committed artifact files are unchanged
+   by checksum, and the annealer refuses to run.
+2. **`envelope_delta` compared envelopes without comparing their targets.**
+   `config/tpo_targets.yaml` could change a target's *amount* without touching any
+   (dimension, key, cycle), and a ceiling that never moved would then cross a target that
+   did — reported as a timing-grid recovery, which is the one number this artifact exists
+   to produce. It now requires `target_cuft` and `calendar_year` to match exactly on every
+   row, and says which target moved when they do not.
+3. **The attribute cache keyed on `id(frame)` alone.** `id` is unique only among *live*
+   objects, so a collected frame's address can be reused and a stale entry would answer
+   for a different landscape — the greedy baseline reading another frame's county, owner
+   or age. Each entry now carries a weak reference to the frame it was built from and is
+   only trusted while that reference still resolves to the frame being asked about. Weak
+   rather than strong deliberately: a strong reference would leak every `stands` table a
+   long-lived process ever saw. Latent rather than live in this run, which uses a single
+   frame — but the driver is headed for promotion into `pipeline/`, where it would not be.
+
 ## Two corrections made to the run rather than worked around
 
 **1. The horizon cutoff was one cycle too generous, and it published 55 phantom options.**
@@ -218,12 +253,13 @@ Every number above comes from committed repository code or from FVS output.
   library of exactly `{no_management}` — `no_management` has nothing to delay and is
   emitted once per stand — so §3 rule 2's "enforced by the absence of an alternative"
   holds unchanged. Asserted in the driver and tested on a synthetic library.
-- **The tests.** `tests/test_weekly_artifact_20260907_offsets.py` adds 86 tests covering
+- **The tests.** `tests/test_weekly_artifact_20260907_offsets.py` adds 92 tests covering
   the naming round-trip, what a delay may and may not change, both horizon rules, the
   regeneration-follows-its-harvest rule, offset-0 render equivalence for every template,
   the expansion over a synthetic library (including that it is additive and leaves
-  riparian structural), and the four-way classification in `envelope_delta`.
-  `uv run pytest tests/ -q` → **999 passed, 10 skipped**. `uv run ruff check .` clean.
+  riparian structural), the four-way classification in `envelope_delta` and the three
+  guards added in review below.
+  `uv run pytest tests/ -q` → **1,005 passed, 10 skipped**. `uv run ruff check .` clean.
 
 ## What is still unavailable, and unchanged by this week
 

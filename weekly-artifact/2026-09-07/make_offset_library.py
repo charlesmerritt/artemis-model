@@ -838,7 +838,11 @@ def main() -> None:
     log.info("Species SDI tables built for %d/%d donor plots", len(sdi), len(plots))
 
     runs = render_batch(carved_lib, sdi)
-    if args.limit:
+    # A `--limit` run produces a partial library. It is useful for exercising the
+    # plumbing and it must never look like a finished batch: the gates below and the
+    # success marker are all suppressed under it.
+    smoke = bool(args.limit)
+    if smoke:
         runs = runs.head(args.limit)
         log.warning("SMOKE MODE: only %d runs", len(runs))
 
@@ -859,8 +863,13 @@ def main() -> None:
     # Fail closed. A partial library is not a smaller library: the scheduler would read a
     # missing trajectory as an option the stand does not have, and the plan would be
     # quietly built over a decision space nobody chose.
+    # `fvs_failures.csv` is a published artifact file like any other, so a smoke run must
+    # neither write nor delete it. A 20-run prefix that happens to exclude nothing is not
+    # evidence that the batch excludes nothing — and the unlink below would silently
+    # remove the real batch's committed record of what FVS could not simulate.
     if len(excluded):
-        excluded.to_csv(OUT_DIR / "fvs_failures.csv", index=False)
+        if not smoke:
+            excluded.to_csv(OUT_DIR / "fvs_failures.csv", index=False)
         log.warning("%d trajectories could not be simulated; see fvs_failures.csv",
                     len(excluded))
         for row in excluded.itertuples(index=False):
@@ -878,10 +887,10 @@ def main() -> None:
             f"Inspect fvs_failures.csv, then re-run with --allow-excluded-runs "
             f"{len(excluded)} if these exclusions are acceptable."
         )
-    if not len(excluded):
+    if not len(excluded) and not smoke:
         (OUT_DIR / "fvs_failures.csv").unlink(missing_ok=True)
 
-    if args.limit:
+    if smoke:
         log.warning("SMOKE MODE: skipping the offset-0 reproduction gate")
     else:
         check_offset_zero_trajectories(idx)
@@ -912,12 +921,16 @@ def main() -> None:
     idx_out = idx_out.assign(fvs_run_id=idx_out["PLT_CN"] + "::" + idx_out["prescription"])
     lead = ["fvs_run_id", "PLT_CN", "prescription", "base_prescription", "offset_years"]
     idx_out = idx_out[lead + [c for c in idx_out.columns if c not in lead]]
-    idx_out.to_csv(OUT_DIR / "trajectory_index.csv", index=False)
     harvest = cyc[["PLT_CN", "prescription", "cycle", "calendar_year",
                    "removed_merch_cuft_per_ac"]].merge(split, on=["PLT_CN", "prescription"],
                                                        how="left")
     harvest.insert(0, "fvs_run_id", harvest["PLT_CN"] + "::" + harvest["prescription"])
-    harvest.to_csv(OUT_DIR / "trajectory_harvest_by_cycle.csv", index=False)
+    if smoke:
+        log.warning("SMOKE MODE: not overwriting the published artifact tables in %s",
+                    OUT_DIR)
+    else:
+        idx_out.to_csv(OUT_DIR / "trajectory_index.csv", index=False)
+        harvest.to_csv(OUT_DIR / "trajectory_harvest_by_cycle.csv", index=False)
 
     # The grid itself, summarised: what each delay cost in runs and where it put the wood.
     # `last_harvest_year` is the column that shows the delay working — each step of the
@@ -939,7 +952,8 @@ def main() -> None:
                            & (harvest["removed_merch_cuft_per_ac"] > 0)]
                    .groupby("offset_years")["fvs_run_id"].nunique())
     grid["runs_cutting_in_final_cycle"] = grid["offset_years"].map(final_cycle).fillna(0).astype(int)
-    grid.to_csv(OUT_DIR / "offset_grid.csv", index=False)
+    if not smoke:
+        grid.to_csv(OUT_DIR / "offset_grid.csv", index=False)
 
     log.info("Artifact tables: trajectory_index.csv (%d), "
              "trajectory_harvest_by_cycle.csv (%d), offset_grid.csv (%d)",
@@ -953,6 +967,20 @@ def main() -> None:
     # nonzero that is a finding, not a failure.
     log.info("Runs cutting in the final cycle (2072), by offset: %s",
              dict(zip(grid["offset_years"], grid["runs_cutting_in_final_cycle"])))
+
+    # A smoke run must not vouch for anything. `--limit` runs a prefix of the batch and
+    # everything downstream of it is a *partial* library — but the tables it writes have
+    # the same names and the same shape as a real one, so a manifest written here would
+    # be a valid-looking marker over a library nobody meant to publish, and
+    # `check_batch_matches` would happily confirm the truncated row counts it recorded.
+    # The marker was already unlinked at the top of `main`, so refusing to write it also
+    # leaves any predecessor's marker invalidated: the next plan run stops with "the FVS
+    # batch has not completed successfully", which is exactly right.
+    if smoke:
+        log.warning("SMOKE MODE: refusing to write %s. The library under %s is a %d-run "
+                    "prefix, not a publishable batch; re-run without --limit before "
+                    "planning over it.", MANIFEST.name, WORK, len(runs))
+        return
 
     # The success marker, written last: validation has passed and every output is on disk.
     # `make_annealed_plan.py` refuses to run without it and checks the row counts match,
