@@ -372,6 +372,73 @@ def test_the_two_drivers_agree_on_the_grid_today(mol, plan):
          "inv_year": mol.INV_YEAR}, cfg)
 
 
+def test_planner_uses_the_grid_it_validates(plan):
+    """Validating a number the code then ignores is worse than not checking it.
+
+    `check_projection_grid` compares `base_year` and `cycle_years` against the batch, so
+    both must actually drive the planner's arithmetic rather than sitting beside
+    `hs.DEFAULT_CYCLE_YEARS` and a literal 2022.
+    """
+    import yaml
+
+    cfg = yaml.safe_load((REPO / "config/projection.yaml").read_text())["projection"]
+    assert (plan.BASE_YEAR, plan.CYCLE_YEARS) == (cfg["base_year"], cfg["cycle_years"])
+
+
+def test_no_calendar_year_is_hard_coded_in_the_planner():
+    """The three `2022 + cycle * CYCLE_YEARS` sites were literals until review."""
+    src = (REPO / "weekly-artifact/2026-09-07/make_annealed_plan.py").read_text()
+    offenders = [ln.strip() for ln in src.splitlines()
+                 if "2022" in ln and "BASE_YEAR" not in ln and not ln.strip().startswith("#")]
+    assert offenders == [], offenders
+
+
+def test_control_gate_rejects_a_non_finite_metric(mol, tmp_path, monkeypatch):
+    """A NaN must fail the offset-0 gate, not vanish from it.
+
+    `Series.max()` skips NaN and `max(0.0, nan)` returns 0.0, so before this a trajectory
+    whose metrics came back NULL contributed nothing to the worst-difference statistic and
+    the control reported itself reproduced. `validate_runs` guarantees a complete cycle
+    grid, not finite numbers in it.
+    """
+    cols = {"cycles": [10], "first_year": [2027], "last_year": [2072],
+            "total_removed_merch_cuft_per_ac": [100.0], "harvest_cycles": [2],
+            "ending_ba": [80.0], "ending_merch_cuft_per_ac": [900.0]}
+    want = pd.DataFrame({"PLT_CN": ["P1"], "prescription": ["family_light_thin"], **cols})
+    path = tmp_path / "prev_index.csv"
+    want.to_csv(path, index=False)
+    monkeypatch.setattr(mol, "INDEX_2026_08_31", path)
+
+    # Identical but for one NULL metric — the shape a truncated FVS write produces.
+    got = want.assign(ending_ba=[float("nan")])
+    with pytest.raises(AssertionError, match="non-finite ending_ba"):
+        mol.check_offset_zero_trajectories(got)
+
+
+def test_control_gate_passes_on_identical_finite_trajectories(mol, tmp_path, monkeypatch):
+    cols = {"cycles": [10], "first_year": [2027], "last_year": [2072],
+            "total_removed_merch_cuft_per_ac": [100.0], "harvest_cycles": [2],
+            "ending_ba": [80.0], "ending_merch_cuft_per_ac": [900.0]}
+    want = pd.DataFrame({"PLT_CN": ["P1"], "prescription": ["family_light_thin"], **cols})
+    path = tmp_path / "prev_index.csv"
+    want.to_csv(path, index=False)
+    monkeypatch.setattr(mol, "INDEX_2026_08_31", path)
+    mol.check_offset_zero_trajectories(want.copy())
+
+
+def test_the_committed_control_carries_no_non_finite_values():
+    """And the gate's new check is inert on the artifact actually published."""
+    import numpy as np
+
+    prev = pd.read_csv(REPO / "weekly-artifact/2026-08-31/trajectory_index.csv")
+    now = pd.read_csv(REPO / "weekly-artifact/2026-09-07/trajectory_index.csv")
+    cols = ["cycles", "first_year", "last_year", "total_removed_merch_cuft_per_ac",
+            "harvest_cycles", "ending_ba", "ending_merch_cuft_per_ac"]
+    for frame, name in ((prev, "2026-08-31"), (now, "2026-09-07")):
+        for col in cols:
+            assert np.isfinite(frame[col]).all(), f"{name}/{col} carries a non-finite value"
+
+
 def test_planning_refuses_a_marker_that_does_not_match_the_tables(plan):
     """And a marker from a different batch is rejected on row counts."""
     manifest = {"carved_stands_rows": 11831, "carved_library_rows": 53458,

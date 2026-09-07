@@ -105,6 +105,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -828,6 +829,24 @@ def check_offset_zero_trajectories(idx: pd.DataFrame) -> None:
     cols = ["cycles", "first_year", "last_year", "total_removed_merch_cuft_per_ac",
             "harvest_cycles", "ending_ba", "ending_merch_cuft_per_ac"]
     merged = got.merge(want, on=["PLT_CN", "prescription"], suffixes=("_got", "_want"))
+
+    # A non-finite value must fail the gate, not slip through it. `Series.max()` skips
+    # NaN, and `max(0.0, nan)` returns 0.0, so a trajectory whose metrics came back NULL
+    # or infinite would contribute nothing to `worst` and the control would report itself
+    # reproduced. `validate_runs` guarantees a complete cycle grid, not finite numbers in
+    # it, so this is the check that closes that gap.
+    for col in cols:
+        for side in ("got", "want"):
+            values = pd.to_numeric(merged[f"{col}_{side}"], errors="coerce")
+            bad = merged.loc[~np.isfinite(values), ["PLT_CN", "prescription"]]
+            if len(bad):
+                raise AssertionError(
+                    f"{len(bad)} offset-0 trajectories carry a non-finite {col} on the "
+                    f"{side} side (e.g. {bad.iloc[0]['PLT_CN']} / "
+                    f"{bad.iloc[0]['prescription']}); the reproduction gate cannot "
+                    f"compare them and must not pass them"
+                )
+
     worst = 0.0
     for col in cols:
         delta = (merged[f"{col}_got"] - merged[f"{col}_want"]).abs()

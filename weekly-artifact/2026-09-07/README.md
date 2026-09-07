@@ -171,14 +171,14 @@ means the two weeks' objective values are not on a perfectly identical scale, an
 worth stating rather than leaving for someone to find. The attainability counts, which are
 the headline, are unaffected: they are volumes against targets, with no normaliser.
 
-## Four guards added in review
+## Six guards added in review
 
-Devin Review and Codex raised four findings across two review passes, plus a readability
+Devin Review and Codex raised six findings across three review passes, plus a readability
 nit. Each was reproduced against the code before being fixed, and **the published tables
 are byte-identical after all of them** — the FVS batch and the annealer were re-run and
 all 14 committed CSV/JSON outputs compared, so no number in this README moved.
 
-Three of the four share a shape worth naming: each would have produced *wrong output
+Four of the six share a shape worth naming: each would have produced *wrong output
 rather than a failure*. A partial library that looks complete, a recovery count computed
 against shifted targets, a zero-filled cycle reported as unreachable — none of them
 crash, and all three would have been read as findings. That is the failure mode this
@@ -215,7 +215,26 @@ check by eye.
    library simulated on a different grid — including a manifest too old to say which grid
    it used. This one was found on the second review pass and is the sharpest of the four,
    because it was aimed squarely at the next change anyone will make to this code.
-4. **The attribute cache keyed on `id(frame)` alone.** `id` is unique only among *live*
+4. **The planner validated a grid it did not use.** Fix 3 above added
+   `check_projection_grid`, and review immediately found the hole in it: the planner
+   still took its cycle length from `hs.DEFAULT_CYCLE_YEARS` and hard-coded 2022 in three
+   places, so changing `cycle_years` would pass the new check while `tpo_caps` kept
+   converting annual TPO figures at five years per cycle and every reported
+   `calendar_year` kept stepping by five. A validated number the code ignores is worse
+   than an unvalidated one, because it reads as an assurance. `BASE_YEAR` and
+   `CYCLE_YEARS` now come from the same config the check compares against, and drive
+   target conversion, the greedy allocator's annual budgets, the violation vector, the
+   envelope and the per-cycle summary. A test asserts no calendar year is hard-coded in
+   the module at all.
+5. **A non-finite metric could pass the offset-0 control gate.** `Series.max()` skips NaN
+   and `max(0.0, nan)` returns 0.0, so a trajectory whose metrics came back NULL
+   contributed nothing to the worst-difference statistic and the control would report
+   itself reproduced. `validate_runs` guarantees a complete cycle grid, not finite numbers
+   in it. The gate now rejects non-finite values on either side before comparing. Inert on
+   the artifact as published — a test asserts both weeks' committed indices are finite
+   throughout — but this is the check the whole week-on-week comparison rests on, so it
+   should not have a silent bypass.
+6. **The attribute cache keyed on `id(frame)` alone.** `id` is unique only among *live*
    objects, so a collected frame's address can be reused and a stale entry would answer
    for a different landscape — the greedy baseline reading another frame's county, owner
    or age. Each entry now carries a weak reference to the frame it was built from and is
@@ -271,13 +290,13 @@ Every number above comes from committed repository code or from FVS output.
   library of exactly `{no_management}` — `no_management` has nothing to delay and is
   emitted once per stand — so §3 rule 2's "enforced by the absence of an alternative"
   holds unchanged. Asserted in the driver and tested on a synthetic library.
-- **The tests.** `tests/test_weekly_artifact_20260907_offsets.py` adds 97 tests covering
+- **The tests.** `tests/test_weekly_artifact_20260907_offsets.py` adds 102 tests covering
   the naming round-trip, what a delay may and may not change, both horizon rules, the
   regeneration-follows-its-harvest rule, offset-0 render equivalence for every template,
   the expansion over a synthetic library (including that it is additive and leaves
-  riparian structural), the four-way classification in `envelope_delta` and the four
+  riparian structural), the four-way classification in `envelope_delta` and the six
   guards added in review below.
-  `uv run pytest tests/ -q` → **1,010 passed, 10 skipped**. `uv run ruff check .` clean.
+  `uv run pytest tests/ -q` → **1,015 passed, 10 skipped**. `uv run ruff check .` clean.
 
 ## What is still unavailable, and unchanged by this week
 

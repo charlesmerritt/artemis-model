@@ -78,7 +78,25 @@ PREV_BY_CYCLE = PREV / "harvest_by_cycle.csv"
 PROJECTION = REPO / "config/projection.yaml"
 TPO_TARGETS = REPO / "config/tpo_targets.yaml"
 
-CYCLE_YEARS = hs.DEFAULT_CYCLE_YEARS
+def projection_grid() -> tuple[int, int]:
+    """`(base_year, cycle_years)`, read from the same config the batch reads.
+
+    `check_projection_grid` validates these against the grid the FVS batch simulated —
+    but validating a number this module then ignores is worse than not checking it, since
+    it reads as an assurance the code does not honour. Change `cycle_years` to 10 and,
+    before this, the check would pass while `tpo_caps` still converted annual TPO figures
+    at five years per cycle and every reported `calendar_year` still stepped by five. The
+    targets and the trajectories would be on different grids and nothing would say so.
+
+    So the grid is read here, once, and used everywhere: target conversion, the greedy
+    allocator's annual budgets, the violation vector, the attainable envelope, and the
+    per-cycle summary.
+    """
+    cfg = yaml.safe_load(PROJECTION.read_text())["projection"]
+    return int(cfg["base_year"]), int(cfg["cycle_years"])
+
+
+BASE_YEAR, CYCLE_YEARS = projection_grid()   # 2022, 5
 PILOT_COUNTIES = ["Baker", "Columbia", "Hamilton", "Suwannee", "Union"]
 # The TPO workbook spells Suwannee with one 'n' (pipeline.s3_management.tpo_targets).
 COUNTY_TO_TPO = {c: ("Suwanee" if c == "Suwannee" else c) for c in PILOT_COUNTIES}
@@ -373,7 +391,7 @@ class Objective:
             for key, row, t in zip(keys, agg, targets):
                 for c, v in enumerate(row, start=1):
                     rows.append({"dimension": name, "key": key, "cycle": c,
-                                 "calendar_year": 2022 + c * CYCLE_YEARS,
+                                 "calendar_year": BASE_YEAR + c * CYCLE_YEARS,
                                  "volume_cuft": v, "target_cuft": t,
                                  "deviation_cuft": v - t,
                                  "deviation_pct": 100.0 * (v - t) / t})
@@ -418,7 +436,7 @@ class Objective:
                 for c in range(self.n_cycles):
                     rows.append({
                         "dimension": name, "key": key, "cycle": c + 1,
-                        "calendar_year": 2022 + (c + 1) * CYCLE_YEARS,
+                        "calendar_year": BASE_YEAR + (c + 1) * CYCLE_YEARS,
                         "min_attainable_cuft": lo_row[c], "max_attainable_cuft": hi_row[c],
                         "target_cuft": t,
                         "target_within_envelope": bool(lo_row[c] <= t <= hi_row[c]),
@@ -1182,7 +1200,7 @@ def main() -> None:
                          var_name="cycle", value_name="cuft")
                .assign(cycle=lambda d: d["cycle"].str.replace("cuft_cycle_", "").astype(int)))
     per_cycle = (summary.groupby("cycle", as_index=False)["cuft"].sum()
-                 .assign(calendar_year=lambda d: 2022 + d["cycle"] * CYCLE_YEARS,
+                 .assign(calendar_year=lambda d: BASE_YEAR + d["cycle"] * CYCLE_YEARS,
                          target_cuft=caps[hs.TOTAL][""]))
     per_cycle["deviation_pct"] = 100 * (per_cycle["cuft"] - per_cycle["target_cuft"]) / per_cycle["target_cuft"]
     per_cycle.to_csv(OUT_DIR / "harvest_by_cycle.csv", index=False)
