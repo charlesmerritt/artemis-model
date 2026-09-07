@@ -326,6 +326,52 @@ def test_planning_refuses_without_a_batch_marker(plan, tmp_path, monkeypatch):
         plan.require_fresh_batch()
 
 
+def test_library_driver_takes_its_grid_from_config(mol):
+    """Hard-coded horizons were the bug; the constants must come from the same file the
+    planner reads, and stay self-consistent once they do."""
+    import yaml
+
+    cfg = yaml.safe_load((REPO / "config/projection.yaml").read_text())["projection"]
+    assert (mol.INV_YEAR, mol.CYCLE_YEARS, mol.NUM_CYCLE) == (
+        cfg["base_year"], cfg["cycle_years"], cfg["n_cycles"])
+    assert mol.LAST_CYCLE_YEAR == mol.INV_YEAR + mol.CYCLE_YEARS * mol.NUM_CYCLE
+    assert mol.LAST_SIMULATED_ENTRY_YEAR == mol.LAST_CYCLE_YEAR - mol.CYCLE_YEARS
+
+
+def test_planning_refuses_a_library_from_a_different_horizon(plan):
+    """The 🔴 case: `n_cycles` raised to 11 against a library simulated to ten.
+
+    Nothing else catches this. Row counts still match, the marker is still valid, and
+    `Landscape` would zero-fill the eleventh cycle for every option — publishing a target
+    that "nothing can reach" when in truth nothing simulated it.
+    """
+    manifest = {"num_cycle": 10, "cycle_years": 5, "inv_year": 2022}
+    cfg = {"n_cycles": 11, "cycle_years": 5, "base_year": 2022}
+    with pytest.raises(SystemExit, match="different projection grid"):
+        plan.check_projection_grid(manifest, cfg)
+
+
+def test_planning_accepts_a_matching_horizon(plan):
+    plan.check_projection_grid({"num_cycle": 10, "cycle_years": 5, "inv_year": 2022},
+                               {"n_cycles": 10, "cycle_years": 5, "base_year": 2022})
+
+
+def test_planning_refuses_a_manifest_that_cannot_state_its_grid(plan):
+    """A manifest written before this check existed says nothing about its horizon, and
+    silence is not agreement."""
+    with pytest.raises(SystemExit, match="does not record"):
+        plan.check_projection_grid({"num_cycle": 10},
+                                   {"n_cycles": 10, "cycle_years": 5, "base_year": 2022})
+
+
+def test_the_two_drivers_agree_on_the_grid_today(mol, plan):
+    """End to end: the grid the batch stamps is the grid the planner demands."""
+    cfg = plan.load_config()
+    plan.check_projection_grid(
+        {"num_cycle": mol.NUM_CYCLE, "cycle_years": mol.CYCLE_YEARS,
+         "inv_year": mol.INV_YEAR}, cfg)
+
+
 def test_planning_refuses_a_marker_that_does_not_match_the_tables(plan):
     """And a marker from a different batch is rejected on row counts."""
     manifest = {"carved_stands_rows": 11831, "carved_library_rows": 53458,

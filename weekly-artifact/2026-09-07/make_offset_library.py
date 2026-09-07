@@ -106,6 +106,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
@@ -191,9 +192,39 @@ FVS_DATA_DB = WORK / "FVS_Data.db"
 MANIFEST = WORK / "batch_manifest.json"
 FVS_BIN = Path(os.environ.get("FVSSN_BIN", REPO / "fvs/bin/FVSsn"))
 
-INV_YEAR = DEFAULT_INV_YEAR          # 2022
-CYCLE_YEARS = 5
-NUM_CYCLE = 10                       # 2022 -> 2072, the ~50 yr horizon in README
+PROJECTION = REPO / "config/projection.yaml"
+
+
+def projection_grid() -> tuple[int, int, int]:
+    """`(inv_year, cycle_years, num_cycle)`, read from config rather than hard-coded.
+
+    These were literals until review pointed out what that costs. `make_annealed_plan.py`
+    takes its horizon from `projection.n_cycles`; this driver simulated a fixed ten
+    cycles. Raise `n_cycles` to 11 — the first item this artifact's own README recommends
+    — and the two would disagree: the batch would still stop at 2072, `Landscape` would
+    zero-fill the eleventh cycle for every stand, and the envelope would report a target
+    nothing can reach. That is a fabricated result rather than a crash, which is the worst
+    shape for one to have.
+
+    So both drivers read the same three numbers, all three go into the batch manifest, and
+    `check_batch_matches` refuses a library simulated on a different grid than the one
+    being planned over.
+    """
+    cfg = yaml.safe_load(PROJECTION.read_text())["projection"]
+    inv_year = int(cfg["base_year"])
+    if inv_year != DEFAULT_INV_YEAR:
+        # The StandInit rows this driver writes are stamped with `inv_year`, and
+        # `regime_templates` renders keyfiles against its own default. A drift between
+        # them puts every trajectory on a different cycle grid than the keywords assume.
+        raise AssertionError(
+            f"config/projection.yaml base_year is {inv_year} but "
+            f"regime_templates.DEFAULT_INV_YEAR is {DEFAULT_INV_YEAR}; the inventory "
+            f"anchor and the keyfile renderer have drifted apart"
+        )
+    return inv_year, int(cfg["cycle_years"]), int(cfg["n_cycles"])
+
+
+INV_YEAR, CYCLE_YEARS, NUM_CYCLE = projection_grid()   # 2022, 5, 10
 LAST_CYCLE_YEAR = INV_YEAR + CYCLE_YEARS * NUM_CYCLE   # 2072; nothing later is simulated
 
 # An entry scheduled in 2072 is accepted by FVS and never executed. The projection's ten
@@ -995,7 +1026,11 @@ def main() -> None:
         "carved_stands_rows": int(len(stands)),
         "carved_library_rows": int(len(carved_lib)),
         "excluded_runs": int(len(excluded)),
+        # The projection grid this library was simulated on. `check_batch_matches`
+        # compares all three against the active config and refuses a mismatch, so a
+        # horizon change cannot be planned over a library built for the old one.
         "num_cycle": NUM_CYCLE,
+        "cycle_years": CYCLE_YEARS,
         "inv_year": INV_YEAR,
     }, indent=2))
     log.info("Wrote %s — the batch is complete and safe to plan over", MANIFEST.name)

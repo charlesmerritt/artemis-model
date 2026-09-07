@@ -171,12 +171,19 @@ means the two weeks' objective values are not on a perfectly identical scale, an
 worth stating rather than leaving for someone to find. The attainability counts, which are
 the headline, are unaffected: they are volumes against targets, with no normaliser.
 
-## Three guards added in review
+## Four guards added in review
 
-Devin Review raised three findings on the first push. Each was reproduced against the
-code before being fixed, and **the published tables are byte-identical after all three** —
-the annealer was re-run and all 14 committed CSV/JSON outputs compared, so no number in
-this README moved.
+Devin Review and Codex raised four findings across two review passes, plus a readability
+nit. Each was reproduced against the code before being fixed, and **the published tables
+are byte-identical after all of them** — the FVS batch and the annealer were re-run and
+all 14 committed CSV/JSON outputs compared, so no number in this README moved.
+
+Three of the four share a shape worth naming: each would have produced *wrong output
+rather than a failure*. A partial library that looks complete, a recovery count computed
+against shifted targets, a zero-filled cycle reported as unreachable — none of them
+crash, and all three would have been read as findings. That is the failure mode this
+series of artifacts is most exposed to, since its whole product is numbers nobody can
+check by eye.
 
 1. **A smoke run could authorize a partial plan.** `--limit N` runs a prefix of the batch,
    but `main` still wrote the success marker with the truncated row counts, and
@@ -197,7 +204,18 @@ this README moved.
    did — reported as a timing-grid recovery, which is the one number this artifact exists
    to produce. It now requires `target_cuft` and `calendar_year` to match exactly on every
    row, and says which target moved when they do not.
-3. **The attribute cache keyed on `id(frame)` alone.** `id` is unique only among *live*
+3. **The projection grid was hard-coded in one driver and read from config in the other.**
+   `make_offset_library.py` fixed the horizon at ten cycles from 2022 while
+   `make_annealed_plan.py` took `n_cycles` from `config/projection.yaml`. Raise that to 11
+   — **the first thing this README's closing section recommends** — and re-run only the
+   planner, and the two disagree silently: the batch still stops at 2072, `Landscape`
+   zero-fills an eleventh cycle for every option, and the envelope reports a target
+   nothing can reach. Wrong numbers, no failure. Both drivers now read the same three
+   values, the batch stamps all three into its manifest, and the planner refuses a
+   library simulated on a different grid — including a manifest too old to say which grid
+   it used. This one was found on the second review pass and is the sharpest of the four,
+   because it was aimed squarely at the next change anyone will make to this code.
+4. **The attribute cache keyed on `id(frame)` alone.** `id` is unique only among *live*
    objects, so a collected frame's address can be reused and a stale entry would answer
    for a different landscape — the greedy baseline reading another frame's county, owner
    or age. Each entry now carries a weak reference to the frame it was built from and is
@@ -253,13 +271,13 @@ Every number above comes from committed repository code or from FVS output.
   library of exactly `{no_management}` — `no_management` has nothing to delay and is
   emitted once per stand — so §3 rule 2's "enforced by the absence of an alternative"
   holds unchanged. Asserted in the driver and tested on a synthetic library.
-- **The tests.** `tests/test_weekly_artifact_20260907_offsets.py` adds 92 tests covering
+- **The tests.** `tests/test_weekly_artifact_20260907_offsets.py` adds 97 tests covering
   the naming round-trip, what a delay may and may not change, both horizon rules, the
   regeneration-follows-its-harvest rule, offset-0 render equivalence for every template,
   the expansion over a synthetic library (including that it is additive and leaves
-  riparian structural), the four-way classification in `envelope_delta` and the three
+  riparian structural), the four-way classification in `envelope_delta` and the four
   guards added in review below.
-  `uv run pytest tests/ -q` → **1,005 passed, 10 skipped**. `uv run ruff check .` clean.
+  `uv run pytest tests/ -q` → **1,010 passed, 10 skipped**. `uv run ruff check .` clean.
 
 ## What is still unavailable, and unchanged by this week
 

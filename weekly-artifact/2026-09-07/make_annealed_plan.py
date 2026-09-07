@@ -116,7 +116,11 @@ def load_config() -> dict:
         "penalties": harvest["penalties"],
         "target_period": period,
         "dimensions": vol["dimensions"],
+        # All three define the projection grid, and all three are checked against the
+        # grid the FVS batch actually simulated — see `check_projection_grid`.
         "n_cycles": cfg["projection"]["n_cycles"],
+        "cycle_years": cfg["projection"]["cycle_years"],
+        "base_year": cfg["projection"]["base_year"],
     }
 
 
@@ -814,6 +818,47 @@ def require_fresh_batch() -> dict:
     return json.loads(MANIFEST.read_text())
 
 
+def check_projection_grid(manifest: dict, cfg: dict) -> None:
+    """The library must have been simulated on the grid this run plans over.
+
+    `make_offset_library.py` and this module both read `config/projection.yaml`, but they
+    read it at different times — the batch takes hours and the plan is run afterwards, so
+    the config can move in between, and the horizon is the one field where a mismatch is
+    silent rather than loud. Raise `n_cycles` to 11 (the first thing this artifact's
+    README recommends) and re-run only the planner: `Landscape` allocates an
+    eleven-element vector per option, finds no cycle 11 in a library that stopped at
+    2072, leaves the slot at zero, and the envelope then reports an eleventh cycle that
+    nothing can reach. Every number downstream would be wrong and nothing would fail.
+
+    So the batch records the grid it simulated and this refuses to plan over a different
+    one. `cycle_years` and `inv_year` are checked alongside `num_cycle` because all three
+    define the same grid, and a manifest predating this check is rejected too: it cannot
+    say what grid it used.
+    """
+    want = {"num_cycle": int(cfg["n_cycles"]),
+            "cycle_years": int(cfg["cycle_years"]),
+            "inv_year": int(cfg["base_year"])}
+    missing = [k for k in want if manifest.get(k) is None]
+    if missing:
+        raise SystemExit(
+            f"the batch manifest does not record {', '.join(missing)}, so the grid the "
+            f"library was simulated on cannot be checked against the one being planned "
+            f"over. Re-run make_offset_library.py to write a manifest that states it."
+        )
+    differing = {k: (manifest[k], v) for k, v in want.items() if int(manifest[k]) != v}
+    if differing:
+        detail = "; ".join(f"{k}: library {got}, config {exp}"
+                           for k, (got, exp) in differing.items())
+        raise SystemExit(
+            f"the library was simulated on a different projection grid than this run "
+            f"plans over ({detail}). Planning anyway would zero-fill the cycles FVS "
+            f"never simulated and report them as unreachable. Re-run "
+            f"make_offset_library.py against the current config."
+        )
+    log.info("Projection grid verified: %d cycles of %d years from %d",
+             want["num_cycle"], want["cycle_years"], want["inv_year"])
+
+
 def check_batch_matches(manifest: dict, stands: pd.DataFrame, library: pd.DataFrame,
                         cycles: pd.DataFrame) -> None:
     """The tables on disk must be the ones the manifest describes."""
@@ -987,6 +1032,7 @@ def main() -> None:
     stands = pd.read_csv(WORK / "carved_stands.csv", dtype={"PLT_CN": str, "unit_id": str})
     library = pd.read_csv(WORK / "carved_library.csv", dtype={"PLT_CN": str, "unit_id": str})
     cycles = pd.read_csv(WORK / "trajectory_cycles.csv", dtype={"PLT_CN": str})
+    check_projection_grid(manifest, cfg)
     check_batch_matches(manifest, stands, library, cycles)
 
     land = Landscape(stands, library, cycles, cfg["n_cycles"])
