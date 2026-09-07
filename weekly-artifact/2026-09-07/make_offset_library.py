@@ -620,7 +620,10 @@ def _run_one(args: tuple[str, str, str]) -> tuple[str, str, str | None, list[dic
         proc = subprocess.run([str(FVS_BIN), "--keywordfile=run.key"], cwd=tmp,
                               capture_output=True, text=True, timeout=900)
         out_db = tmp / "FVS_Out.db"
-        if proc.returncode < 0 or proc.returncode not in FVS_OK_RETURNCODES:
+        # `FVS_OK_RETURNCODES` holds only non-negative codes, so death by signal — which
+        # `subprocess` reports as a negative returncode — is already rejected by this one
+        # membership test. The sign is consulted below only to phrase the error.
+        if proc.returncode not in FVS_OK_RETURNCODES:
             tail = (proc.stdout or proc.stderr or "").strip().splitlines()
             detail = next((ln for ln in tail if "signal" in ln.lower() or "error" in ln.lower()),
                           tail[0] if tail else "")
