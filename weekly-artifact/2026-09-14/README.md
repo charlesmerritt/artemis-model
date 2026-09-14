@@ -248,19 +248,19 @@ Every number above comes from committed repository code or from FVS output.
   cycle. This week 1,637 trajectories do, and `ending_merch_cuft_per_ac` — what the
   `standing_volume` objective reads — is that cycle's post-cut state.
 - **The new logic carries its own tests.** `tests/test_weekly_artifact_20260914_timing.py`
-  (19 tests) pins the offset grid on operations small enough to check by inspection: that an
+  (20 tests) pins the offset grid on operations small enough to check by inspection: that an
   offset moves years and nothing else, that offset 0 is the identity, that an entry past 2072 is
   dropped and counted, that a variant losing every entry collapses, that a delayed rotation
   keeps its thin when its clearcut falls out, that regeneration is dropped with the harvest that
   created it, that `no_management` gains no variants so riparian menus stay `{no_management}`,
   and that both drivers decode a variant id the same way.
-- `uv run ruff check .` clean. `uv run pytest tests/` → **923 passed, 9 failed, 10 skipped**.
+- `uv run ruff check .` clean. `uv run pytest tests/` → **924 passed, 9 failed, 10 skipped**.
   All nine failures are in `tests/test_restart_fidelity.py` and all nine are the same
   environment fault, unrelated to this artifact: the sandbox cannot download DuckDB's
   `sqlite_scanner` extension (`HTTP 403` from `extensions.duckdb.org`), which
-  `scripts/setup-env.sh` installs in a normal environment. The 19 new tests pass.
+  `scripts/setup-env.sh` installs in a normal environment. The 20 new tests pass.
 
-## Six corrections made after review
+## Eight corrections made after review
 
 Raised on the PR by Devin Review, Codex, and Claude Code review comments. Each was
 reproduced against the code before being fixed, and **all 13,035 keyfiles are byte-for-byte
@@ -309,9 +309,29 @@ now report what they dropped.
    In an artifact whose "Not fabricated" section is about numbers being checked rather than
    asserted, a comment inventing one is worth the fix.
 
-Three further tests cover the new behaviour (19 in total): that a collapsed variant still
-reports its dropped entries and carries no regeneration, and that a regeneration record is
-dropped rather than adopted when its own parent falls outside the horizon.
+A second review round raised two more, both about what "fails closed" covers:
+
+7. **A missing cache sidecar read as "no failures".** A run that fails outright contributes
+   no summary rows at all, so `raw_failures.csv` is the only record it ever existed. Treating
+   a missing one as an empty frame would have turned a lost file into a smaller decision
+   space, with the failed trajectory's option vanishing before it reached the exclusion gate.
+   All three cache components are now required for a hit; any missing one is a cache miss.
+   Behind that, **every rendered run must now be published or named as excluded, exactly
+   one of the two** — `reconcile_run_ledger` is a partition check, so a run that produced no
+   rows and was never recorded as a failure stops publication instead of disappearing.
+8. **`--limit` published.** The smoke-test flag wrote the library tables, the artifact CSVs
+   and `batch_manifest.json` — the very marker `make_annealed_plan.py` reads as "this library
+   is complete and safe to plan over". A truncated run set is a different library, and every
+   check downstream would have validated it as though it were this one. `--limit` now
+   publishes nothing at all: no tables, no CSVs, no raw cache (whose key belongs to the
+   truncated set), no manifest, and it leaves the exclusion acknowledgement untouched. It
+   still invalidates the previous manifest at startup, as every run does, so a smoke test
+   leaves the library unplannable until a full run republishes it — the safe direction.
+
+Four further tests cover the new behaviour (20 in total): that a collapsed variant still
+reports its dropped entries and carries no regeneration, that a regeneration record is
+dropped rather than adopted when its own parent falls outside the horizon, and that the run
+ledger refuses both a vanished run and one counted on both sides.
 
 ## R2 inputs pulled
 

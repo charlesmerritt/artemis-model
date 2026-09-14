@@ -310,6 +310,24 @@ def test_expansion_preserves_stand_attributes():
     assert expanded.groupby("unit_id")["acres"].nunique().eq(1).all()
 
 
+def test_run_ledger_reconciles_or_refuses():
+    """A run that produced no rows and was never recorded as a failure is in neither frame,
+    so nothing downstream can notice its option has left the decision space."""
+    rendered = {"a::p@+0", "b::p@+0", "c::p@+0"}
+
+    # The good case: a clean partition.
+    m.reconcile_run_ledger(rendered, {"a::p@+0", "b::p@+0"}, {"c::p@+0"})
+    m.reconcile_run_ledger(rendered, rendered, set())
+
+    # Vanished without a trace — the failure this check exists for.
+    with pytest.raises(SystemExit, match="does not reconcile"):
+        m.reconcile_run_ledger(rendered, {"a::p@+0", "b::p@+0"}, set())
+
+    # Counted on both sides, which would make the exclusion count meaningless.
+    with pytest.raises(SystemExit, match="does not reconcile"):
+        m.reconcile_run_ledger(rendered, rendered, {"c::p@+0"})
+
+
 def test_parse_params_round_trips_the_20260817_form():
     assert m.parse_params("max_dbh=8.0;proportion=0.35;year=2032") == {
         "max_dbh": 8.0, "proportion": 0.35, "year": 2032}

@@ -767,6 +767,27 @@ def build_library_tables(cycles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
 # Stage F — the check that makes the expansion trustworthy
 # --------------------------------------------------------------------------------------
 
+def reconcile_run_ledger(rendered: set[str], published: set[str], excluded: set[str]) -> None:
+    """Every rendered run must be published or named as excluded — exactly one of the two.
+
+    `validate_runs` can only judge runs that produced rows, and the exclusion gate can only
+    acknowledge failures somebody recorded. A run that produced **no** rows and was never
+    recorded as a failure appears in neither frame, so nothing downstream can notice that
+    its option has quietly left the decision space. That is the gap this closes: it is a
+    partition check, not a count check, so it also catches a run counted on both sides.
+    """
+    unaccounted = rendered - published - excluded
+    double_counted = published & excluded
+    if unaccounted or double_counted:
+        raise SystemExit(
+            f"the run ledger does not reconcile: {len(rendered)} runs rendered, "
+            f"{len(published)} published, {len(excluded)} excluded. "
+            f"Unaccounted for: {sorted(unaccounted)[:10]}. Both published and excluded: "
+            f"{sorted(double_counted)[:10]}. Refusing to publish a library whose missing "
+            f"trajectories nobody can name."
+        )
+
+
 def check_base_library(idx: pd.DataFrame, cyc: pd.DataFrame, runs: pd.DataFrame,
                        tol: float = 1e-6) -> dict:
     """Offset-0 must reproduce 2026-08-31 exactly, except where the terminal cycle fixes it.
@@ -887,7 +908,11 @@ def check_base_library(idx: pd.DataFrame, cyc: pd.DataFrame, runs: pd.DataFrame,
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2)))
-    ap.add_argument("--limit", type=int, default=None, help="smoke-test a subset of runs")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="smoke-test a subset of runs. Publishes NOTHING: no library "
+                         "tables, no artifact CSVs, no raw cache and no manifest, because a "
+                         "truncated run set is a different library and the manifest is what "
+                         "tells the scheduler a library is complete.")
     ap.add_argument("--reuse-raw", action="store_true",
                     help="reuse cached raw FVS_Summary2 output if it was collected from "
                          "exactly this run set (same keyfile hashes). Used to re-run the "
@@ -957,11 +982,16 @@ def main() -> None:
         f"fvs_bin::{hashlib.sha256(FVS_BIN.read_bytes()).hexdigest()[:16]}",
         f"num_cycle::{NUM_CYCLE}",
     ]).encode()).hexdigest()[:16]
-    if args.reuse_raw and raw_cache.exists() and cache_key.exists() \
-            and cache_key.read_text().strip() == key:
+    raw_failures = WORK / "raw_failures.csv"
+    # All three cache components are required. A run that failed outright contributes **no
+    # summary rows at all**, so the failure sidecar is the only record that it ever existed:
+    # treating a missing one as "no failures" would turn a lost file into a smaller decision
+    # space, with the failed trajectory's option vanishing without ever reaching the
+    # exclusion gate. A missing sidecar is therefore a cache miss, not an empty frame.
+    cache_complete = raw_cache.exists() and cache_key.exists() and raw_failures.exists()
+    if args.reuse_raw and cache_complete and cache_key.read_text().strip() == key:
         cycles = pd.read_csv(raw_cache, dtype={"PLT_CN": str})
-        failures = pd.read_csv(WORK / "raw_failures.csv", dtype={"PLT_CN": str}) \
-            if (WORK / "raw_failures.csv").exists() else pd.DataFrame()
+        failures = pd.read_csv(raw_failures, dtype={"PLT_CN": str})
         log.warning("Reusing cached FVS output for this exact run set: %d rows, %d failures. "
                     "No FVS run was made.", len(cycles), len(failures))
     else:
@@ -972,9 +1002,12 @@ def main() -> None:
         cycles, failures = run_batch(runs, args.workers)
         log.info("Collected %d FVS_Summary2 rows; %d runs failed outright",
                  len(cycles), len(failures))
-        cycles.to_csv(raw_cache, index=False)
-        failures.to_csv(WORK / "raw_failures.csv", index=False)
-        cache_key.write_text(key)
+        if not args.limit:
+            # A smoke run must not touch the cache: its key belongs to a truncated run set,
+            # and writing it would replace a good full cache with a partial one.
+            cycles.to_csv(raw_cache, index=False)
+            failures.to_csv(raw_failures, index=False)
+            cache_key.write_text(key)
 
     cyc, idx = build_library_tables(cycles)
     cyc, incomplete = validate_runs(cyc)
@@ -984,6 +1017,38 @@ def main() -> None:
         idx = idx[idx["_merge"] == "left_only"].drop(columns="_merge")
     excluded = pd.concat([failures, incomplete], ignore_index=True) if len(incomplete) \
         else failures
+
+    # Every rendered run must end up on exactly one side of the ledger: published with a
+    # complete trajectory, or excluded and named. Neither `validate_runs` nor the exclusion
+    # gate can see a run that produced no rows *and* was never recorded as a failure — it
+    # simply is not in either frame — so that run's option would vanish from the decision
+    # space silently. This reconciliation is what makes "fails closed" mean the whole run
+    # set rather than only the runs that reported something.
+    rendered_keys = set(runs["PLT_CN"] + "::" + runs["prescription"])
+    published_keys = set(idx["PLT_CN"] + "::" + idx["prescription"]) if len(idx) else set()
+    excluded_ledger = set(excluded["PLT_CN"] + "::" + excluded["prescription"]) \
+        if len(excluded) else set()
+    reconcile_run_ledger(rendered_keys, published_keys, excluded_ledger)
+
+    # A smoke run stops here, before anything at all is published — including the artifact
+    # copy of `fvs_failures.csv` the gate below maintains. `--limit` changes the *run set*,
+    # not just how long the batch takes: every check downstream would then validate a
+    # truncated library, `check_base_library` would compare only the offset-0 runs that
+    # happen to be in it, and the manifest it would write is the marker
+    # `make_annealed_plan.py` reads as "this library is complete and safe to plan over".
+    # Producing that marker from ten runs is the one way this driver could hand the
+    # scheduler a decision space nobody chose. The exclusion gate is skipped rather than
+    # applied, because an acknowledgement of the full library's failures says nothing about
+    # a truncated one's.
+    if args.limit:
+        log.warning("SMOKE MODE: %d runs simulated, %d complete, %d failed or incomplete. "
+                    "Nothing written: no library tables, no artifact CSVs, no raw cache and "
+                    "no manifest, and the exclusion acknowledgement is untouched. Note the "
+                    "previous manifest was invalidated at startup, as on any run: a smoke "
+                    "test therefore leaves the library unplannable until a full run "
+                    "republishes it, which is the safe direction.",
+                    len(runs), len(idx), len(excluded))
+        return
 
     # Fail closed. A partial library is not a smaller library: the scheduler would read a
     # missing trajectory as an option the stand does not have, and the plan would be quietly
