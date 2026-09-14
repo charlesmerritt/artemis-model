@@ -77,8 +77,8 @@ pine_plantation_long_rotation,plantation_rotation,10,clearcut_year=2047;thin_max
 pine_plantation_long_rotation,plantation_rotation,15,clearcut_year=2047;thin_max_dbh=9.0;thin_proportion=0.35;thin_year=2027,2,0,False,2042;2062
 hardwood_clearcut_regen,clearcut,0,year=2067,1,0,False,2067
 hardwood_clearcut_regen,clearcut,5,year=2067,1,0,False,2072
-hardwood_clearcut_regen,clearcut,10,year=2067,0,0,True,
-hardwood_clearcut_regen,clearcut,15,year=2067,0,0,True,
+hardwood_clearcut_regen,clearcut,10,year=2067,0,1,True,
+hardwood_clearcut_regen,clearcut,15,year=2067,0,1,True,
 pine_plantation_long_rotation,plantation_rotation,0,clearcut_year=2052;thin_max_dbh=9.0;thin_proportion=0.35;thin_year=2032,2,0,False,2032;2052
 pine_plantation_long_rotation,plantation_rotation,5,clearcut_year=2052;thin_max_dbh=9.0;thin_proportion=0.35;thin_year=2032,2,0,False,2037;2057
 pine_plantation_long_rotation,plantation_rotation,10,clearcut_year=2052;thin_max_dbh=9.0;thin_proportion=0.35;thin_year=2032,2,0,False,2042;2062
@@ -106,8 +106,8 @@ pine_plantation_long_rotation,plantation_rotation,15,clearcut_year=2047;thin_max
 hardwood_clearcut_regen,clearcut,0,year=2062,1,0,False,2062
 hardwood_clearcut_regen,clearcut,5,year=2062,1,0,False,2067
 hardwood_clearcut_regen,clearcut,10,year=2062,1,0,False,2072
-hardwood_clearcut_regen,clearcut,15,year=2062,0,0,True,
+hardwood_clearcut_regen,clearcut,15,year=2062,0,1,True,
 hardwood_clearcut_regen,clearcut,0,year=2072,1,0,False,2072
-hardwood_clearcut_regen,clearcut,5,year=2072,0,0,True,
-hardwood_clearcut_regen,clearcut,10,year=2072,0,0,True,
-hardwood_clearcut_regen,clearcut,15,year=2072,0,0,True,
+hardwood_clearcut_regen,clearcut,5,year=2072,0,1,True,
+hardwood_clearcut_regen,clearcut,10,year=2072,0,1,True,
+hardwood_clearcut_regen,clearcut,15,year=2072,0,1,True,

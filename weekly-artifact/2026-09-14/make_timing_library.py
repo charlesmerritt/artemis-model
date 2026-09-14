@@ -176,6 +176,13 @@ def stand_sdi_tables(trees: pd.DataFrame) -> dict[str, dict[str, float]]:
     """
     fia_to_sn = _leto_species_crosswalk()
     t = trees.copy()
+    # AGENTS.md: an ID column is normalised with `as_id_series`, never `str()`/`.astype(str)`.
+    # This lookup is keyed by PLT_CN and read by `render_batch` with an exact string, so a
+    # STAND_CN that arrived numeric would key the table as "4.4894e+14" and miss every
+    # lookup — silently sending every natural regeneration back to the single-species
+    # fallback instead of the stand's own composition. The batch's own frame is already
+    # normalised upstream; this makes the helper safe for any caller's.
+    t["STAND_CN"] = as_id_series(t["STAND_CN"], column="STAND_CN")
     t["SN_SP"] = t["SPECIES"].astype(str).str.split(".").str[0].str.zfill(3).map(fia_to_sn)
     t = t.dropna(subset=["SN_SP"])
     live = t[(t["HISTORY"].fillna(1) <= 5) & (t["TREE_COUNT"] > 0)]
@@ -187,7 +194,7 @@ def stand_sdi_tables(trees: pd.DataFrame) -> dict[str, dict[str, float]]:
         by_sp = grp.groupby("SN_SP")["SDI"].sum()
         table = {sp: float(v) for sp, v in by_sp.items() if v > 0}
         if table:
-            out[str(stand_cn)] = table
+            out[stand_cn] = table
     return out
 
 
@@ -297,7 +304,14 @@ def base_of(variant: str) -> tuple[str, int]:
 
 @dataclasses.dataclass(frozen=True)
 class Variant:
-    """One timing variant of one prescription, as FVS operations ready to render."""
+    """One timing variant of one prescription, as FVS operations ready to render.
+
+    A variant with `collapsed = True` has no operations left inside the horizon and is not
+    published as an option. It is still returned rather than replaced by `None`, because the
+    accounting it carries — how many entries the horizon rule dropped — is exactly what a
+    reader of `library_expansion.csv` needs from the collapsed rows, and a null cannot
+    carry it.
+    """
     prescription: str
     base: str
     template: str
@@ -306,10 +320,44 @@ class Variant:
     regen: tuple[Regeneration, ...]
     entry_years: tuple[int, ...]
     dropped_entries: int
+    collapsed: bool
+
+
+def _shift_operations(
+    thins: list[ThinDBH], regen: list[Regeneration], offset: int
+) -> tuple[list[ThinDBH], list[Regeneration]]:
+    """Move every operation `offset` years and drop what leaves the horizon.
+
+    Split out from `shift_variant` because the case that matters most cannot be reached
+    through any prescription in the current library: a template with **two** stand-replacing
+    entries whose later one — the parent of a regeneration record — falls outside the
+    horizon while an earlier, unrelated entry survives. Taking the parent to be "the nearest
+    preceding survivor" would hand that record to the wrong entry and re-initialize the
+    stand from a planting list for a harvest that never happened. Resolving the parent on
+    the unshifted schedule, where `_regen_after` placed it exactly `delay_years` after its
+    own harvest, is correct whether or not a template ever grows a second one.
+    """
+    survivors = [dataclasses.replace(t, year=t.year + offset) for t in thins
+                 if t.year + offset <= LAST_ENTRY_YEAR]
+    if not survivors:
+        return [], []           # nothing left to regenerate from
+
+    shifted_regen = []
+    for r in regen:
+        parent = max((t.year for t in thins if t.year <= r.year), default=None)
+        if parent is None or parent + offset > LAST_ENTRY_YEAR:
+            continue            # the entry that created this record did not survive
+        year = r.year + offset
+        if year > LAST_ENTRY_YEAR + CYCLE_YEARS:
+            # Regeneration for a surviving final-year harvest may legitimately fall in the
+            # eleventh cycle; anything beyond that has no projection left to grow in.
+            continue
+        shifted_regen.append(dataclasses.replace(r, year=year))
+    return survivors, shifted_regen
 
 
 def shift_variant(template: str, params: dict, base: str, offset: int,
-                  *, with_regen: bool = True) -> Variant | None:
+                  *, with_regen: bool = True) -> Variant:
     """The prescription started `offset` years later, or `None` if nothing survives.
 
     The operations come from the repository's own builders — `build_thins` and
@@ -325,14 +373,20 @@ def shift_variant(template: str, params: dict, base: str, offset: int,
       A delayed plantation rotation whose final harvest lands in 2082 is a thin inside this
       horizon and nothing more, which is what the trajectory then reports.
     * A variant that loses **every** entry "resolves to `no_management` for that stand".
-      It is returned as `None` and not published as a separate option: the menu already
-      carries `no_management`, and adding a second copy of it would inflate the library
-      with an option identical to one already there.
+      It comes back marked `collapsed` and is not published as a separate option: the menu
+      already carries `no_management`, and adding a second copy of it would inflate the
+      library with an option identical to one already there. It still carries its
+      `dropped_entries` count, which is the whole reason it collapsed and which
+      `library_expansion.csv` reports.
 
-    Regeneration follows its harvest. A `Regeneration` record exists because a
-    stand-replacing entry created it, so when that entry is dropped the record goes with it
-    — otherwise a stand would be re-initialized from a planting list for a clearcut that
-    never happened.
+    Regeneration follows its harvest, and the pairing is resolved on the **unshifted**
+    schedule. A `Regeneration` record exists because a particular stand-replacing entry
+    created it — `_regen_after` places it `delay_years` after that entry — so its parent is
+    identified among the original operations, where the delta is exactly that delay, and the
+    record survives only if *that* entry does. Re-deriving the parent after the shift, as
+    "the nearest preceding survivor", would agree today (every template carrying
+    regeneration has a single stand-replacing entry) but would silently re-attach a record
+    to the wrong entry the moment a template had two and the later one was dropped.
 
     ``with_regen=False`` skips building the regeneration records, for the caller that only
     needs the entry years. It is not an optimisation: natural regeneration follows the
@@ -342,31 +396,13 @@ def shift_variant(template: str, params: dict, base: str, offset: int,
     """
     thins = build_thins(template, params)
     regen = build_regeneration(template, params) if with_regen else []
-    kept = [dataclasses.replace(t, year=t.year + offset) for t in thins]
-    survivors = [t for t in kept if t.year <= LAST_ENTRY_YEAR]
-    dropped = len(kept) - len(survivors)
-    if not survivors:
-        return None
-
-    kept_years = {t.year for t in survivors}
-    shifted_regen = []
-    for r in regen:
-        year = r.year + offset
-        # The harvest this record regenerates is the latest surviving stand-replacing entry
-        # at or before it; `_regen_after` places the record `delay_years` after its harvest.
-        parent = max((t.year for t in survivors if t.year <= year), default=None)
-        if parent is None or parent not in kept_years:
-            continue
-        if year > LAST_ENTRY_YEAR + CYCLE_YEARS:
-            # Regeneration for a surviving final-year harvest may legitimately fall in the
-            # eleventh cycle; anything beyond that has no projection left to grow in.
-            continue
-        shifted_regen.append(dataclasses.replace(r, year=year))
+    survivors, shifted_regen = _shift_operations(thins, regen, offset)
+    dropped = len(thins) - len(survivors)
 
     return Variant(prescription=variant_id(base, offset), base=base, template=template,
                    offset=offset, thins=tuple(survivors), regen=tuple(shifted_regen),
                    entry_years=tuple(sorted(t.year for t in survivors)),
-                   dropped_entries=dropped)
+                   dropped_entries=dropped, collapsed=not survivors)
 
 
 def expand_library(carved_lib: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -378,8 +414,9 @@ def expand_library(carved_lib: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
     must stay exactly `{no_management}` for §3 rule 2 to hold structurally.
     """
     rows, accounting = [], []
-    # One (template, params, base) resolves to one set of operations, and 5,240 stands share
-    # 3,788 of them. Resolve each distinct combination once.
+    # One (prescription, template, params) resolves to one set of operations, and the 22,317
+    # carved library rows carry only 29 of them — 28 cutting combinations plus
+    # `no_management`. Resolve each distinct combination once.
     specs = (carved_lib.assign(params=carved_lib["params"].fillna(""))
              .drop_duplicates(["prescription", "template", "params"]))
     resolved: dict[tuple[str, str, str], list[Variant]] = {}
@@ -395,15 +432,15 @@ def expand_library(carved_lib: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
             # SDI table so natural regeneration follows the stand's own composition.
             v = shift_variant(spec.template, params, spec.prescription, offset,
                               with_regen=False)
-            if v is not None:
+            if not v.collapsed:
                 variants.append(v)
             accounting.append({
                 "base_prescription": spec.prescription, "template": spec.template,
                 "offset_years": offset, "resolved_params": spec.params,
-                "entries_kept": 0 if v is None else len(v.entry_years),
-                "entries_dropped": 0 if v is None else v.dropped_entries,
-                "collapsed_to_no_management": v is None,
-                "entry_years": "" if v is None else ";".join(str(y) for y in v.entry_years),
+                "entries_kept": len(v.entry_years),
+                "entries_dropped": v.dropped_entries,
+                "collapsed_to_no_management": v.collapsed,
+                "entry_years": ";".join(str(y) for y in v.entry_years),
             })
         resolved[key] = variants
 
@@ -442,7 +479,7 @@ def expand_library(carved_lib: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
 # Stage C — the FVS input database
 # --------------------------------------------------------------------------------------
 
-def build_input_db(plots: set[str]) -> dict[str, dict[str, float]]:
+def build_input_db(plots: set[str]) -> tuple[dict[str, dict[str, float]], str]:
     """StandInit/TreeInit for the donor plots, anchored to INV_YEAR 2022.
 
     Unchanged from 2026-08-31: each FVS run is a single donor plot, so
@@ -450,6 +487,13 @@ def build_input_db(plots: set[str]) -> dict[str, dict[str, float]]:
     imputation anchor) degenerates to taking the plot's own row and setting its inventory
     year. The raw FIA rows carry inventory years of 2009 and earlier, which would put every
     trajectory on the wrong cycle grid.
+
+    Returns the per-plot SDI tables and a **content fingerprint of the tree lists actually
+    written** — the stand and tree rows, sorted and serialised, not the SQLite file, whose
+    bytes need not be stable between two builds of identical content. The fingerprint is
+    what lets `--reuse-raw` tell "the same library" from "the same library over different
+    tree lists": a changed `FIA_5county_consolidated.db` alters no keyfile, so nothing else
+    in the run set would notice it.
     """
     WORK.mkdir(parents=True, exist_ok=True)
     if FVS_DATA_DB.exists():
@@ -483,8 +527,17 @@ def build_input_db(plots: set[str]) -> dict[str, dict[str, float]]:
     dst.execute("CREATE INDEX ix_tree ON FVS_TreeInit_Plot(STAND_CN)")
     dst.commit()
     dst.close()
-    log.info("FVS input DB: %d stands, %d trees, INV_YEAR=%d", len(stand), len(tree), INV_YEAR)
-    return stand_sdi_tables(tree)
+
+    digest = hashlib.sha256()
+    for frame, keys in ((stand, ["STAND_CN"]), (tree, ["STAND_CN", "TREE"])):
+        by = [k for k in keys if k in frame.columns]
+        ordered = frame.sort_values(by).reindex(sorted(frame.columns), axis=1)
+        digest.update(ordered.to_csv(index=False).encode())
+    fingerprint = digest.hexdigest()[:16]
+
+    log.info("FVS input DB: %d stands, %d trees, INV_YEAR=%d (content %s)",
+             len(stand), len(tree), INV_YEAR, fingerprint)
+    return stand_sdi_tables(tree), fingerprint
 
 
 # --------------------------------------------------------------------------------------
@@ -519,7 +572,7 @@ def render_batch(expanded: pd.DataFrame, sdi: dict[str, dict[str, float]]) -> pd
         stand_id = f"S{run.PLT_CN}"
         if build_thins(run.template, params):
             v = shift_variant(run.template, params, run.base_prescription, run.offset_years)
-            if v is None or v.prescription != run.prescription:
+            if v.collapsed or v.prescription != run.prescription:
                 raise AssertionError(
                     f"variant {run.prescription} no longer resolves from its own template "
                     f"and params; the library and the renderer disagree"
@@ -875,7 +928,7 @@ def main() -> None:
         return
 
     plots = set(expanded["PLT_CN"].dropna().astype(str))
-    sdi = build_input_db(plots)
+    sdi, input_fingerprint = build_input_db(plots)
     log.info("Species SDI tables built for %d/%d donor plots", len(sdi), len(plots))
 
     runs = render_batch(expanded, sdi)
@@ -891,9 +944,19 @@ def main() -> None:
     # came from: a library whose runs have changed at all re-runs FVS.
     raw_cache = WORK / "raw_summary2.csv.gz"
     cache_key = WORK / "raw_summary2.key"
-    key = hashlib.sha256(
-        ("\n".join(sorted(runs["PLT_CN"] + "::" + runs["prescription"] + "::"
-                          + runs["keyfile_sha256_16"]))).encode()).hexdigest()[:16]
+    # The cache holds FVS output, so its identity must cover **everything that can change
+    # that output**, not only the run set. Three things can: the keyfiles, the tree lists
+    # they are simulated against, and the binary simulating them. Hashing the keyfiles alone
+    # would accept a cache built from a different `FIA_5county_consolidated.db` or a
+    # rebuilt `FVSsn` — neither of which alters a single keyfile — and publish those stale
+    # volumes under a fresh manifest.
+    key = hashlib.sha256("\n".join([
+        *sorted(runs["PLT_CN"] + "::" + runs["prescription"] + "::"
+                + runs["keyfile_sha256_16"]),
+        f"input_db::{input_fingerprint}",
+        f"fvs_bin::{hashlib.sha256(FVS_BIN.read_bytes()).hexdigest()[:16]}",
+        f"num_cycle::{NUM_CYCLE}",
+    ]).encode()).hexdigest()[:16]
     if args.reuse_raw and raw_cache.exists() and cache_key.exists() \
             and cache_key.read_text().strip() == key:
         cycles = pd.read_csv(raw_cache, dtype={"PLT_CN": str})
@@ -925,10 +988,29 @@ def main() -> None:
     # Fail closed. A partial library is not a smaller library: the scheduler would read a
     # missing trajectory as an option the stand does not have, and the plan would be quietly
     # built over a decision space nobody chose.
+    #
+    # **What is acknowledged is the exclusion *set*, not its size.** A count cannot tell one
+    # failing trajectory from another, so a run in which the known failure starts passing and
+    # a different one starts failing would sail through an unchanged `--allow-excluded-runs
+    # 1` and put a newly missing trajectory into the published decision space unreviewed.
+    # The committed `fvs_failures.csv` is the record of what a human looked at and accepted,
+    # so it is read *before* being overwritten and compared key by key.
+    # The artifact copy is written only once the gate passes, so a refused run leaves the
+    # acknowledged record intact — overwriting it first would make the *next* run compare
+    # against the very set nobody has reviewed. Until then the failures live in the interim
+    # directory, which is where an operator inspects them.
+    failures_csv = OUT_DIR / "fvs_failures.csv"
+    prior_keys = None
+    if failures_csv.exists():
+        prior = pd.read_csv(failures_csv, dtype={"PLT_CN": str})
+        prior_keys = set(prior["PLT_CN"] + "::" + prior["prescription"])
+    excluded_keys = set(excluded["PLT_CN"] + "::" + excluded["prescription"]) \
+        if len(excluded) else set()
+    excluded.to_csv(WORK / "excluded_runs.csv", index=False)
+
     if len(excluded):
-        excluded.to_csv(OUT_DIR / "fvs_failures.csv", index=False)
-        log.warning("%d trajectories could not be simulated; see fvs_failures.csv",
-                    len(excluded))
+        log.warning("%d trajectories could not be simulated; see %s",
+                    len(excluded), WORK / "excluded_runs.csv")
         for row in excluded.head(50).itertuples(index=False):
             log.warning("  excluded %s / %s — %s", row.PLT_CN, row.prescription, row.error)
     if len(excluded) != args.allow_excluded_runs:
@@ -936,16 +1018,31 @@ def main() -> None:
             f"{len(excluded)} trajectories failed or came back incomplete, but "
             f"--allow-excluded-runs declares {args.allow_excluded_runs}. Refusing to "
             f"publish: the exclusion set has changed since it was last acknowledged. "
-            f"Inspect fvs_failures.csv, then re-run with --allow-excluded-runs "
+            f"Inspect {WORK / 'excluded_runs.csv'}, then re-run with --allow-excluded-runs "
             f"{len(excluded)} if these exclusions are acceptable."
         )
-    if not len(excluded):
-        (OUT_DIR / "fvs_failures.csv").unlink(missing_ok=True)
+    if prior_keys is not None and excluded_keys != prior_keys:
+        added = sorted(excluded_keys - prior_keys)
+        gone = sorted(prior_keys - excluded_keys)
+        raise SystemExit(
+            f"the exclusion set has changed identity, not only size. Newly failing: "
+            f"{added or 'none'}. No longer failing: {gone or 'none'}. Refusing to publish: "
+            f"{args.allow_excluded_runs} is the right count but not the acknowledged set, "
+            f"and a trajectory nobody has looked at would enter the decision space as "
+            f"'missing'. Inspect each new failure, then delete the committed "
+            f"fvs_failures.csv to re-acknowledge from scratch and re-run — that committed "
+            f"file *is* the acknowledgement, and it is left untouched by this refusal."
+        )
+    if len(excluded):
+        excluded.to_csv(failures_csv, index=False)
+    else:
+        failures_csv.unlink(missing_ok=True)
 
     base_check = check_base_library(idx, cyc, runs)
 
     # --- interim tables the annealer reads (gitignored) --------------------------------
-    excluded.to_csv(WORK / "excluded_runs.csv", index=False)
+    # `excluded_runs.csv` is already on disk: it is written before the gate above, so a
+    # refused run still leaves the failures somewhere an operator can read them.
     cyc.to_csv(WORK / "trajectory_cycles.csv", index=False)
     idx.to_csv(WORK / "trajectory_index.csv", index=False)
     stands.to_csv(WORK / "carved_stands.csv", index=False)

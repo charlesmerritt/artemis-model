@@ -231,7 +231,11 @@ Every number above comes from committed repository code or from FVS output.
   363.59 against last week's 363.68.
 - **The batch fails closed, and did.** Of 13,035 runs, 13,034 completed and one was killed by
   SIGFPE and excluded. The driver refused to publish until the exclusion count was stated
-  exactly (`--allow-excluded-runs 1`), which is how this artifact was produced.
+  exactly (`--allow-excluded-runs 1`), which is how this artifact was produced. What is
+  acknowledged is the exclusion **set**, not its size: the committed `fvs_failures.csv` is
+  read before it is rewritten and compared key by key, so a run in which this failure starts
+  passing and a different one starts failing is refused rather than waved through on an
+  unchanged count of one.
 - **The excluded run is the same one `2026-08-31` excluded**: `473803917489998 /
   hardwood_clearcut_regen`, SIGFPE in `varmrt.f:176` (`ADJUST = TEMKIL/TEMSUM`, a division by
   zero in the SN mortality routine on a nearly-empty post-clearcut hardwood stand). Only the
@@ -244,17 +248,70 @@ Every number above comes from committed repository code or from FVS output.
   cycle. This week 1,637 trajectories do, and `ending_merch_cuft_per_ac` — what the
   `standing_volume` objective reads — is that cycle's post-cut state.
 - **The new logic carries its own tests.** `tests/test_weekly_artifact_20260914_timing.py`
-  (16 tests) pins the offset grid on operations small enough to check by inspection: that an
+  (19 tests) pins the offset grid on operations small enough to check by inspection: that an
   offset moves years and nothing else, that offset 0 is the identity, that an entry past 2072 is
   dropped and counted, that a variant losing every entry collapses, that a delayed rotation
   keeps its thin when its clearcut falls out, that regeneration is dropped with the harvest that
   created it, that `no_management` gains no variants so riparian menus stay `{no_management}`,
   and that both drivers decode a variant id the same way.
-- `uv run ruff check .` clean. `uv run pytest tests/` → **920 passed, 9 failed, 10 skipped**.
+- `uv run ruff check .` clean. `uv run pytest tests/` → **923 passed, 9 failed, 10 skipped**.
   All nine failures are in `tests/test_restart_fidelity.py` and all nine are the same
   environment fault, unrelated to this artifact: the sandbox cannot download DuckDB's
   `sqlite_scanner` extension (`HTTP 403` from `extensions.duckdb.org`), which
-  `scripts/setup-env.sh` installs in a normal environment. The 16 new tests pass.
+  `scripts/setup-env.sh` installs in a normal environment. The 19 new tests pass.
+
+## Six corrections made after review
+
+Raised on the PR by Devin Review, Codex, and Claude Code review comments. Each was
+reproduced against the code before being fixed, and **all 13,035 keyfiles are byte-for-byte
+identical before and after**, so every published volume in this artifact is unchanged by
+them: the only committed file that moved is `library_expansion.csv`, whose collapsed rows
+now report what they dropped.
+
+1. **The raw-output cache ignored the simulation inputs.** `--reuse-raw` keyed the cached
+   `FVS_Summary2` on run ids and keyfile hashes alone. A changed
+   `FIA_5county_consolidated.db` or a rebuilt `FVSsn` alters no keyfile, so the cache would
+   have been reused across either and stale volumes published under a fresh manifest. The
+   key now covers a content fingerprint of the tree lists actually written, the binary's own
+   hash, and the cycle count. The fingerprint is computed from the stand and tree rows rather
+   than the SQLite file, whose bytes need not be stable between two builds of identical
+   content.
+2. **Collapsed variants reported dropping nothing.** When every entry fell outside the
+   horizon, `shift_variant` returned `None` and the accounting row recorded
+   `entries_dropped = 0` — for rows whose whole reason for existing is that their entries
+   were dropped. `Variant` now carries a `collapsed` flag and is always returned, so the
+   count survives; the six collapsed rows in `library_expansion.csv` now report 1 or 3
+   dropped entries rather than 0.
+3. **Regeneration was re-parented by proximity after the shift.** A record's parent was taken
+   to be the nearest surviving entry preceding it. That agrees with the truth for every
+   template in the library today — `clearcut` and `plantation_rotation` each have a single
+   stand-replacing entry — but would silently re-attach a record to an unrelated earlier
+   entry the moment a template had two and the later one was dropped, re-initializing a stand
+   from a planting list for a harvest that never happened. The parent is now resolved on the
+   unshifted schedule, where `_regen_after` placed the record exactly `delay_years` after its
+   own harvest. The logic is split into `_shift_operations` so the two-stand-replacing-entry
+   case can be tested at all: no prescription can currently produce it.
+4. **`stand_sdi_tables` keyed its lookup with `str()`.** The batch's own frame is normalised
+   upstream, but the helper is unguarded for any other caller, and `AGENTS.md` is explicit
+   that an ID column goes through `as_id_series`. A numerically-typed `STAND_CN` would have
+   keyed the table `"4.4894e+14"`, missed every lookup, and sent all natural regeneration to
+   the single-species fallback — silently, since that fallback only warns.
+5. **The exclusion gate acknowledged a count, not a set.** `--allow-excluded-runs 1` accepted
+   any single failure, so a run in which the known SIGFPE started passing and a different
+   trajectory started failing would have published a newly missing trajectory unreviewed. The
+   committed `fvs_failures.csv` is now read before being rewritten and compared key by key,
+   and it is left untouched when the gate refuses — overwriting it first would have made the
+   *next* run compare against the very set nobody had reviewed.
+6. **A code comment stated a number that was not a count of anything.** It claimed "5,240
+   stands share 3,788 of them" of a dedup keyed on `(prescription, template, params)`: 5,240
+   is the pre-carve unit count and 3,788 is a distinct-FVS-run count on a different key. The
+   22,317 carved library rows carry 29 such combinations — 28 cutting plus `no_management`.
+   In an artifact whose "Not fabricated" section is about numbers being checked rather than
+   asserted, a comment inventing one is worth the fix.
+
+Three further tests cover the new behaviour (19 in total): that a collapsed variant still
+reports its dropped entries and carries no regeneration, and that a regeneration record is
+dropped rather than adopted when its own parent falls outside the horizon.
 
 ## R2 inputs pulled
 
@@ -325,10 +382,15 @@ Output is deterministic: FVS is deterministic, and the annealer takes its seed
 42–46 and reporting all five. Same seed + same library + same weights gives the same plan.
 
 Intermediates, all gitignored, under `data/interim/timing_library/`: the FVS input database,
-13,035 keyfiles, the raw `FVS_Summary2` cache (`raw_summary2.csv.gz`, keyed to the run set's
-keyfile hashes so it can never be reused for a library that has changed), the full
-`trajectory_cycles` state table, and the expanded per-stand library. Delete that directory to
-force the batch to re-run. `data/interim/stage/` holds the FIA database.
+13,035 keyfiles, the raw `FVS_Summary2` cache, the full `trajectory_cycles` state table, the
+expanded per-stand library, and `excluded_runs.csv` (written before the exclusion gate, so a
+refused run still leaves its failures somewhere readable). Delete that directory to force the
+batch to re-run. `data/interim/stage/` holds the FIA database.
+
+The raw cache is keyed on everything that can change FVS's output — the rendered keyfiles, a
+content fingerprint of the tree lists actually written to the input database, the `FVSsn`
+binary, and the cycle count — so `--reuse-raw` cannot serve trajectories simulated against a
+different FIA database or a rebuilt executable, neither of which alters a keyfile.
 
 ## What this hands the next run
 

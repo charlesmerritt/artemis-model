@@ -142,8 +142,38 @@ def test_entry_in_the_final_year_is_kept():
 def test_variant_with_no_surviving_entry_collapses():
     """Not published as an option: it would duplicate the `no_management` already in the
     menu, inflating the library with a trajectory it already carries."""
-    assert m.shift_variant("clearcut", {"year": 2067}, "hardwood_clearcut_regen", 10) is None
-    assert m.shift_variant("clearcut", {"year": 2072}, "hardwood_clearcut_regen", 5) is None
+    for params, offset in (({"year": 2067}, 10), ({"year": 2072}, 5)):
+        v = m.shift_variant("clearcut", params, "hardwood_clearcut_regen", offset)
+        assert v.collapsed
+        assert v.entry_years == ()
+        assert v.thins == ()
+
+
+def test_collapsed_variant_still_reports_what_it_dropped():
+    """A collapsed row that claims it dropped nothing is a report contradicting itself:
+    dropping every entry is *why* it collapsed, and `library_expansion.csv` says so."""
+    v = m.shift_variant("clearcut", {"year": 2067}, "hardwood_clearcut_regen", 10)
+    assert v.collapsed
+    assert v.dropped_entries == 1
+
+    params = {"start_year": 2062, "end_year": 2072, "interval": 5, "proportion": 0.2}
+    multi = m.shift_variant("selection_harvest", params, "public_selection_light", 15)
+    assert multi.collapsed
+    assert multi.dropped_entries == 3       # 2077, 2082, 2087 — all three past the horizon
+
+    expanded, acct = m.expand_library(_library_frame())
+    collapsed = acct[acct["collapsed_to_no_management"]]
+    assert len(collapsed) == 2
+    assert (collapsed["entries_dropped"] > 0).all()
+    assert (collapsed["entries_kept"] == 0).all()
+
+
+def test_collapsed_variant_carries_no_regeneration():
+    """No harvest inside the horizon means nothing to regenerate from."""
+    v = m.shift_variant("clearcut", {"year": 2067, "regen": "plant"},
+                        "hardwood_clearcut_regen", 10)
+    assert v.collapsed
+    assert v.regen == ()
 
 
 def test_delayed_rotation_keeps_the_thin_when_the_clearcut_falls_out():
@@ -186,6 +216,33 @@ def test_regeneration_is_dropped_with_the_harvest_that_created_it():
     assert kept.entry_years == (2072,)
     assert [r.year for r in kept.regen] == [2073]
     assert all(r.year <= m.LAST_ENTRY_YEAR + m.CYCLE_YEARS for r in kept.regen)
+
+
+def test_regeneration_parent_is_resolved_before_the_shift():
+    """The record's parent is the entry that *created* it, not whichever survivor happens to
+    precede it afterwards.
+
+    Every template carrying regeneration today has a single stand-replacing entry, so
+    "nearest preceding survivor" would agree on this week's data. It stops agreeing the
+    moment a template has two and the later one — the real parent — is dropped: an earlier,
+    unrelated entry would then adopt the record, and the stand would be re-initialized from
+    a planting list for a harvest that never happened. The pairing is therefore done on the
+    unshifted schedule, where the delta is exactly `delay_years`.
+    """
+    Regeneration, ThinDBH = m.Regeneration, m.ThinDBH
+    thins = [ThinDBH(year=2032, proportion=0.3, max_dbh=9.0),   # a thin, not the parent
+             ThinDBH(year=2062, proportion=1.0)]                # the clearcut that regenerates
+    regen = [Regeneration(year=2063, species="LP", trees_per_acre=500.0, natural=False)]
+
+    # +15 pushes the clearcut to 2077, outside the horizon; the 2032 thin survives at 2047.
+    v = m._shift_operations(thins, regen, offset=15)
+    assert [t.year for t in v[0]] == [2047]
+    assert v[1] == [], "the surviving thin must not adopt the dropped clearcut's regeneration"
+
+    # +5 keeps both, so the record moves with its parent.
+    thins_kept, regen_kept = m._shift_operations(thins, regen, offset=5)
+    assert [t.year for t in thins_kept] == [2037, 2067]
+    assert [r.year for r in regen_kept] == [2068]
 
 
 def test_with_regen_false_skips_the_records():
