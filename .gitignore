@@ -56,6 +56,8 @@ worktrees/
 .claude/*
 !.claude/settings.json
 !.claude/hooks/
+!.claude/skills/
+!.claude/skills/**
 !.claude/environment-setup.sh
 worktrees/
 
@@ -84,3 +86,10 @@ scripts/*
 !scripts/Create_FVS_Database.txt
 !scripts/Join_FVS_output_to_arc.txt
 !scripts/README.txt
+
+# Local secrets (R2 credentials, Linear API key)
+.env
+
+# Linear agent CLI: read-only tracker context for agents. Reads LINEAR_API_KEY
+# from the gitignored .env, so no secrets travel with it.
+!scripts/linear.py
