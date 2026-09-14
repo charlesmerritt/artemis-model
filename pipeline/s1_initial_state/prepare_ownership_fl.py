@@ -33,6 +33,7 @@ from rasterio.windows import Window, from_bounds
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL
 from pipeline.spatial_ref import project_crs
 from pipeline.s1_initial_state.statewide_repair import CACHE, OUT_DIR
+from pipeline.s3_management.owner_classes import load_ownership_policy
 
 OWNERSHIP_TIF = CACHE / "RDS-2025-0045/Data/US_forest_ownership.tif"
 OWNERSHIP_VAT = CACHE / "RDS-2025-0045/Data/US_forest_ownership.tif.vat.dbf"
@@ -129,14 +130,18 @@ def main() -> None:
             ids, counts = np.unique(values, return_counts=True)
             for k, c in zip(ids, counts):
                 hist[int(k)] = hist.get(int(k), 0) + int(c)
+    acres = {k: round(v * ACRES_PER_PIXEL, 1) for k, v in sorted(hist.items())}
+    masked = set(load_ownership_policy()["masked_harris_values"])
     summary = {
         "acres_per_pixel": ACRES_PER_PIXEL,
-        "class_acres": {k: round(v * ACRES_PER_PIXEL, 1) for k, v in sorted(hist.items())},
+        "owner_class_acres": {k: a for k, a in acres.items() if k not in masked and k != 15},
+        "masked_acres": {k: a for k, a in acres.items() if k in masked},
+        "outside_product_acres": acres.get(15),
         "note": (
-            "values are the published Harris/NWOS classes, warped nearest-neighbour; "
-            "classes 1 and 2 occur in Florida but are absent from the vocabulary "
-            "documented in config/ownership_policy.yaml — resolve before regime "
-            "assignment, not by resampling"
+            "values are the published Harris/NWOS raster classes, warped "
+            "nearest-neighbour; kept raw — config/ownership_policy.yaml masks them "
+            "(1 non-forest, 2 water) via owner_classes.MASKED. Legend resolved "
+            "against the product's own metadata, see tests/test_ownership_policy.py"
         ),
     }
     (args.out.parent / (args.out.stem + "_summary.json")).write_text(json.dumps(summary, indent=2))
