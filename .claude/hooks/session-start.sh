@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SessionStart hook: prepare an ARTEMIS session in Claude Code on the web so
-# `uv run pytest tests/` and `uv run ruff check .` work without network access
-# to hosts outside the sandbox egress policy.
+# `uv run python scripts/check_docs.py`, `scripts/check_conventions.py` and
+# `uv run ruff check .` work without network access to hosts outside the sandbox
+# egress policy.
 #
 # Safe to re-run: every step is idempotent.
 set -euo pipefail
@@ -26,8 +27,8 @@ uv sync
 #
 # research/restart_fidelity/compare_arms.py runs `INSTALL sqlite; LOAD sqlite;`
 # to ATTACH FVS SQLite outputs. DuckDB resolves that by downloading from
-# extensions.duckdb.org, which the sandbox egress policy denies (403), so nine
-# tests in tests/test_restart_fidelity.py fail with an HTTPException.
+# extensions.duckdb.org, which the sandbox egress policy denies (403), so the
+# arm comparison fails with an HTTPException.
 #
 # DuckDB publishes the same extension binary on PyPI, which is reachable. Stage
 # it into the local extension directory; `INSTALL` then finds it already present

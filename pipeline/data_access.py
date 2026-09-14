@@ -18,8 +18,9 @@ The second exists because the bucket also mirrors the repository's gitignored
 Directories whose bucket name differs from their drive name are listed under
 ``r2.renames`` rather than hardcoded here.
 
-Credentials come from the ``RCLONE_CONFIG_R2_*`` environment variables or from an
-``rclone.conf`` remote; nothing here reads, stores, or logs a secret. Where rclone
+Credentials come from the ``RCLONE_CONFIG_R2_*`` environment variables — exported,
+or written to the gitignored ``.env`` at the repo root — or from an ``rclone.conf``
+remote; nothing here stores or logs a secret. Where rclone
 and both of those are absent — a bare CI runner, a fresh clone — every lookup
 reports "unavailable" and callers fall back to what they did before (tests skip).
 
@@ -81,6 +82,27 @@ def data_paths() -> dict:
         return yaml.safe_load(fh)
 
 
+def load_dotenv(path: Path | None = None) -> None:
+    """Export ``KEY=value`` lines from the repo-root ``.env`` into ``os.environ``.
+
+    rclone runs as a subprocess and inherits the environment, so this is all it
+    takes for the credentials in ``.env`` to reach it. Variables already set win;
+    blank lines, ``#`` comments and a leading ``export`` are ignored.
+    """
+    path = path or repo_root() / ".env"
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip().removeprefix("export ").strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        os.environ.setdefault(key.strip(), value)
+
+
 @lru_cache(maxsize=1)
 def r2_available() -> bool:
     """Whether remote lookups can be attempted at all.
@@ -89,6 +111,7 @@ def r2_available() -> bool:
     guard every lookup. A configured-but-unreachable bucket surfaces later, as a
     failed rclone call that callers treat as "not found".
     """
+    load_dotenv()
     if os.environ.get("ARTEMIS_R2_FALLBACK", "1") == "0":
         return False
     if shutil.which("rclone") is None:
@@ -125,7 +148,17 @@ def remote_url(path) -> str | None:
     """The rclone URL for a declared path, or None when it maps nowhere.
 
     Only paths under the configured drive or under the repository's ``data/``
-    tree have a counterpart in the bucket; anything else returns None.
+    tree have a counterpart in the bucket; anything else returns None. A
+    directory uploaded under another name or depth is mapped by the longest
+    matching key in ``r2.renames``:
+
+    >>> remote_url("/mnt/d/LF2022_EVT_CONUS/LF2022_EVT_CONUS/Tif/LF2022_EVT_CONUS.tif")
+    'r2:artemis-r2/data/landfire/LF2022_EVT_CONUS/LF2022_EVT_CONUS/Tif/LF2022_EVT_CONUS.tif'
+    >>> remote_url("/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/"
+    ...            "20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv")
+    'r2:artemis-r2/data/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv'
+    >>> remote_url("data/interim/clearcut_ag/feature_table.csv")
+    'r2:artemis-r2/data/Artemis_data/interim/clearcut_ag/feature_table.csv'
     """
     cfg = data_paths().get("r2")
     if cfg is None:
@@ -135,10 +168,13 @@ def remote_url(path) -> str | None:
 
     rel = _relative_to(absolute, Path(data_paths()["drive"]))
     if rel is not None:
-        head, *tail = rel.parts
-        # A handful of directories were uploaded under a different name.
-        head = cfg.get("renames", {}).get(head, head)
-        return "/".join([base, head, *tail])
+        parts = rel.parts
+        renames = cfg.get("renames", {})
+        for depth in range(len(parts), 0, -1):
+            prefix = "/".join(parts[:depth])
+            if prefix in renames:
+                return "/".join([base, renames[prefix], *parts[depth:]])
+        return "/".join([base, *parts])
 
     rel = _relative_to(absolute, repo_root() / "data")
     if rel is not None:
@@ -306,7 +342,7 @@ def unavailable_reason(path) -> str:
     if not r2_available():
         return (
             f"{path} not present and the R2 fallback is unavailable "
-            "(needs rclone plus RCLONE_CONFIG_R2_* credentials)"
+            "(needs rclone plus RCLONE_CONFIG_R2_* credentials, exported or in .env)"
         )
     url = remote_url(path)
     if url is None:

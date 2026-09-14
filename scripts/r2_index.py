@@ -36,9 +36,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = REPO_ROOT / "data" / "index.md"
 CONFIG_PATH = REPO_ROOT / "config" / "data_paths.yaml"
 
-# One listing per top-level folder, in parallel. --fast-list is not optional:
-# without it rclone walks prefix by prefix and a folder takes minutes, not seconds.
-LIST_ARGS = ["lsf", "-R", "--fast-list", "--format", "pst"]
+sys.path.insert(0, str(REPO_ROOT))
+from pipeline import data_access  # noqa: E402
+
+# One listing per top-level folder, in parallel. Neither flag is optional: without
+# --fast-list rclone walks prefix by prefix, and without --use-server-modtime it
+# sends a HEAD per object to read the mtime — minutes for the bucket instead of ~2 s.
+LIST_ARGS = ["lsf", "-R", "--fast-list", "--use-server-modtime", "--format", "pst"]
 TIMEOUT_S = 600
 WORKERS = 8
 
@@ -140,9 +144,13 @@ def top_level(root: str) -> tuple[list[str], list[tuple[str, int]]]:
 
 
 def config_keys(cfg: dict) -> dict[str, str]:
-    """Bucket folder (or root file) -> the data_paths key that declares it."""
+    """Bucket folder (or root file) -> the data_paths key that declares it.
+
+    Paths are mapped with the pipeline's own resolver, so a folder renamed or moved
+    in the bucket is attributed exactly as data_access will look for it.
+    """
     drive = cfg["drive"].rstrip("/")
-    renames = cfg["r2"].get("renames", {})
+    root = bucket_root(cfg) + "/"
     found: dict[str, str] = {}
 
     def walk(node, trail: list[str]):
@@ -150,23 +158,24 @@ def config_keys(cfg: dict) -> dict[str, str]:
             for key, value in node.items():
                 walk(value, [*trail, key])
         elif isinstance(node, str) and node.startswith(drive + "/"):
-            head = node[len(drive) + 1:].split("/")[0]
+            head = data_access.remote_url(node).removeprefix(root).split("/")[0]
             # Keep the shallowest key, so a folder reads as "raw.landfire", not a leaf.
-            found.setdefault(renames.get(head, head), ".".join(trail[:-1]) or ".".join(trail))
+            found.setdefault(head, ".".join(trail[:-1]) or ".".join(trail))
 
     walk(cfg.get("raw", {}), ["raw"])
     return found
 
 
 def referenced_in_repo(names: list[str]) -> dict[str, bool]:
-    """Whether anything tracked mentions each folder, ignoring the index itself."""
+    """Whether anything tracked mentions each folder, ignoring the index and this script."""
+    ignored = {"data/index.md", "scripts/r2_index.py"}
     hits = {}
     for name in names:
         proc = subprocess.run(
             ["git", "grep", "-l", "-F", "--", name],
             cwd=REPO_ROOT, capture_output=True, text=True,
         )
-        files = {line for line in proc.stdout.splitlines() if line != "data/index.md"}
+        files = {line for line in proc.stdout.splitlines() if line not in ignored}
         hits[name] = bool(files)
     return hits
 
@@ -311,6 +320,7 @@ def main() -> int:
                         help="report drift and exit 1 instead of writing")
     args = parser.parse_args()
 
+    data_access.load_dotenv()
     cfg = load_config()
     root = bucket_root(cfg)
     names, root_files = top_level(root)
