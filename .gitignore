@@ -89,3 +89,6 @@ scripts/*
 !scripts/Create_FVS_Database.txt
 !scripts/Join_FVS_output_to_arc.txt
 !scripts/README.txt
+
+# Local secrets (R2 credentials)
+.env
