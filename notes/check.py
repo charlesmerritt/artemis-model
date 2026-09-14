@@ -50,9 +50,14 @@ def check_policy() -> None:
                 raise ValueError("riparian prescription rendered a harvest")
     library = regime_library.validate_library(regime_library.load_library())
     for name in regime_library.regime_names(library):
-        keyfile = regime_library.render_keyfile("example", "example", name, library=library)
+        keyfile = regime_library.render_keyfile(
+            "example", "example", name, library=library, stand_age=15,
+        )
         if not keyfile.strip():
             raise ValueError(f"{name}: empty rendered keyfile")
+        has_harvest = any(line.startswith("ThinDBH") for line in keyfile.splitlines())
+        if has_harvest != bool(library["regimes"][name]["operations"]):
+            raise ValueError(f"{name}: rendered harvest does not match the eligible example")
     print(f"ok   rendered {len(library['regimes'])} configured harvest-library regimes")
     print(f"Library constraints (config/regimes.yaml): {library['constraints']}")
     spatial_ref.assert_projected_metres(spatial_ref.project_crs())

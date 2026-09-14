@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvest age eligibility — implementation and conflict audit</title>
+<style>
+body{font:17px/1.55 system-ui,sans-serif;color:#192d26;background:#f8faf7;max-width:1080px;margin:3rem auto;padding:0 1.5rem}
+h1,h2{line-height:1.2}h1{max-width:850px}h2{margin-top:2rem}
+a{color:#16654c}code,pre{font-family:ui-monospace,monospace;font-size:.9em}pre{padding:1.2rem;background:#eaf0e9;overflow:auto}
+table{border-collapse:collapse;width:100%;font-size:.94em}th,td{text-align:left;vertical-align:top;border-bottom:1px solid #cad7cc;padding:.8rem}
+th{background:#eaf0e9}.table{overflow:auto}small{color:#526258}
+</style>
+<main>
+<p><small>Code audit and implementation · 14 September 2026 · synthetic schedules, no landscape rerun</small></p>
+<h1>A shared minimum age at treatment time</h1>
+<p>The owner-prescription resolver and comparison-scenario renderer now use one
+<code>harvest_eligibility</code> policy from
+<a href="../config/management_regimes.yaml">management_regimes.yaml</a>.
+Fifteen years is a conservative project assumption for all managed entries; higher
+prescription age targets remain in force. It is not a universal biological threshold.</p>
+<pre>harvest_eligibility:
+  mode: minimum_stand_age
+  minimum_age_years: 15
+  underage_action: defer
+  unknown_age_action: exclude_managed_candidate</pre>
+<p>These are validated enum values. Missing fields, misspelled fields, unsupported actions,
+and nonnumeric, negative, or nonfinite thresholds fail explicitly. There is no second copy
+of the threshold in <a href="../config/regimes.yaml">regimes.yaml</a> or
+<a href="../config/scenarios.yaml">scenarios.yaml</a>.</p>
+
+<h2>Scheduling contract</h2>
+<ol>
+<li>Resolve the prescription's existing age targets or inventory-relative offsets.</li>
+<li>Evaluate stand age at its first actual entry:
+<code>inventory age + entry year − inventory year</code>.</li>
+<li>If underage, shift the entire sequence by the smallest whole number of cycles that
+meets the minimum. Preserve intervals, treatment order, and higher rotation targets.</li>
+<li>Clip the result to the projection horizon. Repeated-entry end bounds remain explicit;
+removing the bound would allow template defaults to create unintended entries.</li>
+<li>Unknown, malformed, negative, nonfinite, or boolean age excludes managed entries.
+Keep grow-only, record the reason, and do not infer maturity from elapsed time alone.</li>
+</ol>
+<p>Assignment records diagnostics in <code>Prescription.notes</code> and retains the
+requested prescription ID when its template becomes <code>no_management</code>.
+The scenario library emits warnings and includes audit comments in rendered keyfiles.
+Its <code>cuts(name)</code> function remains menu metadata, not stand-level eligibility.</p>
+<div class="table"><table>
+<thead><tr><th>Inventory age / prescription</th><th>Planned offsets</th><th>Resolved offsets</th></tr></thead>
+<tbody>
+<tr><td>Age 0 / family light thin</td><td>10</td><td>15</td></tr>
+<tr><td>Age 5 / family light thin</td><td>10</td><td>10</td></tr>
+<tr><td>Age 0 / public restoration</td><td>5, 20, 35</td><td>15, 30, 45</td></tr>
+<tr><td>Age 0 / short plantation prescription</td><td>15, 25</td><td>15, 25</td></tr>
+<tr><td>Age 22 / short plantation prescription</td><td>Thin collides with next-cycle clearcut</td><td>Clearcut at +5 only</td></tr>
+<tr><td>Age 0 / industrial pine comparison regime</td><td>10, 25</td><td>15, 30</td></tr>
+<tr><td>Unknown age / any managed prescription</td><td>Any</td><td>No managed entries; exclusion recorded</td></tr>
+</tbody></table></div>
+<p>The assignment reader accepts <code>stand_age</code>, <code>STDAGE</code>,
+<code>unit_age</code>, <code>AGE</code>, then <code>STDAGE_MEAN</code>, in that order.
+The first non-null field is authoritative; an invalid value is not replaced with a
+more convenient lower-priority age. A unit-average age does not certify every constituent
+patch or tree. The caller must align the age measurement with the inventory year.</p>
+
+<h2>Conflicting logic found</h2>
+<div class="table"><table>
+<thead><tr><th>Location</th><th>Finding and disposition</th></tr></thead>
+<tbody>
+<tr><td><a href="../pipeline/s3_management/regime_assignment.py">Prescription assignment</a></td>
+<td><strong>Fixed:</strong> offset-based entries and unknown-age fallbacks bypassed an age screen.
+The resolver now consumes the shared policy, accepts LETO's age alias, and rejects timing
+fields in <code>params</code> that could overwrite the checked schedule.</td></tr>
+<tr><td><a href="../pipeline/s4_fvs/regime_library.py">Scenario library</a></td>
+<td><strong>Fixed:</strong> rendering accepted no age. Both build and render now accept
+<code>stand_age</code> and apply eligibility. Keyfile horizon overrides are honored;
+cycle lengths incompatible with the library's operation grid are rejected. Supplied
+regeneration is rejected if eligibility changes the harvest schedule, preventing stale
+establishment dates.</td></tr>
+<tr><td><a href="../notes/check.py">Executable notes</a></td>
+<td><strong>Fixed:</strong> a nonempty grow-only keyfile could pass the old managed-example
+check. Examples now supply age and verify whether harvest keywords should be present.</td></tr>
+<tr><td><a href="../pipeline/s3_management/harvest_scheduler.py">Harvest allocator</a></td>
+<td><strong>Caller contract:</strong> age is a priority sort, not an eligibility check.
+Its input must be candidates from eligible FVS trajectories. It cannot safely defer a
+harvest after growth and removals have already been simulated.</td></tr>
+<tr><td><a href="../pipeline/s4_fvs/regime_templates.py">Raw keyword templates</a></td>
+<td><strong>Low-level bypass remains:</strong> explicit years and <code>thins</code> lists
+are rendered without age context. Use assignment or the scenario library for policy-controlled
+runs. Raw templates remain available for FVS experiments and keyword verification.</td></tr>
+<tr><td><a href="../experiments/2026-08-24_leto-ca-forest-viz/policies.py">August visualization policies</a></td>
+<td><strong>Separate dated policies:</strong> heuristic industrial thinning uses age 10;
+BA-triggered clearcuts have no minimum age; random schedules use a 10-year re-entry
+lockout rather than cohort-age eligibility. The default policy passes through assignment,
+but random and heuristic schedules render their own event lists. They are not evidence
+that current production age policy is enforced. Historical results were not rewritten.</td></tr>
+<tr><td><a href="../weekly-artifact/2026-08-10/make_schedule.py">August 10 candidate builder</a></td>
+<td><strong>Dated conflict:</strong> events are deduplicated by regime name, then merged
+onto all units of that regime. This can replace unit-specific age-adjusted dates with one
+representative schedule. Any reuse must retain unit-specific resolved operations.</td></tr>
+<tr><td><a href="../weekly-artifact/2026-08-17/make_trajectory_library.py">August 17 library</a> and
+<a href="../weekly-artifact/2026-08-31/make_fvs_batch.py">August 31 batch</a></td>
+<td><strong>Saved-schedule risk:</strong> August 17 resolves assignments but groups rendered
+runs by donor plot and prescription; August 31 consumes saved parameters. Reuse requires
+regenerating assignments and confirming that run keys distinguish different resolved
+schedules. Existing CSVs and FVS results do not gain the new policy retroactively.</td></tr>
+<tr><td>Regeneration / subsequent rotations</td>
+<td><strong>Unresolved integration:</strong> the comparison library allows only terminal
+regeneration harvests. The configured owner-prescription restart/repeat loop is not proven
+to consume regeneration metadata. A future restart must supply the new cohort's age and
+establishment epoch; inventory age must not continue across a clearcut. See the existing
+regeneration gotcha in <a href="../AGENTS.md">AGENTS.md</a>.</td></tr>
+</tbody></table></div>
+
+<h2>Verification and limits</h2>
+<p><a href="../tests/test_harvest_eligibility.py">Regression tests</a> cover age boundaries,
+fractional ages, unknown ages, policy validation, unchanged rotation targets, repeated
+deferral, horizon clipping, timing overrides, incompatible cycles, and stale supplied
+regeneration. Tests exercise emitted harvest keywords, not just configuration text.</p>
+<pre>.venv/bin/python -m pytest -q
+.venv/bin/python notes/check.py</pre>
+<p>Implementation verification: 77 tests passed; lint, identifier/CRS conventions and
+diff whitespace checks passed. The shared eligibility module has 100% statement/branch
+coverage. CRAP scores across it, assignment and the scenario library were all below 30
+(maximum 13.3). Bounded mutation testing of the shared module in an isolated copy killed
+138 of 143 mutants (96.5%); the five survivors only decorated diagnostic strings.
+The added boundary tests are in
+<a href="../tests/test_harvest_eligibility_hardening.py">test_harvest_eligibility_hardening.py</a>.</p>
+<p>The policy pointer lives in the existing minimum-harvest-age line of AGENTS.md, keeping that
+file within its markdown budget. The pre-commit documentation, convention and test checks pass
+for this change.</p>
+<p>Changing timing requires a new FVS run; shifting already-computed trajectory rows is
+invalid. No county or state simulation was rerun, so affected acreage, merchantable volume,
+and feasibility against TPO targets are not quantified. Minimum DBH, stand structure,
+harvestable area share, protected geometry, and regeneration suitability remain separate
+constraints. This policy does not implement the intended 25% harvestable-share screen.</p>
+</main>
+</html>

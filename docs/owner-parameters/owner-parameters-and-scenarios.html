@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="ARTEMIS owner parameters brief: owner-specific prescriptions, ages, harvest intensities, regeneration, and scenarios."><title>ARTEMIS · Owner parameters and scenarios</title><style>
+:root{color-scheme:light;--ink:#19332d;--accent:#276854;--muted:#596b65;--line:#d6e1db}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f2f5f1;color:#26362f;font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+.shell{max-width:1450px;margin:auto;display:grid;grid-template-columns:260px minmax(0,1fr);gap:36px;padding:36px}
+nav{position:sticky;top:24px;align-self:start;font-size:13px}nav strong{display:block;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:15px}nav a{display:block;text-decoration:none;color:var(--muted);padding:7px 0;border-bottom:1px solid var(--line);line-height:1.4}nav a:hover{color:var(--accent)}
+article{background:white;border:1px solid var(--line);border-radius:8px;padding:45px 48px;min-width:0;box-shadow:0 5px 24px #19332d08}
+h1{font-size:36px;line-height:1.15;letter-spacing:-.025em;color:var(--ink);margin:0 0 22px}h2{font-size:25px;line-height:1.3;color:var(--ink);margin:46px 0 18px;padding-top:16px;border-top:3px solid var(--accent);scroll-margin-top:20px}h3{font-size:19px;color:var(--accent);margin:28px 0 12px}p{margin:12px 0 17px}strong{color:var(--ink)}ul{padding-left:23px}li{padding-left:3px;margin:8px 0}
+.table-wrap{overflow-x:auto;margin:20px 0 24px}table{border-collapse:collapse;width:100%;font-size:13px;line-height:1.5}th{background:var(--ink);color:white;text-align:left;font-weight:600}th,td{padding:10px 12px;vertical-align:top;border:1px solid var(--line)}tbody tr:nth-child(even){background:#f4f7f4}td:first-child{font-weight:500}code{font: .9em/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}p code,li code{background:#edf2ed;padding:1px 4px;border-radius:3px}
+button{margin-top:20px;border:0;border-radius:5px;background:var(--accent);color:white;padding:10px 16px;font:inherit;cursor:pointer}.note{font-size:12px;color:var(--muted);margin-top:12px}
+@media(max-width:950px){.shell{display:block;padding:16px}nav{position:static;margin:12px 8px 24px}nav a{display:inline-block;margin-right:15px}article{padding:28px 22px}h1{font-size:29px}}
+@media print{@page{size:A4;margin:16mm 13mm}body{background:white;font-size:10pt;line-height:1.45}.shell{display:block;padding:0;max-width:none}nav{display:none}article{border:0;border-radius:0;padding:0;box-shadow:none}h1{font-size:24pt}h2{font-size:17pt;margin-top:24pt;break-after:avoid}h3{font-size:12pt;break-after:avoid}p{orphans:3;widows:3}table{font-size:8pt;line-height:1.35}th,td{padding:6px 7px}thead{display:table-header-group}tr{break-inside:avoid}.table-wrap{overflow:visible}th{background:#e3ece6;color:#19332d}a{color:inherit;text-decoration:none}}
+</style></head>
+<body><div class="shell"><nav aria-label="Document contents"><strong>ARTEMIS · Owner parameters</strong><a href="#1-at-a-glance">1. At a glance</a><a href="#2-vocabulary-and-how-to-read-the-numbers">2. Vocabulary and how to read the numbers</a><a href="#3-who-receives-which-treatments">3. Who receives which treatments?</a><a href="#4-complete-owner-policy-prescription-parameters">4. Complete owner-policy prescription parameters</a><a href="#5-regeneration-and-repeated-rotations">5. Regeneration and repeated rotations</a><a href="#6-riparian-protection-in-every-scenario">6. Riparian protection in every scenario</a><a href="#7-timber-targets-and-optimization-parameters">7. Timber targets and optimization parameters</a><a href="#8-decisions-for-review">8. Decisions for review</a><a href="#appendix-a-exact-prescription-names">Appendix A. Exact prescription names</a><a href="#appendix-b-full-separate-scenario-library-inventory">Appendix B. Full separate scenario-library inventory</a><a href="#sources-and-verification">Sources and verification</a><button type="button" onclick="window.print()">Print / Save as PDF</button><p class="note">Harvest eligibility updated<br>14 September 2026<br>Self-contained document</p></nav><article><h1>ARTEMIS: ownership, management prescriptions, and scenarios</h1>
+<p><strong>14 September 2026 · Harvest eligibility update</strong></p>
+<p>This document describes the parameters currently in this repository, including differences between declared policy and executable behavior. It is a methods and assumptions brief, not a finding that these prescriptions reproduce observed Florida landowner behavior. The numerical treatment choices are working assumptions unless explicitly identified otherwise. No new landscape simulation was run for this brief.</p>
+<h2 id="1-at-a-glance">1. At a glance</h2>
+<p>ARTEMIS gives each management unit a menu of treatments based on ownership and forest type. A default prescription provides a reference choice; a landscape optimizer can select among eligible trajectories to approach observed timber removals. Grow-only is an option for every owner and is compulsory for riparian units.</p>
+<p>The current owner policy contains eight prescriptions, seven substantive owner classes, and an unknown-ownership class. The projection is regular Southern FVS (SN), starting in 2022, over 50 years to 2072, in ten 5-year cycles. Headline raster years are 2022, 2047, and 2072. [S1–S4]</p>
+<p>The most consequential distinctions for review are:</p>
+<ul>
+<li><strong>Owner-policy pine rotations:</strong> first thinning targets stand age 15 or 18, and final harvest targets age 25 or 35, respectively. Hardwood final harvest targets age 50.</li>
+<li><strong>Harvest eligibility:</strong> owner prescriptions and comparison scenarios enforce a configurable minimum stand age of 15 at treatment time. Young-stand schedules are deferred; missing age produces grow-only. This is a conservative project assumption. [S2, S3, S8]</li>
+<li><strong>Scenario timings differ:</strong> the separate comparison library schedules industrial pine harvest 25 or 40 years after inventory, and hardwood harvest 20 or 40 years after inventory. These are planned elapsed-time schedules, subject to the same age minimum.</li>
+<li><strong>Regeneration:</strong> templates, imputation, or identical reestablishment. The template renderer supplies fixed planting/natural-regeneration keywords directly to FVS. Replanting a clearcut stand with its own prior configuration, essentially identically, also makes sense. Nearest-neighbor imputation can fill raster holes where no tree data exists to build from.</li>
+</ul>
+<h2 id="2-vocabulary-and-how-to-read-the-numbers">2. Vocabulary and how to read the numbers</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Term</th>
+  <th>Meaning in this brief</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Owner class</td>
+  <td>Behavioral policy group assigned from ownership data; distinct from the three TPO reporting groups.</td>
+</tr>
+<tr>
+  <td>Prescription / regime</td>
+  <td>A sequence of thinning, selection, or final-harvest operations. The repository uses both words.</td>
+</tr>
+<tr>
+  <td>Default</td>
+  <td>The one prescription assigned deterministically for an owner and forest-type branch. It is not a mandatory treatment.</td>
+</tr>
+<tr>
+  <td>Eligible menu</td>
+  <td>The options that may be represented in that unit's trajectory library. Forest type further restricts the owner's menu.</td>
+</tr>
+<tr>
+  <td>Scenario</td>
+  <td>A landscape-wide comparison of management assumptions, such as short versus extended rotation and retention/buffer policy.</td>
+</tr>
+<tr>
+  <td>Stand age</td>
+  <td>Biological/inventory age used to schedule the age-based prescriptions.</td>
+</tr>
+<tr>
+  <td>+10 years</td>
+  <td>Ten years after the 2022 inventory, i.e. 2032. It does <strong>not</strong> mean stand age 10.</td>
+</tr>
+<tr>
+  <td>Removal percentage</td>
+  <td>Fraction of trees per acre (TPA) removed <strong>within the stated diameter window</strong>, across all species. It is not a prescribed percentage of stand volume, basal area, or land area.</td>
+</tr>
+<tr>
+  <td>Selection</td>
+  <td>Here, proportional removal across the diameter distribution. It is a simplified representation, not individual-tree selection to a target diameter distribution.</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="3-who-receives-which-treatments">3. Who receives which treatments?</h2>
+<p>The short names below refer to the complete parameter table in Section 4. Pine rotations are eligible only on the pine branch; the hardwood clearcut is eligible on hardwood and other/mixed branches. All other prescriptions accept any forest branch. [S1–S3]</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Owner class</th>
+  <th>TPO group</th>
+  <th>Default on pine</th>
+  <th>Default on hardwood / other</th>
+  <th>Eligible active prescriptions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Private industrial</td>
+  <td>Private</td>
+  <td>Short pine rotation</td>
+  <td>Hardwood clearcut</td>
+  <td>Short pine; long pine; hardwood clearcut</td>
+</tr>
+<tr>
+  <td>Other corporate private</td>
+  <td>Private</td>
+  <td>Long pine rotation</td>
+  <td>Family light thin</td>
+  <td>Long pine; family light thin; family selection</td>
+</tr>
+<tr>
+  <td>Family / small private</td>
+  <td>Private</td>
+  <td>Family light thin</td>
+  <td>Family light thin</td>
+  <td>Family light thin; family selection; long pine</td>
+</tr>
+<tr>
+  <td>Tribal</td>
+  <td>Private</td>
+  <td>Public selection</td>
+  <td>Public selection</td>
+  <td>Public selection; family light thin</td>
+</tr>
+<tr>
+  <td>Federal</td>
+  <td>Federal</td>
+  <td>Public selection</td>
+  <td>Public selection</td>
+  <td>Public selection; restoration thin</td>
+</tr>
+<tr>
+  <td>State</td>
+  <td>Other public</td>
+  <td>Restoration thin</td>
+  <td>Public selection</td>
+  <td>Restoration thin; public selection; long pine</td>
+</tr>
+<tr>
+  <td>County / municipal</td>
+  <td>Other public</td>
+  <td>Grow-only</td>
+  <td>Grow-only</td>
+  <td>Public selection; restoration thin</td>
+</tr>
+<tr>
+  <td>Unknown ownership</td>
+  <td>Private, flagged</td>
+  <td>Family light thin</td>
+  <td>Family light thin</td>
+  <td>Family light thin only</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Interpretation by owner.</strong> Industrial owners get rotation forestry, with pulpwood versus sawtimber as the pine alternatives. Other corporate owners have a longer/lighter menu. Family ownership emphasizes infrequent partial entries, while allowing a managed pine subset to take a long rotation. Federal and tribal defaults retain cover through periodic selection. State pine has a restoration-thinning default and a sawtimber option. Local ownership defaults to no entry. Unknown ownership receives a deliberately narrow menu so an optimizer cannot invent aggressive management on unattributed land. These are declared policy rationales, not fitted owner-level probabilities. [S2]</p>
+<p><strong>Important consequences:</strong> no clearcut is eligible for federal, tribal, local, or unknown ownership under this policy. Family and other-corporate hardwood also lack a clearcut option. State clearcuts are available only through the long pine rotation. Industrial non-pine has just hardwood clearcut or grow-only after forest-type filtering.</p>
+<h3>Ownership classification parameters</h3>
+<p>The Harris ownership raster provides the base ownership vocabulary: <strong>0 unknown, 1 non-forest, 2 water, 3 family, 4 corporate, 5 tribal, 6 federal, 7 state, 8 local</strong>. The policy excludes non-forest and water from FVS rather than assigning grow-only. It specifies forest-area-majority ownership for a unit; the row-level classifier consumes the resulting code and does not itself perform this spatial aggregation. It charges unknown ownership to Private and reports it separately. [S1, S3]</p>
+<p>Forest branching accepts FIA FORTYPCD <strong>140–179 as pine</strong> and <strong>500–998 as hardwood</strong>; other values, including numeric oak/pine group 400–499 and unknown type, take the other branch. Text-name heuristics are used when numeric type is unavailable or unusable. Planting eligibility is based on this pine branch, not a separate planted-origin screen. [S3]</p>
+<h2 id="4-complete-owner-policy-prescription-parameters">4. Complete owner-policy prescription parameters</h2>
+<p>All timings in this table are either target stand ages or explicit inventory offsets, as labeled. Actual entries are rounded to 5-year cycles and deferred when needed to meet the minimum age of 15. Full prescription IDs are provided in Appendix A. [S2–S4]</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Prescription</th>
+  <th>Timing</th>
+  <th>Operation and intensity</th>
+  <th>Final harvest / rotation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Grow-only</td>
+  <td>No entries</td>
+  <td>Grow existing forest</td>
+  <td>None</td>
+</tr>
+<tr>
+  <td>Short pine rotation</td>
+  <td>Target first thin age <strong>15</strong></td>
+  <td>One thin; remove <strong>40%</strong> of TPA at DBH <strong>0–8 in</strong></td>
+  <td>Target age <strong>25</strong>; remove <strong>100%</strong> at DBH <strong>0–999 in</strong></td>
+</tr>
+<tr>
+  <td>Long pine rotation</td>
+  <td>Target first thin age <strong>18</strong></td>
+  <td>One thin; remove <strong>35%</strong> of TPA at DBH <strong>0–9 in</strong></td>
+  <td>Target age <strong>35</strong>; remove <strong>100%</strong> at DBH <strong>0–999 in</strong></td>
+</tr>
+<tr>
+  <td>Hardwood clearcut</td>
+  <td>Target harvest age <strong>50</strong></td>
+  <td>No prior thin</td>
+  <td>One final cut; remove <strong>100%</strong> at DBH <strong>0–999 in</strong></td>
+</tr>
+<tr>
+  <td>Family light thin</td>
+  <td><strong>+10</strong> (2032)</td>
+  <td>One thin; remove <strong>35%</strong> at DBH <strong>0–8 in</strong></td>
+  <td>None; no rotation length</td>
+</tr>
+<tr>
+  <td>Family selection</td>
+  <td><strong>+15, +30, +45</strong> (2037, 2052, 2067)</td>
+  <td><strong>15%</strong> at DBH <strong>0–999 in</strong> each entry; <strong>15-year</strong> interval</td>
+  <td>None; continuous-cover intent</td>
+</tr>
+<tr>
+  <td>Public selection</td>
+  <td><strong>+10, +20, +30, +40</strong> (2032, 2042, 2052, 2062)</td>
+  <td><strong>20%</strong> at DBH <strong>0–999 in</strong> each entry; <strong>10-year</strong> interval</td>
+  <td>None; continuous-cover intent</td>
+</tr>
+<tr>
+  <td>Restoration thin</td>
+  <td><strong>+5, +20, +35</strong> (2027, 2042, 2057)</td>
+  <td><strong>30%</strong> at DBH <strong>0–10 in</strong> each entry; <strong>15-year</strong> interval</td>
+  <td>None; mechanical treatment only, no prescribed fire</td>
+</tr>
+</tbody>
+</table></div>
+<p>The nominal restoration sequence is +5, +20, +35 within a window ending at +45. For an age-zero stand, minimum-age deferral shifts the entries to <strong>+15, +30, +45</strong>. The declared entry counts are 0, 2, 2, 1, 1, 3, 4, and 3 in the table's order. They describe the nominal schedules; horizon truncation or removal of an overlapping thin can reduce actual counts. The <code>repeats</code> metadata does not generate additional rotation cuts in the current template renderer.</p>
+<h3>Minimum age, deferral, and missing ages</h3>
+<p>The shared minimum is 15 years at the time of treatment, including thinnings. Higher prescription targets remain unchanged. If the first entry would be too early, the whole sequence moves forward in 5-year steps, preserving intervals; entries beyond 2072 are dropped. For an age-zero stand, family thinning moves from +10 to <strong>+15</strong>. A stand already aged five can still thin at +10. [S2, S3, S8]</p>
+<p>Missing or unusable age excludes managed entries and records a grow-only outcome. Inventory offsets no longer serve as an unknown-age fallback. Age-based targets still round upward to a cycle: short pine aged 22 is clearcut at +5 (approximately age 27), with its overlapping thin omitted. Riparian exclusions remain absolute. [S3]</p>
+<p><strong>Scope:</strong> this is enforced before FVS in owner assignment and scenario rendering. Dated random/heuristic experiments and saved schedules can bypass it; changed dates require new FVS trajectories. Subsequent rotations need a new cohort age. Merchantable size and the intended 25% harvestable-share screen remain separate unresolved constraints. [S3, S8, S10]</p>
+<h2 id="5-regeneration-and-repeated-rotations">5. Regeneration and repeated rotations</h2>
+<h3>What the current template renderer supplies</h3>
+<p>The renderer's defaults come from <code>config/fvs_keywords.yaml</code>. They are shared across owners; there is no separate density or survival table by owner. A plantation template uses planting after its final cut. [S4, S5]</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Regeneration parameter</th>
+  <th>Current renderer default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Planting species</td>
+  <td><strong>LP (loblolly pine)</strong>, one shared default</td>
+</tr>
+<tr>
+  <td>Planted density</td>
+  <td><strong>605 trees/acre</strong></td>
+</tr>
+<tr>
+  <td>Natural density</td>
+  <td><strong>400 trees/acre total</strong>, apportioned among species if composition is supplied</td>
+</tr>
+<tr>
+  <td>Survival</td>
+  <td><strong>100%</strong> for both modes</td>
+</tr>
+<tr>
+  <td>Cohort age / height</td>
+  <td><strong>1 year / 0.5 ft</strong> at establishment</td>
+</tr>
+<tr>
+  <td>Delay</td>
+  <td><strong>1 year after harvest</strong> for both modes</td>
+</tr>
+<tr>
+  <td>Natural species allocation</td>
+  <td>Relative stand density index (SDI) shares of species already present, when <code>stand_sdi</code> is passed</td>
+</tr>
+<tr>
+  <td>Small-species cutoff</td>
+  <td>Drop species below <strong>5% of SDI</strong>, renormalize survivors; if all are below the cutoff, retain the largest contributor</td>
+</tr>
+<tr>
+  <td>Missing composition</td>
+  <td>Warn and use <strong>LP</strong> as the single natural-regeneration species</td>
+</tr>
+<tr>
+  <td>Automatic establishment</td>
+  <td>Plant packets include <code>NoInGrow</code> and <code>NoAutAly</code> when suppression is enabled; the register records related side effects for Natural</td>
+</tr>
+<tr>
+  <td>Caller overrides</td>
+  <td>Mode (<code>plant</code>, <code>natural</code>, <code>none</code>), species, density, survival, age, height, and delay are supported by renderer parameters; these are not owner-specific defaults</td>
+</tr>
+</tbody>
+</table></div>
+<p>The register identifies density, species choice, survival, and the SDI cutoff as assumptions needing review. [S5]</p>
+<h3>What the owner-policy YAML declares instead</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Prescription</th>
+  <th>Declared donor slot</th>
+  <th>Declared delay</th>
+  <th>Repeat flag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Short pine rotation</td>
+  <td><code>planted_pine_regen</code></td>
+  <td>1 year</td>
+  <td>Yes</td>
+</tr>
+<tr>
+  <td>Long pine rotation</td>
+  <td><code>planted_pine_regen</code></td>
+  <td>1 year</td>
+  <td>Yes</td>
+</tr>
+<tr>
+  <td>Hardwood clearcut</td>
+  <td><code>hardwood_regen</code></td>
+  <td>3 years</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td>All partial entries / grow-only</td>
+  <td>None</td>
+  <td>None</td>
+  <td>No</td>
+</tr>
+</tbody>
+</table></div>
+<p>Those slots refer to a fixed-FIA-tree-list restart design. Planted-pine donors must have planted origin and age ≤10; hardwood donors natural origin and age ≤15. A natural-pine regeneration slot also exists (natural origin, age ≤15), but none of the eight current prescriptions selects it. Donors are drawn from FL/GA/AL, with at least ten candidates, selecting the lower median live-basal-area plot and breaking ties by string-valued PLT_CN. These are donor selection ages, not minimum harvest ages. [S2, S7]</p>
+<p><strong>Execution gaps that matter for interpretation:</strong></p>
+<ul>
+<li>The assignment object returns a donor-slot label, but does not pass the YAML's regeneration delay or repeat flag into template parameters. Current hardwood template regeneration therefore defaults to <strong>1 year</strong>, not the YAML's <strong>3 years</strong>.</li>
+<li>When an older plantation's thin is dropped, the resolver changes its template to <code>clearcut</code>. That template defaults to <strong>natural regeneration</strong>, although its prescription label and donor slot still indicate a plantation. With no composition supplied, it falls back to LP at <strong>400 TPA</strong>, rather than planting LP at <strong>605 TPA</strong>.</li>
+</ul>
+<h2 id="6-riparian-protection-in-every-scenario">6. Riparian protection in every scenario</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Feature</th>
+  <th>Baseline configured width</th>
+  <th>Wider configured width</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Ephemeral / intermittent stream</td>
+  <td>35 ft</td>
+  <td>70 ft</td>
+</tr>
+<tr>
+  <td>Small perennial stream</td>
+  <td>50 ft</td>
+  <td>100 ft</td>
+</tr>
+<tr>
+  <td>Large perennial stream</td>
+  <td>75 ft</td>
+  <td>150 ft</td>
+</tr>
+<tr>
+  <td>Waterbody</td>
+  <td>75 ft</td>
+  <td>150 ft</td>
+</tr>
+</tbody>
+</table></div>
+<p>Stream widths are measured on each side of the centerline; waterbody buffers surround the waterbody boundary. These are repository model settings. The scenario's wider widths require a changed spatial partition and regenerated management units; simply swapping harvest prescriptions leaves that part of the scenario unevaluated. [S6, S11]</p>
+<p>The owner-policy override is <strong>SMZ_Pct ≥50 → grow-only</strong>, ahead of owner treatment assignment. The intended spatial preparation separates buffer polygons (SMZ_Pct=100) from managed polygons (SMZ_Pct=0). The owner-only menu function has no SMZ input; callers constructing a unit's candidate library must restrict riparian units to grow-only. Buffers remain in growth outputs and should retain separate unit IDs. [S2, S3]</p>
+<h2 id="7-timber-targets-and-optimization-parameters">7. Timber targets and optimization parameters</h2>
+<p>Owners have different treatment menus, but the TPO inputs have only <strong>three owner reporting groups</strong>, not an independent volume target for every owner class. Forward scheduling selects the <strong>2013–2024</strong> target series; the configured hindcast series is <strong>pre-2015</strong>. Annual targets are multiplied by five for each 5-year timestep. [S1, S9, S12]</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Owner group</th>
+  <th style="text-align:right">Annual target, ft³/year</th>
+  <th style="text-align:right">Five-year target, ft³/cycle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Private</td>
+  <td style="text-align:right">70,994,800</td>
+  <td style="text-align:right">354,974,000</td>
+</tr>
+<tr>
+  <td>Federal (NF)</td>
+  <td style="text-align:right">2,023,500</td>
+  <td style="text-align:right">10,117,500</td>
+</tr>
+<tr>
+  <td>Other public</td>
+  <td style="text-align:right">4,486,900</td>
+  <td style="text-align:right">22,434,500</td>
+</tr>
+<tr>
+  <td>All owners</td>
+  <td style="text-align:right">77,505,200</td>
+  <td style="text-align:right">387,526,000</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>County</th>
+  <th style="text-align:right">Annual target, ft³/year</th>
+  <th style="text-align:right">Five-year target, ft³/cycle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Baker</td>
+  <td style="text-align:right">11,451,200</td>
+  <td style="text-align:right">57,256,000</td>
+</tr>
+<tr>
+  <td>Columbia</td>
+  <td style="text-align:right">19,725,500</td>
+  <td style="text-align:right">98,627,500</td>
+</tr>
+<tr>
+  <td>Hamilton</td>
+  <td style="text-align:right">16,211,500</td>
+  <td style="text-align:right">81,057,500</td>
+</tr>
+<tr>
+  <td>Suwannee (<code>Suwanee</code> in source)</td>
+  <td style="text-align:right">22,474,700</td>
+  <td style="text-align:right">112,373,500</td>
+</tr>
+<tr>
+  <td>Union</td>
+  <td style="text-align:right">7,642,900</td>
+  <td style="text-align:right">38,214,500</td>
+</tr>
+<tr>
+  <td>All five counties</td>
+  <td style="text-align:right">77,505,800</td>
+  <td style="text-align:right">387,529,000</td>
+</tr>
+</tbody>
+</table></div>
+<p>The adopted optimization configuration treats TPO as an <strong>even-flow target</strong>, penalizing departures rather than imposing a hard ceiling. [S9]</p>
+<h2 id="8-decisions-for-review">8. Decisions for review</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Decision</th>
+  <th>Why it affects the interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Choose one authoritative prescription/scenario library</td>
+  <td>Both libraries now share the age-15 floor, but their timings still differ. Calibrate rotation lengths and merchantable-size criteria; justify any treatment-specific age exceptions.</td>
+</tr>
+<tr>
+  <td>Reconcile regeneration policy with emitted records</td>
+  <td>Decide densities, species, survival, delays, natural composition, and behavior of overmature plantation clearcuts. Verify establishment in FVS.</td>
+</tr>
+<tr>
+  <td>Settle constraints for scheduler</td>
+  <td>Are spatial green up constraints needed? Other constraints or secondary objectives?</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Output limits:</strong> timber removals are the available scenario KPI. <code>carbon_extension</code> remains false, and no harvested-wood-products carbon pool is implemented in the scenario specification. NPV lacks agreed prices, costs, and a discount rate. [S6, S9]</p>
+<h2 id="appendix-a-exact-prescription-names">Appendix A. Exact prescription names</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Short name used here</th>
+  <th>ID in <code>management_regimes.yaml</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Grow-only</td>
+  <td><code>no_management</code></td>
+</tr>
+<tr>
+  <td>Short pine rotation</td>
+  <td><code>pine_plantation_short_rotation</code></td>
+</tr>
+<tr>
+  <td>Long pine rotation</td>
+  <td><code>pine_plantation_long_rotation</code></td>
+</tr>
+<tr>
+  <td>Hardwood clearcut</td>
+  <td><code>hardwood_clearcut_regen</code></td>
+</tr>
+<tr>
+  <td>Family light thin</td>
+  <td><code>family_light_thin</code></td>
+</tr>
+<tr>
+  <td>Family selection</td>
+  <td><code>family_uneven_aged_selection</code></td>
+</tr>
+<tr>
+  <td>Public selection</td>
+  <td><code>public_selection_light</code></td>
+</tr>
+<tr>
+  <td>Restoration thin</td>
+  <td><code>public_thin_restore</code></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="appendix-b-full-separate-scenario-library-inventory">Appendix B. Full separate scenario-library inventory</h2>
+<p>The following table inventories <strong>all 15</strong> entries in <code>config/regimes.yaml</code>, including treatments whose labels refer to owners but which do not have an executable crosswalk from the current eight-class owner policy. In particular, an NGO/conservation label here does not add an NGO class to the Harris ownership vocabulary. <strong>Every time is a planned inventory offset, before minimum-age deferral.</strong> Percentages are TPA removed; DBH windows are inches; all species are included. [S8]</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Regime ID</th>
+  <th>Complete operation sequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>no_management</code></td>
+  <td>No operations</td>
+</tr>
+<tr>
+  <td><code>nipf_light</code></td>
+  <td>+10: thin from below, 30% at 0–8 in; +30: thin from below, 25% at 0–10 in</td>
+</tr>
+<tr>
+  <td><code>pine_plantation_industrial</code></td>
+  <td>+10: thin from below, 40% at 0–8 in; +25: regeneration harvest, 100% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>hardwood_industrial</code></td>
+  <td>+20: regeneration harvest, 100% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>public_uneven_aged</code></td>
+  <td>+10: selection, 15% at 0–999 in; +25: selection, 15% at 0–999 in; +40: selection, 15% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>public_active_thinning</code></td>
+  <td>+5: thin from below, 30% at 0–10 in; +20: selection, 20% at 0–999 in; +35: selection, 20% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>conservation_restoration</code></td>
+  <td>+10: thin from below, 40% at 0–6 in; +30: thin from below, 30% at 0–6 in</td>
+</tr>
+<tr>
+  <td><code>custodial_light</code></td>
+  <td>+20: thin from below, 15% at 0–8 in</td>
+</tr>
+<tr>
+  <td><code>light_default</code></td>
+  <td>+15: thin from below, 25% at 0–8 in</td>
+</tr>
+<tr>
+  <td><code>pine_plantation_extended</code></td>
+  <td>+10: thin from below, 40% at 0–8 in; +25: thin from below, 25% at 0–12 in; +40: regeneration harvest, 100% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>pine_plantation_retention</code></td>
+  <td>+10: thin from below, 40% at 0–8 in; +25: retention harvest, 85% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>pine_plantation_extended_retention</code></td>
+  <td>+10: thin from below, 40% at 0–8 in; +25: thin from below, 25% at 0–12 in; +40: retention harvest, 85% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>hardwood_extended</code></td>
+  <td>+40: regeneration harvest, 100% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>hardwood_retention</code></td>
+  <td>+20: retention harvest, 85% at 0–999 in</td>
+</tr>
+<tr>
+  <td><code>hardwood_extended_retention</code></td>
+  <td>+40: retention harvest, 85% at 0–999 in</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="sources-and-verification">Sources and verification</h2>
+<p>Source labels refer to repository files reviewed for this update. The brief's tables describe repository assumptions; external silvicultural guidance and certification requirements were not independently reviewed. The project cites the local Diaz et al. 2015 report for scheduling/regeneration methods and the 2018 paper in the scenario design; this brief does not infer Florida parameter calibration from those references.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+  <th>Label</th>
+  <th>Repository source</th>
+  <th>What was checked</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>S1</td>
+  <td><code>config/ownership_policy.yaml</code></td>
+  <td>Owner vocabulary, refinement thresholds, TPO groups, audit status</td>
+</tr>
+<tr>
+  <td>S2</td>
+  <td><code>config/management_regimes.yaml</code></td>
+  <td>Eight prescriptions, owner menus/defaults, ages, offsets, intensities, regeneration metadata</td>
+</tr>
+<tr>
+  <td>S3</td>
+  <td><code>pipeline/s3_management/owner_classes.py</code>; <code>pipeline/s3_management/regime_assignment.py</code>; <code>pipeline/harvest_eligibility.py</code></td>
+  <td>Actual classification, forest filtering, timing resolution, riparian override, returned parameters</td>
+</tr>
+<tr>
+  <td>S4</td>
+  <td><code>pipeline/s4_fvs/regime_templates.py</code></td>
+  <td>ThinDBH operations and regeneration keyword generation</td>
+</tr>
+<tr>
+  <td>S5</td>
+  <td><code>config/fvs_keywords.yaml</code></td>
+  <td>Actual template and regeneration defaults; declared validation gaps</td>
+</tr>
+<tr>
+  <td>S6</td>
+  <td><code>config/scenarios.yaml</code></td>
+  <td>Four scenarios, retention/buffer axes, KPI limitations</td>
+</tr>
+<tr>
+  <td>S7</td>
+  <td><code>config/fallback_treelists.yaml</code>; <code>pipeline/s4_fvs/fallback_treelists.py</code></td>
+  <td>Alternative donor-list design and unresolved status</td>
+</tr>
+<tr>
+  <td>S8</td>
+  <td><code>config/regimes.yaml</code>; <code>pipeline/s4_fvs/regime_library.py</code></td>
+  <td>Fifteen fixed-offset regimes, renderer behavior, terminal-cut restriction</td>
+</tr>
+<tr>
+  <td>S9</td>
+  <td><code>config/projection.yaml</code>; <code>pipeline/s3_management/harvest_scheduler.py</code>; <code>weekly-artifact/2026-08-31/make_annealed_plan.py</code></td>
+  <td>Projection, objectives, optimization settings, greedy versus annealed behavior</td>
+</tr>
+<tr>
+  <td>S10</td>
+  <td><code>AGENTS.md</code></td>
+  <td>Intended minimum harvest age, harvestable share, regeneration, and offset choices</td>
+</tr>
+<tr>
+  <td>S11</td>
+  <td><code>config/bmp_rules.yaml</code></td>
+  <td>Baseline model buffer widths</td>
+</tr>
+<tr>
+  <td>S12</td>
+  <td><code>config/tpo_targets.yaml</code></td>
+  <td>Stored annual county and owner-group targets</td>
+</tr>
+</tbody>
+</table></div>
+<p>Verification comprised direct YAML extraction, code-path inspection, and executable checks of owner/forest menus, age rounding, minimum-age deferral, unknown-age exclusion, SMZ override, treatment operations, and regeneration record generation. It did not include a new FVS run, parcel audit, or annealing run. The HTML companion is self-contained and formatted for browser reading and printing to PDF.</p>
+</article></div></body></html>

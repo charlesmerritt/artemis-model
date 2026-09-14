@@ -24,6 +24,10 @@
 
 version: 1
 
+# All scenario regime operations share management_regimes.yaml:harvest_eligibility.
+# Pass inventory stand age to regime_library; unknown age excludes managed entries.
+# These scenario offsets remain planned inventory-relative timings, not rotation ages.
+
 reference:
   citation: >-
     Diaz, D.D., Loreno, S., Ettl, G.J., Davies, B. (2018). Tradeoffs in Timber, Carbon,

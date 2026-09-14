@@ -59,6 +59,6 @@ doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
 [tool.mutmut]
 # Mutation testing runs file by file (`scripts/quality.py mutate` selects the file); this is the base.
 source_paths = ["pipeline"]
-also_copy = ["config", "scripts", "tests"]
+also_copy = ["config", "scripts", "tests", "notes"]
 pytest_add_cli_args_test_selection = ["tests", "pipeline"]
 mutate_only_covered_lines = true
