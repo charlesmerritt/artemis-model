@@ -34,7 +34,7 @@ instead of `as_id_series`.
 - The basic management actions are the most important, thinnings, and clearcut harvests. 
 - No management is ever applied to riparian zones or other buffers.
 - When land is clearcut, we use nearest neighbor imputation to reestablish those management units with an initial treelist, age 0, following the pattern of nearby, similar units. If needed, we can manually prescribe initial conditions such as planting density, species, etc. for owner classes.
-- There are common sense heuristics in place such as minimum harvest age (15), minimum harvestable % (25%).
+- There are common sense heuristics in place such as minimum harvest age (15, enforced before FVS by `harvest_eligibility` in config/management_regimes.yaml; raw templates, dated experiments and saved schedules bypass it, see docs/harvest-eligibility.html), minimum harvestable % (25%, not yet enforced).
 
 
 4. With the optimal trajectory for each management unit selected, we should produce a final output table with the trajectory for each management unit and it's vegetation data from FVS for a 50 year time horizon. Our focus output is a number of maps, and other visualization outcomes, mainly in the form of Cloud optimized GeoTifs rasters for each timestep in the simulation.
