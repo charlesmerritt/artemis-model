@@ -4,7 +4,7 @@ FVS management-regime templates (Phase 3.1).
 These are the **prescription families** the trajectory libraries are built from: one
 keyfile per ``(stand, prescription)`` pair, where a prescription is a family with its
 parameters bound by ``config/management_regimes.yaml``. Which prescriptions a stand may
-draw on is set by its ownership class; see `notes/trajectory-library-and-annealing.md`.
+draw on is set by its ownership class; see `docs/architecture/presentation.html#ownership`.
 Library runs are **continuous — one uninterrupted FVS run per keyfile, no restart barrier**,
 which is what keeps them independent, parallelizable, and free of the FFE carbon artifact
 measured in `notes/restart-fidelity-findings.md`.
@@ -461,7 +461,7 @@ def render_schedule_block(inv_year: int, cycle_years: int, num_cycle: int) -> st
     * `research/restart_fidelity/make_keyfiles.py` writes the interval in field 2, and its
       real FVS output (`.../outputs/arm_c_vs_a.txt`) reports cycle years
       1999/2004/2009/2014/2019 — four 5-year cycles.
-    * `notes/fvs-smoke-rerun-plan.md` spells the same record out as ``TimeInt 0 5``:
+    * the smoke rerun plan (``git show e207953:notes/fvs-smoke-rerun-plan.md``) spells the same record out as ``TimeInt 0 5``:
       cycle 0 (= all cycles) in field 1, interval 5 in field 2. Blank and 0 are
       equivalent in field 1; the verified fixture leaves it blank, as we do.
     * `notes/treemap-fvs-workflow.md` records that FVS's default interval is 10 years,

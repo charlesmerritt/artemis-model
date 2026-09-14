@@ -1,5 +1,5 @@
 ARTEMIS architecture — trajectory libraries + simulated-annealing scheduling
-Design of record: notes/trajectory-library-and-annealing.md
+Design of record: docs/architecture/presentation.html  (this diagram is its one-page form)
 Guiding references: docs/references/README.md  (LAMPS; Climate-FVS)
 
 ```text
@@ -18,15 +18,13 @@ Guiding references: docs/references/README.md  (LAMPS; Climate-FVS)
    │                                                               │
    │  Each stand's ownership class (Harris et al. 2025) selects a  │
    │  set of ELIGIBLE prescriptions -- not a single regime.        │
-   │  config/prescriptions.yaml is authoritative.                  │
+   │  config/management_regimes.yaml is authoritative.             │
    │                                                               │
-   │    family    -> no_mgmt, thin, selection, clearcut            │
-   │    corporate -> no_mgmt, thin, plantation rotation, clearcut  │
-   │    federal   -> no_mgmt, selection, thin      (no clearcut)   │
-   │    state     -> no_mgmt, selection, thin      (no clearcut)   │
-   │    tribal    -> no_mgmt, selection, thin      (placeholder)   │
-   │    local     -> no_mgmt, selection, thin                      │
-   │    unknown   -> no_mgmt, thin                 (conservative)  │
+   │  Print every owner class's default and eligible menu:         │
+   │    uv run python -m pipeline.s3_management.regime_assignment  │
+   │  no_management is in every menu (a stand may always decline). │
+   │  Federal, local, tribal, unknown: no stand-replacing harvest; │
+   │  tribal and unknown menus are conservative placeholders.      │
    │                                                               │
    │  Absolutes are structural, never priced:                      │
    │    riparian (BMP geometry) -> {no_management} ONLY            │
@@ -175,6 +173,6 @@ prescription that was not enumerated cannot be selected. State-dependent silvicu
 ("thin when SDI crosses 450") must be expressed as FVS event-monitor logic INSIDE a
 trajectory, enumerated as its own prescription -- not recovered in the scheduler.
 
-CLIMATE SCENARIO is not an axis of the library in v1 (PLAN.md scope notes place
+CLIMATE SCENARIO is not an axis of the library in v1 (docs/architecture/presentation.html#scope places
 climate-modified growth out of scope). It is a natural fourth axis if that changes;
 reading the Climate-FVS reference should settle it.

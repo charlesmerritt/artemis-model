@@ -17,7 +17,7 @@
 # ---------------------------------------------------------------------------------------
 # The parcel attributes carried through `sketch_management_units.py` are
 # `CNTYNAME, PARCELID, NPARNO, DORUC, PARUSEDESC, ACRES` (see that module's column
-# ordering and research/mgmt_units/BRIEF.md §2). None of those is an owner class. The
+# ordering and git show e207953:research/mgmt_units/BRIEF.md §2). None of those is an owner class. The
 # only ownership signal is `DORUC` — the Florida Department of Revenue *land use* code —
 # plus its text twin `PARUSEDESC`. A use code is not an owner: DOR_UC 82
 # ("forest, parks, recreational areas") is assigned to federal, state, county, and

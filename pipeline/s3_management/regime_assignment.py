@@ -31,12 +31,21 @@ Ownership codes follow the LETO / RDS-2025-0045 lookup (3 Family, 4 Corporate/Ot
 Private, 5 Tribal, 6 Federal, 7 State, 8 Local). This is a documented policy for review,
 not a calibrated behaviour model.
 
-Usage:
-    from pipeline.s3_management.regime_assignment import assign_prescription
-    p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "stand_age": 22})
-    p.prescription_id   # 'pine_plantation_short_rotation'
-    p.params            # {'thin_year': 2027, 'clearcut_year': 2027, ...} → resolved
-    p.regen_slot        # 'planted_pine_regen'
+Print the whole policy — every owner class's default and eligible menu, and the riparian
+override — straight from the config::
+
+    uv run python -m pipeline.s3_management.regime_assignment
+
+Usage (a doctest; ``scripts/check_docs.py`` runs it):
+
+    >>> from pipeline.s3_management.regime_assignment import assign_prescription
+    >>> p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "stand_age": 22})
+    >>> p.owner_class, p.prescription_id, p.regen_slot
+    ('private_industrial', 'pine_plantation_short_rotation', 'planted_pine_regen')
+    >>> p.params  # a 22-year-old stand on a 25-year rotation is cut at the next cycle
+    {'year': 2027}
+    >>> eligible_prescriptions("federal")
+    ['public_selection_light', 'public_thin_restore', 'no_management']
 """
 
 from __future__ import annotations
@@ -499,3 +508,25 @@ def assign_prescriptions(units, inv_year: int | None = None):
     df["regen_slot"] = [a.regen_slot for a in assignments]
     df["assignment_notes"] = [";".join(a.notes) for a in assignments]
     return df
+
+
+def main() -> None:
+    """Print the regime policy from `config/management_regimes.yaml`, as the resolver reads it."""
+    config = load_regimes_config()
+    override = _riparian_override(config)
+    print(f"management_regimes.yaml v{config['version']} — {len(config['prescriptions'])} prescriptions, "
+          f"{config['cycle_years']}-yr cycles over {config['horizon_years']} yr from {config['inventory_year']}")
+    print(f"riparian: {override['field']} >= {override['min_value']} -> {{{override['prescription']}}} only "
+          f"(absolute={override['absolute']})\n")
+    for owner, spec in config["owner_classes"].items():
+        defaults = {branch: spec["default"][branch] for branch in (PINE, HARDWOOD, OTHER)}
+        if len(set(defaults.values())) == 1:
+            default = defaults[PINE]
+        else:
+            default = " · ".join(f"{branch}: {name}" for branch, name in defaults.items())
+        menu = [p for p in eligible_prescriptions(owner, config=config) if p != "no_management"]
+        print(f"{owner}\n  default   {default}\n  eligible  {', '.join(menu)} (+ no_management)")
+
+
+if __name__ == "__main__":
+    main()

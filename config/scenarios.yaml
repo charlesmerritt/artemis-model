@@ -196,14 +196,14 @@ kpis:
       - "No harvest or management cost model."
       - "No agreed discount rate. Diaz et al. report sensitivity across rates; we would need to do the same rather than pick one."
     note: >-
-      docs/superpowers/specs/2026-07-17-orchestrator-sketch.md already raises NPV as a
+      The orchestrator sketch (git show e207953:docs/superpowers/specs/2026-07-17-orchestrator-sketch.md) already raises NPV as a
       candidate scheduler objective, so this KPI and the scheduler objective are the same
       missing input.
 
 # ---------------------------------------------------------------------------------
 # Run cost. Every scenario multiplies the trajectory library.
 #
-# Library is keyed on unique(donor plot x regime x site-index bin) (PLAN.md 4c). The
+# Library is keyed on unique(donor plot x regime x site-index bin) (docs/architecture/presentation.html#library). The
 # LETO run resolves 57,527 stands from 529 donor plots. The four scenarios reference 15
 # distinct regimes between them, so the ceiling is 529 x 15 = 7,935 runs — but only the
 # regimes actually reachable from some owner class in some scenario need running.

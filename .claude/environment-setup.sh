@@ -5,7 +5,8 @@
 # the setup script configured in the web UI for the environment; paste its
 # contents there. Per-session provisioning lives in .claude/hooks/session-start.sh.
 #
-# See notes/claude-code-web-environment.md for the diagnosis behind each step.
+# The comment above each step is its diagnosis. The original investigation:
+# git show e207953:notes/claude-code-web-environment.md
 set -euo pipefail
 
 log() { printf 'env-setup: %s\n' "$1" >&2; }
