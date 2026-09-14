@@ -2,7 +2,7 @@
 #
 # Modelled on Diaz, Loreno, Ettl & Davies (2018), "Tradeoffs in Timber, Carbon, and Cash
 # Flow under Alternative Management Systems for Douglas-Fir in the Pacific Northwest",
-# Forests 9(8):447, doi:10.3390/f9080447 (Ecotrust). See notes/scenario-framework.md.
+# Forests 9(8):447, doi:10.3390/f9080447 (Ecotrust). See docs/architecture/presentation.html#scope.
 #
 # THE STRUCTURAL POINT. Diaz et al. do not assign one regime per owner and project a
 # single future. They define alternative management systems on two design axes, run
@@ -176,7 +176,7 @@ kpis:
         IN-FOREST CARBON IS DISABLED. config/projection.yaml sets carbon_extension: false
         as a deliberate tripwire — FVS stop/restart silently resets FFE live-fuel state
         and understates total stand carbon by ~8% per barrier
-        (notes/restart-fidelity-findings.md). Iteratively coupled runs cannot report
+        (research/restart_fidelity/outputs/arm_c_vs_a.txt). Iteratively coupled runs cannot report
         carbon until that is resolved. Continuous single-pass runs are unaffected, which
         may be the way to get this KPI first.
       - >-

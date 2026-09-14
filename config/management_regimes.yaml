@@ -4,9 +4,9 @@
 #
 #   `prescriptions` — the LIBRARY. Eight distinct silvicultural prescriptions, each one
 #     renderable through the verified keyword templates in pipeline/s4_fvs/regime_templates.py.
-#     Library size is the cost driver: the FVS trajectory library is keyed by
-#     `(plot_id, prescription, site_index_bin)` (docs/architecture/presentation.html#library, notes/methodology-directions.md
-#     item 4), so every prescription added multiplies the run count. Eight is deliberate.
+#     Library size is a cost driver: the target key is `(management unit, prescription)`
+#     (docs/architecture/presentation.html#library). Adding prescriptions expands the
+#     candidate runs; the dated pilot currently deduplicates donor-based inputs.
 #
 #   `owner_classes` — the POLICY. For each owner class from config/ownership_policy.yaml:
 #     two or three eligible prescriptions and one declared default. Prescriptions are
@@ -51,7 +51,7 @@ overrides:
       No entry of any kind, no buffer class exempted. Assigned by geometry, so it
       overrides every ownership and forest-type rule. Riparian units are still grown
       through FVS on the same cycles and still reported as their own polygons — see
-      notes/methodology-directions.md item 2 and docs/architecture/presentation.html#ownership. `absolute: true` means no
+      docs/architecture/presentation.html#ownership. `absolute: true` means no
       later rule, and no scheduler decision, may reinstate an entry.
 
 # ---------------------------------------------------------------------------------------
@@ -249,7 +249,7 @@ prescriptions:
       thin-and-burn regime used on southern pine public land. Prescribed fire is NOT
       modelled here: the FVS fire keywords are unverified in this project and the FFE
       state is known to be corrupted across restart barriers
-      (notes/restart-fidelity-findings.md). This prescription is the mechanical thinning
+      (research/restart_fidelity/outputs/arm_c_vs_a.txt). This prescription is the mechanical thinning
       only, and the writeup must say so.
 
 # ---------------------------------------------------------------------------------------

@@ -27,9 +27,10 @@ on a 25-year rotation is cut in 3 years, not in 30) or by **fixed offsets** from
 inventory year. Age-based scheduling needs ``stand_age``; without it the prescription falls
 back to its offsets, which is also what reproduces the pre-config behaviour exactly.
 
-Ownership codes follow the LETO / RDS-2025-0045 lookup (3 Family, 4 Corporate/Other
-Private, 5 Tribal, 6 Federal, 7 State, 8 Local). This is a documented policy for review,
-not a calibrated behaviour model.
+Ownership codes are Harris RDS-2025-0045 raster values (3 Family, 4 Corporate/Other
+Private, 5 Tribal, 6 Federal, 7 State, 8 Local) — never the parcel-derived LETO codes; see
+``config/ownership_policy.yaml``. This is a documented policy for review, not a calibrated
+behaviour model.
 
 Print the whole policy — every owner class's default and eligible menu, and the riparian
 override — straight from the config::
@@ -62,7 +63,7 @@ from pipeline.s3_management.owner_classes import MASKED, classify_owner
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "management_regimes.yaml"
 
-# LETO / RDS-2025-0045 ownership classes. Kept as module constants because other modules
+# Harris RDS-2025-0045 ownership raster values. Kept as module constants because other modules
 # (and the LAMPS scheduler plan) import them directly.
 FAMILY, CORPORATE, TRIBAL, FEDERAL, STATE, LOCAL = 3, 4, 5, 6, 7, 8
 PUBLIC_OWNERS = {FEDERAL, STATE, TRIBAL, LOCAL}
@@ -107,7 +108,7 @@ def _riparian_override(config: dict | None = None) -> dict:
     if not override.get("absolute", False):
         raise ValueError(
             "overrides.riparian.absolute must be true — riparian exclusion has no "
-            "non-absolute path to fall back to. See notes/methodology-directions.md item 2."
+            "non-absolute path to fall back to. See config/management_regimes.yaml overrides.riparian."
         )
     return override
 

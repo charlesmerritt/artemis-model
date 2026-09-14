@@ -47,6 +47,11 @@ jobs:
       - name: Documentation (doctests, references, markdown budget)
         run: uv run python scripts/check_docs.py
 
+      # tests/ is being rebuilt incrementally; pytest also runs the doctests in pipeline/.
+      # CRAP and mutation reports run in quality.yml.
+      - name: Tests
+        run: uv run pytest -q
+
 # Scope notes
 #
 # Lint config lives in pyproject.toml [tool.ruff]: ruff's default rules (E4/E7/E9

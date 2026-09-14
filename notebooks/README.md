@@ -31,7 +31,7 @@ uv run jupyter lab
 `naip_viewer.py` (the ±N-year window resolver, the hatched-border geometry, and the slider widget).
 The `FeatureSource` protocol is what lets the workflow run without Earth Engine against a
 fixture source and a synthetic raster. Design and limits:
-[`../notes/vector-guided-raster-correction.md`](../notes/vector-guided-raster-correction.md).
+[`../pipeline/s5_imagery/raster_correction.py`](../pipeline/s5_imagery/raster_correction.py).
 
 It reads a **Florida clip of the EVT raster** rather than the 2.99 GB CONUS original — 75 MB,
 same CRS and 30 m grid, pixel-identical. Produce it once with:
@@ -42,7 +42,7 @@ uv run python -m pipeline.raster_clip \
 ```
 
 The notebook falls back to the CONUS raster when the clip is absent. See
-[`../notes/raster-clips.md`](../notes/raster-clips.md).
+[`../pipeline/raster_clip.py`](../pipeline/raster_clip.py).
 
 ## Before running
 
@@ -62,8 +62,8 @@ The notebook falls back to the CONUS raster when the clip is absent. See
 
 ## Detailed notes
 
-- [Clearcut versus agriculture and embedding workflows](../notes/clearcut-vs-agriculture-embeddings.md)
-- [TreeMap-to-FVS workflow](../notes/treemap-fvs-workflow.md)
+- [Clearcut versus agriculture and embedding workflows](../pipeline/s1_initial_state/embed_holes.py)
+- [TreeMap-to-FVS workflow](../pipeline/s4_fvs/build_fvs_inputs.py)
 
 The FVS smoke notebook is not a runnable entry point: its helper modules are absent from the
 repository. Its recovery notes are in `git show e207953:notes/fvs-5county-growth-smoke.md`.

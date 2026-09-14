@@ -92,3 +92,9 @@ scripts/*
 
 # Local secrets (R2 credentials)
 .env
+
+# Quality reports (scripts/quality.py): coverage output and mutmut's working tree.
+lcov.info
+.coverage
+mutants/
+!scripts/quality.py

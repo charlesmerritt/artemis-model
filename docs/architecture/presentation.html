@@ -230,7 +230,7 @@
             prescription — never recovered in the scheduler.</p>
         </div>
       </div>
-      <p class="srcline">config/projection.yaml fvs.carbon_extension · notes/restart-fidelity-findings.md</p>
+      <p class="srcline">config/projection.yaml fvs.carbon_extension · research/restart_fidelity/compare_arms.py</p>
     </div>
   </section>
 
@@ -668,7 +668,7 @@ state                    eligible  public_thin_restore, public_selection_light, 
   <section class="slide" id="open">
     <div class="inner">
       <p class="kicker">Open decisions <span class="rule"></span> 19</p>
-      <h2>Nine decisions that are the project's, not the optimiser's</h2>
+      <h2>Eight decisions that are the project's, not the optimiser's</h2>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>#</th><th>Decision</th><th>State</th></tr></thead>
@@ -680,12 +680,11 @@ state                    eligible  public_thin_restore, public_selection_light, 
             <tr><td class="num">5</td><td><b>Tribal and unknown menus</b> — conservative placeholders needing a documented source</td><td><span class="res open">open</span></td></tr>
             <tr><td class="num">6</td><td><b>Re-enabling carbon</b> — the measured obstacle is gone; reporting the five IPCC pools is a scope call</td><td><span class="res open">open</span></td></tr>
             <tr><td class="num">7</td><td><b>Eastern-US extent and compute</b> — state list; local, HPC or cloud for <span class="mono">stands × prescriptions</span> runs</td><td><span class="res open">open</span></td></tr>
-            <tr><td class="num">8</td><td><b>LETO vs Harris ownership vocabularies</b> — both write <span class="mono">OWN_CODE</span> and agree only on 0 (LETO 3 Federal is Harris 3 family; LETO 4 State is Harris 4 corporate). The crosswalk is lossy both ways: LETO NGO and Other have no Harris class, Harris tribal has no LETO code, and neither splits industrial from other corporate. <span class="mono">classify_owner</span> reads Harris; LETO's <span class="mono">FVS_StandInit.csv</span> carries LETO.</td><td><span class="res open">open</span></td></tr>
-            <tr><td class="num">9</td><td><b>Which ownership source is authoritative</b> — leaning Harris (30 m, national, co-registered with TreeMap), which costs LETO's parcel-derived NGO and Other classes. Settling this decides how 8 is resolved.</td><td><span class="res warn">leaning Harris</span></td></tr>
+            <tr><td class="num">8</td><td><b>Ownership source</b> — the Harris RDS-2025-0045 raster; <span class="mono">OWN_CODE</span> is a Harris value everywhere. LETO's packaged v1 reads the same raster; its older cellular-automata script's parcel codes (3 Federal, 4 State, 6 NGO, 7 Other) are not accepted. Cost: no NGO or Other class.</td><td><span class="res pass">resolved — Harris</span></td></tr>
           </tbody>
         </table>
       </div>
-      <p class="srcline">config/projection.yaml (OPEN comments) · config/management_regimes.yaml owner_classes.tribal / unknown · config/ownership_policy.yaml vocabulary_gaps · pipeline/s3_management/owner_classes.py:classify_owner</p>
+      <p class="srcline">config/projection.yaml (OPEN comments) · config/management_regimes.yaml owner_classes.tribal / unknown · config/ownership_policy.yaml · pipeline/s3_management/owner_classes.py:classify_owner</p>
     </div>
   </section>
 

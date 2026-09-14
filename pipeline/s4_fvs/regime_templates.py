@@ -7,7 +7,7 @@ parameters bound by ``config/management_regimes.yaml``. Which prescriptions a st
 draw on is set by its ownership class; see `docs/architecture/presentation.html#ownership`.
 Library runs are **continuous — one uninterrupted FVS run per keyfile, no restart barrier**,
 which is what keeps them independent, parallelizable, and free of the FFE carbon artifact
-measured in `notes/restart-fidelity-findings.md`.
+measured in `research/restart_fidelity/outputs/arm_c_vs_a.txt`.
 
 Renders per-stand FVS keyfiles for a small library of silvicultural regimes. Every harvest
 is expressed with the **`ThinDBH` keyword** — the one management keyword already verified
@@ -236,7 +236,7 @@ def thin_from_below_repeated(params: dict) -> list[ThinDBH]:
 
     The mechanical half of the thin-and-burn regime used on southern pine public land.
     Prescribed fire is not modelled — the FVS fire keywords are unverified here and the FFE
-    state does not survive a restart barrier (`notes/restart-fidelity-findings.md`).
+    state does not survive a restart barrier (`research/restart_fidelity/outputs/arm_c_vs_a.txt`).
     """
     defaults = REGIME_DEFAULTS["thin_from_below_repeated"]
     start = int(params["start_year"])
@@ -456,7 +456,7 @@ def render_schedule_block(inv_year: int, cycle_years: int, num_cycle: int) -> st
     interval at the FVS default, so a 10-cycle run silently projects 100 years rather than
     50 — accepted without a warning, because both are valid records.
 
-    Three independent confirmations in this repository:
+    Evidence for the field layout:
 
     * `research/restart_fidelity/make_keyfiles.py` writes the interval in field 2, and its
       real FVS output (`.../outputs/arm_c_vs_a.txt`) reports cycle years
@@ -464,8 +464,6 @@ def render_schedule_block(inv_year: int, cycle_years: int, num_cycle: int) -> st
     * the smoke rerun plan (``git show e207953:notes/fvs-smoke-rerun-plan.md``) spells the same record out as ``TimeInt 0 5``:
       cycle 0 (= all cycles) in field 1, interval 5 in field 2. Blank and 0 are
       equivalent in field 1; the verified fixture leaves it blank, as we do.
-    * `notes/treemap-fvs-workflow.md` records that FVS's default interval is 10 years,
-      which is what a run gets when field 2 is left empty.
     """
     return "\n".join([
         _keyword_line("InvYear", inv_year),

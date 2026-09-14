@@ -1,7 +1,7 @@
 # Reference papers — the two core guides
 
 These two documents are the **primary methodological guides** for ARTEMIS v1. The
-architecture in [`notes/trajectory-library-and-annealing.md`](../../notes/trajectory-library-and-annealing.md)
+architecture in [`docs/architecture/presentation.html`](../../docs/architecture/presentation.html)
 is built to follow them, and the rest of the documentation points here rather than
 restating them.
 
@@ -16,14 +16,6 @@ restating them.
 |---|---|
 | `Climate_FVS_Simulation_Report_20150306_SUBMITTED.pdf` | ✅ **Committed** (7.4 MB, 61 pp.), supplied 2026-08-06. |
 | `LAMPS_Bettinger_et_al.pdf` | **Not present.** Referred to throughout the repo but never committed; it lives on the author's `/mnt/d` workstation drive, which is not mounted in web sessions. Drop it here under this filename. |
-
-The Climate-FVS report could not be downloaded from
-`john-bell-associates.com` — that host is denied by the Claude Code egress policy and the
-proxy answers `403` to the CONNECT, for both `curl` and the fetch tool. The same class of
-block is documented for `r2.cloudflarestorage.com` in
-[`notes/claude-code-web-environment.md`](../../notes/claude-code-web-environment.md). The
-file was supplied directly instead. If it needs re-fetching in a future session, either
-commit it locally as here, or have an admin allowlist the host.
 
 ## What each reference contributes
 
@@ -148,7 +140,6 @@ Use the ref keys `LAMPS` and `CLIMATE-FVS` and link back to this README, so ther
 place to fix when the files land and the citations are verified. Notes that currently
 point here:
 
-- [`notes/trajectory-library-and-annealing.md`](../../notes/trajectory-library-and-annealing.md) — architecture of record
-- [`notes/management-pipeline-plan.md`](../../notes/management-pipeline-plan.md) — build phases
-- [`PLAN.md`](../../PLAN.md) — §3c, §4
+- [`docs/architecture/presentation.html`](../../docs/architecture/presentation.html) — architecture of record
+- [`docs/architecture/presentation.html#sequence`](../../docs/architecture/presentation.html#sequence) — build phases
 - [`README.md`](../../README.md) — primary datasets and references

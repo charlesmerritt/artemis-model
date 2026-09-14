@@ -27,10 +27,10 @@
 # unmodified FIA tree list, chosen from the FIA candidate pool by a deterministic rule and
 # then PINNED by PLT_CN in config/fallback_treelists.lock.yaml.
 #
-# This is the same principle as notes/methodology-directions.md item 1 — "every FVS run is
-# initialized from a real, unmodified FIA tree list" — applied to the gap cases. A
-# synthetic list would break TPA_UNADJ expansion semantics, could not be checked against
-# FIA, and would put invented numbers into a reported result.
+# The fallback-specific donor selection is implemented in
+# pipeline/s4_fvs/fallback_treelists.py. Normal management-unit inputs instead retain
+# constituent donor records and scale TPA by area share in
+# pipeline/s4_fvs/build_fvs_inputs.py:build_tree_init.
 #
 # Pinning matters as much as the rule: an unpinned "median plot" is recomputed every time
 # the FIA vintage changes, which would silently move every fallback stand in the

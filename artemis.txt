@@ -164,7 +164,7 @@ scheduling into selection over a fixed discrete set, and a metaheuristic becomes
 worth using.
 
 A SECOND CONSEQUENCE: the FFE carbon corruption measured in
-notes/restart-fidelity-findings.md is a stop/restart artifact. Library trajectories
+research/restart_fidelity/outputs/arm_c_vs_a.txt is a stop/restart artifact. Library trajectories
 have no barriers, so it does not arise. carbon_extension stays false and its tripwire
 test stays in place, but the blocker is now a scope decision, not a defect.
 

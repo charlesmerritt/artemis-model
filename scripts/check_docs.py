@@ -42,29 +42,15 @@ sys.path.insert(0, str(REPO_ROOT))
 MARKDOWN_BUDGET = {
     "AGENTS.md": (63, "keep"),                                # the architect's agent brief
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
-    "README.md": (122, "keep"),
-    "data/index.md": (126, "generated"),                      # scripts/r2_index.py
-    "docs/config-policy.md": (481, "convert"),                # -> policy deck
-    "docs/references/README.md": (154, "convert"),            # -> docs/architecture#references
-    "docs/treemap_holes/README.md": (714, "convert"),         # -> docs/treemap-raster-correction
+    "README.md": (119, "keep"),
+    "data/index.md": (116, "generated"),                      # scripts/r2_index.py
+    "docs/config-policy.md": (478, "convert"),                # -> policy deck
+    "docs/references/README.md": (145, "convert"),            # -> docs/architecture#references
+    "docs/treemap_holes/README.md": (712, "convert"),         # -> docs/treemap-raster-correction
     "experiments/2026-07-28_16-33-pr9-validation-audit/report.md": (106, "record"),
     "experiments/2026-08-24_leto-ca-forest-viz/README.md": (204, "record"),
     "gee/README.md": (44, "keep"),
     "notebooks/README.md": (69, "keep"),
-    "notes/clearcut-vs-agriculture-embeddings.md": (183, "convert"),   # -> treemap deck
-    "notes/duckdb-iterative-coupling-cells.md": (568, "code"),         # -> .sql views + smoke run
-    "notes/fia-treemap-fortype-validation.md": (66, "convert"),        # -> treemap deck
-    "notes/management-regimes-by-owner.md": (264, "convert"),          # -> policy deck
-    "notes/management_units.md": (195, "convert"),                     # -> delineation deck
-    "notes/methodology-directions.md": (398, "convert"),               # -> policy deck
-    "notes/naip-imagery-embeddings-viewer.md": (147, "code"),          # -> s5_imagery docstrings
-    "notes/ownership-bundling-pixel-share.md": (144, "convert"),       # -> policy deck
-    "notes/raster-clips.md": (78, "code"),                             # -> data_paths audit script
-    "notes/restart-fidelity-findings.md": (272, "convert"),            # -> restart-fidelity deck
-    "notes/scenario-framework.md": (179, "convert"),                   # -> policy deck
-    "notes/treemap-fvs-workflow.md": (206, "convert"),                 # -> treemap deck
-    "notes/treemap-methodology.md": (104, "convert"),                  # -> treemap deck
-    "notes/vector-guided-raster-correction.md": (204, "convert"),      # -> treemap deck
     "pipeline/README.md": (36, "keep"),
     "pipeline/s5_imagery/README.md": (180, "code"),                    # -> module docstrings, --help
     "research/fia_treemap_fortype/README.md": (115, "convert"),        # -> treemap deck

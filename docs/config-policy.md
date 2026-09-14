@@ -51,7 +51,7 @@ resampling of a plot-ID raster changes which FIA plot a pixel inherits. Staying 
 makes the raster work reproject-and-snap only, with nothing categorical ever resampled.
 
 It is also equal-area and in metres, so acres and hectares come straight from geometry —
-which the entire area-weighting scheme in [`notes/terminology.md`](../notes/terminology.md)
+which the entire area-weighting scheme in [`docs/architecture/presentation.html#vocabulary`](../docs/architecture/presentation.html#vocabulary)
 depends on.
 
 ### Why the snap transform, not `scale=`
@@ -276,8 +276,7 @@ riparian-specific logic in the regime layer. Managed units get `SMZ_Pct = 0.0`, 
 because the buffer area has been differenced out of them.
 
 Three things have to hold together, and requirement 3 is the one that is easy to
-half-satisfy ([`notes/methodology-directions.md`](../notes/methodology-directions.md)
-item 2):
+half-satisfy (see [`riparian constraints`](architecture/presentation.html#constraints)):
 
 1. **Grown freely** — projected through FVS on the same cycles as everything else.
 2. **Never harvested** — the absolute override above.
@@ -357,11 +356,9 @@ A fallback tree list is never hand-written. Each slot is filled by **one real, u
 FIA tree list**, chosen by a deterministic rule and pinned by `PLT_CN` in
 `config/fallback_treelists.lock.yaml`.
 
-This is the same principle as
-[`notes/methodology-directions.md`](../notes/methodology-directions.md) item 1 — "every FVS
-run is initialized from a real, unmodified FIA tree list" — applied to the gap cases. A
-synthetic list would break `TPA_UNADJ` expansion semantics, could not be checked against
-FIA, and would put invented numbers into a reported result.
+The initialization ladder in [`build_fvs_inputs.py`](../pipeline/s4_fvs/build_fvs_inputs.py)
+uses FIA donors and records fallback provenance. Donor trees are area-weighted when
+combined into a management-unit tree list; this is not an unmodified single-plot input.
 
 The selection rule is the **median live basal area** plot among the slot's candidates,
 ties broken by ascending `PLT_CN` as a string. Reproducible from the FIA database alone; a
@@ -477,5 +474,5 @@ These are stated in the configs and repeated here so they are visible in one pla
 - **Prescribed fire is not modelled.** `public_thin_restore` is the mechanical thinning
   half of a thin-and-burn regime. The FVS fire keywords are unverified here and the FFE
   state does not survive a restart barrier
-  ([`notes/restart-fidelity-findings.md`](../notes/restart-fidelity-findings.md)). The
+  ([`research/restart_fidelity/compare_arms.py`](../research/restart_fidelity/compare_arms.py)). The
   writeup must say so.

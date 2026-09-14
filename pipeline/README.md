@@ -5,7 +5,7 @@ directory. Where each stage stands, and what is not yet built:
 [`docs/architecture/presentation.html#status`](../docs/architecture/presentation.html#status).
 
 Every module documents itself. Read the docstring, run `--help`, and treat the doctests as
-the usage examples. `scripts/check_docs.py` runs those doctests.
+the usage examples. `uv run pytest` runs those doctests alongside `tests/`.
 
 ```bash
 uv run python -c "import pipeline.s4_fvs.build_fvs_inputs as m; help(m)"   # any module
