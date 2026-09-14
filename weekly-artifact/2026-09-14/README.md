@@ -248,19 +248,19 @@ Every number above comes from committed repository code or from FVS output.
   cycle. This week 1,637 trajectories do, and `ending_merch_cuft_per_ac` — what the
   `standing_volume` objective reads — is that cycle's post-cut state.
 - **The new logic carries its own tests.** `tests/test_weekly_artifact_20260914_timing.py`
-  (20 tests) pins the offset grid on operations small enough to check by inspection: that an
+  (22 tests) pins the offset grid on operations small enough to check by inspection: that an
   offset moves years and nothing else, that offset 0 is the identity, that an entry past 2072 is
   dropped and counted, that a variant losing every entry collapses, that a delayed rotation
   keeps its thin when its clearcut falls out, that regeneration is dropped with the harvest that
   created it, that `no_management` gains no variants so riparian menus stay `{no_management}`,
   and that both drivers decode a variant id the same way.
-- `uv run ruff check .` clean. `uv run pytest tests/` → **924 passed, 9 failed, 10 skipped**.
+- `uv run ruff check .` clean. `uv run pytest tests/` → **926 passed, 9 failed, 10 skipped**.
   All nine failures are in `tests/test_restart_fidelity.py` and all nine are the same
   environment fault, unrelated to this artifact: the sandbox cannot download DuckDB's
   `sqlite_scanner` extension (`HTTP 403` from `extensions.duckdb.org`), which
-  `scripts/setup-env.sh` installs in a normal environment. The 20 new tests pass.
+  `scripts/setup-env.sh` installs in a normal environment. The 22 new tests pass.
 
-## Eight corrections made after review
+## Nine corrections made after review
 
 Raised on the PR by Devin Review, Codex, and Claude Code review comments. Each was
 reproduced against the code before being fixed, and **all 13,035 keyfiles are byte-for-byte
@@ -328,10 +328,20 @@ A second review round raised two more, both about what "fails closed" covers:
    still invalidates the previous manifest at startup, as every run does, so a smoke test
    leaves the library unplannable until a full run republishes it — the safe direction.
 
-Four further tests cover the new behaviour (20 in total): that a collapsed variant still
+A third round found the hole that fix 8 had left open:
+
+9. **`--limit 0` published everything.** Zero is falsy, so a caller asking for no smoke runs
+   took the *unlimited* path — all 13,035 trajectories simulated and the artifact
+   republished — while a negative value would have reached pandas' `head(-N)`, which drops
+   the last N rather than taking any. Every guard now tests `is not None`, and a non-positive
+   `--limit` is refused up front, before the FVS binary is looked for and before the previous
+   manifest is invalidated.
+
+Six further tests cover the new behaviour (22 in total): that a collapsed variant still
 reports its dropped entries and carries no regeneration, that a regeneration record is
-dropped rather than adopted when its own parent falls outside the horizon, and that the run
-ledger refuses both a vanished run and one counted on both sides.
+dropped rather than adopted when its own parent falls outside the horizon, that the run
+ledger refuses both a vanished run and one counted on both sides, and that a zero or negative
+`--limit` stops the run instead of publishing.
 
 ## R2 inputs pulled
 

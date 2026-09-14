@@ -930,6 +930,17 @@ def main() -> None:
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+    # Validated before any expensive work, and before `--limit` is consulted anywhere.
+    # `--limit 0` must not mean "no limit": every guard below tests `is not None`, so a zero
+    # would otherwise be a smoke run of nothing — but a truthiness test would have sent it
+    # down the *publishing* path instead, running all 13,035 trajectories and republishing
+    # the artifact for a caller who asked for none. A negative value would reach pandas'
+    # `head(-N)`, which drops the last N rather than taking any.
+    if args.limit is not None and args.limit < 1:
+        raise SystemExit(
+            f"--limit must be at least 1 (got {args.limit}); it selects how many runs to "
+            f"smoke-test, and there is nothing to learn from zero. Omit it for a full run."
+        )
     if not args.dry_run and not FVS_BIN.exists():
         raise SystemExit(f"FVSsn not found at {FVS_BIN}; set FVSSN_BIN or build it (README)")
 
@@ -957,7 +968,7 @@ def main() -> None:
     log.info("Species SDI tables built for %d/%d donor plots", len(sdi), len(plots))
 
     runs = render_batch(expanded, sdi)
-    if args.limit:
+    if args.limit is not None:
         runs = runs.head(args.limit)
         log.warning("SMOKE MODE: only %d runs", len(runs))
 
@@ -1002,7 +1013,7 @@ def main() -> None:
         cycles, failures = run_batch(runs, args.workers)
         log.info("Collected %d FVS_Summary2 rows; %d runs failed outright",
                  len(cycles), len(failures))
-        if not args.limit:
+        if args.limit is None:
             # A smoke run must not touch the cache: its key belongs to a truncated run set,
             # and writing it would replace a good full cache with a partial one.
             cycles.to_csv(raw_cache, index=False)
@@ -1040,7 +1051,7 @@ def main() -> None:
     # scheduler a decision space nobody chose. The exclusion gate is skipped rather than
     # applied, because an acknowledgement of the full library's failures says nothing about
     # a truncated one's.
-    if args.limit:
+    if args.limit is not None:
         log.warning("SMOKE MODE: %d runs simulated, %d complete, %d failed or incomplete. "
                     "Nothing written: no library tables, no artifact CSVs, no raw cache and "
                     "no manifest, and the exclusion acknowledgement is untouched. Note the "

@@ -328,6 +328,22 @@ def test_run_ledger_reconciles_or_refuses():
         m.reconcile_run_ledger(rendered, rendered, {"c::p@+0"})
 
 
+@pytest.mark.parametrize("bad", ["0", "-5"])
+def test_non_positive_limit_is_refused_before_anything_runs(monkeypatch, bad):
+    """`--limit 0` must not fall through to the publishing path.
+
+    Every smoke-mode guard tests `is not None`, so a zero is a smoke run of nothing — but
+    under a truthiness test it would have taken the *unlimited* path instead: all 13,035
+    trajectories simulated and the artifact republished, for a caller who asked for none. A
+    negative value would reach pandas' `head(-N)`, which drops the last N rather than taking
+    any. The check runs before the FVS binary is even looked for, so this test needs no FVS,
+    no data, and leaves the manifest alone.
+    """
+    monkeypatch.setattr(sys, "argv", ["make_timing_library.py", "--limit", bad])
+    with pytest.raises(SystemExit, match="--limit must be at least 1"):
+        m.main()
+
+
 def test_parse_params_round_trips_the_20260817_form():
     assert m.parse_params("max_dbh=8.0;proportion=0.35;year=2032") == {
         "max_dbh": 8.0, "proportion": 0.35, "year": 2032}
