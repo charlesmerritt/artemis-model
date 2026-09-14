@@ -1,7 +1,7 @@
 # R2 bucket index — `r2:artemis-r2/data`
 
 Catalog of the object-storage mirror of the `/mnt/d` workstation drive:
-**5,773 objects, 437 GB**. Everything here is reachable
+**5,784 objects, 438 GB**. Everything here is reachable
 without the drive — `/mnt/d/<path>` is `r2:artemis-r2/data/<path>` — and
 `pipeline/data_access.py` resolves declared paths against whichever source answers.
 See the header of [`config/data_paths.yaml`](../config/data_paths.yaml) for access commands.
@@ -23,7 +23,6 @@ Declared in `config/data_paths.yaml`; the config key is the last column.
 | `US SE Streams - FINAL/` | 6.51 GB | 990 | EPA NHDPlus 2022 snapshot, per-state stream geodatabases | `raw.nhd` |
 | `TreeMap-2022/` | 5.16 GB | 10 | TreeMap 2022 CONUS imputed FIA plot-ID raster (30 m) with tree table, VAT, and data dictionary | `raw.treemap_2022` |
 | `RDS-2025-0045/` | 5.15 GB | 10 | Forest ownership raster circa 2022, plus its overview pyramid | `raw.ownership` |
-| `20260804_095846_Hard_Ownership_Boundaries/` | 2.65 GB | 18 | LETO FVS run partitioned by ownership, 2026-08-04: a 1.5 GB `Inputs/FVS_TreeInit.csv`, StandInit and PLT_CN weights, and nine `Databases/FVS_Inventory_<Group>.db` (eight owner types plus Riparian). Lifted from `forest_condition_2026/FVS/FVS_Database_Runs/` on the drive | `raw.leto_ownership_run` |
 | `SE_rds100k/` | 1.30 GB | 67 | Southeast roads gdb (MTFCC, RTTYP) plus the MTFCC code reference PDF | `raw.roads` |
 | `Artemis_project_fvs_copy_no_management/` | 1.12 GB | 261 | FVS Online project for the no-management run: `FVS_Data.db`, `FVSOut.db`, three summary CSVs, 249 report PNGs | `raw.Artemis_project_fvs_copy_no_management` |
 | `us_eco_l4_state_boundaries/` | 109.4 MB | 7 | The same Level IV ecoregions, split at state lines | `raw.ecoregions` |
@@ -39,7 +38,7 @@ Declared in `config/data_paths.yaml`; the config key is the last column.
 
 | Folder | Size | Objects | What it is |
 |---|--:|--:|---|
-| `Artemis_data/` | 1.50 GB | 44 | The repo's gitignored `data/` tree: `interim/` (`clearcut_ag`, `management_units_pilot`, `management_units_smoke_union`, `no_management_fl5co_fvs_output`, `similarity_finder`, `treemap_county_summary`) and `processed/no_management_fl5co_rasters`. Maps to `<repo>/data/`, not to `/mnt/d`. |
+| `Artemis_data/` | 1.66 GB | 55 | The repo's gitignored `data/` tree: `interim/` (`clearcut_ag`, `management_units_pilot`, `management_units_smoke_union`, `no_management_fl5co_fvs_output`, `similarity_finder`, `treemap_county_summary`) and `processed/no_management_fl5co_rasters`. Maps to `<repo>/data/`, not to `/mnt/d`. |
 
 ## Referenced by the repo, not by `data_paths.yaml`
 
@@ -50,8 +49,8 @@ Named in a note, a research brief, or a notebook, but not declared as a path.
 | `Lowe_TreeMap_Chaz/` | 79.59 GB | 314 | The R prototype workspace, renamed from `TreeMap_Chaz/` since 2026-08-07: numbered scripts `01`–`06`, per-state FIADB subsets under `output/` (63 GB), `output2020/` TM_ID→PLT_CN crosswalks, and the TreeMap 2020 (`RDS-2025-0031`) and 2022 (`RDS-2025-0032`) CONUS rasters. See `pipeline/s4_fvs/build_fvs_inputs.py`; the 2020-vs-2022 vintage trap lives here |
 | `OSM/` | 57.07 GB | 132 | OpenStreetMap for the South: `OSMsouth.gdb` (13.6 GB) plus the 24 GB `osm_data.gpkg` and 19 GB `north-america-latest.osm.pbf` that used to sit at the bucket root |
 | `USGS-13-arcs-DEM/` | 30.19 GB | 75 | USGS 3DEP 1/3 arc-second tiles covering Florida plus an 18 GB EPSG:5070 mosaic; the terrain input for management-unit delineation |
+| `20260804_095846_Hard_Ownership_Boundaries/` | 2.65 GB | 18 | LETO FVS run, 2026-08-04, from LETO's retired parcel-coded ownership: its `OWN_CODE` is not a Harris value, so nothing in ARTEMIS reads it. A 1.5 GB `Inputs/FVS_TreeInit.csv`, StandInit, PLT_CN weights and nine `Databases/FVS_Inventory_<Group>.db`. Lifted from `forest_condition_2026/FVS/FVS_Database_Runs/` on the drive |
 | `pdf/` | 49.4 MB | 9 | Reference PDFs moved out of the bucket root: FVS DBS user guide, LAMPS (Bettinger), Florida silvicultural BMP manual, MTFCC codes, Climate-FVS report, stand-delineation and bark-ID papers |
-| `TreeMap-2022_Metadata_Fileindex/` | 117 KB | 3 | HTML/XML metadata for the TreeMap 2022 archive (`docs/treemap-raster-correction/presentation.html`). |
 
 ## Not referenced anywhere in the repo
 
@@ -72,6 +71,7 @@ Adjacent or prior work, kept for provenance. Nothing tracked in git mentions the
 | `FL_5_Roads_fixed/` | 12.9 MB | 7 | Five-county Florida roads shapefile `FL_5_Rds.shp`, uploaded 2026-08-10; a corrected clip of the SE roads layer |
 | `states_p010g.shp_nt00938/` | 11.7 MB | 14 | USGS national state polygons, companion to the county set |
 | `image-refs/` | 428 KB | 3 | Three Bettinger private-landowner problem-formulation figures, moved from the bucket root |
+| `TreeMap-2022_Metadata_Fileindex/` | 117 KB | 3 | HTML/XML metadata for the TreeMap 2022 archive (`docs/treemap-raster-correction/presentation.html`). |
 | `System Volume Information/` | 0 KB | 2 | Windows volume bookkeeping, mirrored from the drive |
 
 ## Loose files at the bucket root

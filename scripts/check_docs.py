@@ -44,12 +44,13 @@ MARKDOWN_BUDGET = {
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
     "README.md": (119, "keep"),
     "data/index.md": (116, "generated"),                      # scripts/r2_index.py
-    "docs/config-policy.md": (478, "convert"),                # -> policy deck
+    "docs/config-policy.md": (426, "convert"),                # -> policy deck
     "docs/references/README.md": (145, "convert"),            # -> docs/architecture#references
     "docs/treemap_holes/README.md": (712, "convert"),         # -> docs/treemap-raster-correction
     "experiments/2026-07-28_16-33-pr9-validation-audit/report.md": (106, "record"),
-    "experiments/2026-08-24_leto-ca-forest-viz/README.md": (204, "record"),
+    "experiments/2026-08-24_leto-ca-forest-viz/README.md": (211, "record"),
     "gee/README.md": (44, "keep"),
+    "notes/2026-09-14_statewide_repair_blockers.md": (104, "record"),  # diagnosis, not prose docs
     "notebooks/README.md": (69, "keep"),
     "pipeline/README.md": (36, "keep"),
     "pipeline/s5_imagery/README.md": (180, "code"),                    # -> module docstrings, --help
