@@ -27,9 +27,19 @@ def test_failed_doctest_fails_command(monkeypatch):
 
 def test_policy_without_unmanaged_choice_fails_command(monkeypatch):
     original = check.regime_assignment.eligible_prescriptions
+    config = check.regime_assignment.load_regimes_config()
+
+    def missing_unmanaged(owner, branch=None, config=None):
+        menu = original(owner, branch, config)
+        if branch is not None and config["owner_classes"][owner]["default"][branch] != "no_management":
+            return [p for p in menu if p != "no_management"]
+        return menu
+
+    assert any(spec["default"]["pine"] != "no_management"
+               for spec in config["owner_classes"].values())
     monkeypatch.setattr(
         check.regime_assignment, "eligible_prescriptions",
-        lambda *a, **k: [p for p in original(*a, **k) if p != "no_management"],
+        missing_unmanaged,
     )
     assert check.main([]) == 1
 
@@ -47,7 +57,7 @@ def test_missing_restart_evidence_fails_command(monkeypatch, tmp_path, capsys, s
     target.parent.mkdir(parents=True)
     target.write_text((check.ROOT / relative).read_text())
     if state == "empty":
-        record = tmp_path / "research/restart_fidelity/outputs/arm.txt"
+        record = tmp_path / "research/restart_fidelity/outputs" / "arm.txt"
         record.parent.mkdir(parents=True)
         record.write_text("")
     monkeypatch.setattr(check, "ROOT", tmp_path)
@@ -57,6 +67,8 @@ def test_missing_restart_evidence_fails_command(monkeypatch, tmp_path, capsys, s
 
 @pytest.mark.parametrize("corruption", ["template", "regen_slot", "harvest"])
 def test_riparian_management_fails_command(monkeypatch, corruption):
+    # Isolate the policy guard: mutated assignment can also break a usage doctest.
+    monkeypatch.setattr(check.doctest, "testmod", lambda *a, **k: doctest.TestResults(0, 0))
     if corruption == "harvest":
         monkeypatch.setattr(check.regime_templates, "build_thins", lambda *a, **k: [object()])
     else:

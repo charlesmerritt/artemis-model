@@ -50,7 +50,9 @@ def check_policy() -> None:
                 raise ValueError("riparian prescription rendered a harvest")
     library = regime_library.validate_library(regime_library.load_library())
     for name in regime_library.regime_names(library):
-        regime_library.render_keyfile("example", "example", name, library=library)
+        keyfile = regime_library.render_keyfile("example", "example", name, library=library)
+        if not keyfile.strip():
+            raise ValueError(f"{name}: empty rendered keyfile")
     print(f"ok   rendered {len(library['regimes'])} configured harvest-library regimes")
     print(f"Library constraints (config/regimes.yaml): {library['constraints']}")
     spatial_ref.assert_projected_metres(spatial_ref.project_crs())
@@ -62,8 +64,13 @@ def show_evidence(mode: Evidence) -> None:
     """Read evidence in place; its dates and fixture limits remain attached to the results."""
     print("\nChecked-in archived evidence; not rerun, not landscape-wide validation:")
     restart = ROOT / "research/restart_fidelity/outputs"
-    for path in sorted(restart.glob("*.txt")):
+    records = sorted(restart.glob("*.txt"))
+    if not records:
+        raise ValueError("missing restart evidence")
+    for path in records:
         record = path.read_text().strip()
+        if not record:
+            raise ValueError(f"empty restart evidence: {path}")
         print(f"\n{path.relative_to(ROOT)}")
         print(record if mode is Evidence.FULL else record.splitlines()[0])
     path = ROOT / "research/fia_treemap_fortype/outputs/FL_state_level_scaling_comparison.csv"
