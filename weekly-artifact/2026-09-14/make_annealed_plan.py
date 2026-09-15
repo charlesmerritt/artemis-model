@@ -55,6 +55,10 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
 from pipeline.s3_management import harvest_scheduler as hs  # noqa: E402
+from pipeline.s3_management.owner_classes import (  # noqa: E402
+    load_ownership_policy,
+    tpo_group_for,
+)
 from pipeline.s3_management.regime_assignment import assign_prescription  # noqa: E402
 
 log = logging.getLogger("anneal")
@@ -80,21 +84,61 @@ PREV_PLAN_MIX = PREV / "prescription_mix.csv"
 OFFSET_SEP = "@+"
 
 CYCLE_YEARS = hs.DEFAULT_CYCLE_YEARS
+OWNERSHIP_POLICY = load_ownership_policy()
+
 PILOT_COUNTIES = ["Baker", "Columbia", "Hamilton", "Suwannee", "Union"]
 # The TPO workbook spells Suwannee with one 'n' (pipeline.s3_management.tpo_targets).
 COUNTY_TO_TPO = {c: ("Suwanee" if c == "Suwannee" else c) for c in PILOT_COUNTIES}
 
-# Resolved owner class -> TPO owner group. Same table as weekly-artifact/2026-08-10, keyed
-# by the resolved class name rather than the Harris OWN_CODE integer.
-OWNER_GROUP = {
-    "private_family": "Private",
-    "private_corporate_other": "Private",
-    "private_industrial": "Private",
-    "tribal": "Other public",
-    "federal": "Federal (NF)",
-    "state": "Other public",
-    "local": "Other public",
+# Owner class -> TPO owner group. Read from `config/ownership_policy.yaml` through the
+# repository's own `tpo_group_for`, rather than the hardcoded table this series carried from
+# weekly-artifact/2026-08-10 onwards. That table had drifted from the config it was meant to
+# mirror: it mapped `tribal` to "Other public" where the policy says "Private" (FIA places
+# Native American land in owner group 40), and omitted `unknown` entirely, which meant an
+# unknown-ownership stand was silently dropped from the landscape rather than budgeted. The
+# five-county pilot carries neither class — `OWN_CODE` is only ever 3, 4, 6, 7 or 8 here — so
+# neither error reached a published number, and the five classes that do appear resolve
+# identically under the table and under the policy. Reading the policy removes the copy that
+# can drift instead of correcting it once.
+#
+# LEGACY_OWNER_CLASSES is the other half. The committed 2026-08-17 library — a frozen,
+# dated artifact — records owner classes in the vocabulary of its own run. When ownership is
+# ported to exactly the seven Harris et al. (2025) RDS-2025-0045 classes, the policy's keys
+# change under it and those recorded names no longer resolve. The alias table is consulted
+# only when a name is absent from the current policy, so this driver reads the frozen library
+# correctly under both vocabularies and needs no rewrite of a dated record.
+LEGACY_OWNER_CLASSES = {
+    "private_family": "family",              # Harris 3
+    "private_industrial": "corporate",       # Harris 4
+    "private_corporate_other": "corporate",  # the parcel refinement of Harris 4, now gone
 }
+
+
+def owner_class_in_policy(owner_class: str) -> str:
+    """The name the *current* ownership policy uses for this class."""
+    if owner_class in OWNERSHIP_POLICY["classes"]:
+        return owner_class
+    return LEGACY_OWNER_CLASSES.get(owner_class, owner_class)
+
+
+def owner_group(owner_class: str) -> str:
+    """The TPO owner group this class is budgeted against.
+
+    Raises rather than returning `None` for a class the policy does not define. The previous
+    hardcoded table was consulted with `in`, so an unrecognised class quietly removed its
+    stand from the landscape — a stand that exists, carries acres, and has trajectories,
+    dropped from the plan because a lookup table was missing a row. A class nobody can
+    resolve is a fault in the configuration, and it should stop the run.
+    """
+    resolved = owner_class_in_policy(owner_class)
+    group = tpo_group_for(resolved, OWNERSHIP_POLICY)
+    if group is None:
+        raise AssertionError(
+            f"owner class {owner_class!r} (resolved to {resolved!r}) has no TPO group in "
+            f"config/ownership_policy.yaml; its stands cannot be budgeted against a target. "
+            f"Policy classes: {sorted(OWNERSHIP_POLICY['classes'])}"
+        )
+    return group
 
 
 # --------------------------------------------------------------------------------------
@@ -180,8 +224,7 @@ class Landscape:
 
         counties = sorted({COUNTY_TO_TPO[c] for c in stands["county"].unique()
                            if c in COUNTY_TO_TPO})
-        owners = sorted({OWNER_GROUP[o] for o in stands["owner_class"].unique()
-                         if o in OWNER_GROUP})
+        owners = sorted({owner_group(o) for o in stands["owner_class"].unique()})
         self.counties, self.owners = counties, owners
         cix = {k: i for i, k in enumerate(counties)}
         oix = {k: i for i, k in enumerate(owners)}
@@ -206,7 +249,9 @@ class Landscape:
             if not opts:
                 self.dropped_no_trajectory += 1
                 continue
-            if row.county not in COUNTY_TO_TPO or row.owner_class not in OWNER_GROUP:
+            # `owner_group` raises for a class the policy cannot resolve, rather than
+            # dropping the stand: only an unmapped *county* is a silent exclusion here.
+            if row.county not in COUNTY_TO_TPO:
                 self.dropped_no_trajectory += 1
                 continue
             self.stand_ids.append(row.unit_id)
@@ -214,7 +259,7 @@ class Landscape:
             self.volumes.append(vols)
             self.standing.append(stand_end)
             self.county_ix.append(cix[COUNTY_TO_TPO[row.county]])
-            self.owner_ix.append(oix[OWNER_GROUP[row.owner_class]])
+            self.owner_ix.append(oix[owner_group(row.owner_class)])
             self.acres.append(float(row.acres))
             self.unit_class.append(row.unit_class)
 
@@ -520,8 +565,14 @@ def default_prescriptions(stands: pd.DataFrame) -> dict[str, str]:
                 "SMZ_Pct": 100.0 if riparian else 0.0}
         p = assign_prescription(unit)
         # The library's own owner class is the ground truth; a disagreement means the raw
-        # attribution and the resolved column have drifted apart.
-        if not riparian and p.owner_class != row.owner_class:
+        # attribution and the resolved column have drifted apart. Both sides are put into the
+        # current policy's vocabulary first: `assign_prescription` speaks whatever ownership
+        # is configured today, while the recorded column speaks the frozen 2026-08-17
+        # library's vocabulary, and comparing those directly would report every private stand
+        # as a mismatch the moment the classes are renamed — a warning about a rename rather
+        # than about the attribution drift this check exists to catch.
+        if not riparian and owner_class_in_policy(p.owner_class) != \
+                owner_class_in_policy(row.owner_class):
             mismatched += 1
         out[row.unit_id] = p.prescription_id
     if mismatched:
@@ -591,7 +642,7 @@ def greedy_seed(land: Landscape, stands: pd.DataFrame, caps: dict) -> list[int]:
             if v > 0:
                 rows.append({"unit_id": sid, "cycle": c, "removable_volume": v,
                              hs.COUNTY: COUNTY_TO_TPO[stands_county(stands, sid)],
-                             hs.OWNER: OWNER_GROUP[stands_owner(stands, sid)],
+                             hs.OWNER: owner_group(stands_owner(stands, sid)),
                              "stand_age": stands_age(stands, sid)})
     if not rows:
         raise AssertionError(
@@ -888,7 +939,7 @@ def plan_frame(land: Landscape, choice: list[int], stands: pd.DataFrame) -> pd.D
             "timing_offset_years": offset,
             "county": a["county"],
             "owner_class": a["owner_class"],
-            "owner_group": OWNER_GROUP[a["owner_class"]],
+            "owner_group": owner_group(a["owner_class"]),
             "unit_class": land.unit_class[i],
             "acres": land.acres[i],
             "library_size": len(land.options[i]),

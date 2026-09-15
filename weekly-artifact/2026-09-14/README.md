@@ -248,17 +248,19 @@ Every number above comes from committed repository code or from FVS output.
   cycle. This week 1,637 trajectories do, and `ending_merch_cuft_per_ac` — what the
   `standing_volume` objective reads — is that cycle's post-cut state.
 - **The new logic carries its own tests.** `tests/test_weekly_artifact_20260914_timing.py`
-  (22 tests) pins the offset grid on operations small enough to check by inspection: that an
+  (31 tests) pins the offset grid on operations small enough to check by inspection: that an
   offset moves years and nothing else, that offset 0 is the identity, that an entry past 2072 is
   dropped and counted, that a variant losing every entry collapses, that a delayed rotation
   keeps its thin when its clearcut falls out, that regeneration is dropped with the harvest that
   created it, that `no_management` gains no variants so riparian menus stay `{no_management}`,
-  and that both drivers decode a variant id the same way.
-- `uv run ruff check .` clean. `uv run pytest tests/` → **926 passed, 9 failed, 10 skipped**.
-  All nine failures are in `tests/test_restart_fidelity.py` and all nine are the same
-  environment fault, unrelated to this artifact: the sandbox cannot download DuckDB's
-  `sqlite_scanner` extension (`HTTP 403` from `extensions.duckdb.org`), which
-  `scripts/setup-env.sh` installs in a normal environment. The 22 new tests pass.
+  that both drivers decode a variant id the same way, and that the frozen library's owner
+  classes budget to the same TPO group under the current policy and under the seven Harris
+  classes alike.
+- `uv run ruff check .` clean. `uv run pytest tests/` → **944 passed, 10 skipped, 0 failed.**
+  (Earlier runs of this suite showed 9 failures in `tests/test_restart_fidelity.py`, all from
+  one environment fault unrelated to this artifact: a sandbox that could not download DuckDB's
+  `sqlite_scanner` extension from `extensions.duckdb.org`. They pass wherever that download
+  succeeds, which is what `scripts/setup-env.sh` arranges.)
 
 ## Nine corrections made after review
 
@@ -342,6 +344,35 @@ reports its dropped entries and carries no regeneration, that a regeneration rec
 dropped rather than adopted when its own parent falls outside the horizon, that the run
 ledger refuses both a vanished run and one counted on both sides, and that a zero or negative
 `--limit` stops the run instead of publishing.
+
+## Vocabulary note — owner classes
+
+**This run was made under the pre-Harris ownership vocabulary, and its outputs keep it.**
+Every `owner_class` in `annealed_plan.csv` and `plan_by_dimension.csv` reads
+`private_family` / `private_industrial`, because that is what the configuration said when the
+plan was computed. Under the port to exactly the seven Harris et al. (2025) RDS-2025-0045
+forest classes those become `family` and `corporate`, and `private_corporate_other` — the
+parcel refinement of Harris 4 — goes away.
+
+The files are **not** rewritten. A dated record carries the vocabulary of its own run, and
+the drivers read it: `make_annealed_plan.py` resolves a recorded class name against whatever
+`config/ownership_policy.yaml` defines today, consulting an alias table only for names the
+current policy no longer has. So the artifact reproduces identically before and after the
+port, with no rebase of the committed CSVs.
+
+Two things fall out of reading the policy instead of the hardcoded table this series had
+carried since `2026-08-10`:
+
+- that table mapped `tribal` to "Other public" where the policy says **"Private"** — FIA
+  places Native American land in owner group 40 — and omitted `unknown` entirely, so an
+  unknown-ownership stand was **silently dropped from the landscape** rather than budgeted;
+- neither error reached a published number here: the five-county pilot's `OWN_CODE` is only
+  ever 3, 4, 6, 7 or 8, so it carries no tribal and no unknown stands, and the five classes
+  it does carry resolve to the same groups under the table and under the policy. The plan,
+  the quality report, the violation vector and the comparison are byte-identical after the
+  change.
+
+An owner class the policy cannot resolve now stops the run instead of dropping its stand.
 
 ## R2 inputs pulled
 

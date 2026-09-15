@@ -370,6 +370,91 @@ def test_greedy_baseline_takes_the_deterministic_timing():
     assert plan.default_variant("hardwood_clearcut_regen", options) is None
 
 
+# --------------------------------------------------------------------------------------
+# Owner vocabulary: the frozen library's names against whatever the policy uses today
+# --------------------------------------------------------------------------------------
+
+# The seven Harris et al. (2025) RDS-2025-0045 forest classes, with the TPO groups
+# `config/ownership_policy.yaml` assigns them. Written out here rather than read from the
+# repository's config so the test states the target vocabulary itself: it must keep passing
+# both before the port to these classes and after it, and a config the test merely echoed
+# could not tell the two apart.
+HARRIS_POLICY = {
+    "classes": {
+        "family": {"harris_values": [3], "tpo_group": "Private"},
+        "corporate": {"harris_values": [4], "tpo_group": "Private"},
+        "tribal": {"harris_values": [5], "tpo_group": "Private"},
+        "federal": {"harris_values": [6], "tpo_group": "Federal (NF)"},
+        "state": {"harris_values": [7], "tpo_group": "Other public"},
+        "local": {"harris_values": [8], "tpo_group": "Other public"},
+        "unknown": {"harris_values": [0], "tpo_group": "Private"},
+    }
+}
+
+# What the committed 2026-08-17 library records, and the group each must end up budgeted
+# against. A dated artifact keeps the vocabulary of its own run; the driver has to read it.
+LEGACY_TO_GROUP = {
+    "private_family": "Private",
+    "private_industrial": "Private",
+    "private_corporate_other": "Private",
+    "federal": "Federal (NF)",
+    "state": "Other public",
+    "local": "Other public",
+}
+
+
+@pytest.mark.parametrize("legacy,group", sorted(LEGACY_TO_GROUP.items()))
+def test_owner_group_resolves_under_either_vocabulary(monkeypatch, legacy, group):
+    """The frozen library's owner classes must budget to the same TPO group either way.
+
+    `plan.OWNERSHIP_POLICY` is whatever `config/ownership_policy.yaml` holds when the driver
+    is imported, so this runs the resolver twice: once against the real config as it stands,
+    and once against the seven Harris classes it is being ported to. The committed
+    2026-08-17 library records `private_family` / `private_industrial` whichever is in force,
+    and a stand's TPO budget must not depend on which.
+    """
+    assert plan.owner_group(legacy) == group          # the policy as configured today
+    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    assert plan.owner_group(legacy) == group          # the seven Harris classes
+
+
+def test_legacy_names_map_onto_the_harris_classes(monkeypatch):
+    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    assert plan.owner_class_in_policy("private_family") == "family"
+    assert plan.owner_class_in_policy("private_industrial") == "corporate"
+    # The parcel refinement that split corporate in two is gone; both halves are corporate.
+    assert plan.owner_class_in_policy("private_corporate_other") == "corporate"
+    # Classes whose names did not change resolve to themselves.
+    for same in ("federal", "state", "local", "tribal", "unknown"):
+        assert plan.owner_class_in_policy(same) == same
+    # A name already in the current vocabulary is never sent through the alias table.
+    assert plan.owner_class_in_policy("family") == "family"
+    assert plan.owner_class_in_policy("corporate") == "corporate"
+
+
+def test_owner_class_comparison_survives_the_rename(monkeypatch):
+    """The drift check must compare attribution, not vocabulary.
+
+    `assign_prescription` speaks whatever ownership is configured today; the recorded column
+    speaks the frozen library's vocabulary. Comparing them raw would flag every private stand
+    as a mismatch the moment the classes are renamed — a warning about a rename rather than
+    about the attribution drift the check exists to catch.
+    """
+    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    same = plan.owner_class_in_policy("family") == plan.owner_class_in_policy("private_family")
+    assert same, "a renamed class must not read as drifted attribution"
+    drifted = plan.owner_class_in_policy("federal") == plan.owner_class_in_policy("family")
+    assert not drifted, "genuinely different classes must still compare unequal"
+
+
+def test_unresolvable_owner_class_stops_the_run(monkeypatch):
+    """Never silently drop the stand. It has acres and trajectories; a missing lookup row is
+    a fault in the configuration, not a reason to leave it out of the plan."""
+    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    with pytest.raises(AssertionError, match="no TPO group"):
+        plan.owner_group("conservation_ngo")
+
+
 def test_plan_driver_decodes_variants_the_same_way():
     """Two files, one convention: a plan whose offsets decoded differently from the library
     that produced it would mislabel every row."""
