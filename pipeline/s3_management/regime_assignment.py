@@ -17,8 +17,8 @@ Two questions, deliberately separated:
     the menu now means the trajectory library can be built for the right set from the
     start, instead of being regenerated when the scheduler arrives.
 
-Owner classes come from `pipeline/s3_management/owner_classes.py`, which resolves the
-Harris ownership raster against the parcel layer. The regime library, the per-owner menus,
+Owner classes come from `pipeline/s3_management/owner_classes.py`: the Harris et al. (2025)
+ownership raster's own forest classes. The regime library, the per-owner menus,
 and the scheduling rules are all in `config/management_regimes.yaml` — this module is the
 resolver, not the policy.
 
@@ -42,7 +42,7 @@ Usage (a doctest; ``scripts/check_docs.py`` runs it):
     >>> from pipeline.s3_management.regime_assignment import assign_prescription
     >>> p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "stand_age": 22})
     >>> p.owner_class, p.prescription_id, p.regen_slot
-    ('private_industrial', 'pine_plantation_short_rotation', 'planted_pine_regen')
+    ('corporate', 'pine_plantation_short_rotation', 'planted_pine_regen')
     >>> p.params  # a 22-year-old stand on a 25-year rotation is cut at the next cycle
     {'year': 2027}
     >>> eligible_prescriptions("federal")
@@ -62,11 +62,6 @@ import yaml
 from pipeline.s3_management.owner_classes import MASKED, classify_owner
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "management_regimes.yaml"
-
-# Harris RDS-2025-0045 ownership raster values. Kept as module constants because other modules
-# (and the LAMPS scheduler plan) import them directly.
-FAMILY, CORPORATE, TRIBAL, FEDERAL, STATE, LOCAL = 3, 4, 5, 6, 7, 8
-PUBLIC_OWNERS = {FEDERAL, STATE, TRIBAL, LOCAL}
 
 
 # FIA forest-type-group codes that are pine (longleaf-slash 140s, loblolly-shortleaf 160s,
@@ -359,7 +354,7 @@ def eligible_prescriptions(
 
     ``forest_branch`` (``pine`` / ``hardwood`` / ``other``) filters the menu by each
     prescription's ``forest_types``. Pass it for any stand-level call: without it an
-    industrial *hardwood* stand is offered both pine-plantation prescriptions, and
+    corporate *hardwood* stand is offered both pine-plantation prescriptions, and
     selecting one would apply pine thinning parameters and inject a planted-pine
     regeneration tree list into a hardwood trajectory. Omitting it returns the owner's
     whole menu, which is only meaningful for describing the policy rather than scheduling
@@ -412,8 +407,8 @@ def assign_prescription(
     """
     Assign one unit's default prescription and resolve it to a renderable template.
 
-    ``unit`` is any mapping. Recognised keys: ownership (``OWN_CODE`` and the parcel
-    fields `owner_classes` reads), ``SMZ_Pct``, a forest-type field, and ``stand_age``.
+    ``unit`` is any mapping. Recognised keys: the Harris ownership value
+    (``OWN_CODE``, optionally with its ``OWN_TYPE`` label), ``SMZ_Pct``, a forest-type field, and ``stand_age``.
     Missing fields degrade to the ``other`` branch and offset-based scheduling rather than
     raising — an unattributed unit still has to get a regime.
     """
@@ -433,7 +428,7 @@ def assign_prescription(
     if owner_class == MASKED:
         raise ValueError(
             "unit resolves to a masked ownership value (non-forest or water); mask these "
-            "out before regime assignment — see config/projection.yaml `ownership.mask_values`"
+            "out before regime assignment — see config/ownership_policy.yaml `masked_harris_values`"
         )
 
     # Riparian is absolute and geometric: among forested land it precedes ownership.

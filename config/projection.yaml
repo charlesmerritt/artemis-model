@@ -186,19 +186,8 @@ harvest:
     treatment_budget: 0.0            # disabled until capacity figures exist
 
 ownership:
-  source: "harris_2025"
-  # Pixel values confirmed from US_forest_ownership.tif.xml metadata
-  classes:
-    0: unknown_forest
-    1: non_forest                    # Mask — excluded from FVS pipeline
-    2: water                         # Mask — excluded from FVS pipeline
-    3: family_forest
-    4: corporate_forest              # Full label: "Corporate/Other Private Forest"
-    5: tribal_forest
-    6: federal_forest
-    7: state_forest
-    8: local_forest
-  mask_values: [1, 2]               # non_forest and water
+  source: "harris_2025"              # Harris et al. (2025) RDS-2025-0045, doi:10.2737/RDS-2025-0045
+  # The legend, owner classes and masked values live in config/ownership_policy.yaml alone.
   # Tribal class: fall back to pooled estimate if training sample < 500 harvest events
 
 storage:

@@ -10,9 +10,8 @@ This module warps the Florida window to that grid, nearest-neighbour (the
 values are categorical — resampling them any other way invents classes), in
 destination tiles so no full-state array ever lives in the source CRS. It
 produces a *prepared* layer: the classes are exactly the published ones, on
-the right grid. The parcel-based private refinement (industrial vs other
-corporate, per ``config/ownership_policy.yaml``) is a later stage and does
-not happen here.
+the right grid. The ownership repair is a separate stage; nothing here changes
+a class.
 
 Output: ``data/processed/statewide_repair/us_forest_ownership_fl.tif``
 plus the raster's VAT DBF sidecar.

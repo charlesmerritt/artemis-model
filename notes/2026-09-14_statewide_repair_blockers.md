@@ -102,3 +102,10 @@ sources on Leto".
    `verified: true`, wire the state parcel gdb into data_paths.
 6. Pull or restore LANDFIRE Annual Disturbance to shortcut harvest-year
    inference.
+
+---
+
+**Update (2026-09-15).** Blocker 7's parcel items and shortest-path step 5 are void: the
+parcel refinement, its DOR_UC table and `--audit-parcels` were removed. Owner classes are
+exactly the Harris RDS-2025-0045 forest classes (`config/ownership_policy.yaml`), so ownership
+needs no parcel audit; the repair of the Harris layer is what remains.

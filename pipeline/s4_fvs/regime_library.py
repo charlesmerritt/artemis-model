@@ -17,7 +17,7 @@ to the absolute years FVS wants.
 Usage:
     from pipeline.s4_fvs.regime_library import build_thins, render_keyfile
 
-    key = render_keyfile("MU_123", "MU_123", "pine_plantation_industrial", inv_year=2022)
+    key = render_keyfile("MU_123", "MU_123", "pine_plantation", inv_year=2022)
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from pathlib import Path
 
 import yaml
 
+from pipeline.s3_management.owner_classes import load_ownership_policy
 from pipeline.s4_fvs.regime_templates import DEFAULT_INV_YEAR, ThinDBH
 from pipeline.s4_fvs.regime_templates import render_keyfile as _render_keyfile
 
@@ -48,17 +49,25 @@ def validate_library(library: dict) -> dict:
 
     An off-cycle offset is silently shifted by FVS to the next cycle boundary; two cuts in one
     year render as duplicate ``ThinDBH`` lines; and without a regeneration keyword (issue #17)
-    anything after a stand-replacing entry would cut whatever FVS grew back by default.
+    anything after a stand-replacing entry would cut whatever FVS grew back by default. Every
+    regime also names the Harris owner classes it is written for (config/ownership_policy.yaml).
 
     >>> validate_library({"constraints": {"offsets_must_be_multiples_of": 5, "max_year_offset": 50},
-    ...                   "regimes": {"bad": {"operations": [{"year_offset": 12, "kind": "selection"}]}}})
+    ...                   "regimes": {"bad": {"owner_classes": ["family"], "operations": [{"year_offset": 12, "kind": "selection"}]}}})
     Traceback (most recent call last):
     ...
     ValueError: regime 'bad': year_offset 12 is not a multiple of 5
     """
+    harris_classes = set(load_ownership_policy()["classes"])
     rules = library["constraints"]
     cycle, horizon = rules["offsets_must_be_multiples_of"], rules["max_year_offset"]
     for name, regime in library["regimes"].items():
+        owners = regime.get("owner_classes")
+        if not owners:
+            raise ValueError(f"regime {name!r}: names no owner_classes")
+        if set(owners) - harris_classes:
+            raise ValueError(f"regime {name!r}: owner_classes {sorted(set(owners) - harris_classes)} "
+                             f"are not Harris classes {sorted(harris_classes)}")
         ops = regime["operations"]
         offsets = [op["year_offset"] for op in ops]
         for off in offsets:

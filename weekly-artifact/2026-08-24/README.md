@@ -257,3 +257,12 @@ Figure colours are the Okabe–Ito-derived categorical set, validated with the d
 palette checker (light surface `#fcfcfb`): lightness band, chroma floor, CVD separation
 (worst adjacent pair ΔE 9.6 deutan) and normal-vision floor all pass; the low-contrast
 hues carry direct value labels, and every plotted number is also in a committed CSV.
+
+---
+
+**Vocabulary update (2026-09-14).** Owner classes are now exactly the Harris et al. (2025)
+RDS-2025-0045 forest classes (`config/ownership_policy.yaml`). `private_industrial` is now `corporate` (Harris 4) and `private_family` is now `family`
+(Harris 3); `private_corporate_other` and its parcel refinement no longer exist. The menus
+and prescriptions for those classes did not change, so the numbers here
+stand; the CSVs keep the old names. "The LETO run" above is LETO's parcel-coded
+`Hard_Ownership_Boundaries` run, whose ownership codes ARTEMIS no longer reads.

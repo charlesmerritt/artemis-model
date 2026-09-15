@@ -294,7 +294,7 @@ def build_thins(regime: str, params: dict) -> list[ThinDBH]:
 # retain the overstory, so the residual stand is the seed source and FVS's own ingrowth
 # handling applies — adding a Plant record to a thin would double-count.
 #
-# Default mode per regime: `plantation_rotation` replants (industrial intent, the whole
+# Default mode per regime: `plantation_rotation` replants (plantation intent, the whole
 # point of the rotation), `clearcut` regenerates naturally. Override either with the
 # `regen` param: "plant", "natural", or "none".
 

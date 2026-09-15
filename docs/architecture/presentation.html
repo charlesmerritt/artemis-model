@@ -264,7 +264,7 @@
       <div class="bands">
         <div class="bcol a"><h3><span class="dot done"></span>Built in <span class="mono">pipeline/</span></h3>
           <div class="stage"><div class="st"><span class="dot done"></span><b>Management units</b></div><p><span class="mono">sketch_management_units</span> → <span class="mono">sliver_merge</span>; riparian retained as its own <span class="mono">unit_class</span>. Pilot, needs visual QA.</p></div>
-          <div class="stage"><div class="st"><span class="dot done"></span><b>Owner classes &amp; menus</b></div><p><span class="mono">owner_classes</span>, <span class="mono">regime_assignment</span>. DOR use codes not yet audited against parcels.</p></div>
+          <div class="stage"><div class="st"><span class="dot done"></span><b>Owner classes &amp; menus</b></div><p><span class="mono">owner_classes</span>, <span class="mono">regime_assignment</span>. The seven Harris classes; the ownership repair is in progress.</p></div>
           <div class="stage"><div class="st"><span class="dot done"></span><b>FVS inputs &amp; keyfiles</b></div><p><span class="mono">build_fvs_inputs</span> (area-weighted union), <span class="mono">regime_templates</span> (<span class="mono">ThinDBH</span> only).</p></div>
           <div class="stage"><div class="st"><span class="dot done"></span><b>Greedy allocator</b></div><p><span class="mono">harvest_scheduler</span> — seed and baseline for the annealer.</p></div>
         </div>
@@ -393,11 +393,10 @@
       <pre class="run"><span class="cmd">uv run python -m pipeline.s3_management.regime_assignment</span>
 management_regimes.yaml v1 — 8 prescriptions, 5-yr cycles over 50 yr from 2022
 riparian: SMZ_Pct &gt;= 50.0 -&gt; {no_management} only (absolute=True)
-private_industrial       eligible  pine_plantation_short_rotation, pine_plantation_long_rotation, hardwood_clearcut_regen
-private_corporate_other  eligible  pine_plantation_long_rotation, family_light_thin, family_uneven_aged_selection
-private_family           eligible  family_light_thin, family_uneven_aged_selection, pine_plantation_long_rotation
-federal                  eligible  public_selection_light, public_thin_restore
-state                    eligible  public_thin_restore, public_selection_light, pine_plantation_long_rotation
+corporate  eligible  pine_plantation_short_rotation, pine_plantation_long_rotation, hardwood_clearcut_regen
+family     eligible  family_light_thin, family_uneven_aged_selection, pine_plantation_long_rotation
+federal    eligible  public_selection_light, public_thin_restore
+state      eligible  public_thin_restore, public_selection_light, pine_plantation_long_rotation
 <span class="note"># abridged snapshot, 2026-09-14 — run it for defaults, tribal, local and unknown. The command is the authority.</span></pre>
       <p class="srcline">config/management_regimes.yaml · config/ownership_policy.yaml · uv run python -m pipeline.s3_management.owner_classes</p>
     </div>
@@ -680,7 +679,7 @@ state                    eligible  public_thin_restore, public_selection_light, 
             <tr><td class="num">5</td><td><b>Tribal and unknown menus</b> — conservative placeholders needing a documented source</td><td><span class="res open">open</span></td></tr>
             <tr><td class="num">6</td><td><b>Re-enabling carbon</b> — the measured obstacle is gone; reporting the five IPCC pools is a scope call</td><td><span class="res open">open</span></td></tr>
             <tr><td class="num">7</td><td><b>Eastern-US extent and compute</b> — state list; local, HPC or cloud for <span class="mono">stands × prescriptions</span> runs</td><td><span class="res open">open</span></td></tr>
-            <tr><td class="num">8</td><td><b>Ownership source</b> — the Harris RDS-2025-0045 raster; <span class="mono">OWN_CODE</span> is a Harris value everywhere. LETO's packaged v1 reads the same raster; its older cellular-automata script's parcel codes (3 Federal, 4 State, 6 NGO, 7 Other) are not accepted. Cost: no NGO or Other class.</td><td><span class="res pass">resolved — Harris</span></td></tr>
+            <tr><td class="num">8</td><td><b>Ownership source</b> — the Harris et al. (2025) RDS-2025-0045 raster, from the NWOS team, repaired in a second step. <span class="mono">OWN_CODE</span> is a Harris value and the owner classes are its seven forest classes; <span class="mono">classify_owner</span> rejects anything else.</td><td><span class="res pass">resolved — Harris</span></td></tr>
           </tbody>
         </table>
       </div>
