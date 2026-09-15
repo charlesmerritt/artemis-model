@@ -992,6 +992,15 @@ def main() -> None:
             f"--limit must be at least 1 (got {args.limit}); it selects how many runs to "
             f"smoke-test, and there is nothing to learn from zero. Omit it for a full run."
         )
+    # Checked here rather than at the pool: `ProcessPoolExecutor` rejects a non-positive
+    # `max_workers`, but only once the batch starts — after the input database is rebuilt and
+    # 13,035 keyfiles are rendered. Worse, a cache hit skips the pool entirely, so the same
+    # invalid command can appear to succeed depending on what is lying in the work directory.
+    if args.workers < 1:
+        raise SystemExit(
+            f"--workers must be at least 1 (got {args.workers}); it is the size of the FVS "
+            f"process pool."
+        )
     if not args.dry_run and not FVS_BIN.exists():
         raise SystemExit(f"FVSsn not found at {FVS_BIN}; set FVSSN_BIN or build it (README)")
 

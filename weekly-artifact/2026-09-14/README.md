@@ -248,7 +248,7 @@ Every number above comes from committed repository code or from FVS output.
   cycle. This week 1,637 trajectories do, and `ending_merch_cuft_per_ac` — what the
   `standing_volume` objective reads — is that cycle's post-cut state.
 - **The new logic carries its own tests.** `tests/test_weekly_artifact_20260914_timing.py`
-  (35 tests) pins the offset grid on operations small enough to check by inspection: that an
+  (33 tests) pins the offset grid on operations small enough to check by inspection: that an
   offset moves years and nothing else, that offset 0 is the identity, that an entry past 2072 is
   dropped and counted, that a variant losing every entry collapses, that a delayed rotation
   keeps its thin when its clearcut falls out, that regeneration is dropped with the harvest that
@@ -256,13 +256,13 @@ Every number above comes from committed repository code or from FVS output.
   that both drivers decode a variant id the same way, and that the frozen library's owner
   classes budget to the same TPO group under the current policy and under the seven Harris
   classes alike.
-- `uv run ruff check .` clean. `uv run pytest tests/` → **948 passed, 10 skipped, 0 failed.**
+- `uv run ruff check .` clean. `uv run pytest tests/` → **946 passed, 10 skipped, 0 failed.**
   (Earlier runs of this suite showed 9 failures in `tests/test_restart_fidelity.py`, all from
   one environment fault unrelated to this artifact: a sandbox that could not download DuckDB's
   `sqlite_scanner` extension from `extensions.duckdb.org`. They pass wherever that download
   succeeds, which is what `scripts/setup-env.sh` arranges.)
 
-## Eleven corrections made after review
+## Thirteen corrections made after review
 
 Raised on the PR by Devin Review, Codex, and Claude Code review comments. Each was
 reproduced against the code before being fixed, and **all 13,035 keyfiles are byte-for-byte
@@ -354,7 +354,23 @@ A fourth round found two more, one of them a regression introduced by fix 7:
     the same landscape, so one of them was wrong — the report was, and it is now built from
     the trajectories that exist. **This is the one committed output this round changes.**
 
-Thirteen further tests cover the new behaviour (35 in total): that a collapsed variant still
+A fifth round raised two more, both about a guard that was not where it needed to be:
+
+12. **A stale manifest permitted the wrong horizon.** `check_batch_matches` compared row
+    counts only, which establish that nobody rebuilt the tables but say nothing about how
+    those rows are to be *read*. The scheduler sizes every trajectory vector from
+    `projection.n_cycles` as configured now, while the library was built against the horizon
+    in the manifest. That is not a hypothetical here: `trajectory_cycles.csv` deliberately
+    carries an eleventh cycle, and raising `n_cycles` to 11 against this same library would
+    pull the carrier into `Landscape`'s `between(1, n_cycles)` and score out-of-horizon
+    harvest as part of the plan. The two numbers are now checked against each other, along
+    with the inventory year and the horizon's arithmetic.
+13. **A non-positive `--workers` crashed late.** `ProcessPoolExecutor` rejects it, but only
+    after the input database is rebuilt and 13,035 keyfiles are rendered — and a cache hit
+    skips the pool entirely, so the same invalid command could appear to succeed depending on
+    what was in the work directory. It is now refused up front, beside `--limit`.
+
+Eleven further tests cover the new behaviour (33 in total): that a collapsed variant still
 reports its dropped entries and carries no regeneration, that a regeneration record is
 dropped rather than adopted when its own parent falls outside the horizon, that the run
 ledger refuses both a vanished run and one counted on both sides, that a zero or negative

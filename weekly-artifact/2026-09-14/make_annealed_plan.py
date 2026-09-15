@@ -84,6 +84,8 @@ PREV_PLAN_MIX = PREV / "prescription_mix.csv"
 OFFSET_SEP = "@+"
 
 CYCLE_YEARS = hs.DEFAULT_CYCLE_YEARS
+# The TreeMap 2022 imputation anchor every cycle label is measured from.
+INV_YEAR = 2022
 OWNERSHIP_POLICY = load_ownership_policy()
 
 PILOT_COUNTIES = ["Baker", "Columbia", "Hamilton", "Suwannee", "Union"]
@@ -415,7 +417,7 @@ class Objective:
             for key, row, t in zip(keys, agg, targets):
                 for c, v in enumerate(row, start=1):
                     rows.append({"dimension": name, "key": key, "cycle": c,
-                                 "calendar_year": 2022 + c * CYCLE_YEARS,
+                                 "calendar_year": INV_YEAR + c * CYCLE_YEARS,
                                  "volume_cuft": v, "target_cuft": t,
                                  "deviation_cuft": v - t,
                                  "deviation_pct": 100.0 * (v - t) / t})
@@ -460,7 +462,7 @@ class Objective:
                 for c in range(self.n_cycles):
                     rows.append({
                         "dimension": name, "key": key, "cycle": c + 1,
-                        "calendar_year": 2022 + (c + 1) * CYCLE_YEARS,
+                        "calendar_year": INV_YEAR + (c + 1) * CYCLE_YEARS,
                         "min_attainable_cuft": lo_row[c], "max_attainable_cuft": hi_row[c],
                         "target_cuft": t,
                         "target_within_envelope": bool(lo_row[c] <= t <= hi_row[c]),
@@ -886,8 +888,23 @@ def require_fresh_batch() -> dict:
 
 
 def check_batch_matches(manifest: dict, stands: pd.DataFrame, library: pd.DataFrame,
-                        cycles: pd.DataFrame) -> None:
-    """The tables on disk must be the ones the manifest describes."""
+                        cycles: pd.DataFrame, cfg: dict) -> None:
+    """The tables on disk must be the ones the manifest describes — and describe the same
+    horizon the scheduler is about to score them over.
+
+    Row counts alone establish that nobody rebuilt the tables; they say nothing about how
+    those rows are to be *read*. The scheduler sizes every trajectory vector from
+    `projection.n_cycles` as configured **now**, while the library was built and validated
+    against the horizon recorded in the manifest, so a configuration edit between the two
+    silently reinterprets a library that still matches on every count.
+
+    That is not a hypothetical rounding of the last cycle here. `trajectory_cycles.csv`
+    deliberately carries an eleventh cycle — 2077, the carrier that lets a 2072 entry execute
+    — kept out of the objective by scoring ten. Raise `n_cycles` to 11 against this same
+    library and `Landscape`'s `between(1, n_cycles)` pulls that carrier in, and out-of-horizon
+    harvest enters the objective as though it were part of the plan. The whole terminal-cycle
+    design rests on those two numbers agreeing, so they are checked rather than assumed.
+    """
     actual = {
         "carved_stands_rows": len(stands),
         "expanded_library_rows": len(library),
@@ -898,10 +915,34 @@ def check_batch_matches(manifest: dict, stands: pd.DataFrame, library: pd.DataFr
         if want is not None and got != want:
             raise SystemExit(
                 f"{key}: {got} rows on disk but the batch manifest records {want}. The "
-                f"library has changed since the batch completed; re-run make_fvs_batch.py."
+                f"library has changed since the batch completed; re-run make_timing_library.py."
             )
-    log.info("Batch manifest verified (completed %s, %d excluded runs)",
-             manifest.get("completed_utc", "?"), manifest.get("excluded_runs", 0))
+
+    scored = manifest.get("objective_cycles")
+    if scored is not None and scored != cfg["n_cycles"]:
+        raise SystemExit(
+            f"the batch was built and validated over {scored} objective cycles but "
+            f"config/projection.yaml now declares n_cycles = {cfg['n_cycles']}. The library "
+            f"on disk carries {manifest.get('num_cycle')} cycles including the carrier, so "
+            f"scoring it over a different horizon would either truncate every trajectory or "
+            f"read out-of-horizon harvest as part of the plan. Re-run make_timing_library.py "
+            f"against the current configuration."
+        )
+    inv_year, last_entry = manifest.get("inv_year"), manifest.get("last_entry_year")
+    if inv_year is not None and inv_year != INV_YEAR:
+        raise SystemExit(
+            f"the batch is anchored at inventory year {inv_year} but this driver labels "
+            f"cycles from {INV_YEAR}; every calendar year it reports would be wrong."
+        )
+    if None not in (inv_year, last_entry, scored) \
+            and last_entry != inv_year + scored * CYCLE_YEARS:
+        raise SystemExit(
+            f"the batch's horizon does not close: {inv_year} + {scored} x {CYCLE_YEARS} != "
+            f"{last_entry}. Its cycle length and this driver's disagree."
+        )
+    log.info("Batch manifest verified (completed %s, %d excluded runs, %d objective cycles "
+             "of %d run)", manifest.get("completed_utc", "?"),
+             manifest.get("excluded_runs", 0), scored, manifest.get("num_cycle", 0))
 
 def plan_frame(land: Landscape, choice: list[int], stands: pd.DataFrame) -> pd.DataFrame:
     """The selected plan: stand_id -> trajectory, with its per-cycle volumes.
@@ -1017,7 +1058,7 @@ def compare_to_previous(quality: dict, envelope: pd.DataFrame, per_cycle: pd.Dat
     for c in range(1, 11):
         prev_v = float(prev_cyc.loc[prev_cyc["cycle"] == c, "cuft"].iloc[0])
         now_v = float(per_cycle.loc[per_cycle["cycle"] == c, "cuft"].iloc[0])
-        rows.append({"measure": f"harvest volume, cycle {c} ({2022 + 5 * c}), cuft",
+        rows.append({"measure": f"harvest volume, cycle {c} ({INV_YEAR + CYCLE_YEARS * c}), cuft",
                      "value_20260831": prev_v, "value_20260914": now_v})
     for c in range(1, 11):
         pv = int((~prev_env.loc[prev_env["cycle"] == c, "target_within_envelope"]).sum())
@@ -1056,7 +1097,7 @@ def main() -> None:
     library = pd.read_csv(WORK / "expanded_library.csv",
                           dtype={"PLT_CN": str, "unit_id": str})
     cycles = pd.read_csv(WORK / "trajectory_cycles.csv", dtype={"PLT_CN": str})
-    check_batch_matches(manifest, stands, library, cycles)
+    check_batch_matches(manifest, stands, library, cycles, cfg)
 
     land = Landscape(stands, library, cycles, cfg["n_cycles"])
     obj = Objective(land, caps, cfg)
@@ -1191,7 +1232,7 @@ def main() -> None:
                          var_name="cycle", value_name="cuft")
                .assign(cycle=lambda d: d["cycle"].str.replace("cuft_cycle_", "").astype(int)))
     per_cycle = (summary.groupby("cycle", as_index=False)["cuft"].sum()
-                 .assign(calendar_year=lambda d: 2022 + d["cycle"] * CYCLE_YEARS,
+                 .assign(calendar_year=lambda d: INV_YEAR + d["cycle"] * CYCLE_YEARS,
                          target_cuft=caps[hs.TOTAL][""]))
     per_cycle["deviation_pct"] = 100 * (per_cycle["cuft"] - per_cycle["target_cuft"]) / per_cycle["target_cuft"]
     per_cycle.to_csv(OUT_DIR / "harvest_by_cycle.csv", index=False)
