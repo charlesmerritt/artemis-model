@@ -139,6 +139,9 @@ OFFSET_SEP = "@+"
 FVS_OK_RETURNCODES = frozenset({0, 10})
 ID_COLS = {"PLT_CN": str, "unit_id": str, "tm_id": str}
 
+# The schema every failure frame carries, whether or not anything failed.
+FAILURE_COLUMNS = ["PLT_CN", "prescription", "error"]
+
 
 def _leto_species_crosswalk() -> dict[str, str]:
     """FIA SPCD -> FVS SN alpha code, from the compiled variant's own `sn/blkdat.f` tables.
@@ -668,7 +671,26 @@ def run_batch(runs: pd.DataFrame, workers: int) -> tuple[pd.DataFrame, pd.DataFr
                 cycles.append(row)
             if done % 1000 == 0:
                 log.info("  %d/%d runs complete (%d failed)", done, len(tasks), len(failures))
-    return pd.DataFrame(cycles), pd.DataFrame(failures)
+    # Always the declared columns, even with nothing to report. A zero-column frame writes a
+    # CSV that is a single newline — no header — and `pd.read_csv` then raises EmptyDataError
+    # on it, so a *clean* batch would write a failure sidecar that the next `--reuse-raw` run
+    # could not read. The success case must not be the one that breaks the cache.
+    return pd.DataFrame(cycles), pd.DataFrame(failures, columns=FAILURE_COLUMNS)
+
+
+def read_failures(path: Path) -> pd.DataFrame:
+    """Read a failure sidecar, tolerating one written with no header.
+
+    The sidecar's only job is to be readable: it is the sole record that a wholly-failed run
+    existed, since such a run contributes no summary rows. A header-less file (what an
+    older, zero-column frame wrote on a clean batch) means "nothing failed" — not "the cache
+    is unreadable" — so it resolves to an empty frame with the declared schema rather than
+    aborting a run that has a perfectly good cache beside it.
+    """
+    try:
+        return pd.read_csv(path, dtype={"PLT_CN": str})
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame(columns=FAILURE_COLUMNS)
 
 
 def validate_runs(cyc: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -766,6 +788,35 @@ def build_library_tables(cycles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
 # --------------------------------------------------------------------------------------
 # Stage F — the check that makes the expansion trustworthy
 # --------------------------------------------------------------------------------------
+
+def realised_menu(expanded: pd.DataFrame, idx: pd.DataFrame) -> pd.DataFrame:
+    """Menu-size distribution as the *scheduler* sees it, not as the library intended it.
+
+    `expanded` describes the decision space before simulation, so counting it directly
+    credits a stand with an option whose FVS run was excluded — an option it cannot take.
+    That is how the published `options_per_stand.csv` came to disagree with `library_size` in
+    the plan and `options_per_stand` in the quality report, both of which are built from the
+    trajectories that exist: one excluded run moved one stand from five options to four, and
+    the two tables differed by exactly that stand.
+
+    Restricting to `(plot, prescription)` pairs present in the library is the whole fix. The
+    assertion guards the case the restriction could hide: exclusions emptying a stand's menu
+    altogether, which would drop it from this report silently while the plan sees a stand
+    with no trajectory at all.
+    """
+    realised = expanded.merge(idx[["PLT_CN", "prescription"]].drop_duplicates(),
+                              on=["PLT_CN", "prescription"], how="inner")
+    menu = (realised.groupby("unit_id").size().rename("options")
+            .reset_index().groupby("options").size().rename("stands").reset_index())
+    covered, total = int(menu["stands"].sum()), int(expanded["unit_id"].nunique())
+    if covered != total:
+        raise AssertionError(
+            f"menu report covers {covered} stands but the library has {total}: an exclusion "
+            f"has emptied a stand's menu entirely, which the plan would see as a stand with "
+            f"no trajectory at all"
+        )
+    return menu
+
 
 def reconcile_run_ledger(rendered: set[str], published: set[str], excluded: set[str]) -> None:
     """Every rendered run must be published or named as excluded — exactly one of the two.
@@ -1002,7 +1053,7 @@ def main() -> None:
     cache_complete = raw_cache.exists() and cache_key.exists() and raw_failures.exists()
     if args.reuse_raw and cache_complete and cache_key.read_text().strip() == key:
         cycles = pd.read_csv(raw_cache, dtype={"PLT_CN": str})
-        failures = pd.read_csv(raw_failures, dtype={"PLT_CN": str})
+        failures = read_failures(raw_failures)
         log.warning("Reusing cached FVS output for this exact run set: %d rows, %d failures. "
                     "No FVS run was made.", len(cycles), len(failures))
     else:
@@ -1148,9 +1199,7 @@ def main() -> None:
 
     acct.to_csv(OUT_DIR / "library_expansion.csv", index=False)
 
-    menu = (expanded.groupby("unit_id").size().rename("options")
-            .reset_index().groupby("options").size().rename("stands").reset_index())
-    menu.to_csv(OUT_DIR / "options_per_stand.csv", index=False)
+    realised_menu(expanded, idx).to_csv(OUT_DIR / "options_per_stand.csv", index=False)
 
     # What the timing grid was built for: which cycles the library can now cut in at all.
     reach = (cyc[cyc["cycle"].between(1, N_OBJECTIVE_CYCLES)]

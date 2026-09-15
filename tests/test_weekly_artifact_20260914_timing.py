@@ -344,6 +344,73 @@ def test_non_positive_limit_is_refused_before_anything_runs(monkeypatch, bad):
         m.main()
 
 
+def test_failure_frame_keeps_its_schema_when_nothing_failed():
+    """The clean batch must not be the one that breaks the cache.
+
+    A zero-column frame writes a CSV that is a single newline — no header — and `read_csv`
+    raises `EmptyDataError` on it. Since the sidecar is required for a cache hit, a batch
+    where *nothing failed* would have written a sidecar the next `--reuse-raw` run could not
+    read.
+    """
+    empty = pd.DataFrame([], columns=m.FAILURE_COLUMNS)
+    assert list(empty.columns) == m.FAILURE_COLUMNS
+    assert len(empty) == 0
+
+
+def test_read_failures_tolerates_a_headerless_sidecar(tmp_path):
+    """A header-less file means "nothing failed", not "the cache is unreadable"."""
+    headerless = tmp_path / "raw_failures.csv"
+    pd.DataFrame([]).to_csv(headerless, index=False)          # what the old code wrote
+    with pytest.raises(pd.errors.EmptyDataError):
+        pd.read_csv(headerless)                                # the reported failure mode
+    out = m.read_failures(headerless)
+    assert len(out) == 0
+    assert list(out.columns) == m.FAILURE_COLUMNS
+
+    proper = tmp_path / "with_rows.csv"
+    pd.DataFrame([{"PLT_CN": "1", "prescription": "p@+0", "error": "SIGFPE"}]).to_csv(
+        proper, index=False)
+    back = m.read_failures(proper)
+    assert len(back) == 1
+    assert back["PLT_CN"].iloc[0] == "1"       # read as an exact string, never a float
+
+
+def test_menu_report_counts_only_options_that_have_a_trajectory():
+    """An excluded FVS run removes the option from the scheduler's menu, so it must not be
+    counted in the report of that menu."""
+    expanded = pd.DataFrame([
+        {"unit_id": "A", "PLT_CN": "1", "prescription": "no_management"},
+        {"unit_id": "A", "PLT_CN": "1", "prescription": "cut@+0"},
+        {"unit_id": "A", "PLT_CN": "1", "prescription": "cut@+5"},
+        {"unit_id": "B", "PLT_CN": "2", "prescription": "no_management"},
+        {"unit_id": "B", "PLT_CN": "2", "prescription": "cut@+0"},
+    ])
+    # `1::cut@+5` failed and is absent from the library.
+    idx = pd.DataFrame([
+        {"PLT_CN": "1", "prescription": "no_management"},
+        {"PLT_CN": "1", "prescription": "cut@+0"},
+        {"PLT_CN": "2", "prescription": "no_management"},
+        {"PLT_CN": "2", "prescription": "cut@+0"},
+    ])
+    menu = m.realised_menu(expanded, idx)
+    assert dict(zip(menu["options"], menu["stands"])) == {2: 2}, \
+        "stand A has three intended options but only two it can take"
+
+    # Counting the intended frame instead is what put one stand in the wrong bucket.
+    naive = expanded.groupby("unit_id").size().value_counts().to_dict()
+    assert naive == {3: 1, 2: 1}
+
+
+def test_menu_report_refuses_to_hide_a_stand_with_no_options_left():
+    expanded = pd.DataFrame([
+        {"unit_id": "A", "PLT_CN": "1", "prescription": "cut@+0"},
+        {"unit_id": "B", "PLT_CN": "2", "prescription": "cut@+0"},
+    ])
+    idx = pd.DataFrame([{"PLT_CN": "2", "prescription": "cut@+0"}])   # every A option gone
+    with pytest.raises(AssertionError, match="emptied a stand's menu"):
+        m.realised_menu(expanded, idx)
+
+
 def test_parse_params_round_trips_the_20260817_form():
     assert m.parse_params("max_dbh=8.0;proportion=0.35;year=2032") == {
         "max_dbh": 8.0, "proportion": 0.35, "year": 2032}

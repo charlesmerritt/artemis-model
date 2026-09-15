@@ -248,7 +248,7 @@ Every number above comes from committed repository code or from FVS output.
   cycle. This week 1,637 trajectories do, and `ending_merch_cuft_per_ac` — what the
   `standing_volume` objective reads — is that cycle's post-cut state.
 - **The new logic carries its own tests.** `tests/test_weekly_artifact_20260914_timing.py`
-  (31 tests) pins the offset grid on operations small enough to check by inspection: that an
+  (35 tests) pins the offset grid on operations small enough to check by inspection: that an
   offset moves years and nothing else, that offset 0 is the identity, that an entry past 2072 is
   dropped and counted, that a variant losing every entry collapses, that a delayed rotation
   keeps its thin when its clearcut falls out, that regeneration is dropped with the harvest that
@@ -256,13 +256,13 @@ Every number above comes from committed repository code or from FVS output.
   that both drivers decode a variant id the same way, and that the frozen library's owner
   classes budget to the same TPO group under the current policy and under the seven Harris
   classes alike.
-- `uv run ruff check .` clean. `uv run pytest tests/` → **944 passed, 10 skipped, 0 failed.**
+- `uv run ruff check .` clean. `uv run pytest tests/` → **948 passed, 10 skipped, 0 failed.**
   (Earlier runs of this suite showed 9 failures in `tests/test_restart_fidelity.py`, all from
   one environment fault unrelated to this artifact: a sandbox that could not download DuckDB's
   `sqlite_scanner` extension from `extensions.duckdb.org`. They pass wherever that download
   succeeds, which is what `scripts/setup-env.sh` arranges.)
 
-## Nine corrections made after review
+## Eleven corrections made after review
 
 Raised on the PR by Devin Review, Codex, and Claude Code review comments. Each was
 reproduced against the code before being fixed, and **all 13,035 keyfiles are byte-for-byte
@@ -339,11 +339,29 @@ A third round found the hole that fix 8 had left open:
    `--limit` is refused up front, before the FVS binary is looked for and before the previous
    manifest is invalidated.
 
-Six further tests cover the new behaviour (22 in total): that a collapsed variant still
+A fourth round found two more, one of them a regression introduced by fix 7:
+
+10. **A clean batch wrote an unreadable cache sidecar.** With no failures, the frame had zero
+    columns, so `raw_failures.csv` was a single newline with no header and `read_csv` raised
+    `EmptyDataError` on it. Since fix 7 made that sidecar *required* for a cache hit, the
+    success case became the one that broke `--reuse-raw`. The frame now always carries its
+    declared schema, and a header-less sidecar reads as "nothing failed" rather than aborting
+    a run with a perfectly good cache beside it.
+11. **`options_per_stand.csv` counted options that do not exist.** It was built from the
+    intended decision space, before simulation, so it credited a stand with the option whose
+    FVS run was excluded. The published table said 65 stands had four options and 799 had
+    five; the plan's own `library_size` and the quality report said 66 and 798. Both describe
+    the same landscape, so one of them was wrong — the report was, and it is now built from
+    the trajectories that exist. **This is the one committed output this round changes.**
+
+Thirteen further tests cover the new behaviour (35 in total): that a collapsed variant still
 reports its dropped entries and carries no regeneration, that a regeneration record is
 dropped rather than adopted when its own parent falls outside the horizon, that the run
-ledger refuses both a vanished run and one counted on both sides, and that a zero or negative
-`--limit` stops the run instead of publishing.
+ledger refuses both a vanished run and one counted on both sides, that a zero or negative
+`--limit` stops the run instead of publishing, that an empty failure frame keeps its schema
+and a header-less sidecar still reads, that the menu report counts only options with a
+trajectory and refuses to hide a stand whose menu exclusions emptied, and that the frozen
+library's owner classes budget to the same TPO group under either ownership vocabulary.
 
 ## Vocabulary note — owner classes
 
