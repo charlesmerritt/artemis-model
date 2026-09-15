@@ -1,0 +1,177 @@
+# Canonical FVS output summaries — what `pipeline/s6_outputs` reports and how it bins
+#
+# The stage reads an FVS Online output database (`FVSOut.db`: `FVS_Cases` +
+# `FVS_Summary2`) and turns it into acre-weighted age-class distributions cut by
+# forest-type group, owner class, and area. Nothing here selects stands or changes a
+# projection; it only decides how finished FVS output is binned and labelled, so the
+# figures in a report and the CSVs behind them come from one declaration.
+#
+# See pipeline/s6_outputs/README.md for what each table means and which weight basis
+# applies to it.
+
+# ---------------------------------------------------------------------------------------
+# Age classes
+# ---------------------------------------------------------------------------------------
+# `Age` in FVS_Summary2 is stand age at the start of the cycle, carried forward from the
+# FIA condition age. Ten-year classes are the conventional reporting width for southern
+# pine rotations; the open top class exists because a no-management run pushes a long
+# right tail (max 238 years over a 50-year horizon in the five-county run).
+
+age_classes:
+  width: 10          # years per class
+  max: 140           # first year of the open-ended top class ("140+")
+  # Age 0 lands in the 0-9 class. FVS reports 0 for a stand whose FIA condition age is
+  # missing or whose regeneration has not yet been aged; `unknown_age_is_class_zero: false`
+  # routes those rows to an explicit `unknown` class instead of inflating the youngest one.
+  unknown_age_is_class_zero: false
+
+# ---------------------------------------------------------------------------------------
+# Reporting year grid
+# ---------------------------------------------------------------------------------------
+# Stands enter an FVS Online run at their own FIA inventory year, so the early cycles are
+# an unbalanced panel: in the five-county no-management run only 106-181 of the 693 stands
+# report in any year before 2026, and every one of them reports from 2026 on. An age-class
+# distribution computed over an unbalanced year is a distribution of *which stands were
+# measured early*, not of the landscape, so the canonical tables use the balanced grid.
+
+year_grid:
+  # 'balanced' — keep only years in which every case in the run reports.
+  # 'all'      — keep every year present, unbalanced ones included.
+  mode: balanced
+  # Refuse to report if the balanced grid is shorter than this; a run that cannot offer
+  # a few common cycles is not one to draw a trajectory from.
+  min_years: 3
+
+# ---------------------------------------------------------------------------------------
+# Forest-type grouping
+# ---------------------------------------------------------------------------------------
+# The pine/mixed/hardwood/nonstocked split is *not* redeclared here: it is read from
+# `config/fallback_treelists.yaml: forest_type_groups` through
+# `pipeline.s4_fvs.fallback_treelists.forest_type_group`, so the stage that reports on
+# forest type and the stage that routes on it can never drift apart. Only the display
+# labels and the FIA group names live here.
+
+forest_type_labels:
+  pine:        "Pine (softwood)"
+  mixed:       "Oak/pine (mixed)"
+  hardwood:    "Hardwood"
+  nonstocked:  "Nonstocked"
+
+# Forest-type detail inside those broad classes. The key is FORTYPCD floored to the nearest
+# ten — what `pipeline.s4_fvs.fallback_treelists.forest_type_group_code` returns, so the
+# detail cut and the routing logic agree by construction. Most of these codes are FIA forest
+# type groups outright (140 longleaf/slash, 160 loblolly/shortleaf, 600 oak/gum/cypress);
+# 510 and 520 are subdivisions *within* FIA's oak/hickory group rather than groups of their
+# own, and are named to say so. Only the eastern codes are listed; anything unlisted is
+# reported by its code rather than mislabelled.
+forest_type_subgroup_labels:
+  100: "White/red/jack pine"
+  120: "Spruce/fir"
+  140: "Longleaf/slash pine"
+  160: "Loblolly/shortleaf pine"
+  180: "Other eastern softwoods"
+  400: "Oak/pine"
+  500: "Oak/hickory"
+  510: "Oak/hickory — scrub and chestnut oak"
+  520: "Oak/hickory — mixed upland hardwoods"
+  600: "Oak/gum/cypress"
+  700: "Elm/ash/cottonwood"
+  800: "Maple/beech/birch"
+  900: "Aspen/birch"
+  960: "Other hardwoods"
+  990: "Other and exotic hardwoods"
+  999: "Nonstocked"
+
+# ---------------------------------------------------------------------------------------
+# Weight bases
+# ---------------------------------------------------------------------------------------
+# Two different acre bases answer two different questions, and a table that mixed them
+# would be wrong in a way no total would reveal. Every emitted table carries its basis in
+# a `weight_basis` column.
+#
+#   sampling_weight — FVS_Cases.SamplingWt, the FIA expansion acres the run was built
+#                     with. Covers every case, so the overall / forest-type / area cuts
+#                     use it.
+#   owner_acres     — management-unit acres from the hard-ownership segmentation run,
+#                     apportioned to the plot that initialized each unit. Only the units
+#                     inside that run's area of interest have one, so it covers a subset
+#                     of the cases and is the basis for the owner-class cuts.
+
+weights:
+  default_basis: sampling_weight
+  owner_basis: owner_acres
+  # A case with no sampling weight cannot be expanded to acres. Counting it as one acre
+  # would be a silent fabrication, so it is dropped and the drop is logged and reported.
+  drop_zero_weight: true
+
+# ---------------------------------------------------------------------------------------
+# Owner classes
+# ---------------------------------------------------------------------------------------
+# `OWN_TYPE` as the ownership-segmented FVS run writes it. `order` fixes the plotting and
+# column order so a figure redrawn next month stacks its bands the same way.
+
+owner_classes:
+  order: [Private, Corporate, Federal, State, County, NGO, Other, Unknown]
+  # Stands the crosswalk cannot attribute at all (outside the segmentation run's area of
+  # interest). Reported under this label rather than dropped, so the owner tables always
+  # foot to the same acreage as the overall table.
+  unattributed_label: "Unattributed"
+  # `MGMT_TYPE` in the same run separates streamside management zones from upland units.
+  # They are never harvested and their age structure is a different story, so the owner
+  # tables report them as their own cut rather than folding them into an owner class.
+  management_types: [Upland, Riparian]
+
+# ---------------------------------------------------------------------------------------
+# Areas
+# ---------------------------------------------------------------------------------------
+# An FVS StandID built from FIA carries its own geography: STATECD(2) + INVYR(2) +
+# COUNTYCD(3) + PLOT(5). That is the only area attribute the output database holds, so
+# "area" here means state and county FIPS, decoded from the StandID.
+
+areas:
+  # Counties to report individually in the per-area figure; everything else is pooled into
+  # an "Other counties" band so a 60-county panel stays readable. Ranked by acreage when
+  # left empty.
+  top_n_counties: 10
+  state_labels:
+    "01": "Alabama"
+    "12": "Florida"
+    "13": "Georgia"
+    "22": "Louisiana"
+    "28": "Mississippi"
+    "45": "South Carolina"
+    "48": "Texas"
+
+# ---------------------------------------------------------------------------------------
+# Figures
+# ---------------------------------------------------------------------------------------
+
+figures:
+  dpi: 130
+  format: png
+  # Snapshot years drawn as age-class histograms. 'first' and 'last' resolve against the
+  # reporting grid, so the pair stays meaningful when the horizon changes.
+  snapshot_years: [first, last]
+
+  # Forest-type hues. Three categorical slots, validated as a set: worst all-pairs CVD
+  # ΔE 9.2 (deutan) and worst normal-vision ΔE 24.0, both clear of the 8 / 15 floors.
+  # Aqua sits at 2.74:1 against a white surface, under the 3:1 bar, so every figure that
+  # uses it ships the CSV it was drawn from — the table view is the required relief, not
+  # an extra. Nonstocked is deliberately a neutral: it is the absence of a forest type,
+  # not a fourth type, and is never given a hue of its own.
+  palette:
+    pine:       "#1baf7a"
+    mixed:      "#2a78d6"
+    hardwood:   "#eb6834"
+    nonstocked: "#8a8a80"
+    unknown:    "#bdbdbd"
+
+  # Ordered age classes are a magnitude, not an identity, so the stacked-area view over
+  # time uses one hue light-to-dark rather than a categorical cycle. Sampled between these
+  # two steps; the light end stays off the surface so the youngest class is still visible.
+  age_ramp: ["#86b6ef", "#0d366b"]
+
+  # Ink. Labels and values wear these, never a series color.
+  text_primary: "#0b0b0b"
+  text_secondary: "#52514e"
+  grid: "#dddcd7"

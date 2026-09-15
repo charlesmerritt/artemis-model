@@ -27,6 +27,7 @@ are **not implemented yet**.
 | `s4_fvs/regime_templates.py` | Render FVS keyfiles for the five prescription families | Implemented; `ThinDBH`-only by design |
 | `s4_fvs/paint_fvs_to_raster.py` | Join FVS stand trajectories through a TreeMap crosswalk and paint stand metrics onto TreeMap pixels | Five-county prototype; external inputs required |
 | `s5_imagery/` | Pull NAIP over an extent vector with a real coverage check, cluster Earth Engine embeddings inside versus outside an area of interest, and publish both to the map viewer | Working; Earth Engine paths not covered by tests |
+| `s6_outputs/run_pipeline.py` | Canonical FVS output reporting: read a real `FVSOut.db`, build the age-class distributions by forest type, owner class, and area, and draw them | Implemented; runs against the five-county no-management output |
 
 ## Identifier precision (`ids.py`)
 
@@ -122,6 +123,33 @@ and final basal-area rasters to `data/processed/no_management_fl5co_rasters/`. R
 [`../notes/fvs-to-raster-painting.md`](../notes/fvs-to-raster-painting.md) before changing
 snapshots or metrics.
 
+## Canonical FVS outputs
+
+```bash
+# resolve -> extract -> attribute -> summarize -> visualize
+uv run python -m pipeline.s6_outputs.run_pipeline
+
+# what it would read and write, writing nothing
+uv run python -m pipeline.s6_outputs.run_pipeline --dry-run
+
+# redraw the figures from tables already on disk
+uv run python -m pipeline.s6_outputs.run_pipeline --stages visualize
+```
+
+Reads the FVS Online output database declared at
+`raw.Artemis_project_fvs_copy_no_management.FVSOut_db` and, when it is reachable, the
+ownership-segmented run at `raw.hard_ownership_boundaries.stand_init_csv` that puts an owner
+class on a plot-keyed trajectory. Writes `tables/*.csv`, `figures/*.png`, and
+`run_summary.json` to `data/processed/fvs_outputs/`.
+
+The last stage is only visualization: every number in every figure is written to a CSV before
+it is drawn, so a chart can be redrawn or replaced without recomputing anything.
+
+Two things decide whether a number off these tables means what it looks like — the reporting
+grid drops the early years no FVS run covers with every stand, and the two acre bases
+(`sampling_weight` over the whole run, `owner_acres` over the crosswalked subset) never share
+an axis. Read [`s6_outputs/README.md`](s6_outputs/README.md) before quoting one.
+
 ## Imagery and embeddings
 
 ```bash
@@ -154,6 +182,7 @@ uv run pytest tests/test_s3_sketch_management_units.py \
   tests/test_s4_paint_fvs_to_raster.py \
   tests/test_s5_vectors.py tests/test_s5_naip_acquire.py \
   tests/test_s5_embeddings.py tests/test_s5_viewer_catalog.py \
+  tests/test_s6_fvs_outputs.py \
   tests/test_config.py tests/test_s3_regime_assignment.py
 ```
 
