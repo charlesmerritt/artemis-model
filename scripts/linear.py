@@ -120,7 +120,7 @@ def cmd_project(args):
     if "--name" in args:
         name = args[args.index("--name") + 1]
     p = find_project(name)
-    pid, pname = p["id"], p["name"]
+    pid = p["id"]
     print_project(p)
     # top-level open issues as a summary
     data = gql(
@@ -182,7 +182,7 @@ def cmd_issues(args):
     )
     for i in data["issues"]["nodes"]:
         who = i["assignee"]["displayName"] if i["assignee"] else "—"
-        labels = ",".join(l["name"] for l in i["labels"]["nodes"])
+        labels = ",".join(lbl["name"] for lbl in i["labels"]["nodes"])
         print(f"{i['identifier']}  [{i['state']['name']}] P{i['priority']} {i['title']}"
               f"  ({who}{'  #' + labels if labels else ''})")
 
@@ -216,7 +216,7 @@ def cmd_issue(args):
     print(f"State: {i['state']['name']}  Priority: P{i['priority']}  Assignee: {who}"
           + (f"  Project: {i['project']['name']}" if i["project"] else ""))
     if i["labels"]["nodes"]:
-        print("Labels: " + ", ".join(l["name"] for l in i["labels"]["nodes"]))
+        print("Labels: " + ", ".join(lbl["name"] for lbl in i["labels"]["nodes"]))
     if i.get("description"):
         print(f"\n## Description\n\n{i['description']}")
     if i["comments"]["nodes"]:
