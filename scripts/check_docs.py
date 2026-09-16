@@ -37,6 +37,7 @@ sys.path.insert(0, str(REPO_ROOT))
 #   keep      short operational entry point; references checked
 #   generated written by a script; references checked
 #   record    dated record of what ran; left as history
+#             (five were raised 2026-09-14/15 by an appended ownership-vocabulary note)
 #   convert   durable finding or design owed a deck; delete once the deck lands
 #   code      owed as docstrings, doctests, --help or a check; delete once that lands
 MARKDOWN_BUDGET = {
@@ -44,12 +45,13 @@ MARKDOWN_BUDGET = {
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
     "README.md": (119, "keep"),
     "data/index.md": (116, "generated"),                      # scripts/r2_index.py
-    "docs/config-policy.md": (478, "convert"),                # -> policy deck
+    "docs/config-policy.md": (426, "convert"),                # -> policy deck
     "docs/references/README.md": (145, "convert"),            # -> docs/architecture#references
     "docs/treemap_holes/README.md": (712, "convert"),         # -> docs/treemap-raster-correction
     "experiments/2026-07-28_16-33-pr9-validation-audit/report.md": (106, "record"),
-    "experiments/2026-08-24_leto-ca-forest-viz/README.md": (204, "record"),
+    "experiments/2026-08-24_leto-ca-forest-viz/README.md": (211, "record"),
     "gee/README.md": (44, "keep"),
+    "notes/2026-09-14_statewide_repair_blockers.md": (111, "record"),  # diagnosis, not prose docs
     "notebooks/README.md": (69, "keep"),
     "pipeline/README.md": (36, "keep"),
     "pipeline/s5_imagery/README.md": (180, "code"),                    # -> module docstrings, --help
@@ -60,9 +62,9 @@ MARKDOWN_BUDGET = {
     "weekly-artifact/2026-07-26/README.md": (156, "record"),
     "weekly-artifact/2026-08-03/README.md": (83, "record"),
     "weekly-artifact/2026-08-10/README.md": (182, "record"),
-    "weekly-artifact/2026-08-17/README.md": (201, "record"),
-    "weekly-artifact/2026-08-24/README.md": (259, "record"),
-    "weekly-artifact/2026-08-31/README.md": (411, "record"),
+    "weekly-artifact/2026-08-17/README.md": (210, "record"),
+    "weekly-artifact/2026-08-24/README.md": (268, "record"),
+    "weekly-artifact/2026-08-31/README.md": (420, "record"),
 }
 CHECK_REFERENCES_IN = {"keep", "generated"}
 

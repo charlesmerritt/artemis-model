@@ -81,7 +81,7 @@ selection_rule:
 slots:
 
   planted_pine_regen:
-    label: "Planted pine regeneration (post-clearcut, industrial rotation)"
+    label: "Planted pine regeneration (post-clearcut, plantation rotation)"
     use: regeneration
     filter:
       fortypcd_min: 140

@@ -15,9 +15,8 @@ They interlock: ownership picks the owner class, the owner class picks the presc
 and a prescription that removes the stand names the fixed tree list that regenerates it.
 
 ```text
-Harris ownership raster ─┐
-                         ├─► owner class ─► default prescription ─► FVS keyfile
-parcel DORUC / acreage ──┘        │              │
+Harris ownership raster ───► owner class ─► default prescription ─► FVS keyfile
+                                  │              │
                                   │              └─► regen slot ─┐
                                   └─► eligible menu              ├─► fixed tree list
                                        (scheduler chooses)       │      (pinned PLT_CN)
@@ -104,74 +103,29 @@ uv run python -m pipeline.spatial_ref
 
 ## 1. Ownership
 
-### The finding that shapes the design
-
-**The parcel layer has no ownership-class column.** The attributes carried through
-`sketch_management_units.py` are `CNTYNAME, PARCELID, NPARNO, DORUC, PARUSEDESC, ACRES`.
-The only ownership signal is `DORUC` — the Florida Department of Revenue *land use* code —
-and a use code is not an owner. DOR_UC 82, "forest, parks, recreational areas", is applied
-to federal, state, county, and municipal conservation land alike, so it can tell you a
-parcel is public and nothing more.
-
-That asymmetry sets the precedence:
-
-1. **The Harris raster assigns the class.** It is 30 m, circa 2022, and co-registered with
-   TreeMap 2022 — the two products were built to be used together. Area-majority over a
-   unit's forested pixels, not the centroid: units are irregular and a centroid can land
-   on a road or a hole.
-2. **The parcel layer refines within private only.** The raster has one
-   `corporate_forest` class that mixes industrial timberland with small corporate
-   holdings; DORUC plus acreage is the only thing that can split them.
-3. **Disagreements are flagged, never resolved.** A parcel that says government under a
-   raster pixel that says private sets `owner_conflict`, and the raster class stands.
-   Parcel and raster vintages differ; a conflict is information about that, not a
-   correction to either.
-
-### The eight classes
-
-Seven owner classes plus `unknown`, mapped onto the three TPO owner groups that
+**One source: the Harris et al. (2025) ownership raster**, RDS-2025-0045 — 30 m, circa 2022,
+co-registered with TreeMap 2022, from the National Woodland Owner Survey team. ARTEMIS
+repairs it in a second step. `OWN_CODE` is a Harris value everywhere, and the owner classes
+are the raster's own seven forest classes, mapped onto the three TPO owner groups that
 `config/tpo_targets.yaml` budgets in:
 
 | Owner class | Harris value | TPO group |
 |---|---|---|
-| `private_industrial` | 4 | Private |
-| `private_corporate_other` | 4 (demoted by parcel evidence) | Private |
-| `private_family` | 3 | Private |
+| `family` | 3 | Private |
+| `corporate` | 4 | Private |
 | `tribal` | 5 | Private |
 | `federal` | 6 | Federal (NF) |
 | `state` | 7 | Other public |
 | `local` | 8 | Other public |
 | `unknown` | 0 | Private |
 
-Corporate defaults to **industrial** and is demoted on evidence, rather than the reverse,
-because the pilot's corporate forest class is dominated by managed pine plantation — so
-defaulting to industrial misclassifies less area. That is a stated assumption; the audit
-command below reports the demoted fraction so it can be checked.
+Values 1 (non-forest) and 2 (water) are masked out before FVS. `classify_owner` raises on
+any value outside 0–8, and on a row whose `OWN_TYPE` is not the Harris label for its code —
+the signature of a table coded from something other than the raster.
 
-Tribal maps to the Private TPO group to match FIA's owner grouping (OWNGRPCD 40).
-
-### Before these numbers appear in a result
-
-`ownership_policy.yaml` is `verified: false`. The DOR_UC table is transcribed from the
-published FDOR land-use codes and has not been checked against the actual parcel layer,
-because the data drive was not mounted when it was written. Run:
-
-```bash
-uv run python -m pipeline.s3_management.owner_classes --audit-parcels \
-    --parcels data/raw/FL_5_Co_Parcels.gdb --layer FL_5_Co_Parcels
-```
-
-It prints every observed DORUC value with its `PARUSEDESC` text, parcel count, and
-acreage, marks which config signal claims it, and lists any candidate owner-name column.
-Codes with no signal are the ones to look at. Flip `verified: true` in the same commit
-that records the result.
-
-### The tunable that deserves a sensitivity test
-
-`private_refinement.industrial_min_acres` (default 1000) is where "industrial" starts. It
-is a policy knob, not a measured constant. Re-run the owner-class assignment at 500, 1000,
-and 2500 acres and report the area that changes class — if the industrial share moves a
-lot, the threshold is doing more work than the evidence supports.
+Harris's corporate class includes not-for-profit organizations and institutions, so all
+corporate forest shares one menu. Tribal maps to the Private TPO group to match FIA's owner
+grouping (OWNGRPCD 40).
 
 ---
 
@@ -217,9 +171,8 @@ and for riparian units it is the only one.
 
 | Owner class | Default (pine / hardwood) | Also eligible |
 |---|---|---|
-| `private_industrial` | short rotation / hardwood clearcut | long rotation |
-| `private_corporate_other` | long rotation / light thin | uneven-aged selection |
-| `private_family` | light thin | uneven-aged selection, long rotation |
+| `corporate` | short rotation / hardwood clearcut | long rotation |
+| `family` | light thin | uneven-aged selection, long rotation |
 | `tribal` | public selection | light thin |
 | `federal` | public selection | restoration thin |
 | `state` | restoration thin / public selection | long rotation |
@@ -242,8 +195,7 @@ The pre-config `regime_assignment.py` sent Federal, State, Tribal, and Local ali
   timber program.
 - **Local** — now `no_management`. County and municipal forest is predominantly parks,
   watershed, and school land.
-- **Corporate** — still industrial by default, but demotable by parcel evidence, which
-  changes both the default prescription and the eligible menu for demoted units.
+- **Corporate** — unchanged: plantation rotation for pine, clearcut otherwise.
 
 Everything else resolves to the same template and the same parameters as before, which
 `tests/test_s4_regime_templates.py` pins.
@@ -460,15 +412,11 @@ These are stated in the configs and repeated here so they are visible in one pla
   headline methods caveat rather than an edge case. The tool now exists — `--ladder-report`
   needs no resolved slots — so this is a run away, and it should happen **before** donor
   plots are pinned, since the answer determines how much the pinning choice matters.
-- **`industrial_min_acres` is a knob, not a constant.** Sensitivity-test it.
 - **Regeneration delays** (1 year planted pine, 3 years hardwood) are silvicultural
   judgement. LCMS post-harvest recovery slope could calibrate them.
 - **Site index carry.** A fixed tree list brings its donor plot's site index. Whether the
   recipient should keep its own — probably yes, since site index and terrain are per-pixel
   products independent of TreeMap — needs deciding before resolver output is used.
-- **Owner-name refinement is disabled.** No owner-name column is confirmed present in
-  `FL_5_Co_Parcels`. The pattern list is written and unused until `--audit-parcels`
-  confirms a field.
 - **Non-NF federal land** charges against the "Federal (NF)" TPO cap, because that is the
   only federal group TPO reports. Small in the pilot; grows on expansion.
 - **Prescribed fire is not modelled.** `public_thin_restore` is the mechanical thinning
