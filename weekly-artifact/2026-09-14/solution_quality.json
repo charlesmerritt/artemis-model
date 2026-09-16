@@ -1,0 +1,110 @@
+{
+  "objective_best": 63.076986320415,
+  "objective_greedy_baseline": 363.59357609419476,
+  "objective_random_baseline_mean": 276.3691475906933,
+  "objective_random_baseline_all": [
+    298.575130155261,
+    273.3714636141761,
+    286.86255374354164,
+    270.1355158687794,
+    252.90107457170825
+  ],
+  "relaxation_bound": 0.1954592094908063,
+  "relaxation_bound_strategy": "per-cycle per-dimension interval relaxation",
+  "gap_to_bound_absolute": 62.881527110924196,
+  "beats_greedy": true,
+  "beats_random": true,
+  "seed_spread": {
+    "min": 63.07698632041486,
+    "max": 66.56017792307229,
+    "range": 3.4831916026574277
+  },
+  "target_period": "2013_2024",
+  "random_seed": 42,
+  "cooling": {
+    "cooling_factor": 0.95,
+    "iterations_per_temperature": 10,
+    "min_temperature": 0.0001,
+    "stall_temperature_levels": 20,
+    "initial_accept_rate": 0.8
+  },
+  "objective_weights": {
+    "harvest_volume": 6.0,
+    "standing_volume": 1.0
+  },
+  "move_weights_declared": {
+    "single_stand": 0.7,
+    "block": 0.2,
+    "period_swap": 0.1
+  },
+  "move_probabilities_effective": {
+    "single_stand": 0.875,
+    "period_swap": 0.12500000000000003,
+    "block": "unavailable \u2014 no adjacency components on a pixel-class landscape"
+  },
+  "spatial_penalties": {
+    "available": false,
+    "reason": "no polygon adjacency: stands are pixel classes (TreeMap plot x county x ownership), not contiguous units",
+    "declared": {
+      "adjacency_greenup": 1.0,
+      "max_opening_size": 1.0,
+      "treatment_budget": 0.0
+    }
+  },
+  "riparian_structural": {
+    "riparian_stands": 6602,
+    "with_a_cutting_option": 0,
+    "structurally_enforced": true
+  },
+  "stands": 11831,
+  "stands_with_a_choice": 5229,
+  "stands_dropped": 0,
+  "options_dropped_no_trajectory": 1,
+  "targets_unreachable_from_library": 3,
+  "targets_total": 80,
+  "targets_unreachable_is_a_proof": true,
+  "targets_within_envelope_note": "membership in the relaxed envelope does not prove a target attainable \u2014 the choices are discrete and the relaxation lets a stand vary per cycle and per dimension; only the unreachable count is a proof",
+  "objective_evenflow_term": 10.613808556566315,
+  "objective_comparability_note": "`objective_evenflow_term` is the weight-6 even-flow cost and is exactly comparable across libraries. The total objective's second term (standing_volume, weight 1) is normalised by this library's own attainable maximum, which a larger menu can raise, so totals from two different libraries differ by up to the standing weight for reasons of denominator rather than plan",
+  "timing_grid": {
+    "offsets_years": [
+      0,
+      5,
+      10,
+      15
+    ],
+    "num_cycle_run": 11,
+    "objective_cycles": 10,
+    "last_entry_year": 2072,
+    "library_rows": 53606,
+    "library_rows_pre_expansion": 22317,
+    "fvs_runs": 13034,
+    "options_per_stand": {
+      "1": 6602,
+      "2": 12,
+      "3": 34,
+      "4": 66,
+      "5": 798,
+      "9": 3381,
+      "13": 938
+    },
+    "base_library_check": {
+      "runs_in_20260831_index": 3781,
+      "offset_0_runs_compared": 3781,
+      "runs_not_matched": 0,
+      "runs_required_identical": 3775,
+      "max_abs_diff_total_removed_cuft_per_ac": 9.094947017729282e-13,
+      "max_abs_diff_ending_merch_cuft_per_ac": 0.0,
+      "runs_corrected_by_terminal_cycle": 6,
+      "volume_recovered_cuft_per_ac": 16717.08123779297,
+      "corrected_runs": [
+        "448940876489998::hardwood_clearcut_regen",
+        "635664862126144::hardwood_clearcut_regen",
+        "638333793126144::hardwood_clearcut_regen",
+        "698001610126144::hardwood_clearcut_regen",
+        "718562165290487::hardwood_clearcut_regen",
+        "718562294290487::hardwood_clearcut_regen"
+      ]
+    }
+  }
+}

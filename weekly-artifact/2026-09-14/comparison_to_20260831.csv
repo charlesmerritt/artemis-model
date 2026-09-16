@@ -1,0 +1,29 @@
+measure,value_20260831,value_20260914,change
+even-flow cost (sum of squared relative deviations; exactly comparable),31.865182125101583,10.613808556566315,-21.251373568535268
+"objective (best of 5 seeds, lower is better)",190.41409871907317,63.076986320415,-127.33711239865816
+"objective, greedy baseline",363.67632968564254,363.59357609419476,-0.08275359144778349
+"objective, random baseline (mean of 5)",379.75443260341416,276.3691475906933,-103.38528501272089
+relaxation bound,153.73921041018934,0.1954592094908063,-153.54375120069855
+targets proven unreachable (of 80),47.0,3.0,-44.0
+stands with more than one trajectory,5228.0,5229.0,1.0
+seed spread (max - min objective),0.08762106113832147,3.4831916026574277,3.395570541519106
+"harvest volume, cycle 1 (2027), cuft",315161517.1310497,214525982.94661036,-100635534.18443933
+"harvest volume, cycle 2 (2032), cuft",248653077.4029953,230549853.0130013,-18103224.389993995
+"harvest volume, cycle 3 (2037), cuft",313911279.1055853,250015215.53770214,-63896063.567883134
+"harvest volume, cycle 4 (2042), cuft",251112442.99018836,267654180.51121566,16541737.521027297
+"harvest volume, cycle 5 (2047), cuft",56740289.24120932,272506023.72908854,215765734.48787922
+"harvest volume, cycle 6 (2052), cuft",323792966.63166225,276713348.6197367,-47079618.01192558
+"harvest volume, cycle 7 (2057), cuft",122430584.66985656,270947828.13481253,148517243.464956
+"harvest volume, cycle 8 (2062), cuft",31275344.998665523,245779537.91224274,214504192.91357723
+"harvest volume, cycle 9 (2067), cuft",225729531.0216674,283002873.2607458,57273342.23907843
+"harvest volume, cycle 10 (2072), cuft",0.0,266036055.0774232,266036055.0774232
+"targets proven unreachable, cycle 1 (of 8)",2.0,2.0,0.0
+"targets proven unreachable, cycle 2 (of 8)",4.0,0.0,-4.0
+"targets proven unreachable, cycle 3 (of 8)",3.0,0.0,-3.0
+"targets proven unreachable, cycle 4 (of 8)",3.0,0.0,-3.0
+"targets proven unreachable, cycle 5 (of 8)",8.0,0.0,-8.0
+"targets proven unreachable, cycle 6 (of 8)",1.0,0.0,-1.0
+"targets proven unreachable, cycle 7 (of 8)",7.0,0.0,-7.0
+"targets proven unreachable, cycle 8 (of 8)",6.0,0.0,-6.0
+"targets proven unreachable, cycle 9 (of 8)",5.0,0.0,-5.0
+"targets proven unreachable, cycle 10 (of 8)",8.0,1.0,-7.0
