@@ -1,0 +1,196 @@
+# Design sketch: ARTEMIS orchestrator (bundle-per-ownership, even-flow)
+
+> **SUPERSEDED 2026-08-06 — read this first.**
+>
+> The **iterative coupling loop below is no longer the architecture.** ARTEMIS does not run
+> FVS to a barrier, gather state, solve an allocation, inject cuts, and resume. It
+> precomputes a library of candidate trajectories per stand (contents set by ownership
+> class) and selects among them with simulated annealing. See
+> [`notes/trajectory-library-and-annealing.md`](../../../notes/trajectory-library-and-annealing.md).
+>
+> Why: with FVS inside the loop, every candidate plan costs a full re-projection, so the
+> scheduler can only afford one greedy myopic pass. Precomputing the trajectories makes
+> evaluating a whole landscape plan a lookup and a sum, which is what a metaheuristic needs.
+>
+> **What this document still gets right, and is retained for:**
+> - **Even flow per ownership class** as the objective — now a scheduler penalty term.
+> - **Ownership as the decomposition axis** — now the key that defines each stand's
+>   trajectory library rather than a worker bundle.
+> - **Concurrent isolated FVS worker processes** (proven, `parallel_demo.py`) — this is
+>   exactly how the library is generated. Better, in fact: library runs need no barrier at
+>   all, so the `maxstands 500` sub-bundling problem and the cross-process gather it forces
+>   both disappear.
+> - **The stand-selection guards** (§"Stand selection layer") — ownership assignment by
+>   dominant-owner-with-threshold, the operability mask, and crosswalk-vintage safety all
+>   carry over unchanged. They now shape library *contents* instead of bundle membership.
+> - **The Gate result** — management injection at a barrier is proven and remains the
+>   fallback mechanism if a future design needs runtime cuts.
+>
+> **What is retired:** the restart barrier as a *scheduling* mechanism, the rolling-horizon
+> MPC loop (decision 1), and the bundle-as-unit-of-work framing. A useful side effect: with
+> no barriers, the FFE carbon corruption that forced `carbon_extension: false` does not
+> arise in library runs.
+
+**Date:** 2026-07-17
+**Status:** Superseded (see above). Originally: sketch depending on an unproven mechanism.
+**Branch:** `claude-code/parallel-fvs-runs`
+**Predecessors:** `2026-07-16-parallel-fvs-runs-design.md` (spike),
+`notes/restart-fidelity-findings.md` (measured results).
+
+## Goal
+
+Project the AOI under iterative coupling where each worker owns a **bundle of stands grouped
+by ownership type** (federal, state, tribal, local, and private classes from the Harris 2025
+raster, per `config/projection.yaml`). The objective is to **optimize harvest with respect to
+even flow per ownership type** — a smooth, non-declining harvest volume within each owner across
+the horizon.
+
+## Why bundle-per-ownership is the right decomposition
+
+Even flow is a constraint **within** an ownership group (federal harvest period t ≈ t+1) and
+**independent across** groups (federal's target is unrelated to state's). This maps exactly onto
+the parallelism the spike proved:
+
+- **Across owners** → embarrassingly parallel. One worker/process per ownership class, run
+  concurrently. Validated: `research/restart_fidelity/parallel_demo.py` ran 5 isolated
+  concurrent FVS processes, each correct and bit-identical to sequential.
+- **Within an owner** → stands are coupled (they must sum to a smooth flow), so the bundle needs
+  a synchronized barrier where all its stands are visible at once for the harvest allocation.
+
+## The within-bundle even-flow loop
+
+```
+per ownership bundle (independent, concurrent):
+  segment: run ALL bundle stands to barrier t  (--stoppoint, store every stand in ONE restart file)
+      -> arm N proved this round-trips exactly on stand values
+  gather:  read all stands' state at t via DuckDB over the bundle's FVSOut.db
+  solve:   even-flow harvest allocation for THIS owner (which stands to cut, how much)
+  apply:   restart, inject per-stand cuts at stop point 2 (fvsCutNow), advance to t+1
+      -> NOT YET PROVEN. This is the gate below.
+```
+
+The restart file is what **synchronizes** stands at a common year: FVS processes one stand fully
+before the next, so within a single process stands are *not* aligned in time — the stop/restart
+barrier is what stores every stand at year t so the bundle can be seen as of t.
+
+**Carbon being out of scope is what makes this safe.** The spike found restart corrupts FFE
+carbon but preserves stand values (BA/Tpa/SDI/volume) exactly. Even-flow optimizes harvest
+volume, so restart is faithful for everything this objective touches. `carbon_extension` stays
+`false` (enforced by the config tripwire test).
+
+## Confirmed decisions (2026-07-17)
+
+1. **Even-flow enforcement: rolling horizon (MPC-style).** At each barrier, project the bundle
+   forward a few periods with a cheap no-cut lookahead (a throwaway FVS projection, or FVSjl),
+   solve a short harvest-scheduling LP, apply only the first period's cuts, then re-solve at the
+   next barrier. Handles even flow properly and adapts to realized growth. Rejected: myopic fixed
+   target (can't adapt) and outer-loop dual price (most machinery; revisit if MPC underperforms).
+
+2. **First build: the management-injection spike** (see Gate). The orchestrator is not buildable
+   until the apply step is proven.
+
+3. ~~**Ambiguous-stand assignment: dominant-owner with threshold.**~~ **FALSIFIED 2026-07-26 —
+   superseded by pixel-share allocation.** The original decision was to assign a stand to its
+   plurality ownership class only if that class clears a confidence threshold (e.g. >70% of the
+   stand's pixels), excluding and logging the rest, with the threshold as a parameter to tune.
+   Measured against Harris 2025 over the 693 pilot stands, that rule keeps **212/693 stands and
+   23% of AOI acres** at 70%, and still drops 30% of acres at a bare 50% plurality. No threshold
+   value is defensible, because the unit being thresholded is the wrong unit: a TreeMap stand is
+   an imputed FIA plot scattered across many disjoint pixels, so its footprint straddles owners
+   by construction. **Use pixel-share allocation** — each stand contributes acres to every owner
+   in proportion to its pixel counts — for supply-side accounting and the even-flow target;
+   defer harvest *application* to spatially coherent management units. Full analysis, costs and
+   open questions: `notes/ownership-bundling-pixel-share.md`; evidence:
+   `weekly-artifact/2026-07-26/fig7_bundle_threshold.png`.
+
+## The Gate: management-injection spike — PASSED (2026-07-17)
+
+**Result: PASS.** See `notes/restart-fidelity-findings.md` and
+`research/restart_fidelity/outputs/gate_cut_injection.txt`. A 30% proportional thin, three
+mechanisms: native `ThinDBH` keyword (G1) ≡ `fvsCutNow` in-process (G2) ≡ `fvsAddActivity`
+after a restart (G3), all exact on stand values (max |Δ| = 0.0). Per-stand targeting also
+proven: cutting one stand in a 2-stand bundle left the other bit-identical to a no-cut baseline.
+
+Two mechanism findings the orchestrator must respect:
+- `fvsCutNow` works only at stop point 2 and **not** right after a restart restore; the restart
+  path uses `fvsAddActivity(year, "base_thindbh", ...)` instead.
+- `fvsRun(2, year)` re-stops at a stand's stop point 2 *after* a cut, so a naive loop
+  double-cuts; guard each stand to one cut per barrier.
+
+The original gate description follows for context.
+
+Everything above rests on an **unproven** step: applying `fvsCutNow` at a barrier and resuming,
+and applying *different* cuts to *different* stands within one restart segment. The spike so far
+validated only the management-free transport. This must be proven before the orchestrator means
+anything.
+
+Minimal experiment, in the shape of the existing arms:
+
+- Take a small bundle (the 5-stand fixture, `Inv_Year 2019`).
+- **Arm CUT-INPROC:** in-process pause at stop point 2, `fvsCutNow` a known proportion on selected
+  stands, resume. Compare against a keyword-scheduled `Thin*`/cut of the same proportion (the
+  authoritative in-FVS path). Expect: match.
+- **Arm CUT-RESTART:** same cut applied across a stop/restart barrier. Compare against
+  CUT-INPROC. Expect: stand values match (carbon ignored).
+- Verify per-stand: the cut proportion actually removed the intended TPA/BA, `FVS_Summary2`
+  `RmvCode`/removed volume reflect it, and *un*-cut stands in the bundle are untouched.
+
+Falsification: if restart can't carry a scheduled/injected cut faithfully, or per-stand cut
+targeting leaks across stands, the restart-based barrier is not viable for management and the
+architecture moves to in-process-only bundles (smaller bundles, no eviction).
+
+## Stand selection layer ("be careful what we grab")
+
+Bundle membership is the input to the whole optimization; a mis-assigned stand corrupts an
+owner's flow. Guards to build (before or alongside the orchestrator):
+
+1. **Ownership assignment** — **pixel-share allocation** over the Harris 2025 raster within each
+   stand's footprint: each stand contributes acres to every owner proportionally, nothing is
+   excluded. (Was: dominant-owner-with-threshold with sub-threshold stands excluded and logged —
+   falsified, see decision 3.) Consequence the orchestrator must absorb: bundles are no longer a
+   partition of stands, so a stand is projected once and its results shared across the owners
+   accounting for it. Harvest *application* still needs a single-owner unit — see guard 5.
+2. **Operability mask** — ownership class ≠ harvestable. Federal wilderness is federal but
+   reserved. Layer reserve status, and later slope/access, min harvest age, residual stocking.
+3. **Crosswalk-vintage safety** — the TreeMap 2022-vs-2020 trap (693 vs 688 stands via
+   TM_ID→PLT_CN→stand_cn) documented in `notes/fvs-to-raster-painting.md`. Pin one vintage;
+   assert stand-count/coverage before a run.
+4. **FVS instance limits** — `maxstands 500`, `maxtrees 3000` per process. An owner exceeding 500
+   stands forces **sub-bundling**: multiple workers for one owner, and the even-flow solve must
+   then gather across those sub-bundles. This is the one place "one owner = one worker" breaks and
+   the allocation becomes cross-process for that owner. Pixel-share makes this bite sooner: an
+   owner's stand list is now every stand containing any of its pixels, which for private in the
+   pilot is close to all 693.
+5. **Single-owner unit for harvest application** — pixel-share is sound for *accounting* volume,
+   not for *applying* a cut: telling the federal bundle to cut a stand that is 40% federal lands
+   the physical cut on pixels that mostly are not. Applying harvest needs a spatially coherent,
+   single-owner unit, which is what `pipeline/s3_management` produces from parcels, roads and BMP
+   buffers. Until those units are wired in, the even-flow solve should treat its allocation as
+   supply-side accounting only. See `notes/ownership-bundling-pixel-share.md`.
+
+## Proven vs. unproven
+
+| Piece | Status |
+|---|---|
+| Concurrent isolated workers | **Proven** (`parallel_demo`, 5 processes) |
+| Multi-stand restart barrier, exact on stand values | **Proven** (arm N) |
+| In-process pause exact | **Proven** (arm B) |
+| Restart preserves carbon | **Disproven** — out of scope, `carbon_extension=false` |
+| Management injection at a barrier | **Proven (2026-07-17)** — gate passed |
+| Per-stand selective cut within a bundle | **Proven (2026-07-17)** — non-target untouched |
+| Even-flow allocation / rolling-horizon LP | Not started |
+| Dominant-owner-with-threshold bundling | **Disproven (2026-07-26)** — 212/693 stands, 23% of acres at 70%; wrong unit, not a bad threshold |
+| Pixel-share ownership allocation (supply-side accounting) | **Measured (2026-07-26)** — keeps the whole AOI; `notes/ownership-bundling-pixel-share.md` |
+| Single-owner unit for harvest application | Not started — blocked on `pipeline/s3_management` |
+| Stand selection / bundling layer | Partly measured — guards 1 and 5 above |
+
+## Open questions
+
+1. Rolling-horizon lookahead engine: throwaway FVS no-cut runs (authoritative, slow) or FVSjl
+   (fast, needs the SN-variant validation the spike deferred)?
+2. Sub-bundling threshold and how the cross-process even-flow solve gathers for a >500-stand owner.
+3. The harvest-scheduling LP itself: objective (maximize NPV? volume?) subject to non-declining
+   flow, per-stand operability, and min/max harvest age — formulation deferred until the Gate
+   passes.
+4. Tribal class: `projection.yaml` already notes falling back to a pooled estimate when the
+   training sample is thin — does that interact with bundle formation?

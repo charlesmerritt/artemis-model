@@ -176,7 +176,8 @@ scratch notebook that first demonstrated AlphaEarth cosine similarity. Keep it f
 - Uses the raw `GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL` collection directly (dot-product similarity
   to a single Ocala reference point), no county AOI, no vectorization, no helpers.
 - Calls `ee.Authenticate()` / `ee.Initialize()` inline (interactive) instead of `cac.init_ee()`.
-- **Brittle hardcoded path:** cell 4 reads `data/raw/tl_2022_us_state/tl_2022_us_state.shp`
-  (relative → the `data/raw → /mnt/d` symlink). Its committed output already carries a stored
-  `DataSourceError: ... No such file or directory` from when the drive was detached, and the last
-  cell is empty. Prefer the AOI finder for any real work.
+- ~~**Brittle hardcoded path:** cell 4 reads `data/raw/tl_2022_us_state/tl_2022_us_state.shp`
+  (relative → the `data/raw → /mnt/d` symlink).~~ Fixed 2026-07-31: cell 4 resolves
+  `raw.states.tl_2022_dir` through `cac.resolve_dir`, so it reads from the drive or the R2 mirror,
+  and the stored `DataSourceError` output was cleared. The last cell is still empty, and the
+  notebook still needs interactive GEE auth. Prefer the AOI finder for any real work.

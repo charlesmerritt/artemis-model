@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 from typing import Tuple
 
@@ -23,17 +24,22 @@ import seaborn as sns
 import yaml
 from rasterio.features import shapes
 from rasterio.mask import mask as rio_mask
-from rasterio.windows import from_bounds
 from shapely.geometry import box, mapping, shape
 from shapely.ops import unary_union
 from skimage.segmentation import felzenszwalb, slic
-from skimage.util import img_as_float
+
+# This module is documented and used as a directly-executed script, so Python puts
+# `research/mgmt_units` on sys.path rather than the repository root, and the project
+# declares no [build-system] for uv to install. Same shim as gee/scripts/gee_utils.py.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from pipeline.spatial_ref import project_crs  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Constants
-PROJECT_CRS = "EPSG:5070"
+PROJECT_CRS = project_crs()   # EPSG:5070 / NAD83 Conus Albers — see config/projection.yaml
 FLORIDA_FIPS = "12"
 
 
@@ -131,6 +137,10 @@ def felzenszwalb_segmentation(
         sigma=sigma,
         min_size=min_size,
     )
+
+    # felzenszwalb labels start at 0 (unlike slic's start_label=1); shift to 1-based
+    # so 0 stays reserved for nodata and vectorize_segments cannot drop a real segment
+    segments = segments + 1
 
     # Mask out non-forest pixels
     segments_masked = np.where(forest_mask, segments, 0)
@@ -325,8 +335,6 @@ def process_segmentation_strategy(
         "US SE Streams" / "US SE Streams.gdb"
     )
     evt_path = data_root / "LF2022_EVT_CONUS" / "LF2022_EVT_CONUS" / "Tif" / "LF2022_EVT_CONUS.tif"
-    treemap_path = data_root / "TreeMap-2022" / "Data" / "TreeMap2022_CONUS.tif"
-    ownership_path = data_root / "RDS-2025-0045" / "Data" / "US_forest_ownership.tif"
 
     # County name mapping
     county_name_map = {
@@ -605,8 +613,8 @@ def main():
         sigma=1.0,
     )
 
-    # 4. Compare strategies
-    summary = compare_strategies(naive_gdf, felz_gdf, slic_gdf, output_dir)
+    # 4. Compare strategies (writes comparison outputs to output_dir)
+    compare_strategies(naive_gdf, felz_gdf, slic_gdf, output_dir)
 
     logger.info("Analysis complete!")
     logger.info(f"Results saved to {output_dir}")

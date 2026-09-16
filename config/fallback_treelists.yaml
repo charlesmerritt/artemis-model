@@ -1,0 +1,261 @@
+# ARTEMIS fixed fallback tree lists — what a stand is initialized from when it has no
+# tree list of its own.
+#
+# Two situations produce a forested acre with nothing to grow, and they need different
+# answers:
+#
+#   INITIALIZATION GAP (year 0). The pixel is forest under the mask but TreeMap gives it
+#     nothing usable: TreeMap nodata under the forest mask, a TM_ID with no row in the
+#     TM_ID→PLT_CN crosswalk, or a donor plot that contributes no live tree records.
+#     Today `build_fvs_inputs.impute_nearest_runnable` hands the nearest runnable unit's
+#     list to such a unit at any distance and with no forest-type test — a bottomland
+#     hardwood unit can inherit a pine plantation from 40 km away and nothing records it.
+#     This file bounds that and gives the ladder a documented last rung.
+#
+#   REGENERATION (mid-run). The scheduler applies a stand-replacing entry — the trees are
+#     gone and FVS will grow an empty stand forever. Regeneration is not expressed with
+#     the FVS PLANT/NATREGEN keywords: their field layouts are unverified in this project
+#     (pipeline/s4_fvs/regime_templates.py docstring). It is expressed by restarting the
+#     stand from a fixed tree list, which is exactly the mechanism this file provides.
+#     External cut injection and restart are verified exact on stand values
+#     (research/restart_fidelity/outputs/gate_cut_injection.txt).
+#
+# ---------------------------------------------------------------------------------------
+# The rule that makes these defensible: every fallback is a real FIA plot
+# ---------------------------------------------------------------------------------------
+# A fallback tree list is never hand-written. Each slot below is filled by ONE real,
+# unmodified FIA tree list, chosen from the FIA candidate pool by a deterministic rule and
+# then PINNED by PLT_CN in config/fallback_treelists.lock.yaml.
+#
+# This is the same principle as notes/methodology-directions.md item 1 — "every FVS run is
+# initialized from a real, unmodified FIA tree list" — applied to the gap cases. A
+# synthetic list would break TPA_UNADJ expansion semantics, could not be checked against
+# FIA, and would put invented numbers into a reported result.
+#
+# Pinning matters as much as the rule: an unpinned "median plot" is recomputed every time
+# the FIA vintage changes, which would silently move every fallback stand in the
+# landscape. The lock file is the reproducibility contract, alongside the harvest seed in
+# config/projection.yaml.
+
+version: 1
+status: unresolved         # `resolved` once every slot has a pinned PLT_CN in the lock file
+lock_file: "config/fallback_treelists.lock.yaml"
+
+# Resolve (requires the FIA SQLite from config/data_paths.yaml — a mounted data drive):
+#
+#     uv run python -m pipeline.s4_fvs.fallback_treelists --resolve
+#
+# That writes the lock file and flips `status`. Until then, any pipeline stage that needs
+# a fallback raises rather than substituting something arbitrary.
+
+# ---------------------------------------------------------------------------------------
+# Donor-plot selection rule
+# ---------------------------------------------------------------------------------------
+selection_rule:
+  method: median_basal_area
+  description: >
+    Among FIA plots matching a slot's filter, order by live basal area per acre and take
+    the median plot (lower median on an even count). Ties, and equal-BA plots, break by
+    ascending PLT_CN as a string. Deterministic, reproducible from the FIA DB alone, and
+    it lands on a typical rather than an extreme stand — a mean would be no plot at all,
+    and a random draw would need its own seed.
+  tie_break: "ascending PLT_CN, string comparison (PLT_CN is 15 digits; never numeric)"
+  candidate_pool:
+    fvs_variant: "SN"
+    states: ["12", "13", "01"]      # FL + GA + AL: TreeMap draws donors across state lines
+    min_candidates: 10              # a slot resolving from fewer plots is not representative
+  rationale_for_min_candidates: >
+    Below ten candidates the "median plot" is one arbitrary plot wearing a rule. The
+    resolver fails loudly instead of resolving such a slot, so the gap is visible.
+
+# ---------------------------------------------------------------------------------------
+# The slots
+# ---------------------------------------------------------------------------------------
+# Six: three regeneration slots (post-harvest) and three establishment slots
+# (initialization gaps). `filter` is the FIA candidate query; `plt_cn` is filled by the
+# resolver into the lock file, never edited by hand.
+#
+# FIA fields used: FORTYPCD (forest type), STDORGCD (0 natural / 1 planted), STDAGE
+# (stand age), BALIVE (live basal area per acre).
+
+slots:
+
+  planted_pine_regen:
+    label: "Planted pine regeneration (post-clearcut, industrial rotation)"
+    use: regeneration
+    filter:
+      fortypcd_min: 140
+      fortypcd_max: 179
+      stdorgcd: 1                   # planted
+      stdage_max: 10
+    rationale: >
+      Restarts a plantation after its rotation clearcut. Planted origin and age ≤ 10 give
+      an established young plantation rather than bare ground, which is what the stand
+      looks like when the regeneration delay in config/management_regimes.yaml has
+      elapsed.
+
+  natural_pine_regen:
+    label: "Natural pine regeneration (post-harvest, non-plantation)"
+    use: regeneration
+    filter:
+      fortypcd_min: 140
+      fortypcd_max: 179
+      stdorgcd: 0                   # natural
+      stdage_max: 15
+    rationale: >
+      For stand-replacing entries on ownerships that do not replant. Wider age window
+      than the planted slot because natural pine regeneration is slower and more variable
+      to reach a measurable list.
+
+  hardwood_regen:
+    label: "Hardwood regeneration (post-clearcut, natural)"
+    use: regeneration
+    filter:
+      fortypcd_min: 500
+      fortypcd_max: 998
+      stdorgcd: 0
+      stdage_max: 15
+    rationale: >
+      Sprout-and-seedling origin hardwood following a stand-replacing entry. Paired with
+      the longer `delay_years` on `hardwood_clearcut_regen`.
+
+  upland_pine_established:
+    label: "Established upland pine (initialization gap in a pine-typed pixel)"
+    use: establishment
+    filter:
+      fortypcd_min: 140
+      fortypcd_max: 179
+      stdage_min: 20
+      stdage_max: 40
+    rationale: >
+      Fills a year-0 hole where the surrounding forest type is pine. Mid-rotation age
+      band, because a hole is not evidence of recent disturbance — a recently cleared
+      pixel is a different case and is handled by the regeneration slots.
+
+  bottomland_hardwood_established:
+    label: "Established bottomland hardwood (oak/gum/cypress, elm/ash/cottonwood)"
+    use: establishment
+    filter:
+      fortypcd_in_groups: [600, 700]
+      stdage_min: 25
+    rationale: >
+      Wet hardwood types. Kept separate from upland hardwood because the species mix and
+      growth behaviour differ enough that one hardwood slot would misrepresent both, and
+      because holes cluster in wet types where the imagery TreeMap was trained on is
+      hardest.
+
+  mixed_pine_hardwood_established:
+    label: "Established mixed pine-hardwood (oak/pine) — the universal default"
+    use: establishment
+    default: true
+    filter:
+      fortypcd_min: 400
+      fortypcd_max: 499
+      stdage_min: 20
+    rationale: >
+      The last rung of the ladder: used when the forest type is unknown or unmapped. The
+      oak/pine group is the least wrong single answer for an unclassified southern forest
+      pixel, and choosing it explicitly is better than inheriting whatever unit happened
+      to be nearest.
+
+# ---------------------------------------------------------------------------------------
+# Forest-type grouping used to route an initialization gap to a slot
+# ---------------------------------------------------------------------------------------
+# FIA orders forest type groups softwood → oak/pine → hardwood → nonstocked, so the ranges
+# below partition FORTYPCD cleanly. The pine range matches the one already in
+# pipeline/s3_management/regime_assignment.py.
+
+forest_type_groups:
+  pine:        {min: 100, max: 399}
+  mixed:       {min: 400, max: 499}
+  hardwood:    {min: 500, max: 998}
+  nonstocked:  {min: 999, max: 999}
+
+bottomland_hardwood_groups: [600, 700]     # oak/gum/cypress, elm/ash/cottonwood
+
+# ---------------------------------------------------------------------------------------
+# Resolution ladder — which rung applies to an initialization gap
+# ---------------------------------------------------------------------------------------
+# Tried in order. The first rung that succeeds wins, and whichever rung fired is recorded
+# on every resulting tree row.
+
+initialization_ladder:
+  - rung: donor_unit_same_type
+    method: nearest_runnable_unit
+    constraints:
+      max_distance_m: 5000
+      require_same_forest_type_group: true
+    rationale: >
+      A real neighbouring stand of the same broad type is a better initializer than any
+      regional median. Bounded at 5 km: beyond that "nearest" stops meaning "similar",
+      and the pilot counties are small enough that a 5 km search still finds a donor
+      almost everywhere.
+
+  - rung: donor_unit_any_type
+    method: nearest_runnable_unit
+    constraints:
+      max_distance_m: 2000
+      require_same_forest_type_group: false
+    rationale: >
+      A much tighter radius when the type does not match, because the only thing left
+      justifying the donor is proximity.
+
+  - rung: fixed_slot_by_forest_type
+    method: fallback_slot
+    mapping:
+      pine: upland_pine_established
+      hardwood_bottomland: bottomland_hardwood_established
+      hardwood_upland: mixed_pine_hardwood_established
+      mixed: mixed_pine_hardwood_established
+      nonstocked: mixed_pine_hardwood_established
+    rationale: >
+      Upland hardwood routes to the mixed slot rather than getting its own: the pilot's
+      upland hardwood is largely oak/pine transitional, and a seventh slot would not earn
+      its keep.
+
+  - rung: default_slot
+    method: fallback_slot
+    slot: mixed_pine_hardwood_established
+    rationale: "Forest type unknown or unmapped."
+
+# ---------------------------------------------------------------------------------------
+# Provenance tagging — non-negotiable
+# ---------------------------------------------------------------------------------------
+# Every tree row carries where it came from, and every summary reports area by source.
+# A landscape where 8% of the acres came from a fixed list is a different result from one
+# where 0.3% did, and the difference must never be invisible in the output.
+
+tree_source_values:
+  FIA_WEIGHTED_DIRECT: "Area-weighted mix of the unit's own TreeMap-imputed FIA plots."
+  IMPUTED_NEAREST:     "Inherited from a nearby runnable unit (ladder rungs 1-2)."
+  FALLBACK_FIXED:      "A pinned fixed tree list from this file (ladder rungs 3-4)."
+  REGEN_FIXED:         "A pinned regeneration tree list injected after a harvest entry."
+
+required_reporting:
+  - "Area and share of the landscape by TREE_SOURCE, per county and per owner class."
+  - "For IMPUTED_NEAREST: distribution of donor distance, and the share over 2 km."
+  - "For FALLBACK_FIXED and REGEN_FIXED: area per slot."
+  - "Any FVS result that does not carry these three is not reportable."
+
+# ---------------------------------------------------------------------------------------
+# Open decisions
+# ---------------------------------------------------------------------------------------
+open_decisions:
+  - id: hole_prevalence_unmeasured
+    text: >
+      How much area actually falls into each ladder rung is unmeasured. TreeMap hole
+      prevalence under the forest mask has never been quantified for the pilot AOI. If
+      rung 3 or 4 turns out to carry a material share of the landscape, the fixed lists
+      become a headline methods caveat rather than an edge case. Measure before the
+      first reported managed run.
+  - id: regen_delay_calibration
+    text: >
+      The `delay_years` values in config/management_regimes.yaml (1 for planted pine,
+      3 for hardwood) are silvicultural judgement, not fitted values. LCMS post-harvest
+      recovery slope could calibrate them.
+  - id: site_index_carry
+    text: >
+      A fixed tree list brings its donor plot's site index. Whether the recipient stand
+      should keep its own site index and terrain attributes instead — probably yes, since
+      those are per-pixel products independent of TreeMap — needs deciding before the
+      resolver output is used.

@@ -31,6 +31,10 @@ library(DBI)
 library(RSQLite)
 library(dplyr)
 
+# Keep any numeric that reaches a paste()/write.csv out of scientific notation;
+# see the PLT_CN precision note below.
+options(scipen = 999)
+
 # ---- File paths ----
 tmid_csv <- "output/FL_5county_TreeMap_TMIDs.csv"
 
@@ -58,11 +62,13 @@ GROUP_TAG <- "StudyArea=5county"
 
 # ---- Load TreeMap PLT_CNs ----
 # Read PLT_CN as character to prevent floating point precision loss.
-# FIA control numbers are 16-digit integers that exceed double precision
+# FIA control numbers are long integers that exceed double precision
 # (~15 significant digits). Reading as numeric causes silent truncation.
-# The values stored in the CSV are 14 digits (truncated during original
-# write.csv) but still match COND.PLT_CN via SQLite implicit coercion.
+# Scripts 01 and 02 now keep the column character end to end, so the values
+# here should be the full control numbers; the check below fails loudly if a
+# regenerated CSV ever arrives re-rendered from a double instead.
 tmid_list   <- read.csv(tmid_csv, colClasses = c(PLT_CN = "character"))
+stopifnot(all(grepl("^[0-9]+$", na.omit(tmid_list$PLT_CN))))
 all_plt_cns <- unique(tmid_list$PLT_CN)
 plt_cn_str  <- paste(all_plt_cns, collapse = ",")
 

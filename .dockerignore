@@ -1,0 +1,17 @@
+# Build context: source and manifests only. Everything here is either rebuilt in
+# the image, machine-specific, or data that belongs on a mount / in R2.
+
+.git
+.github
+.venv
+data
+notebooks/**/.ipynb_checkpoints
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.jupyter-runtime
+.claude
+fvs/bin
+fvs/build
+*.log

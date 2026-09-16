@@ -1,0 +1,4 @@
+old global-prefilter AUC=0.883385, n=3048
+fold-local conditional-refit AUC=0.888651, n=2936
+fold-local Stage-B survivor AUC=0.911780, n=1468
+end-to-end balanced accuracy=0.903333

@@ -1,0 +1,40 @@
+# Merge behaviour for the two files every branch touches.
+#
+# Measured in notes/branch-triage-2026-08-10.md: across the fifteen open
+# branches, `uv.lock` and `notes/README.md` alone produced 16 of the 50 pairwise
+# merge conflicts. Neither was ever a real disagreement — one is generated, the
+# other is an append-only index — so both are resolved here rather than by hand,
+# once per branch, forever.
+
+# The lockfile is generated from pyproject.toml, so a line-by-line merge of two
+# resolutions is meaningless at best and produces an internally inconsistent
+# lockfile at worst: interleaved package stanzas that neither branch ever
+# resolved and that no `uv sync` would ever produce.
+#
+# Resolution is split across two hooks because neither can do the job alone:
+#   scripts/merge-uv-lock.sh   takes HEAD's lockfile verbatim, so the result is
+#                              always a resolution some branch really produced.
+#   .githooks/post-merge       re-resolves it against the merged pyproject.toml.
+# The driver cannot do the second step itself — it runs before git writes the
+# merged files and before MERGE_HEAD exists, so it cannot see the merged
+# manifest, and resolving there yields a lockfile that is silently stale. That
+# was measured, not assumed; the long comment in the driver has the details.
+#
+# Both halves are registered per clone (.claude/hooks/session-start.sh does it,
+# and the README quickstart lists it). Without registration git falls back to the
+# built-in 3-way merge, so this is a cleanup, never a correctness dependency.
+uv.lock merge=uv-lock
+
+# Generated, and large: keep it out of language stats and collapsed in diffs.
+uv.lock linguist-generated=true
+
+# Append-only index. Every branch adds its own entry at the end, and the entries
+# are independent, so taking both sides is always the right answer — that is
+# exactly what `union` does. The failure mode is a duplicated line when two
+# branches document the same note, which is visible and trivially fixed; the
+# alternative is a conflict on every single branch, which is what we measured.
+#
+# Deliberately scoped to this one index rather than `*.md`: prose files DO have
+# real conflicts, and silently unioning two rewrites of the same paragraph would
+# produce a document that reads as though it were merged cleanly when it was not.
+notes/README.md merge=union

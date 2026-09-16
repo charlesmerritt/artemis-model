@@ -1,0 +1,5 @@
+"metric","FIA","TreeMap_raw","TreeMap_scaled","raw_pct_diff","scaled_pct_diff","abs_improved"
+"Forest acres",16758135.91,15965986.31,16687522.8760607,-4.73,-0.42,"yes"
+"BAA (sq ft/ac)",83.56,77.8,77.4224759033138,-6.89,-7.35,"NO"
+"TPA (trees/ac)",481.31,519.48,507.135391397116,7.93,5.37,"yes"
+"Carbon AG live (tons/ac)",19.98,17.22,16.880249823583,-13.81,-15.51,"NO"

@@ -1,0 +1,26 @@
+MULTI-STAND RESTART (arm N) vs MULTI-STAND CONTINUOUS (arm M) -- 2026-07-16
+5 SN stands, Inv_Year 2019, 2019-2039, four 5-yr cycles, no management.
+Barriers 2024/2029/2034 at stop point 6. Metrics in scope: BA / Tpa / SDI.
+
+Restart file sizes (ALL stands in ONE file -- empirically confirms cmdline.f:179):
+  arm_n_2024.rst  4644885 bytes   (vs ~774-905KB for a single stand)
+  arm_n_2029.rst  4648981 bytes
+  arm_n_2034.rst  4661269 bytes
+
+stands: 5  joined rows: 25
+BASE METRIC max |delta| (BA/Tpa/SDI): 0.0
+
+=== per-stand final-year values (arm M == arm N) ===
+     StandID  Year         BA         Tpa  SDI
+121700100063  2039 213.624252  674.230957  401
+121705900034  2039 157.280777 1168.350220  336
+121705900036  2039 163.471802  580.662109  332
+121708300141  2039 232.899307  319.487946  393
+121708900049  2039 227.296310 1477.780151  436
+
+divergent rows (any metric): 0
+
+VERDICT: multi-stand stop/restart is EXACT on stand values.
+One restart file stores and rehydrates all 5 stands losslessly.
+This validates the core mechanism a global barrier depends on.
+Caveat: still NO MANAGEMENT applied at the barriers -- untested.

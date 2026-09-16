@@ -1,0 +1,12 @@
+check_id,category,claim,fixture,metric,expected,observed,result,in_scope
+B,restart_fidelity,In-process pause reproduces a continuous run exactly,single stand 43393151010478 (SN) 1999-2019 no mgmt,BA/TPA/SDI max |delta|,0.0,0.0,PASS,yes
+C,restart_fidelity,Stop/restart across processes preserves stand values,single stand 43393151010478 (SN) 1999-2019 no mgmt,BA/TPA/SDI max |delta|,0.0,0.0,PASS,yes
+E,restart_fidelity,Restart at a later stop point (sp6) preserves stand values,single stand 43393151010478 (SN) 1999-2019 no mgmt,BA/TPA/SDI max |delta|,0.0,0.0,PASS,yes
+N,restart_fidelity,Multi-stand global barrier round-trips all stands exactly,5 SN stands 2019-2039 no mgmt (25 stand-cycles),BA/TPA/SDI max |delta|,0.0,0.0,PASS,yes
+C_carbon,restart_fidelity,Stop/restart preserves FFE carbon,single stand 43393151010478 (SN) at 2014,Total_Stand_Carbon,64.52 t/ac (match),59.14 t/ac (-8.3%; Forest_Shrub_Herb collapses to 0.02),FAIL,no (carbon disabled)
+G_tpa,management_injection,A 30% proportional thin removes exactly 30% of TPA,single stand 43393151010478 (SN) thin at 2004,TPA post/pre ratio,0.700,825.483/1179.261 = 0.700,PASS,yes
+G_ba,management_injection,A 30% proportional thin removes exactly 30% of BA,single stand 43393151010478 (SN) thin at 2004,BA post/pre ratio,0.700,74.519/106.456 = 0.700,PASS,yes
+G_inject_vs_native,management_injection,Runtime cut injection equals the native FVS keyword,g1 ThinDBH vs g2 fvsCutNow at stop point 2,all metrics max |delta|,0.0,0.0,PASS,yes
+G_restart_vs_inproc,management_injection,A cut injected after a restart barrier equals the in-process cut,g2 fvsCutNow vs g3 fvsAddActivity after stop/restart,all metrics max |delta|,0.0,0.0,PASS,yes
+G_selective_target,management_injection,A single stand in a bundle can be cut selectively,2-stand bundle; cut only 121705900034 at 2024 by 30%,target TPA post/pre ratio,0.700,1159.4/1656.3 = 0.700,PASS,yes
+G_selective_other,management_injection,Non-target stands are untouched by a selective cut,2-stand bundle; 121705900036 left uncut,max |delta| vs no-cut baseline,0.0,0.0,PASS,yes

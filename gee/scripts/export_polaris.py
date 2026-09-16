@@ -27,8 +27,16 @@ Usage
     uv run python gee/scripts/export_polaris.py
 """
 
+from typing import TYPE_CHECKING
+
 import click
 from gee_utils import export_to_drive, get_florida_geometry, init_ee, start_and_report
+
+if TYPE_CHECKING:
+    # earthengine-api is heavy and needs auth, so it is imported lazily inside
+    # each function. This makes the "ee.Image" annotations resolvable to type
+    # checkers and linters without importing it at module load.
+    import ee
 
 # POLARIS asset root in GEE community catalog
 POLARIS_ROOT = "projects/sat-io/open-datasets/POLARIS"
@@ -64,7 +72,6 @@ def depth_weighted_mean(prop: str) -> "ee.Image":
 @click.option("--project", default=None, help="GEE project ID")
 def main(folder, project):
     """Export POLARIS depth-weighted soil properties for Florida."""
-    import ee
 
     init_ee(project)
     florida = get_florida_geometry()

@@ -1,0 +1,9 @@
+prescription,units_eligible,stands_eligible,acres_eligible,cuts,collapsed,fvs_runs
+no_management,5240,676,925097.8313136607,False,0,676
+family_light_thin,1787,628,566516.6145529719,True,0,628
+family_uneven_aged_selection,1787,628,566516.6145529719,True,0,628
+pine_plantation_long_rotation,1577,290,425741.1235208145,True,0,290
+public_thin_restore,1903,480,175326.9762852657,True,0,480
+public_selection_light,1903,480,175326.9762852657,True,0,480
+pine_plantation_short_rotation,638,271,106920.32403348552,True,0,271
+hardwood_clearcut_regen,912,335,76333.91644193756,True,0,335

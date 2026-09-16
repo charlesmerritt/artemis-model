@@ -5,6 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "boto3>=1.43.61",
+    "duckdb>=1.5.4",
     "earthengine-api>=1.7.26",
     "folium>=0.12",
     "geemap>=0.37.3",
@@ -22,6 +24,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "rasterio>=1.5.0",
     "scikit-image>=0.26.0",
+    "scikit-learn>=1.9.0",
     "seaborn>=0.13.2",
     "shapely>=2.1.2",
     "xlrd>=2.0.2",
@@ -32,3 +35,18 @@ markers = [
     "arcpy: optional parity tests requiring an ArcGIS Pro Python environment",
     "production_data: integration tests requiring the mounted production sources",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.0",
+]
+
+[tool.ruff]
+target-version = "py314"
+# Notebook cells legitimately import mid-file and use semicolons (E402/E702);
+# linting them reports ~20 errors that are normal notebook style, not defects.
+extend-exclude = ["notebooks", "data", ".jupyter-runtime"]
+
+# Rules are ruff's defaults (E4/E7/E9 + F): correctness and unused code, no
+# style opinions. Deliberately not enabling isort/formatting rules, which would
+# churn the whole repo without catching bugs.

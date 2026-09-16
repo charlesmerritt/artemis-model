@@ -1,0 +1,625 @@
+terra 1.9.34
+
+Attaching package: ‘terra’
+
+The following object is masked from ‘package:rFIA’:
+
+    area
+
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:terra’:
+
+    intersect, union
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+ [1] "COND_DWM_CALC"          "COND"                   "INVASIVE_SUBPLOT_SPP"  
+ [4] "P2VEG_SUBP_STRUCTURE"   "PLOT"                   "PLOTGEOM"              
+ [7] "POP_ESTN_UNIT"          "POP_EVAL_GRP"           "POP_EVAL_TYP"          
+[10] "POP_EVAL"               "POP_PLOT_STRATUM_ASSGN" "POP_STRATUM"           
+[13] "SEEDLING"               "SUBP_COND_CHNG_MTRX"    "SUBP_COND"             
+[16] "SUBPLOT"                "SURVEY"                 "TREE_GRM_BEGIN"        
+[19] "TREE_GRM_COMPONENT"     "TREE_GRM_MIDPT"         "TREE"                  
+   EVALID
+1  121109
+2  127002
+3  127003
+4  128001
+5  128002
+6  128003
+7  128701
+8  128702
+9  128703
+10 129501
+11 129502
+12 129503
+13 121900
+14 121901
+15 121903
+16 121907
+17 121909
+18 122000
+19 122001
+20 122003
+21 122007
+22 122009
+23 122100
+24 122101
+25 122103
+26 122109
+27 122107
+28 122200
+29 122201
+30 122203
+31 122209
+32 122207
+33 122300
+34 122301
+35 122303
+36 122309
+37 122307
+38 121200
+39 121201
+40 121203
+41 121209
+42 120503
+43 120500
+44 120501
+45 120509
+46 120700
+47 120701
+48 120703
+49 120709
+50 120900
+51 120901
+52 120909
+53 121000
+54 121001
+55 121003
+56 121007
+57 121009
+58 121300
+59 121301
+60 121303
+61 121309
+62 121101
+63 121103
+64 121100
+65 121709
+66 121800
+67 121801
+68 121803
+69 121807
+70 121809
+71 121400
+72 121401
+73 121403
+74 121409
+75 121407
+76 121501
+77 121503
+78 121500
+79 121509
+80 121507
+81 121600
+82 121601
+83 121603
+84 121607
+85 121609
+86 121707
+87 121700
+88 121701
+89 121703
+90 127001
+                                                                       EVAL_DESCR
+1                                               FLORIDA 2011: 2002-2011: INVASIVE
+2                                                    FLORIDA 1970: CURRENT VOLUME
+3                               FLORIDA 1959 to 1970: GROWTH, REMOVALS, MORTALITY
+4                                                      FLORIDA 1980: CURRENT AREA
+5                                                    FLORIDA 1980: CURRENT VOLUME
+6                               FLORIDA 1970 to 1980: GROWTH, REMOVALS, MORTALITY
+7                                                      FLORIDA 1987: CURRENT AREA
+8                                                    FLORIDA 1987: CURRENT VOLUME
+9                               FLORIDA 1980 to 1987: GROWTH, REMOVALS, MORTALITY
+10                                                     FLORIDA 1995: CURRENT AREA
+11                                                   FLORIDA 1995: CURRENT VOLUME
+12                              FLORIDA 1987 to 1995: GROWTH, REMOVALS, MORTALITY
+13                                              FLORIDA 2019: 2014-2019: ALL AREA
+14                          FLORIDA 2019: 2014-2019: CURRENT AREA, CURRENT VOLUME
+15 FLORIDA 2019: 2010-2016 to 2015-2019: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+16                                                   FLORIDA 2019: 2014-2019: DWM
+17                                              FLORIDA 2019: 2014-2019: INVASIVE
+18                                              FLORIDA 2020: 2014-2020: ALL AREA
+19                          FLORIDA 2020: 2014-2020: CURRENT AREA, CURRENT VOLUME
+20 FLORIDA 2020: 2010-2017 to 2015-2020: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+21                                                   FLORIDA 2020: 2014-2020: DWM
+22                                              FLORIDA 2020: 2014-2020: INVASIVE
+23                                              FLORIDA 2021: 2014-2021: ALL AREA
+24                          FLORIDA 2021: 2014-2021: CURRENT AREA, CURRENT VOLUME
+25 FLORIDA 2021: 2011-2018 to 2016-2021: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+26                                              FLORIDA 2021: 2014-2021: INVASIVE
+27                                                   FLORIDA 2021: 2014-2021: DWM
+28                                              FLORIDA 2022: 2014-2022: ALL AREA
+29                          FLORIDA 2022: 2014-2022: CURRENT AREA, CURRENT VOLUME
+30 FLORIDA 2022: 2011-2018 to 2016-2022: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+31                                              FLORIDA 2022: 2014-2022: INVASIVE
+32                                                   FLORIDA 2022: 2014-2022: DWM
+33                                              FLORIDA 2023: 2014-2023: ALL AREA
+34                          FLORIDA 2023: 2014-2023: CURRENT AREA, CURRENT VOLUME
+35 FLORIDA 2023: 2011-2018 to 2016-2023: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+36                                              FLORIDA 2023: 2014-2023: INVASIVE
+37                                                   FLORIDA 2023: 2014-2023: DWM
+38                                              FLORIDA 2012: 2002-2012: ALL AREA
+39                          FLORIDA 2012: 2002-2012: CURRENT AREA, CURRENT VOLUME
+40 FLORIDA 2012: 2002-2007 to 2009-2012: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+41                                              FLORIDA 2012: 2002-2012: INVASIVE
+42                         FLORIDA 1995 to 2002-2004: GROWTH, REMOVALS, MORTALITY
+43                                                    FLORIDA 2002-2004: ALL AREA
+44                          FLORIDA 2004: 2002-2004: CURRENT AREA, CURRENT VOLUME
+45                                              FLORIDA 2004: 2002-2004: INVASIVE
+46                                                    FLORIDA 2002-2007: ALL AREA
+47                                FLORIDA 2002-2007: CURRENT AREA, CURRENT VOLUME
+48                         FLORIDA 1995 to 2002-2007: GROWTH, REMOVALS, MORTALITY
+49                                              FLORIDA 2007: 2002-2007: INVASIVE
+50                                                    FLORIDA 2002-2009: ALL AREA
+51                                FLORIDA 2002-2009: CURRENT AREA, CURRENT VOLUME
+52                                              FLORIDA 2009: 2002-2009: INVASIVE
+53                                              FLORIDA 2010: 2002-2010: ALL AREA
+54                          FLORIDA 2010: 2002-2010: CURRENT AREA, CURRENT VOLUME
+55 FLORIDA 2010: 2002-2007 to 2009-2010: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+56                                                   FLORIDA 2010: 2004-2010: DWM
+57                                              FLORIDA 2010: 2002-2010: INVASIVE
+58                                              FLORIDA 2013: 2009-2013: ALL AREA
+59                          FLORIDA 2013: 2009-2013: CURRENT AREA, CURRENT VOLUME
+60 FLORIDA 2013: 2002-2007 to 2009-2013: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+61                                              FLORIDA 2013: 2009-2013: INVASIVE
+62                          FLORIDA 2011: 2002-2011: CURRENT AREA, CURRENT VOLUME
+63 FLORIDA 2011: 2002-2007 to 2009-2011: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+64                                              FLORIDA 2011: 2002-2011: ALL AREA
+65                                              FLORIDA 2017: 2012-2017: INVASIVE
+66                                              FLORIDA 2018: 2014-2018: ALL AREA
+67                          FLORIDA 2018: 2014-2018: CURRENT AREA, CURRENT VOLUME
+68 FLORIDA 2018: 2009-2013 to 2014-2018: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+69                                                   FLORIDA 2018: 2014-2018: DWM
+70                                              FLORIDA 2018: 2014-2018: INVASIVE
+71                                              FLORIDA 2014: 2010-2014: ALL AREA
+72                          FLORIDA 2014: 2010-2014: CURRENT AREA, CURRENT VOLUME
+73 FLORIDA 2014: 2002-2011 to 2010-2014: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+74                                              FLORIDA 2014: 2010-2014: INVASIVE
+75                                                   FLORIDA 2014: 2013-2014: DWM
+76                          FLORIDA 2015: 2011-2015: CURRENT AREA, CURRENT VOLUME
+77 FLORIDA 2015: 2002-2011 to 2011-2015: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+78                                              FLORIDA 2015: 2011-2015: ALL AREA
+79                                              FLORIDA 2015: 2011-2015: INVASIVE
+80                                                   FLORIDA 2015: 2013-2015: DWM
+81                                              FLORIDA 2016: 2012-2016: ALL AREA
+82                          FLORIDA 2016: 2012-2016: CURRENT AREA, CURRENT VOLUME
+83 FLORIDA 2016: 2002-2011 to 2012-2016: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+84                                                   FLORIDA 2016: 2013-2016: DWM
+85                                              FLORIDA 2016: 2012-2016: INVASIVE
+86                                                   FLORIDA 2017: 2013-2017: DWM
+87                                              FLORIDA 2017: 2012-2017: ALL AREA
+88                          FLORIDA 2017: 2012-2017: CURRENT AREA, CURRENT VOLUME
+89 FLORIDA 2017: 2002-2012 to 2012-2017: AREA CHANGE, GROWTH, REMOVALS, MORTALITY
+90                                                     FLORIDA 1970: CURRENT AREA
+   END_INVYR
+1       2011
+2       1970
+3       1970
+4       1980
+5       1980
+6       1980
+7       1987
+8       1987
+9       1987
+10      1995
+11      1995
+12      1995
+13      2019
+14      2019
+15      2019
+16      2019
+17      2019
+18      2020
+19      2020
+20      2020
+21      2020
+22      2020
+23      2021
+24      2021
+25      2021
+26      2021
+27      2021
+28      2022
+29      2022
+30      2022
+31      2022
+32      2022
+33      2023
+34      2023
+35      2023
+36      2023
+37      2023
+38      2012
+39      2012
+40      2012
+41      2012
+42      2004
+43      2004
+44      2004
+45      2004
+46      2007
+47      2007
+48      2007
+49      2007
+50      2009
+51      2009
+52      2009
+53      2010
+54      2010
+55      2010
+56      2010
+57      2010
+58      2013
+59      2013
+60      2013
+61      2013
+62      2011
+63      2011
+64      2011
+65      2017
+66      2018
+67      2018
+68      2018
+69      2018
+70      2018
+71      2014
+72      2014
+73      2014
+74      2014
+75      2014
+76      2015
+77      2015
+78      2015
+79      2015
+80      2015
+81      2016
+82      2016
+83      2016
+84      2016
+85      2016
+86      2017
+87      2017
+88      2017
+89      2017
+90      1970
+[1] "--- FIA: BALIVE & TPA per acre ---"
+# A tibble: 17 × 13
+    YEAR   TPA   BAA  TREE_TOTAL BA_TOTAL AREA_TOTAL TPA_SE BAA_SE TREE_TOTAL_SE
+   <dbl> <dbl> <dbl>       <dbl>    <dbl>      <dbl>  <dbl>  <dbl>         <dbl>
+ 1  2004  473.  75.1 7668590688.   1.22e9  16205309.   2.27   1.91          2.45
+ 2  2007  472.  76.2 7968712309.   1.29e9  16897139.   1.74   1.43          1.89
+ 3  2009  473.  76.3 8120809027.   1.31e9  17175027.   1.74   1.41          1.90
+ 4  2010  473.  76.6 8207969313.   1.33e9  17342273.   1.73   1.41          1.90
+ 5  2011  467.  75.9 8162459676.   1.33e9  17460961.   1.74   1.42          1.90
+ 6  2012  464.  76.3 8097749101.   1.33e9  17435673.   1.73   1.41          1.90
+ 7  2013  464.  77.1 8016650226.   1.33e9  17271796.   1.73   1.40          1.90
+ 8  2014  466.  79.4 8035003524.   1.37e9  17253045.   1.68   1.29          1.81
+ 9  2015  465.  80.2 7985505036.   1.38e9  17156398.   1.72   1.30          1.86
+10  2016  471.  81.8 8031964516.   1.39e9  17052568.   1.71   1.29          1.86
+11  2017  470.  82.8 7970710592.   1.40e9  16970468.   1.72   1.30          1.89
+12  2018  467.  82.6 7915092744.   1.40e9  16942749.   1.73   1.32          1.90
+13  2019  475.  82.5 8049787081.   1.40e9  16952518.   1.74   1.34          1.93
+14  2020  477.  83.0 8058937746.   1.40e9  16902777.   1.73   1.34          1.93
+15  2021  475.  83.2 7995281341.   1.40e9  16839716.   1.74   1.35          1.94
+16  2022  480.  83.2 8076198486.   1.40e9  16816373.   1.79   1.35          1.99
+17  2023  481.  83.6 8065932403.   1.40e9  16758136.   1.79   1.36          2.00
+# ℹ 4 more variables: BA_TOTAL_SE <dbl>, AREA_TOTAL_SE <dbl>,
+#   nPlots_TREE <int>, nPlots_AREA <int>
+[1] "--- FIA: Carbon pools available ---"
+# A tibble: 85 × 9
+    YEAR POOL      CARB_ACRE CARB_TOTAL AREA_TOTAL CARB_ACRE_SE CARB_TOTAL_SE
+   <dbl> <chr>         <dbl>      <dbl>      <dbl>        <dbl>         <dbl>
+ 1  2004 AG_LIVE       16.9  274541923.  16205309.        2.04          2.19 
+ 2  2004 BG_LIVE        3.07  49763134.  16205309.        2.10          2.23 
+ 3  2004 DEAD_WOOD      3.83  61995276.  16205309.        1.70          1.90 
+ 4  2004 LITTER         4.51  73075799.  16205309.        0.829         1.30 
+ 5  2004 SOIL_ORG      35.7  578595469.  16205309.        0.566         1.20 
+ 6  2007 AG_LIVE       16.8  284543469.  16897139.        1.52          1.63 
+ 7  2007 BG_LIVE        3.06  51775733.  16897139.        1.57          1.67 
+ 8  2007 DEAD_WOOD      3.82  64522422.  16897139.        1.32          1.48 
+ 9  2007 LITTER         4.51  76150602.  16897139.        0.622         1.03 
+10  2007 SOIL_ORG      36.0  608601187.  16897139.        0.435         0.964
+# ℹ 75 more rows
+# ℹ 2 more variables: AREA_TOTAL_SE <dbl>, nPlots_AREA <int>
+[1] "=== FIA Summary Table ==="
+# A tibble: 17 × 17
+    YEAR   TPA   BAA  TREE_TOTAL BA_TOTAL AREA_TOTAL TPA_SE BAA_SE TREE_TOTAL_SE
+   <dbl> <dbl> <dbl>       <dbl>    <dbl>      <dbl>  <dbl>  <dbl>         <dbl>
+ 1  2004  473.  75.1 7668590688.   1.22e9  16205309.   2.27   1.91          2.45
+ 2  2007  472.  76.2 7968712309.   1.29e9  16897139.   1.74   1.43          1.89
+ 3  2009  473.  76.3 8120809027.   1.31e9  17175027.   1.74   1.41          1.90
+ 4  2010  473.  76.6 8207969313.   1.33e9  17342273.   1.73   1.41          1.90
+ 5  2011  467.  75.9 8162459676.   1.33e9  17460961.   1.74   1.42          1.90
+ 6  2012  464.  76.3 8097749101.   1.33e9  17435673.   1.73   1.41          1.90
+ 7  2013  464.  77.1 8016650226.   1.33e9  17271796.   1.73   1.40          1.90
+ 8  2014  466.  79.4 8035003524.   1.37e9  17253045.   1.68   1.29          1.81
+ 9  2015  465.  80.2 7985505036.   1.38e9  17156398.   1.72   1.30          1.86
+10  2016  471.  81.8 8031964516.   1.39e9  17052568.   1.71   1.29          1.86
+11  2017  470.  82.8 7970710592.   1.40e9  16970468.   1.72   1.30          1.89
+12  2018  467.  82.6 7915092744.   1.40e9  16942749.   1.73   1.32          1.90
+13  2019  475.  82.5 8049787081.   1.40e9  16952518.   1.74   1.34          1.93
+14  2020  477.  83.0 8058937746.   1.40e9  16902777.   1.73   1.34          1.93
+15  2021  475.  83.2 7995281341.   1.40e9  16839716.   1.74   1.35          1.94
+16  2022  480.  83.2 8076198486.   1.40e9  16816373.   1.79   1.35          1.99
+17  2023  481.  83.6 8065932403.   1.40e9  16758136.   1.79   1.36          2.00
+# ℹ 8 more variables: BA_TOTAL_SE <dbl>, AREA_TOTAL_SE <dbl>,
+#   nPlots_TREE <int>, nPlots_AREA <int>, CARB_ACRE <dbl>, CARB_ACRE_SE <dbl>,
+#   CARB_TOTAL <dbl>, CARB_TOTAL_SE <dbl>
+FIA summary saved to output/FL_FIA_summary.csv
+FIA forest type summaries saved.
+class       : SpatRaster
+size        : 97279, 154179, 1  (nrow, ncol, nlyr)
+resolution  : 30, 30  (x, y)
+extent      : -2361585, 2263785, 259065, 3177435  (xmin, xmax, ymin, ymax)
+coord. ref. : NAD83 / Conus Albers (EPSG:5070)
+source      : TreeMap2022_CONUS.tif
+categories  : TM_ID, PLT_CN, FORTYPCD, ForTypName, FLDTYPCD, FldTypName, STDSZCD, FLDSZCD, BALIVE, CANOPYPCT, STANDHT, ALSTK, GSSTK, QMD, SDIsum, TPA_LIVE, TPA_DEAD, VOLCFNET_L, VOLCFNET_D, VOLBFNET_L, DRYBIO_L, DRYBIO_D, CARBON_L, CARBON_D, CARBON_DWN, Count
+name        : ForTypName
+min value   :          1
+max value   :      70035
+
+VAT column names:
+ [1] "Value"      "TM_ID"      "PLT_CN"     "FORTYPCD"   "ForTypName"
+ [6] "FLDTYPCD"   "FldTypName" "STDSZCD"    "FLDSZCD"    "BALIVE"    
+[11] "CANOPYPCT"  "STANDHT"    "ALSTK"      "GSSTK"      "QMD"       
+[16] "SDIsum"     "TPA_LIVE"   "TPA_DEAD"   "VOLCFNET_L" "VOLCFNET_D"
+[21] "VOLBFNET_L" "DRYBIO_L"   "DRYBIO_D"   "CARBON_L"   "CARBON_D"  
+[26] "CARBON_DWN" "Count"     
+
+VAT (first few rows):
+  Value TM_ID       PLT_CN FORTYPCD                ForTypName FLDTYPCD
+1     1     1 2.232677e+12      184          Juniper woodland      184
+2     2     2 2.238927e+12      185 Pinyon / juniper woodland      185
+3     3     3 2.252565e+12      184          Juniper woodland      185
+4     4     4 2.252827e+12      185 Pinyon / juniper woodland      185
+5     5     5 2.255590e+12      972    Evergreen oak woodland      972
+6     6     6 2.263482e+12      184          Juniper woodland      184
+                 FldTypName STDSZCD FLDSZCD   BALIVE CANOPYPCT STANDHT    ALSTK
+1          Juniper woodland       1       3  32.7404        15    9.84  42.3744
+2 Pinyon / juniper woodland       1       3 120.2549        35    9.84 105.4706
+3 Pinyon / juniper woodland       1       3 109.2021        25   26.24 102.4251
+4 Pinyon / juniper woodland       1       3  50.6403        25    9.84  66.2412
+5    Evergreen oak woodland       1       3  39.0433        25    9.84  51.8000
+6          Juniper woodland       1       3  66.1904        25    9.84  78.6356
+  GSSTK   QMD SDIsum TPA_LIVE TPA_DEAD VOLCFNET_L VOLCFNET_D VOLBFNET_L
+1     0  9.52  58.96    66.19     0.00   160.9587       0.00          0
+2     0  9.51 207.10   243.47     6.01   414.6576      16.42          0
+3     0 11.43 154.32   153.19     6.01   912.0446      61.97          0
+4     0  8.78  94.64   120.36     0.00   297.1978       0.00          0
+5     0  5.52  82.32   234.18    30.09   183.6411      57.05          0
+6     0 12.00 109.65    84.25     0.00   395.4065       0.00          0
+  DRYBIO_L DRYBIO_D CARBON_L CARBON_D CARBON_DWN Count
+1     2.22     0.00     1.11     0.00   0.123001 97300
+2     5.98     0.22     2.99     0.11   0.327671  1386
+3    18.46     1.24     9.23     0.62   0.594629  3594
+4     5.65     0.00     2.82     0.00   0.210491 15735
+5     4.45     0.93     2.22     0.46   0.544328 35658
+6     5.47     0.00     2.73     0.00   0.287167 14033
+trying URL 'https://geodata.ucdavis.edu/gadm/gadm4.1/pck/gadm41_USA_1_pk.rds'
+Content type 'unknown' length 14506241 bytes (13.8 MB)
+==================================================
+downloaded 13.8 MB
+
+Cached as: /tmp/RtmpCxMI1w/gadm/gadm41_USA_1_pk.rds
+
+Cropping to Florida extent...
+|---------|---------|---------|---------|=========================================                                          Masking to Florida boundary...
+|---------|---------|---------|---------|=========================================                                          |---------|---------|---------|---------|=========================================                                          Florida TreeMap raster:
+class       : SpatRaster
+size        : 23093, 27855, 1  (nrow, ncol, nlyr)
+resolution  : 30, 30  (x, y)
+extent      : 796515, 1632165, 268335, 961125  (xmin, xmax, ymin, ymax)
+coord. ref. : NAD83 / Conus Albers (EPSG:5070)
+source      : spat_f33a29c14b_3891_80Q6udnsxVen2Mq.tif
+varname     : TreeMap2022_CONUS
+categories  : TM_ID, PLT_CN, FORTYPCD, ForTypName, FLDTYPCD, FldTypName, STDSZCD, FLDSZCD, BALIVE, CANOPYPCT, STANDHT, ALSTK, GSSTK, QMD, SDIsum, TPA_LIVE, TPA_DEAD, VOLCFNET_L, VOLCFNET_D, VOLBFNET_L, DRYBIO_L, DRYBIO_D, CARBON_L, CARBON_D, CARBON_DWN, Count
+name        : ForTypName
+min value   :       2617
+max value   :      69116
+
+Calculating pixel frequencies (may take several minutes)...
+|---------|---------|---------|---------|=========================================                                          Unique TM_ID values in Florida: 2699
+Total forested pixels:          71791171
+  Value pixel_count
+1  2617         125
+2  2623        4538
+3  2637         421
+4  2638           1
+5  2644           1
+6  2663          26
+
+VAT join key check:
+  Value   BALIVE TPA_LIVE CARBON_L
+1     1  32.7404    66.19     1.11
+2     2 120.2549   243.47     2.99
+3     3 109.2021   153.19     9.23
+4     4  50.6403   120.36     2.82
+5     5  39.0433   234.18     2.22
+6     6  66.1904    84.25     2.73
+
+Total forested acres (TreeMap): 15965986
+[1] "=== TreeMap Florida Summary ==="
+                  [,1]         
+STATE             "FL"         
+SOURCE            "TreeMap2022"
+N_PIXELS          "71791171"   
+FOREST_ACRES      "15965986"   
+BAA_sqft_ac       "77.7999"    
+TPA_live_ac       "519.4787"   
+Carbon_tons_ac    "17.21555"   
+BA_Total_sqft     "1242152216" 
+TPA_Total_trees   "8293989196" 
+Carbon_Total_tons "274863220"  
+TreeMap summary saved to output/FL_TreeMap_summary.csv
+[1] "=== TreeMap Forest Type Summary ==="
+# A tibble: 44 × 8
+   FORTYPCD ForTypName             N_PIXELS FOREST_ACRES BAA_sqft_ac TPA_live_ac
+      <int> <chr>                     <dbl>        <dbl>       <dbl>       <dbl>
+ 1      142 Slash pine             19061638  4239210.          77.0        412. 
+ 2      520 Mixed upland hardwoods  8929861  1985955.          70.5        344. 
+ 3      608 Sweetbay / swamp tupe…  5813510  1292895.          88.5        714. 
+ 4      161 Loblolly pine           5619710  1249795.          81.9        649. 
+ 5      141 Longleaf pine           5315607  1182164.          63.6        298. 
+ 6      609 Baldcypress / pondcyp…  4130083   918509.         115.         890. 
+ 7      407 Slash pine / hardwood   4105011   912933.          65.6        504. 
+ 8      514 Southern scrub oak      2683122   596713.          49.2        429. 
+ 9      602 Sweetgum / Nuttall oa…  2354390   523604.         105.         554. 
+10      982 Mangrove                1738300   386589.          40.7       1460. 
+11      607 Baldcypress / water t…  1666775   370682.         177.         429. 
+12      403 Longleaf pine / oak     1446341   321659.          50.8        449. 
+13      166 Pond pine               1413569   314370.          89.5        682. 
+14      164 Sand pine               1396692   310617.          61.6        497. 
+15      406 Loblolly pine / hardw…  1312126   291810.          86.9        591. 
+16      983 Palms                   1136739   252805.          84.4        237. 
+17      962 Other hardwoods         1029493   228954.          42.3        688. 
+18      992 Melaleuca                338040    75178.          41.0       1116. 
+19      171 Eastern redcedar         258361    57458.          63.6        114. 
+20      503 White oak / red oak /…   250600    55732.          89.7        178. 
+21      605 Overcup oak / water h…   250190    55641.          99.1        492. 
+22      508 Sweetgum / yellow-pop…   245572    54614.          63.3        530. 
+23      702 River birch / sycamore   205808    45771.          16.7        121. 
+24      517 Elm / ash / black loc…   190663    42402.          55.9        481. 
+25      704 Willow                   173329    38547.          16.6        700. 
+26      409 Other pine / hardwood    136582    30375.          48.1        513. 
+27      995 Other exotic hardwoods   118059    26256.          62.0        882. 
+28      708 Red maple / lowland       90299    20082.          34.1        540. 
+29      519 Red maple / oak           87938    19557.          35.2       1128. 
+30      501 Post oak / blackjack …    68551    15245.          26.0        900. 
+31      511 Yellow-poplar             57994    12898.          61.9        330. 
+32      705 Sycamore / pecan / Am…    50306    11188.         111.        1118. 
+33      706 Sugarberry / hackberr…    36978     8224.          44.9        461. 
+34      162 Shortleaf pine            21726     4832.         100.         440. 
+35      606 Atlantic white-cedar      15555     3459.          48.2       1811. 
+36      402 Eastern redcedar / ha…    14398     3202.         167.         230. 
+37      516 Cherry / white ash / …    12694     2823.          49.1        539. 
+38      507 Sassafras / persimmon      9169     2039.           8.56       156. 
+39      999 Nonstocked                 2386      531.          11.3         12.0
+40      506 Yellow-poplar / white…     1761      392.         108.         759. 
+41      601 Swamp chestnut oak / …     1201      267.         102.         567. 
+42      709 Cottonwood / willow          34        7.56       141.         675. 
+43      504 White oak                     7        1.56        73.9        459. 
+44      973 Mesquite woodland             3        0.667        4.59       381. 
+# ℹ 2 more variables: Carbon_tons_ac <dbl>, PCT_ACRES <dbl>
+TreeMap forest type summary saved.
+[1] "=== FIA vs TreeMap State-Level Comparison ==="
+                  [,1]         [,2]         
+SOURCE            "FIA"        "TreeMap2022"
+FOREST_ACRES      "16758136"   "15965986"   
+BAA_sqft_ac       "83.56"      "77.80"      
+TPA_live_ac       "481.31"     "519.48"     
+Carbon_tons_ac    "19.98"      "17.22"      
+BA_Total_sqft     "1400256689" "1242152216" 
+TPA_Total_trees   "8065932403" "8293989196" 
+Carbon_Total_tons "334788010"  "274863220"  
+Comparison table saved to output/FL_FIA_TreeMap_comparison.csv
+
+Plot pixel distribution summary:
+     PLT_CN           total_pixels      total_acres       
+ Min.   :1.748e+13   Min.   :      1   Min.   :2.220e-01  
+ 1st Qu.:2.642e+14   1st Qu.:    160   1st Qu.:3.558e+01  
+ Median :4.439e+14   Median :   3618   Median :8.046e+02  
+ Mean   :4.114e+14   Mean   :  26599   Mean   :5.916e+03  
+ 3rd Qu.:6.357e+14   3rd Qu.:  23792   3rd Qu.:5.291e+03  
+ Max.   :7.408e+14   Max.   :1108633   Max.   :2.466e+05  
+[1] "=== Uncertainty Before Scaling (sorted by BAA % bias) ==="
+# A tibble: 44 × 34
+   FORTYPCD ForTypName         N_PLOTS N_PIXELS TM_ACRES TM_BAA_mean TM_TPA_mean
+      <int> <chr>                <int>    <dbl>    <dbl>       <dbl>       <dbl>
+ 1      516 Cherry / white as…       3    12694  2.82e+3       49.1        539. 
+ 2      999 Nonstocked               1     2386  5.31e+2       11.3         12.0
+ 3      709 Cottonwood / will…       1       34  7.56e+0      141.         675. 
+ 4      402 Eastern redcedar …       4    14398  3.20e+3      167.         230. 
+ 5      702 River birch / syc…       6   205808  4.58e+4       16.7        121. 
+ 6      606 Atlantic white-ce…       2    15555  3.46e+3       48.2       1811. 
+ 7      511 Yellow-poplar            3    57994  1.29e+4       61.9        330. 
+ 8      517 Elm / ash / black…       6   190663  4.24e+4       55.9        481. 
+ 9      704 Willow                   9   173329  3.85e+4       16.6        700. 
+10      706 Sugarberry / hack…      29    36978  8.22e+3       44.9        461. 
+11      708 Red maple / lowla…       7    90299  2.01e+4       34.1        540. 
+12      166 Pond pine               17  1413569  3.14e+5       89.5        682. 
+13      983 Palms                   35  1136739  2.53e+5       84.4        237. 
+14      501 Post oak / blackj…       6    68551  1.52e+4       26.0        900. 
+15      995 Other exotic hard…      53   118059  2.63e+4       62.0        882. 
+16      992 Melaleuca                5   338040  7.52e+4       41.0       1116. 
+17      962 Other hardwoods          8  1029493  2.29e+5       42.3        688. 
+18      407 Slash pine / hard…      89  4105011  9.13e+5       65.6        504. 
+19      507 Sassafras / persi…      10     9169  2.04e+3        8.56       156. 
+20      503 White oak / red o…      19   250600  5.57e+4       89.7        178. 
+21      520 Mixed upland hard…     263  8929861  1.99e+6       70.5        344. 
+22      608 Sweetbay / swamp …     238  5813510  1.29e+6       88.5        714. 
+23      508 Sweetgum / yellow…      23   245572  5.46e+4       63.3        530. 
+24      605 Overcup oak / wat…      26   250190  5.56e+4       99.1        492. 
+25      141 Longleaf pine          199  5315607  1.18e+6       63.6        298. 
+26      409 Other pine / hard…      17   136582  3.04e+4       48.1        513. 
+27      602 Sweetgum / Nuttal…     167  2354390  5.24e+5      105.         554. 
+28      982 Mangrove                16  1738300  3.87e+5       40.7       1460. 
+29      142 Slash pine             555 19061638  4.24e+6       77.0        412. 
+30      161 Loblolly pine          387  5619710  1.25e+6       81.9        649. 
+31      705 Sycamore / pecan …       8    50306  1.12e+4      111.        1118. 
+32      406 Loblolly pine / h…     107  1312126  2.92e+5       86.9        591. 
+33      514 Southern scrub oak      64  2683122  5.97e+5       49.2        429. 
+34      164 Sand pine               41  1396692  3.11e+5       61.6        497. 
+35      609 Baldcypress / pon…     111  4130083  9.19e+5      115.         890. 
+36      162 Shortleaf pine           4    21726  4.83e+3      100.         440. 
+37      607 Baldcypress / wat…      88  1666775  3.71e+5      177.         429. 
+38      171 Eastern redcedar         1   258361  5.75e+4       63.6        114. 
+39      506 Yellow-poplar / w…       1     1761  3.92e+2      108.         759. 
+40      403 Longleaf pine / o…      57  1446341  3.22e+5       50.8        449. 
+41      519 Red maple / oak          3    87938  1.96e+4       35.2       1128. 
+42      504 White oak                3        7  1.56e+0       73.9        459. 
+43      601 Swamp chestnut oa…       6     1201  2.67e+2      102.         567. 
+44      973 Mesquite woodland        1        3  6.67e-1        4.59       381. 
+# ℹ 27 more variables: TM_CARB_mean <dbl>, TM_BAA_sd <dbl>, TM_TPA_sd <dbl>,
+#   TM_CARB_sd <dbl>, TM_BAA_CV <dbl>, TM_TPA_CV <dbl>, TM_CARB_CV <dbl>,
+#   ESS <dbl>, FIA_BAA <dbl>, FIA_BAA_SE <dbl>, FIA_TPA <dbl>,
+#   FIA_TPA_SE <dbl>, FIA_CARB <dbl>, FIA_CARB_SE <dbl>, FIA_ACRES <dbl>,
+#   FIA_ACRES_SE <dbl>, BAA_bias_abs <dbl>, TPA_bias_abs <dbl>,
+#   CARB_bias_abs <dbl>, BAA_bias_pct <dbl>, TPA_bias_pct <dbl>,
+#   CARB_bias_pct <dbl>, BAA_z <dbl>, TPA_z <dbl>, CARB_z <dbl>, …
+Pre-scaling uncertainty saved.
+[1] "=== Area-Scaled TreeMap Summary ==="
+                        [,1]
+FIA_TOTAL_ACRES 1.668752e+07
+BAA_adj_ac      7.742248e+01
+TPA_adj_ac      5.071354e+02
+CARB_adj_ac     1.688025e+01
+BAA_adj_total   1.291989e+09
+TPA_adj_total   8.462833e+09
+CARB_adj_total  2.816896e+08
+
+=== State-Level Bias Decomposition ===
+
+BAA (sq ft/ac):
+  Before scaling: -5.401 
+  After scaling:  -6.12 
+
+TPA (trees/ac):
+  Before scaling: 25.721 
+  After scaling:  26.216 
+
+Carbon (tons/ac):
+  Before scaling: -3.112 
+  After scaling:  -3.091 
+
+Post-scaling uncertainty saved to output/FL_uncertainty_after_scaling.csv
+
+=== All outputs written. Analysis complete. ===

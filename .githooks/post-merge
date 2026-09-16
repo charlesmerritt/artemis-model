@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Re-resolve uv.lock after a merge, which is the half of the uv.lock story that
+# scripts/merge-uv-lock.sh structurally cannot do: a merge driver runs before
+# git writes the merged files, so it never sees the merged pyproject.toml. This
+# hook runs after, when the working tree is real, and is therefore the only
+# place the lockfile can be brought into agreement with the manifest.
+#
+# Deliberately advisory: it reports and leaves the change unstaged rather than
+# amending the merge commit under you. A lockfile update is a content change and
+# belongs in a commit somebody chose to make.
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+log() { printf 'post-merge: %s\n' "$*" >&2; }
+
+# Only interesting when the merge actually touched dependency state. ORIG_HEAD
+# is the pre-merge commit, so this is "what did the merge change?".
+if git rev-parse -q --verify ORIG_HEAD >/dev/null; then
+  if ! git diff --name-only ORIG_HEAD HEAD -- pyproject.toml uv.lock | grep -q .; then
+    exit 0
+  fi
+fi
+
+command -v uv >/dev/null 2>&1 || exit 0
+
+before="$(git hash-object uv.lock 2>/dev/null || echo none)"
+
+# Never fail a merge over this. No network, an unsolvable manifest, a uv that is
+# too old — all of those are reasons to say something and get out of the way,
+# not to leave the user staring at a broken merge they did not cause.
+if ! uv lock --quiet >&2 2>/dev/null; then
+  log "could not re-resolve uv.lock (offline, or the merged pyproject.toml has no solution)"
+  log "the lockfile may not match pyproject.toml — run 'uv lock' when you can"
+  exit 0
+fi
+
+after="$(git hash-object uv.lock)"
+
+if [ "$before" != "$after" ]; then
+  log "uv.lock was stale after the merge and has been re-resolved from pyproject.toml"
+  log "review and commit it:  git add uv.lock && git commit"
+fi

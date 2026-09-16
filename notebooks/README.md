@@ -1,0 +1,79 @@
+# Notebooks
+
+These notebooks are exploratory interfaces around ARTEMIS data acquisition, classification, and
+validation. They are not a linear pipeline. Run them from the repository root so relative imports
+and paths resolve consistently:
+
+```bash
+uv sync
+uv run jupyter lab
+```
+
+## Notebook groups
+
+| Entry point | Purpose | Main prerequisites |
+|---|---|---|
+| `TreeMap_COG_County_Summary.ipynb` | Windowed zonal summaries from a remote COG or STAC item | Network access |
+| `Vector-Guided-Raster-Correction.ipynb` | Correct a classification raster (LANDFIRE EVT) inside a polygon: NAIP year slider for visual QA, then an embedding classifier reassigns the eligible classes | Earth Engine + the Florida EVT clip (see below) |
+| `Embedding-Similarity-AOI-Finder.ipynb` | Find regions similar to selected clearcut references using AlphaEarth embeddings | Earth Engine authentication |
+| `Clearcut-vs-Agriculture-Embeddings.ipynb` | Test embedding separation between recent clearcuts and agriculture | Earth Engine + local LANDFIRE data |
+| `Clearcut-vs-Agriculture-EVT-Change.ipynb` | Compare forest-to-herb/agriculture/shrub EVT change with LCMS evidence | Earth Engine + local LANDFIRE data |
+| `Clearcut-Grassland-Feature-Engineering.ipynb` | Assemble model features and spatial cross-validation baselines | Earth Engine + local LANDFIRE data |
+| `Similarity-Embeddings.ipynb` | Original similarity prototype | Superseded; retained for reference |
+| `FVS_5county_growth_smoke.ipynb.old` | Retired five-county FVS smoke workflow retained as a recovery reference | External TreeMap/FIA data and missing FVS helper modules |
+
+`clearcut_ag_common.py` contains shared helpers for the embedding and clearcut notebooks. Its pure
+functions are covered by `tests/test_clearcut_ag_common.py`; optional output checks live in
+`tests/test_clearcut_ag_outputs.py`.
+
+`Vector-Guided-Raster-Correction.ipynb` is a thin interface over three
+[`pipeline/s5_imagery/`](../pipeline/s5_imagery/) modules rather than a self-contained notebook —
+`raster_correction.py` (windowing, sampling, spatially blocked CV, correction, manifests),
+`feature_sources.py` (the `FeatureSource` protocol and its AlphaEarth implementation), and
+`naip_viewer.py` (the ±N-year window resolver, the hatched-border geometry, and the slider widget).
+All three are unit-tested offline in `tests/test_s5_{raster_correction,feature_sources,naip_viewer}.py`;
+the correction tests substitute a fixture feature source for Earth Engine and run the whole
+workflow against a synthetic raster. Design and limits:
+[`../notes/vector-guided-raster-correction.md`](../notes/vector-guided-raster-correction.md).
+
+It reads a **Florida clip of the EVT raster** rather than the 2.99 GB CONUS original — 75 MB,
+same CRS and 30 m grid, pixel-identical. Produce it once with:
+
+```bash
+uv run python -m pipeline.raster_clip \
+    --raster raw.landfire.evt_tif --region config/extent.geojson --name LF2022_EVT_FL
+```
+
+The notebook falls back to the CONUS raster when the clip is absent. See
+[`../notes/raster-clips.md`](../notes/raster-clips.md).
+
+## Before running
+
+1. Check `git status --short -- notes/` and read the
+   [full notebook status](../notes/notebooks.md). Notebook findings and environmental blockers
+   change more frequently than this overview.
+2. Stage the local TreeMap, FIA, or LANDFIRE files these workflows read. Paths are configured in
+   [`../config/data_paths.yaml`](../config/data_paths.yaml); with the `/mnt/d` mount absent,
+   `cac.resolve(declared_path)` — `cac.resolve_dir` for shapefiles and geodatabases — fetches from
+   the R2 mirror instead. Anything over the 512 MB cap, notably the 3 GB LF2022 EVT raster, raises
+   with the one `rclone` command that stages it rather than pulling it mid-cell.
+3. Authenticate Earth Engine interactively when required:
+
+   ```bash
+   uv run earthengine authenticate
+   ```
+
+4. Avoid committing generated outputs or embedded map-widget state. Large notebook state can
+   increase a notebook by many megabytes.
+
+## Detailed notes
+
+- [Full notebook inventory and latest run status](../notes/notebooks.md)
+- [Clearcut versus agriculture and embedding workflows](../notes/clearcut-vs-agriculture-embeddings.md)
+- [TreeMap COG county summaries](../notes/treemap-cog-county-summary.md)
+- [Five-county FVS smoke workflow](../notes/fvs-5county-growth-smoke.md)
+- [TreeMap-to-FVS workflow](../notes/treemap-fvs-workflow.md)
+
+The FVS smoke notebook is not currently a maintained runnable entry point: its documented helper
+modules are absent from the committed repository. Treat the associated note as the recovery plan,
+not as evidence that the notebook can run end-to-end.

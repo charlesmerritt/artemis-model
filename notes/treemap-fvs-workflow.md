@@ -73,6 +73,8 @@ Updates full state FIADB SQLite DBs in place to append `StudyArea=5county` to `G
 
 Precision gotcha: FIA control numbers can exceed R double precision. The script reads `PLT_CN` as character and uses SQLite coercion for matching. In Python, keep `PLT_CN`, `CN`, `Stand_CN`, and `StandID` as strings unless exact integer handling is guaranteed.
 
+This is now enforced rather than left to convention — see [`pipeline/ids.py`](../pipeline/ids.py) and the identifier-precision section of [`pipeline/README.md`](../pipeline/README.md). The audit that produced it found the leak in `r/02_subset_FIA_SQLite_multistateR.R`: it cast `PLOT.CN` through `as.numeric()` before writing `FL_5county_TMID_PLT_lookup.csv`, the TM_ID→PLT_CN crosswalk that `pipeline/s3_management/assign_plt_cn.py` joins on. Scripts `01`–`07` now keep control numbers character end to end (`CAST(... AS TEXT)` out of SQLite, `colClasses` into `read.csv`, `options(scipen = 999)` on the way out), and `01` stops rather than writing a crosswalk whose `PLT_CN` arrived from the VAT as a double at or above 2^53.
+
 ### `05_consolidate_FIA_SQLite.R`
 
 Best candidate to port into ARTEMIS. It consolidates all affected state FIADB databases into one DB that works for both rFIA and FVS. Observed output:

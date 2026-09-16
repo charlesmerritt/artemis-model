@@ -1,5 +1,17 @@
 # Painting FVS Outputs Back to TreeMap Rasters
 
+> **Where this sits now (2026-08-06).** This is the final stage of the adopted
+> architecture: painting consumes the **selected plan** (`stand_id → trajectory_id`) that
+> the simulated-annealing scheduler produces, joined to `trajectory_cycles` — see
+> [`trajectory-library-and-annealing.md`](trajectory-library-and-annealing.md) §5–6 and
+> `PLAN.md` §4e. The mechanism below is unchanged and is what makes that cheap: it is a
+> keyed pixel-value swap, and swapping in a *selected* trajectory's metric works exactly
+> like swapping in the no-management baseline's. What changes is the key — a stand resolves
+> to one chosen trajectory rather than to its single unconditional projection.
+>
+> The described run remains the plot-level no-management baseline
+> (`stand_cn == PLT_CN`), which is still the correct fixture for testing the painter.
+
 Reclassify the 5-county TreeMap raster so each pixel carries an FVS-projected
 value for its stand. The mechanism is a pure pixel-value swap:
 
@@ -7,6 +19,14 @@ value for its stand. The mechanism is a pure pixel-value swap:
         -> crosswalk PLT_CN
         -> fvs_trajectory.stand_cn   (stand_cn == PLT_CN, plot-level)
         -> any FVS metric at a snapshot (e.g. basal_area)
+
+Both hops are string joins on FIA control numbers, so both are exposed to the
+float-precision failure documented in [Identifier precision](identifier-precision.md).
+`dtype="string"` on the read is **not** sufficient: the crosswalk is written by
+`r/02_subset_FIA_SQLite_multistateR.R`, so a PLT_CN that R held in a double arrives as the
+*text* `"1.7498047010478e+13"`, which a string dtype preserves perfectly and which then
+matches no stand. Both loaders now normalise through `pipeline.ids.as_id_series`, and an
+empty PLT_CN join raises instead of writing an all-nodata GeoTIFF and reporting success.
 
 ## Script
 

@@ -1,0 +1,21 @@
+{
+  "command": "uv run python experiments/2026-07-28_16-33-pr9-validation-audit/experiment.py",
+  "repo_commit_before_run": "3744026395e25e442abafd4d25265ef0b3a3ebc3",
+  "input": "data/interim/treemap_holes/hole_embeddings.csv",
+  "input_sha256": "d942b2d687295737a9735b069adf34cf02ad82f68a99588eb91f8d261e97cee5",
+  "input_regeneration_commands": [
+    "uv run python -m pipeline.s1_initial_state.sample_hole_points",
+    "uv run python -m pipeline.s1_initial_state.embed_holes sample"
+  ],
+  "outputs": [
+    "metrics/metrics.json",
+    "metrics/fold_metrics.csv",
+    "logs/run.txt"
+  ],
+  "runtime_seconds": 3.0370518419949804,
+  "versions": {
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "scikit-learn": "1.9.0"
+  }
+}

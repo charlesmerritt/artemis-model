@@ -1,0 +1,219 @@
+<title>FVS fidelity proof — pause, cut, resume</title>
+<style>
+  :root {
+    --paper:#f7f6f1; --card:#fff; --ink:#1c231d; --ink-soft:#4b564c; --ink-faint:#78837a;
+    --line:#e6e6dc; --line-strong:#d3d3c6; --accent:#2f6b3f; --accent-soft:#e6f0e5;
+    --pass:#2f6b3f; --pass-bg:#e6f0e5; --fail:#a4562a; --fail-bg:#f6e7dc;
+    --row-fail:#fbf3ec; --head-bg:#eef2ea;
+    --shadow:0 1px 2px rgba(28,35,29,.06),0 3px 12px rgba(28,35,29,.05);
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#131612; --card:#1c211c; --ink:#eef0ea; --ink-soft:#b6bdb4; --ink-faint:#838d82;
+      --line:#2b312b; --line-strong:#3a423a; --accent:#7bbd84; --accent-soft:#22301f;
+      --pass:#7bbd84; --pass-bg:#1e2c1d; --fail:#e08a55; --fail-bg:#2c1d12;
+      --row-fail:#211812; --head-bg:#1a201a;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{--paper:#f7f6f1;--card:#fff;--ink:#1c231d;--ink-soft:#4b564c;--ink-faint:#78837a;--line:#e6e6dc;--line-strong:#d3d3c6;--accent:#2f6b3f;--accent-soft:#e6f0e5;--pass:#2f6b3f;--pass-bg:#e6f0e5;--fail:#a4562a;--fail-bg:#f6e7dc;--row-fail:#fbf3ec;--head-bg:#eef2ea;--shadow:0 1px 2px rgba(28,35,29,.06),0 3px 12px rgba(28,35,29,.05);}
+  :root[data-theme="dark"]{--paper:#131612;--card:#1c211c;--ink:#eef0ea;--ink-soft:#b6bdb4;--ink-faint:#838d82;--line:#2b312b;--line-strong:#3a423a;--accent:#7bbd84;--accent-soft:#22301f;--pass:#7bbd84;--pass-bg:#1e2c1d;--fail:#e08a55;--fail-bg:#2c1d12;--row-fail:#211812;--head-bg:#1a201a;--shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35);}
+
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); line-height:1.5; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 40px 24px 64px; }
+  .eyebrow { font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 10px; }
+  h1 { font-size:clamp(24px,3.6vw,34px); line-height:1.12; margin:0 0 12px; letter-spacing:-.01em; text-wrap:balance; font-weight:800; }
+  .lede { font-size:16.5px; color:var(--ink-soft); max-width:66ch; margin:0; }
+  .lede b { color: var(--ink); font-weight:650; }
+
+  .summary { display:flex; flex-wrap:wrap; gap:12px; margin:26px 0 8px; }
+  .stat { flex:1 1 150px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+  .stat .n { font-size:26px; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .stat .n.pass { color:var(--pass); }
+  .stat .l { font-size:12.5px; color:var(--ink-faint); margin-top:2px; }
+
+  .tablecard { margin-top:20px; background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; }
+  .sec-head { padding:14px 18px 12px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .sec-head h2 { font-size:14px; margin:0; font-weight:800; letter-spacing:.02em; }
+  .sec-head .sub { font-size:12.5px; color:var(--ink-faint); }
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; min-width:720px; }
+  thead th { text-align:left; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; padding:10px 14px; background:var(--head-bg); border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+  tbody td { padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--ink-soft); }
+  tbody tr:last-child td { border-bottom:none; }
+  td.claim { color:var(--ink); font-weight:600; width:31%; }
+  td.fix { font-size:12.5px; color:var(--ink-faint); }
+  td.num { font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; font-size:12.5px; }
+  td.num b { color:var(--ink); }
+  .res { display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:12px; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+  .res.pass { color:var(--pass); background:var(--pass-bg); }
+  .res.fail { color:var(--fail); background:var(--fail-bg); }
+  tr.failrow td { background:var(--row-fail); }
+  .oos { display:inline-block; margin-left:6px; font-size:10.5px; font-weight:700; letter-spacing:.03em; color:var(--fail); border:1px solid var(--fail); border-radius:5px; padding:1px 5px; vertical-align:1px; }
+
+  .note { margin-top:22px; border-left:3px solid var(--accent); background:var(--accent-soft); border-radius:0 10px 10px 0; padding:14px 18px; font-size:13.5px; color:var(--ink-soft); }
+  .note b { color:var(--ink); }
+  .note.caveat { border-left-color:var(--fail); background:var(--fail-bg); }
+
+  footer { margin-top:30px; padding-top:16px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-faint); display:flex; flex-wrap:wrap; gap:4px 16px; justify-content:space-between; }
+  footer .k { font-family:var(--mono); }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">ARTEMIS · FVS engine fidelity</p>
+  <h1>Pause the projection, cut the stands you choose, resume — exactly</h1>
+  <p class="lede">The constrained harvest scheduler depends on one behavior: at a 5-year barrier we can apply a
+    harvest and continue, and FVS must respond <b>identically</b> to a run that had the cut written in from the start.
+    Every check below is a measured FVS result compared to an authoritative baseline. <b>Δ = the largest absolute
+    difference across all cycles and metrics.</b></p>
+
+  <div class="summary">
+    <div class="stat"><div class="n pass">10 / 11</div><div class="l">checks PASS on in-scope metrics</div></div>
+    <div class="stat"><div class="n">0.0</div><div class="l">max Δ on BA / TPA / SDI, every restart arm</div></div>
+    <div class="stat"><div class="n">30.0%</div><div class="l">removed by a 30% thin — to the digit</div></div>
+    <div class="stat"><div class="n">5 / 5</div><div class="l">stands round-tripped through a global barrier</div></div>
+  </div>
+
+  <div class="tablecard">
+    <div class="sec-head">
+      <h2>Restart fidelity</h2>
+      <span class="sub">does pausing / restarting preserve stand state? &nbsp;·&nbsp; SN variant, no management</span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>What it proves</th><th>Fixture</th><th>Metric</th><th>Expected</th><th>Observed</th><th>Result</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="claim">In-process pause reproduces a continuous run</td>
+            <td class="fix">1 stand · 1999–2019</td>
+            <td class="num">BA/TPA/SDI max |Δ|</td>
+            <td class="num">0.0</td>
+            <td class="num"><b>0.0</b></td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr>
+            <td class="claim">Stop/restart across processes preserves stand values</td>
+            <td class="fix">1 stand · 1999–2019</td>
+            <td class="num">BA/TPA/SDI max |Δ|</td>
+            <td class="num">0.0</td>
+            <td class="num"><b>0.0</b></td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr>
+            <td class="claim">Restarting at a later stop point still preserves them</td>
+            <td class="fix">1 stand · stop point 6</td>
+            <td class="num">BA/TPA/SDI max |Δ|</td>
+            <td class="num">0.0</td>
+            <td class="num"><b>0.0</b></td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr>
+            <td class="claim">A global barrier round-trips every stand in one file</td>
+            <td class="fix">5 stands · 25 stand-cycles</td>
+            <td class="num">BA/TPA/SDI max |Δ|</td>
+            <td class="num">0.0</td>
+            <td class="num"><b>0.0</b> · 0 divergent</td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr class="failrow">
+            <td class="claim">Stop/restart preserves FFE carbon <span class="oos">OUT OF SCOPE</span></td>
+            <td class="fix">1 stand · at 2014</td>
+            <td class="num">Total_Stand_Carbon</td>
+            <td class="num">64.52 t/ac</td>
+            <td class="num"><b>59.14</b> (−8.3%)</td>
+            <td><span class="res fail">FAIL</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tablecard">
+    <div class="sec-head">
+      <h2>Management injection</h2>
+      <span class="sub">is a cut applied at runtime faithful, and can it be targeted?</span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>What it proves</th><th>Fixture</th><th>Metric</th><th>Expected</th><th>Observed</th><th>Result</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="claim">A 30% thin removes exactly 30% of trees</td>
+            <td class="fix">1 stand · thin at 2004</td>
+            <td class="num">TPA post/pre</td>
+            <td class="num">0.700</td>
+            <td class="num"><b>0.700</b> (825.5/1179.3)</td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr>
+            <td class="claim">…and exactly 30% of basal area</td>
+            <td class="fix">1 stand · thin at 2004</td>
+            <td class="num">BA post/pre</td>
+            <td class="num">0.700</td>
+            <td class="num"><b>0.700</b> (74.5/106.5)</td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr>
+            <td class="claim">Runtime cut injection equals the native FVS keyword</td>
+            <td class="fix">fvsCutNow vs ThinDBH</td>
+            <td class="num">all metrics max |Δ|</td>
+            <td class="num">0.0</td>
+            <td class="num"><b>0.0</b></td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr>
+            <td class="claim">A cut injected after a restart equals the in-process cut</td>
+            <td class="fix">fvsAddActivity after barrier</td>
+            <td class="num">all metrics max |Δ|</td>
+            <td class="num">0.0</td>
+            <td class="num"><b>0.0</b></td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr>
+            <td class="claim">One stand in a bundle can be cut selectively</td>
+            <td class="fix">2-stand bundle · cut only #1</td>
+            <td class="num">target TPA post/pre</td>
+            <td class="num">0.700</td>
+            <td class="num"><b>0.700</b> (1159.4/1656.3)</td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+          <tr>
+            <td class="claim">…and the non-target stand stays untouched</td>
+            <td class="fix">2-stand bundle · stand #2</td>
+            <td class="num">|Δ| vs no-cut</td>
+            <td class="num">0.0</td>
+            <td class="num"><b>0.0</b></td>
+            <td><span class="res pass">PASS</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Why this de-risks the scheduler.</b> A county TPO cap is a global constraint: at each barrier the schedule looks
+    across all stands, cuts the ones the allocation selects, and lets the rest grow. These checks show every part of
+    that loop — pause, selectively cut, resume, repeat — matches a native FVS run to the last digit, on one stand and
+    on a multi-stand bundle alike.
+  </div>
+
+  <div class="note caveat">
+    <b>The one FAIL is carbon, and it's deliberately parked.</b> Stop/restart silently understates one FFE carbon pool
+    (~8% per barrier) while stand values stay bit-identical. Carbon is out of scope for v1
+    (<span style="font-family:var(--mono)">carbon_extension: false</span>, guarded by a tripwire test) and must be
+    resolved before any carbon result is reported externally. Fixtures here are narrow — 6 stands, one variant, one FVS
+    version, no fire — so clean results on untested pools remain provisional.
+  </div>
+
+  <footer>
+    <span>Source: <span class="k">research/restart_fidelity/outputs/</span> · <span class="k">notes/restart-fidelity-findings.md</span></span>
+    <span>meeting brief <span class="k">2026-07-23</span></span>
+  </footer>
+</div>

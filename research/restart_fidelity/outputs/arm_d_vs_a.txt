@@ -1,0 +1,33 @@
+ARM D (tree-list rebuild) vs ARM A (continuous) -- 2026-07-16
+
+OUTCOME: the mechanism does not compose. Arm D did NOT execute a valid
+tree-list rebuild, so its numbers are confounded and must NOT be read as a
+measurement of rebuild divergence.
+
+What happened:
+  segment 1: captured 108 tree records at 2004
+  rebuild at 2009: fvsSetTreeAttrs(trees) rejected the frame --
+      "Length of 'id' must be 324"  (also species, dbh, ht, cratio, tpa)
+  rebuild at 2014: same rejection
+
+Why: FVS triples tree records during growth (record tripling in grow_cycle),
+so the live stand had 324 slots while the captured list had 108. fvsSetTreeAttrs
+requires the injected vector length to match the CURRENT record count; it cannot
+resize the stand. The rejection is a WARNING, not an error, so the injection
+silently no-op'd and each segment ran as an independent fresh run appending to
+the same output DB.
+
+Evidence of the broken composition (not a clean comparison):
+  - arm_d.db FVS_Summary2 has duplicate rows: 1999 x3, 2004 x2
+  - divergence appears only at 2019: ba_delta 9.94, tpa_delta -134.09, sdi 13
+  - carbon max |delta| 2.93
+
+CONCLUSION: the rFVS in-memory tree-list path (fvsGetTreeAttrs /
+fvsSetTreeAttrs) is not a viable segment-to-segment rebuild mechanism. A
+faithful test would regenerate a .tre input file and re-initialize FVS from it,
+which is a different mechanism and out of scope for this spike.
+
+This closes the option for the in-memory path on mechanism grounds. It does not
+quantify what a file-based tree-list rebuild would cost. The architecture
+decision does not depend on this arm: arm B (exact) and arm C (carbon diverges)
+are decisive on their own.

@@ -1,0 +1,11 @@
+{
+  "input": "data/interim/treemap_holes/hole_embeddings.csv",
+  "feature_year": 2022,
+  "anchor_years": [2018, 2022],
+  "stage_a_recall": 0.9,
+  "stage_a_clusters": 6,
+  "decision_threshold": 0.5,
+  "outer_split": "GroupKFold(5) on 0.25-degree blocks",
+  "configuration_status": "post-selection: k=6 and age-referenced design came from the full-data exploratory sweep",
+  "seed": 42
+}
