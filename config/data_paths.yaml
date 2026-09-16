@@ -56,6 +56,7 @@ r2:
   # may contain slashes, for directories filed under a bucket-side parent that has
   # no counterpart on the drive.
   renames:
+    forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries: "20260804_095846_Hard_Ownership_Boundaries"
     Artemis_project_fvs_copy: "Artemis_project_fvs_copy_no_management"
     # The LANDFIRE products sit at the drive root but are grouped in the bucket.
     LF2022_EVT_CONUS: "landfire/LF2022_EVT_CONUS"
@@ -160,6 +161,15 @@ raw:
     # in the bucket, not 'data/Artemis_project_fvs_copy/' as the drive paths below.
     FVS_Data_db: "/mnt/d/Artemis_project_fvs_copy/FVS_Data.db"
     FVSOut_db: "/mnt/d/Artemis_project_fvs_copy/FVSOut.db"
+
+  hard_ownership_boundaries:
+    # The 2026-08-04 ownership-segmented FVS run: management units cut at hard ownership
+    # boundaries, one inventory database per owner class. Only the stand-init table is
+    # declared, because that is the one file carrying PLT_CN -> (OWN_TYPE, MGMT_TYPE,
+    # Acres) — the crosswalk `pipeline/s6_outputs/owner_attribution.py` reads to put an
+    # owner class on a plot-keyed FVS trajectory. Its `FVS_TreeInit.csv` sibling is 1.5 GB
+    # and nothing here needs it.
+    stand_init_csv: "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv"
     
 interim:
   root:         "data/interim"
