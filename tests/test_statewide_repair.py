@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from pipeline.s1_initial_state.statewide_repair import (
     FLGrid,
@@ -22,7 +21,7 @@ EXCLUDED_PREFIXES = (
 def _reference_stratify(evt16, evt24, legend):
     """The validated string-based semantics of stratify_treemap_holes, verbatim."""
     name_of = {int(v): n for v, n in zip(legend.VALUE, legend.EVT_NAME)}
-    life_of = {int(v): l for v, l in zip(legend.VALUE, legend.EVT_LF)}
+    life_of = {int(v): lf for v, lf in zip(legend.VALUE, legend.EVT_LF)}
 
     def fields(v):
         name = np.array(
