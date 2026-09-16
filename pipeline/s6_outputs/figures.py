@@ -48,17 +48,7 @@ from pipeline.s6_outputs.fvs_out_db import load_output_config
 
 logger = logging.getLogger(__name__)
 
-# Fixed assignment, by the broad forest-type label the tables carry. Keyed on the label so
-# a cut that has no oak/pine acres still draws hardwood in the hardwood hue.
-_GROUP_KEYS = {
-    "Pine (softwood)": "pine",
-    "Oak/pine (mixed)": "mixed",
-    "Hardwood": "hardwood",
-    "Nonstocked": "nonstocked",
-}
-
 BAR_GAP = 0.18          # surface gap between adjacent bars, as a share of the slot
-MIN_FACET_ACRES = 1.0   # a facet below this has nothing to draw and is dropped
 REFERENCE_MAX_SERIES = 4  # past this the 1:1 guide is hidden under the data
 
 
@@ -85,8 +75,18 @@ def _style(config: dict) -> dict:
     return fig
 
 
-def _color(label: str, palette: dict) -> str:
-    return palette.get(_GROUP_KEYS.get(label, "unknown"), palette["unknown"])
+def _forest_series(table: pd.DataFrame, config: dict) -> list[str]:
+    """Keep configured forest types in order and append every unrecognized label."""
+    present = set(table["forest_type_label"].dropna())
+    canonical = list(config["forest_type_labels"].values())
+    return [label for label in canonical if label in present] + sorted(present - set(canonical))
+
+
+def _color(label: str, config: dict) -> str:
+    """Resolve configured display labels to stable palette keys, with an unknown fallback."""
+    keys = {value: key for key, value in config["forest_type_labels"].items()}
+    palette = config["figures"]["palette"]
+    return palette.get(keys.get(label, "unknown"), palette["unknown"])
 
 
 def _age_order(table: pd.DataFrame) -> list[str]:
@@ -128,22 +128,19 @@ def _basis_note(table: pd.DataFrame) -> str:
     return " / ".join(words.get(b, b) for b in bases)
 
 
-def _grouped_bars(ax, table: pd.DataFrame, series_col: str, palette: dict,
-                  ages: list[str]) -> list[str]:
+def _grouped_bars(ax, table: pd.DataFrame, series_col: str, config: dict,
+                  ages: list[str], series: list[str]) -> list[str]:
     """Age class on x, one colored bar per series in each class."""
-    series = [s for s in _GROUP_KEYS if s in set(table[series_col])]
-    series += [s for s in sorted(set(table[series_col])) if s not in series]
     x = np.arange(len(ages))
     width = (1 - BAR_GAP) / max(len(series), 1)
     for i, name in enumerate(series):
         rows = table[table[series_col] == name].set_index("age_class_label")
         acres = [rows["acres"].get(a, 0.0) for a in ages]
         ax.bar(x - 0.5 + BAR_GAP / 2 + width * (i + 0.5), acres, width * 0.92,
-               color=_color(name, palette), label=name, linewidth=0)
+               color=_color(name, config), label=name, linewidth=0)
     ax.set_xticks(x, ages, rotation=90)
     ax.grid(axis="y", zorder=0)
     ax.set_axisbelow(True)
-    _acre_axis(ax, table["acres"].max() if len(table) else 0)
     return series
 
 
@@ -164,15 +161,17 @@ def age_class_by_forest_type(table: pd.DataFrame, out_dir: Path, years,
 
     fig, axes = plt.subplots(1, len(years), figsize=(5.4 * len(years), 3.6), sharey=True)
     axes = np.atleast_1d(axes)
-    series: list[str] = []
+    selected = table[table["Year"].isin(years)]
+    series = _forest_series(selected, config)
+    unit = _acre_axis(axes[0], selected["acres"].max())
     for ax, year in zip(axes, years):
         series = _grouped_bars(ax, table[table["Year"] == year], "forest_type_label",
-                               style["palette"], ages)
+                               config, ages, series)
         ax.set_title(f"{year}")
         ax.set_xlabel("Stand age class (years)")
-    axes[0].set_ylabel("Thousand acres")
+    axes[0].set_ylabel(unit)
 
-    handles = [Line2D([], [], color=_color(s, style["palette"]), lw=6) for s in series]
+    handles = [Line2D([], [], color=_color(s, config), lw=6) for s in series]
     axes[-1].legend(handles, series, loc="upper right", title=None)
     fig.suptitle("Age-class distribution by forest type", y=1.02, fontsize=11)
     fig.text(0, -0.13, f"Weight: {_basis_note(table)}.", fontsize=7.5,
@@ -195,9 +194,11 @@ def age_class_over_time(table: pd.DataFrame, out_dir: Path,
     ramp = LinearSegmentedColormap.from_list("age", style["age_ramp"])
     colors = [ramp(i / max(len(ages) - 1, 1)) for i in range(len(ages))]
 
-    types = [t for t in _GROUP_KEYS if t in set(table["forest_type_label"])]
+    types = _forest_series(table, config)
     fig, axes = plt.subplots(1, len(types), figsize=(4.0 * len(types), 3.4), sharey=True)
     axes = np.atleast_1d(axes)
+    peak = table.groupby(["Year", "forest_type_label"])["acres"].sum().max()
+    unit = _acre_axis(axes[0], peak)
     for ax, forest_type in zip(axes, types):
         rows = table[table["forest_type_label"] == forest_type]
         years = sorted(rows["Year"].unique())
@@ -208,7 +209,6 @@ def age_class_over_time(table: pd.DataFrame, out_dir: Path,
         ax.set_title(forest_type)
         ax.set_xlabel("Year")
         ax.margins(x=0)
-        unit = _acre_axis(ax, wide.to_numpy().sum(axis=1).max())
     axes[0].set_ylabel(unit)
 
     # Direct-label the ramp rather than printing fifteen legend entries. Outside the axes:
@@ -224,8 +224,7 @@ def age_class_over_time(table: pd.DataFrame, out_dir: Path,
 
 
 def _facet_grid(table: pd.DataFrame, facet_col: str, out_dir: Path, name: str, title: str,
-                year: int, *, order=None, config: dict | None = None,
-                max_facets: int | None = None) -> Path:
+                year: int, *, order=None, config: dict | None = None) -> Path:
     """Small multiples: one age-class panel per facet, stacked by forest type."""
     config = config or load_output_config()
     style = _style(config)
@@ -235,13 +234,11 @@ def _facet_grid(table: pd.DataFrame, facet_col: str, out_dir: Path, name: str, t
     totals = rows.groupby(facet_col)["acres"].sum().sort_values(ascending=False)
     # A facet with no acres is not a finding, it is an empty panel. The commonest one is
     # `Unattributed`, which by construction carries no owner acreage at all.
-    totals = totals[totals >= MIN_FACET_ACRES]
+    totals = totals[totals > 0]
     if totals.empty:
         raise ValueError(f"no {facet_col} facet in {year} has acres to draw")
     facets = [f for f in (order or []) if f in totals.index]
     facets += [f for f in totals.index if f not in facets]
-    if max_facets:
-        facets = facets[:max_facets]
 
     cols = min(4, max(len(facets), 1))
     grid_rows = math.ceil(len(facets) / cols)
@@ -254,8 +251,7 @@ def _facet_grid(table: pd.DataFrame, facet_col: str, out_dir: Path, name: str, t
     # Fixed across every panel, from the whole grid rather than one facet: a stack order
     # that changed per panel would repaint the same forest type in two colors, and a
     # legend built from the last panel would omit whatever that panel happens to lack.
-    series = [s for s in _GROUP_KEYS if s in set(rows["forest_type_label"])] if stacked \
-        else []
+    series = _forest_series(rows, config) if stacked else []
 
     for ax, facet in zip(flat, facets):
         panel = rows[rows[facet_col] == facet]
@@ -263,14 +259,15 @@ def _facet_grid(table: pd.DataFrame, facet_col: str, out_dir: Path, name: str, t
         if stacked:
             bottom = np.zeros(len(ages))
             for name_ in series:
-                part = panel[panel["forest_type_label"] == name_].set_index("age_class_label")
-                acres = np.array([part["acres"].get(a, 0.0) for a in ages])
+                part = (panel[panel["forest_type_label"] == name_]
+                        .groupby("age_class_label")["acres"].sum())
+                acres = np.array([part.get(a, 0.0) for a in ages])
                 ax.bar(x, acres, 1 - BAR_GAP, bottom=bottom,
-                       color=_color(name_, style["palette"]), linewidth=0)
+                       color=_color(name_, config), linewidth=0)
                 bottom += acres
         else:
-            part = panel.set_index("age_class_label")
-            ax.bar(x, [part["acres"].get(a, 0.0) for a in ages], 1 - BAR_GAP,
+            part = panel.groupby("age_class_label")["acres"].sum()
+            ax.bar(x, [part.get(a, 0.0) for a in ages], 1 - BAR_GAP,
                    color=style["palette"]["mixed"], linewidth=0)
         ax.set_title(f"{facet}\n{totals.get(facet, 0):,.0f} acres", fontsize=8.5)
         ax.set_xticks(x[::2], [ages[i] for i in range(0, len(ages), 2)], rotation=90,
@@ -283,7 +280,7 @@ def _facet_grid(table: pd.DataFrame, facet_col: str, out_dir: Path, name: str, t
         ax.set_visible(False)
 
     if stacked and series:
-        handles = [Line2D([], [], color=_color(s, style["palette"]), lw=6) for s in series]
+        handles = [Line2D([], [], color=_color(s, config), lw=6) for s in series]
         fig.legend(handles, series, loc="lower center", ncols=len(series),
                    bbox_to_anchor=(0.5, -0.04))
     fig.suptitle(f"{title} — {year}", y=1.0, fontsize=11)
@@ -316,14 +313,28 @@ def age_class_by_management_type(table: pd.DataFrame, out_dir: Path, year: int,
 
 def age_class_by_area(table: pd.DataFrame, area_col: str, out_dir: Path, year: int,
                       *, name: str, title: str, config: dict | None = None) -> Path:
+    """Render all areas, pooling counties outside the selected year's largest N."""
     config = config or load_output_config()
-    top_n = config["areas"]["top_n_counties"] if area_col == "county" else None
+    order = None
+    if area_col == "county":
+        table = table[table["Year"] == year].copy()
+        top_n = int(config["areas"]["top_n_counties"])
+        if top_n < 0:
+            raise ValueError("areas.top_n_counties must be nonnegative")
+        totals = table.groupby("county")["acres"].sum().sort_values(ascending=False)
+        order = list(totals.index[:top_n])
+        if len(totals) > top_n:
+            table.loc[~table["county"].isin(order), "county"] = "Other counties"
+            order.append("Other counties")
+        keys = ["Year", "county", "forest_type_label", "age_class_label",
+                "age_class_sort", "weight_basis"]
+        table = table.groupby(keys, dropna=False, as_index=False)["acres"].sum()
     return _facet_grid(table, area_col, out_dir, name, title, year,
-                       config=config, max_facets=top_n)
+                       config=config, order=order)
 
 
 def mean_age_trajectory(table: pd.DataFrame, out_dir: Path, series_col: str,
-                        *, name: str, title: str, config: dict | None = None) -> Path:
+                        *, name: str, title: str, config: dict | None = None) -> Path | None:
     """
     Acre-weighted mean age per year, one line per series, end-labelled.
 
@@ -335,17 +346,20 @@ def mean_age_trajectory(table: pd.DataFrame, out_dir: Path, series_col: str,
     """
     config = config or load_output_config()
     style = _style(config)
+    known = table.dropna(subset=["mean_age"])
+    if known.empty:
+        logger.warning("skipping %s: no known stand ages", name)
+        return None
     fig, ax = plt.subplots(figsize=(6.6, 3.8))
-
-    table = table.dropna(subset=["mean_age"])
-    years = sorted(table["Year"].unique())
-    series = list(table.groupby(series_col, observed=True))
+    years = sorted(known["Year"].unique())
+    series = [(label, rows) for label, rows in table.groupby(series_col, observed=True)
+              if rows["mean_age"].notna().any()]
 
     if len(series) <= REFERENCE_MAX_SERIES:
         # The run's own starting mean age, aged one year per year: what a projection with
         # no mortality and no type change would draw. Past a handful of series the lines
         # sit on top of it and it stops being readable.
-        first = table[table["Year"] == years[0]]
+        first = known[known["Year"] == years[0]]
         start_age = np.average(first["mean_age"], weights=first["acres"])
         reference = start_age + (np.array(years) - years[0])
         ax.plot(years, reference, color=style["palette"]["nonstocked"], lw=1.2, ls=(0, (5, 4)),
@@ -357,11 +371,11 @@ def mean_age_trajectory(table: pd.DataFrame, out_dir: Path, series_col: str,
     ends: list[tuple[float, str]] = []
     for label, rows in series:
         rows = rows.sort_values("Year")
-        color = _color(label, style["palette"]) if series_col == "forest_type_label" \
+        color = _color(label, config) if series_col == "forest_type_label" \
             else style["palette"]["mixed"]
         ax.plot(rows["Year"], rows["mean_age"], lw=2, color=color, marker="o", ms=4,
                 zorder=2)
-        ends.append((float(rows["mean_age"].iloc[-1]), str(label)))
+        ends.append((float(rows["mean_age"].dropna().iloc[-1]), str(label)))
 
     # End labels carry the identity (the owner cut draws one hue for eight series), so they
     # have to be legible: push any that would overlap apart, keeping their vertical order.

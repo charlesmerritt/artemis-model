@@ -127,9 +127,9 @@ def load_stand_years(db_path: str | Path, *, config: dict | None = None) -> pd.D
     """
     The run as one stand-year frame: case attributes, cycle metrics, decoded geography.
 
-    Removal rows (`RmvCode != 0`) are dropped — they report what a thinning took out, not
-    the stand that stands after it, and summing them into an age-class distribution would
-    double-count the acres. A no-management run has none.
+    Keep code 0 for unmanaged cycles and code 2 for the post-removal state of managed
+    cycles. Code 1 is the pre-removal state and must not contribute additional acres.
+    Each stand must have one case so management alternatives cannot inflate acreage.
     """
     config = config or load_output_config()
     db_path = Path(db_path)
@@ -147,10 +147,8 @@ def load_stand_years(db_path: str | Path, *, config: dict | None = None) -> pd.D
         cases = load_cases(conn)
         summary = load_summary(conn)
 
-    removals = int((summary["RmvCode"] != 0).sum())
-    if removals:
-        logger.info("dropping %d removal rows (RmvCode != 0)", removals)
-        summary = summary[summary["RmvCode"] == 0]
+    validate_landscape_cases(cases)
+    summary = select_cycle_states(summary)
 
     stand_years = summary.merge(cases, on="CaseID", how="inner", validate="many_to_one")
     orphans = len(summary) - len(stand_years)
@@ -173,6 +171,34 @@ def load_stand_years(db_path: str | Path, *, config: dict | None = None) -> pd.D
             stand_years = stand_years[~weightless]
 
     return stand_years.reset_index(drop=True)
+
+
+def validate_landscape_cases(frame: pd.DataFrame) -> None:
+    """Reject multiple case trajectories for one stand, including disjoint year grids."""
+    cases = frame[["StandID", "CaseID"]].drop_duplicates()
+    ambiguous = cases.groupby("StandID", dropna=False)["CaseID"].nunique(dropna=False)
+    ambiguous = ambiguous[ambiguous > 1]
+    if not ambiguous.empty:
+        raise FvsOutputError(
+            f"{len(ambiguous)} stand(s) have multiple FVS cases. S6 requires one case "
+            "per stand; select one management alternative per stand in the input "
+            "database before reporting. Alternatives cannot be added as landscape acres."
+        )
+
+
+def select_cycle_states(summary: pd.DataFrame) -> pd.DataFrame:
+    """Choose post-removal code 2 over code 0 and reject missing or duplicate states."""
+    keys = ["CaseID", "Year"]
+    if not summary["RmvCode"].isin([0, 1, 2]).all():
+        raise FvsOutputError("FVS_Summary2 has an unsupported RmvCode")
+    states = summary[summary["RmvCode"].isin([0, 2])].copy()
+    if states.duplicated([*keys, "RmvCode"]).any():
+        raise FvsOutputError("FVS_Summary2 has duplicate cycle states for a case-year")
+    states = states.sort_values("RmvCode").drop_duplicates(keys, keep="last")
+    if len(states) != len(summary[keys].drop_duplicates()):
+        raise FvsOutputError("FVS_Summary2 has a pre-removal cycle without a final state")
+    logger.info("excluded %d pre-removal or superseded cycle rows", len(summary) - len(states))
+    return states
 
 
 def balanced_years(stand_years: pd.DataFrame) -> list[int]:

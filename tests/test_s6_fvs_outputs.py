@@ -115,10 +115,10 @@ def test_a_missing_summary_table_names_the_table_rather_than_raising_sqlite_nois
         fvs_out_db.load_stand_years(path)
 
 
-def test_removal_rows_are_dropped_so_thinned_acres_are_not_counted_twice(tmp_path):
+def test_pre_removal_rows_do_not_add_acres_to_the_final_state(tmp_path):
     path = _write_fvs_out(tmp_path / "thin.db", [
         ("120010100001", 2026, 20, 141, 0),
-        ("120010100001", 2026, 20, 141, 1),      # what the thinning removed
+        ("120010100001", 2026, 20, 141, 1),      # pre-removal state
     ])
     stand_years = fvs_out_db.load_stand_years(path)
     assert len(stand_years) == 1
@@ -387,3 +387,251 @@ def test_the_declared_five_county_run_reports_a_balanced_grid(data_access):
     identity = fvs_out_db.run_identity(stand_years)
     assert table[table["Year"] == years[0]]["acres"].sum() == pytest.approx(
         identity["sampling_weight_acres"])
+
+
+# Review regressions
+
+def test_managed_cycles_keep_post_removal_age_and_acreage(tmp_path):
+    """A harvest year remains balanced and contributes its final state exactly once."""
+    path = _write_fvs_out(tmp_path / "managed.db", [
+        ("120010100001", 2026, 50, 141),
+        ("120010100001", 2031, 55, 141, 1),
+        ("120010100001", 2031, 1, 141, 2),
+        ("120010100001", 2036, 6, 141),
+        ("120010300002", 2026, 30, 161),
+        ("120010300002", 2031, 35, 161),
+        ("120010300002", 2036, 40, 161),
+    ])
+    rows = fvs_out_db.load_stand_years(path)
+    years = fvs_out_db.reporting_years(rows)
+    assert years == [2026, 2031, 2036]
+    harvested = rows[(rows["Year"] == 2031) & (rows["StandID"] == "120010100001")]
+    assert harvested["Age"].tolist() == [1]
+    table = age_class.overall(age_class.attribute(rows), years)
+    assert table.groupby("Year")["acres"].sum().eq(200).all()
+
+
+@pytest.mark.parametrize("rows", [
+    [("c", 2031, 1)],
+    [("c", 2031, 0), ("c", 2031, 0)],
+])
+def test_incomplete_or_duplicate_cycle_states_are_rejected(rows):
+    """Malformed cycles cannot silently remove stands or add acreage."""
+    summary = pd.DataFrame(rows, columns=["CaseID", "Year", "RmvCode"])
+    with pytest.raises(fvs_out_db.FvsOutputError):
+        fvs_out_db.select_cycle_states(summary)
+
+
+def test_post_removal_state_supersedes_an_unmanaged_row():
+    """Even an extra code 0 does not double-count a managed cycle."""
+    summary = pd.DataFrame({"CaseID": ["c"] * 3, "Year": [2031] * 3,
+                            "RmvCode": [0, 1, 2], "Age": [50, 50, 1]})
+    assert fvs_out_db.select_cycle_states(summary)["Age"].tolist() == [1]
+
+
+def test_alternative_cases_are_rejected_at_extraction(fvs_out):
+    """A second prescription for a stand cannot become additional landscape acres."""
+    with sqlite3.connect(fvs_out) as conn:
+        conn.execute("INSERT INTO FVS_Cases SELECT 'alternative', Stand_CN, StandID, "
+                     "'B002', RunTitle, KeywordFile, SamplingWt, Variant, Version, RV, "
+                     "Groups, RunDateTime FROM FVS_Cases LIMIT 1")
+    with pytest.raises(fvs_out_db.FvsOutputError, match="one case per stand"):
+        fvs_out_db.load_stand_years(fvs_out)
+
+
+@pytest.mark.parametrize("summarize", [age_class.overall, age_class.mean_age_trajectory])
+def test_direct_aggregation_rejects_alternatives_on_disjoint_grids(fvs_out, summarize):
+    """Public table helpers enforce scenario semantics even without extraction."""
+    attributed = age_class.attribute(fvs_out_db.load_stand_years(fvs_out))
+    alternative = attributed.iloc[[0]].copy()
+    alternative["CaseID"] = "alternative"
+    alternative["Year"] = 2099
+    with pytest.raises(fvs_out_db.FvsOutputError, match="multiple FVS cases"):
+        summarize(pd.concat([attributed, alternative]), [2026])
+
+
+@pytest.mark.parametrize("stages", [["visualize"], ["extract"], ["summarize"],
+                                   ["attribute", "visualize"], list(run_pipeline.STAGES)])
+def test_dry_run_never_executes_stages_or_changes_files(tmp_path, monkeypatch, stages):
+    """Every stage subset honors the CLI promise to write nothing."""
+    marker = tmp_path / "figures" / "age_class_by_owner.png"
+    marker.parent.mkdir()
+    marker.write_bytes(b"previous figure")
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+    def unexpected(*args, **kwargs):
+        """Fail if a dry run attempts to execute a processing stage or fetch data."""
+        pytest.fail("dry run executed a processing stage")
+
+    for name in ["stage_extract", "stage_attribute", "stage_summarize", "stage_visualize"]:
+        monkeypatch.setattr(run_pipeline, name, unexpected)
+    monkeypatch.setattr(run_pipeline.data_access, "ensure_local", unexpected)
+    monkeypatch.setattr(run_pipeline.data_access, "exists", lambda path: False)
+    run_pipeline.run(stages, out_dir=tmp_path, dry_run=True)
+    assert before == {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def test_oversized_optional_crosswalk_degrades_to_ownerless_reporting(fvs_out, tmp_path,
+                                                                    monkeypatch, caplog):
+    """The crosswalk fetch cap costs only owner reporting, with a visible warning."""
+    def oversized(path, *, max_fetch_mb=None):
+        """Simulate the optional crosswalk exceeding the configured fetch cap."""
+        assert max_fetch_mb == run_pipeline.CROSSWALK_MAX_FETCH_MB
+        raise run_pipeline.data_access.RemoteFetchTooLarge("70 MB exceeds 64 MB cap")
+
+    monkeypatch.setattr(run_pipeline.data_access, "ensure_local", oversized)
+    ctx = run_pipeline.run(["resolve", "extract", "attribute", "summarize"],
+                           fvs_out=str(fvs_out), crosswalk=str(tmp_path / "remote.csv"),
+                           out_dir=tmp_path / "out")
+    assert ctx.summary["owner_crosswalk"] is None
+    assert "age_class_by_owner" not in ctx.tables
+    assert "70 MB exceeds" in caplog.text
+
+
+def test_ownerless_rerun_removes_stale_owned_outputs(fvs_out, crosswalk, tmp_path):
+    """Summarize invalidates old figures and removes owner CSVs before a redraw."""
+    out = tmp_path / "out"
+    run_pipeline.run(fvs_out=str(fvs_out), crosswalk=str(crosswalk), out_dir=out)
+    custom = out / "tables" / "user_notes.csv"
+    custom.write_text("note\nkeep me\n")
+    run_pipeline.run(["resolve", "extract", "attribute", "summarize"],
+                     fvs_out=str(fvs_out), crosswalk="", out_dir=out)
+    assert not (out / "tables" / "age_class_by_owner.csv").exists()
+    assert not list((out / "figures").glob("*.png"))
+    run_pipeline.run(["visualize"], out_dir=out)
+    assert not (out / "figures" / "age_class_by_owner.png").exists()
+    assert (out / "figures" / "age_class_by_state.png").exists()
+    assert custom.read_text() == "note\nkeep me\n"
+
+
+@pytest.fixture
+def capture_figure(monkeypatch):
+    """Capture the rendered Matplotlib figure so tests inspect its actual encodings."""
+    from pipeline.s6_outputs import figures
+    captured = []
+
+    def capture(fig, out_dir, name, config):
+        """Retain the figure for assertions without writing a raster image."""
+        captured.append(fig)
+        return out_dir / f"{name}.png"
+
+    monkeypatch.setattr(figures, "_save", capture)
+    yield captured
+    for fig in captured:
+        figures.plt.close(fig)
+
+
+@pytest.mark.parametrize("peaks,unit,tick", [
+    ([50, 5000], "Acres", "5,000"),
+    ([500000, 50], "Thousand acres", "5"),
+    ([50, 500000], "Thousand acres", "5"),
+])
+def test_snapshot_axes_share_one_formatter_and_correct_unit(tmp_path, capture_figure,
+                                                           peaks, unit, tick):
+    """Snapshots crossing the unit threshold still label the same tick consistently."""
+    from pipeline.s6_outputs import figures
+    table = pd.DataFrame({"Year": [2026, 2076], "forest_type_label": ["Hardwood"] * 2,
+                          "age_class_label": ["10-19"] * 2, "age_class_sort": [10] * 2,
+                          "acres": peaks, "weight_basis": ["sampling_weight"] * 2})
+    figures.age_class_by_forest_type(table, tmp_path, [2026, 2076])
+    axes = capture_figure[0].axes
+    assert axes[0].get_ylabel() == unit
+    assert all(ax.yaxis.get_major_formatter()(5000, None) == tick for ax in axes)
+
+
+def test_time_axes_use_the_combined_stacked_peak(tmp_path, capture_figure):
+    """A small last forest-type panel cannot change the shared axis to raw acres."""
+    from pipeline.s6_outputs import figures
+    table = pd.DataFrame({"Year": [2026] * 3, "forest_type_label":
+                          ["Pine (softwood)", "Pine (softwood)", "Hardwood"],
+                          "age_class_label": ["10-19", "20-29", "10-19"],
+                          "age_class_sort": [10, 20, 10], "acres": [6000, 6000, 50],
+                          "weight_basis": ["sampling_weight"] * 3})
+    figures.age_class_over_time(table, tmp_path)
+    axes = capture_figure[0].axes
+    assert axes[0].get_ylabel() == "Thousand acres"
+    assert all(ax.yaxis.get_major_formatter()(12000, None) == "12" for ax in axes)
+
+
+@pytest.mark.parametrize("unknown_only", [False, True])
+def test_unknown_types_and_custom_labels_appear_in_all_charts(fvs_out, tmp_path,
+                                                            capture_figure, unknown_only):
+    """Figures conserve unknown acreage and use configured labels for palette lookup."""
+    from matplotlib.colors import to_rgba
+    from pipeline.s6_outputs import figures
+    config = {**CONFIG, "forest_type_labels": {**CONFIG["forest_type_labels"],
+                                              "pine": "Conifers"}}
+    rows = fvs_out_db.load_stand_years(fvs_out)
+    rows.loc[rows["StandID"] == "130010500003", "ForTyp"] = None
+    if unknown_only:
+        rows["ForTyp"] = None
+    table = age_class.by_forest_type(age_class.attribute(rows, config=config), [2026])
+    figures.age_class_by_forest_type(table, tmp_path, [2026], config=config)
+    snapshot = capture_figure[-1]
+    assert sum(p.get_height() for p in snapshot.axes[0].patches) == pytest.approx(1750)
+    legend = snapshot.axes[0].get_legend()
+    assert "Unknown" in [t.get_text() for t in legend.get_texts()]
+    if not unknown_only:
+        assert snapshot.axes[0].patches[0].get_facecolor() == to_rgba(
+            CONFIG["figures"]["palette"]["pine"])
+    figures.age_class_over_time(table, tmp_path, config=config)
+    assert "Unknown" in [ax.get_title() for ax in capture_figure[-1].axes]
+    attributed = age_class.attribute(rows, config=config)
+    figures.age_class_by_area(age_class.by_state(attributed, [2026]), "state", tmp_path,
+                              2026, name="state", title="State", config=config)
+    assert sum(p.get_height() for ax in capture_figure[-1].axes for p in ax.patches) == 1750
+
+
+def test_county_remainder_is_pooled_using_only_the_selected_year(tmp_path, capture_figure):
+    """The pooled facet preserves all acreage and aggregates overlapping age/type rows."""
+    from pipeline.s6_outputs import figures
+    table = pd.DataFrame({"Year": [2026] * 3 + [2076] * 3,
+                          "county": ["A", "B", "C"] * 2,
+                          "forest_type_label": ["Hardwood"] * 6,
+                          "age_class_label": ["10-19"] * 6, "age_class_sort": [10] * 6,
+                          "acres": [1000, 20, 10, 10, 20, 100],
+                          "weight_basis": ["sampling_weight"] * 6})
+    config = {**CONFIG, "areas": {**CONFIG["areas"], "top_n_counties": 1}}
+    figures.age_class_by_area(table, "county", tmp_path, 2076, name="county",
+                              title="County", config=config)
+    axes = capture_figure[-1].axes
+    assert [ax.get_title() for ax in axes] == ["C\n100 acres", "Other counties\n30 acres"]
+    assert sum(p.get_height() for ax in axes for p in ax.patches) == 130
+    assert table["county"].tolist() == ["A", "B", "C"] * 2
+
+
+def test_unknown_only_ages_keep_tables_and_skip_mean_age_figures(fvs_out, crosswalk,
+                                                               tmp_path, caplog):
+    """Unknown ages remain reportable without inventing a mean or aborting figures."""
+    with sqlite3.connect(fvs_out) as conn:
+        conn.execute("UPDATE FVS_Summary2 SET Age = 0")
+    ctx = run_pipeline.run(fvs_out=str(fvs_out), crosswalk=str(crosswalk), out_dir=tmp_path)
+    mean = ctx.tables["mean_age_by_forest_type"]
+    assert sorted(mean["Year"].unique()) == ctx.years
+    assert mean["mean_age"].isna().all()
+    assert mean["acres"].eq(0).all()
+    assert not (tmp_path / "figures" / "mean_age_by_forest_type.png").exists()
+    assert (tmp_path / "figures" / "age_class_by_owner.png").exists()
+    assert "no known stand ages" in caplog.text
+    run_pipeline.run(["visualize"], out_dir=tmp_path)
+
+
+def test_crosswalk_default_matches_the_declared_ownership_run():
+    """The S6 crosswalk resolves the same mounted file as the ownership pipeline."""
+    assert run_pipeline._declared(run_pipeline.OWNER_CROSSWALK_KEY) == run_pipeline._declared(
+        ("raw", "leto_ownership_run", "stand_init"))
+
+
+@pytest.mark.parametrize("local,remote", [
+    (run_pipeline._declared(run_pipeline.OWNER_CROSSWALK_KEY),
+     "20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv"),
+    ("/mnt/d/Artemis_project_fvs_copy/FVSOut.db",
+     "Artemis_project_fvs_copy_no_management/FVSOut.db"),
+    ("/mnt/d/TreeMap-2022/Data/TreeMap2022_CONUS.tif",
+     "TreeMap-2022/Data/TreeMap2022_CONUS.tif"),
+    ("/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/another_run/Inputs.csv",
+     "forest_condition_2026/FVS/FVS_Database_Runs/another_run/Inputs.csv"),
+])
+def test_drive_paths_keep_their_documented_r2_locations(local, remote):
+    """The nested crosswalk alias preserves existing aliases and unrelated paths."""
+    assert run_pipeline.data_access.remote_url(local) == f"r2:artemis-r2/data/{remote}"

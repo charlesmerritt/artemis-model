@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 
 from pipeline.s4_fvs.fallback_treelists import forest_type_group, forest_type_group_code
-from pipeline.s6_outputs.fvs_out_db import load_output_config
+from pipeline.s6_outputs.fvs_out_db import load_output_config, validate_landscape_cases
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +141,7 @@ def distribution(attributed: pd.DataFrame, years, by, *,
     computed within (year, cut) so a stacked or faceted plot reads as a composition of
     that cut, not of the run; `acres` is what totals across cuts.
     """
+    validate_landscape_cases(attributed)
     by = [by] if isinstance(by, str) else list(by)
     missing = [c for c in [*by, weight] if c not in attributed.columns]
     if missing:
@@ -219,19 +220,16 @@ def mean_age_trajectory(attributed, years, by=None, *, weight: str = SAMPLING_WE
     change moves acres between classes, so this is the quickest read on whether a run did
     anything but age.
     """
+    validate_landscape_cases(attributed)
     by = [] if by is None else ([by] if isinstance(by, str) else list(by))
     rows = attributed[attributed["Year"].isin(list(years))].copy()
-    rows = rows[rows["Age"] > 0]
-
-    def _weighted(frame):
-        acres = frame[weight].sum()
-        return pd.Series({
-            "mean_age": np.average(frame["Age"], weights=frame[weight]) if acres > 0
-            else np.nan,
-            "acres": acres,
-        })
-
-    out = rows.groupby(["Year", *by], observed=True).apply(_weighted, include_groups=False)
-    out = out.reset_index()
+    known = rows["Age"].notna() & (rows["Age"] > 0)
+    rows["known_acres"] = rows[weight].where(known, 0.0)
+    rows["age_acres"] = rows["Age"].where(known, 0.0) * rows["known_acres"]
+    out = rows.groupby(["Year", *by], observed=True, dropna=False).agg(
+        acres=("known_acres", "sum"), age_acres=("age_acres", "sum"),
+    ).reset_index()
+    out["mean_age"] = out["age_acres"] / out["acres"].where(out["acres"] > 0)
+    out = out.drop(columns="age_acres")
     out["weight_basis"] = weight
     return out

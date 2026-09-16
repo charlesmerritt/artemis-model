@@ -84,6 +84,31 @@ apportions each stand-year across them, which is how the trajectory actually lan
 ground. Plots the crosswalk does not reach are reported as `Unattributed` rather than dropped,
 so the owner tables still account for every case in the run.
 
+## Case and cycle semantics
+
+Each stand must have exactly one FVS case. S6 rejects multiple cases for a stand before
+aggregation, including alternatives on disjoint year grids. To report alternatives, supply
+separate input databases with one chosen case per stand; different stands may still have
+different management IDs.
+
+An unmanaged cycle uses `RmvCode: 0`. A managed cycle uses the post-removal state
+(`RmvCode: 2`) and excludes the pre-removal state (`RmvCode: 1`). Duplicate cycle states
+and pre-removal cycles without a final state are errors.
+
+Mean-age tables retain reporting-year groups with no known ages as `mean_age: NaN` and
+zero known-age acres. When no known ages exist, the mean-age figure is skipped with a
+warning, while age-class figures remain available. Unknown forest types appear in every
+forest-type figure, and custom labels retain their configured palette colors.
+
+County figures show the largest `areas.top_n_counties` counties for the selected year
+and pool the remainder into `Other counties`. Snapshot and time-series panels sharing an
+axis use one acreage formatter chosen from their combined peak.
+
+Rerunning summarize removes obsolete S6 tables and invalidates previous S6 figures;
+visualize removes obsolete S6 figures after drawing the current set. Unrelated files are
+preserved. Dry runs write nothing for every stage selection. An oversized optional owner
+crosswalk logs a warning and continues without owner reporting.
+
 ## Tables
 
 | File | Cut | Basis |

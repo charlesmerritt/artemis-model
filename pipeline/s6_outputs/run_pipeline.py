@@ -42,6 +42,7 @@ import argparse
 import json
 import logging
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,6 +58,27 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_DIR = REPO_ROOT / "data" / "processed" / "fvs_outputs"
 
 STAGES = ("resolve", "extract", "attribute", "summarize", "visualize")
+
+TABLE_NAMES = (
+    "age_class_overall", "age_class_by_forest_type", "age_class_by_forest_type_detail",
+    "age_class_by_state", "age_class_by_county", "mean_age_by_forest_type",
+    "age_class_by_owner", "age_class_by_owner_forest_type", "age_class_by_management_type",
+    "mean_age_by_owner",
+)
+FIGURE_NAMES = (
+    "age_class_by_forest_type", "age_class_over_time", "mean_age_by_forest_type",
+    "age_class_by_state", "age_class_by_county", "age_class_by_owner",
+    "age_class_by_management_type", "mean_age_by_owner",
+)
+
+
+def _remove_outputs(directory: Path, names: tuple[str, ...], *, keep: Iterable[Path] = ()) -> None:
+    """Remove obsolete files owned by this stage, preserving unrelated user files."""
+    retained = set(keep)
+    for path in directory.glob("*"):
+        if path.is_file() and path.stem in names and path not in retained:
+            path.unlink()
+
 
 # Config keys naming the default run: the five-county no-management FVS Online project and
 # the ownership-segmented run whose stand-init table carries the owner classes.
@@ -140,7 +162,7 @@ def stage_resolve(ctx: Context, *, fvs_out: str | None, crosswalk: str | None,
         try:
             ctx.crosswalk_path = _resolve_one(crosswalk, "the owner-class crosswalk",
                                               max_fetch_mb=CROSSWALK_MAX_FETCH_MB)
-        except StageError as exc:
+        except (StageError, data_access.RemoteFetchTooLarge) as exc:
             # An unreachable crosswalk costs the owner cut and nothing else, so it degrades
             # rather than fails — but it says so in the log and in run_summary.json.
             logger.warning("%s\n  owner-class tables and figures will be skipped", exc)
@@ -206,6 +228,9 @@ def stage_summarize(ctx: Context, *, write: bool = True) -> None:
     if not write:
         return
     ctx.table_dir.mkdir(parents=True, exist_ok=True)
+    _remove_outputs(ctx.table_dir, TABLE_NAMES,
+                    keep=[ctx.table_dir / f"{name}.csv" for name in tables])
+    _remove_outputs(ctx.figure_dir, FIGURE_NAMES)
     for name, table in tables.items():
         table.to_csv(ctx.table_dir / f"{name}.csv", index=False)
         logger.info("wrote tables/%s.csv (%d rows)", name, len(table))
@@ -248,7 +273,8 @@ def _load_tables(ctx: Context) -> dict[str, pd.DataFrame]:
         raise StageError(
             f"no tables in {ctx.table_dir}. Run the summarize stage before visualize."
         )
-    tables = {p.stem: pd.read_csv(p) for p in sorted(ctx.table_dir.glob("*.csv"))}
+    tables = {p.stem: pd.read_csv(p) for p in sorted(ctx.table_dir.glob("*.csv"))
+              if p.stem in TABLE_NAMES}
     if not tables:
         raise StageError(f"{ctx.table_dir} holds no CSVs")
     summary_path = ctx.out_dir / "run_summary.json"
@@ -274,7 +300,7 @@ def stage_visualize(ctx: Context) -> list[Path]:
     snapshots = [years[0] if s == "first" else years[-1] if s == "last" else int(s)
                  for s in ctx.config["figures"]["snapshot_years"]]
     last = years[-1]
-    written: list[Path] = []
+    written: list[Path | None] = []
 
     written.append(figures.age_class_by_forest_type(
         tables["age_class_by_forest_type"], ctx.figure_dir, snapshots, config=ctx.config))
@@ -291,7 +317,7 @@ def stage_visualize(ctx: Context) -> list[Path]:
     written.append(figures.age_class_by_area(
         tables["age_class_by_county"], "county", ctx.figure_dir, last,
         name="age_class_by_county",
-        title=f"Age-class distribution by county (largest {ctx.config['areas']['top_n_counties']})",
+        title=f"Age-class distribution by county (largest {ctx.config['areas']['top_n_counties']} plus remainder)",
         config=ctx.config))
 
     if "age_class_by_owner_forest_type" in tables:
@@ -307,7 +333,9 @@ def stage_visualize(ctx: Context) -> list[Path]:
     else:
         logger.warning("no owner tables: the owner-class figures were not drawn")
 
-    return written
+    paths = [path for path in written if path is not None]
+    _remove_outputs(ctx.figure_dir, FIGURE_NAMES, keep=paths)
+    return paths
 
 
 # ---- driver ----------------------------------------------------------------------------
@@ -326,8 +354,11 @@ def run(stages=STAGES, *, fvs_out: str | None = None, crosswalk: str | None = No
 
     if "resolve" in stages:
         stage_resolve(ctx, fvs_out=fvs_out, crosswalk=crosswalk, dry_run=dry_run)
-        if dry_run:
-            return ctx
+    if dry_run:
+        logger.info("requested stages: %s", ", ".join(stages))
+        logger.info("would write tables to %s and figures to %s",
+                    ctx.table_dir, ctx.figure_dir)
+        return ctx
     if "extract" in stages:
         stage_extract(ctx)
     if "attribute" in stages:
