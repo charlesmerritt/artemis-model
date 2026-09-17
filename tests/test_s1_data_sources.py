@@ -13,6 +13,8 @@ from pipeline.s1_initial_state import data_sources
 from pipeline.s1_initial_state.data_sources import (
     ProductionDataPaths,
     load_fia_trees_sqlite,
+    load_stand_age_by_plot,
+    load_treemap_attributes,
     load_treemap_lookup,
     preflight_production_data,
 )
@@ -98,3 +100,76 @@ def test_load_fia_trees_sqlite_filters_plots_and_states(tmp_path):
     result = load_fia_trees_sqlite(db_path, {"101"}, state_codes={12})
     assert result["PLT_CN"].tolist() == ["101"]
     assert result["STATECD"].tolist() == ["12"]
+
+
+def test_load_treemap_attributes_renames_vat_columns_and_normalizes_plt_cn(
+    tmp_path, monkeypatch
+):
+    dbf_path = tmp_path / "vat.dbf"
+    dbf_path.touch()
+    monkeypatch.setattr(
+        data_sources,
+        "read_dataframe",
+        lambda path, read_geometry: pd.DataFrame({
+            "Value": [10],
+            "PLT_CN": [223267700000001.0],
+            "FORTYPCD": [161],
+            "BALIVE": [90.0],
+            "QMD": [6.0],
+            "TPA_LIVE": [300.0],
+        }),
+    )
+    result = load_treemap_attributes(dbf_path)
+    assert result.to_dict("records") == [{
+        "VALUE": 10,
+        "PLT_CN": "223267700000001",
+        "FORTYPCD": 161.0,
+        "BALIVE": 90.0,
+        "QMD": 6.0,
+        "TPA": 300.0,
+    }]
+
+
+def test_load_treemap_attributes_rejects_missing_vat_columns(tmp_path, monkeypatch):
+    dbf_path = tmp_path / "vat.dbf"
+    dbf_path.touch()
+    monkeypatch.setattr(
+        data_sources,
+        "read_dataframe",
+        lambda path, read_geometry: pd.DataFrame({"Value": [10], "PLT_CN": ["1"]}),
+    )
+    with pytest.raises(ValueError, match="missing columns"):
+        load_treemap_attributes(dbf_path)
+
+
+def test_load_stand_age_by_plot_takes_the_dominant_live_condition(tmp_path):
+    db_path = tmp_path / "fia.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            "create table COND (PLT_CN text, CONDID integer, STDAGE real, "
+            "CONDPROP_UNADJ real, COND_STATUS_CD integer)"
+        )
+        connection.executemany(
+            "insert into COND values (?, ?, ?, ?, ?)",
+            [
+                ("101", 1, 15.0, 0.3, 1),
+                ("101", 2, 40.0, 0.7, 1),  # dominant: larger CONDPROP_UNADJ
+                ("101", 3, 5.0, 1.0, 2),  # not live forest -- excluded
+                ("202", 1, 80.0, 1.0, 1),
+            ],
+        )
+    result = load_stand_age_by_plot(db_path, {"101", "202"})
+    by_plot = dict(zip(result["PLT_CN"], result["STDAGE"]))
+    assert by_plot == {"101": 40.0, "202": 80.0}
+
+
+def test_load_stand_age_by_plot_returns_empty_frame_for_no_plots(tmp_path):
+    db_path = tmp_path / "fia.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            "create table COND (PLT_CN text, CONDID integer, STDAGE real, "
+            "CONDPROP_UNADJ real, COND_STATUS_CD integer)"
+        )
+    result = load_stand_age_by_plot(db_path, [])
+    assert list(result.columns) == ["PLT_CN", "STDAGE"]
+    assert len(result) == 0

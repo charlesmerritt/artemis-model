@@ -8,16 +8,29 @@ with reproducible Python. It covers two legacy operations:
 2. `LETO_CSV_PIPELINE.txt` — plot weights + multistate FIA trees → FVS stand
    and tree initialization tables.
 
-Management-unit delineation is the first S1 stage. The package preserves both
-the faithful LETO strategy in `segmentation/leto.py` and the parcel/LANDFIRE
-boundary-overlay strategy in `segmentation/boundary_overlay.py`; the former S3
-module is only a compatibility wrapper. Creating the FVS SQLite database,
-running FVS, and painting outputs back to the map are not part of this package.
+Management-unit delineation is the first S1 stage, with three interchangeable
+strategies behind one `SEGMENTATION_METHOD` flag (see `segmentation/
+__init__.py`): the default `cellular_automata` (`segmentation/
+cellular_automata.py`) is the actual LETO algorithm, a NumPy/SciPy port of
+`aauslander480/Leto`'s cellular-automata segmentation; `voronoi_tessellation`
+(`segmentation/leto.py`) is a from-scratch Thiessen subdivision of the
+TreeMap domain that predates the real port and is kept as an alternative
+despite its module name; and `boundary_overlay` (`segmentation/
+boundary_overlay.py`) is naive parcel/forest-mask boundary intersection. All
+three produce the same output contract (see `segmentation/artifacts.py`'s
+`CANONICAL_UNIT_COLUMNS`). `pipeline/s3_management/sketch_management_units.py`
+is a separate, independently-evolved implementation used by the S3 pipeline
+stage (owner classes, riparian buffers, TPO targets) -- not a wrapper around
+this package. Creating the FVS SQLite database, running FVS, and painting
+outputs back to the map are not part of this package.
 
 ## Inputs
 
-- For LETO segmentation: the production parcel layer, ownership raster, and
-  stream layer.
+- For cellular-automata segmentation: the production parcel layer, ownership
+  raster, stream layer, TreeMap VAT (for BALIVE/QMD/TPA/FORTYPCD), and FIADB
+  (for each donor plot's FIA COND `STDAGE`).
+- For Voronoi-tessellation segmentation: the production parcel layer,
+  ownership raster, and stream layer.
 - For boundary-overlay segmentation: the parcel, LANDFIRE EVT, stream,
   waterbody, and road sources consumed by the canonical county runner.
 - TreeMap 2022 plot-ID GeoTIFF.
@@ -58,25 +71,44 @@ a polygon boundary crosses a cell away from its center.
 
 ## Python interface
 
-Create faithful LETO management units and raw plot weights in memory:
+Create management units and raw plot weights in memory with the default
+cellular-automata segmentation (the actual LETO port):
 
 ```python
 from pathlib import Path
 
 import geopandas as gpd
 
-from pipeline.s1_initial_state.data_sources import (
-    ProductionDataPaths,
-    load_treemap_lookup,
-    preflight_production_data,
+from pipeline.s1_initial_state.data_sources import ProductionDataPaths, preflight_production_data
+from pipeline.s1_initial_state.segmentation.cellular_automata import (
+    CellularAutomataSegmentationConfig,
+    build_cellular_automata_management_units,
 )
+
+sources = ProductionDataPaths.from_root(Path("/mnt/d"))
+preflight_production_data(sources)
+units, weights = build_cellular_automata_management_units(
+    sources.treemap,
+    sources.treemap_vat,
+    sources.fiadb,
+    gpd.read_file(sources.parcels, layer="FL_5_Co_Parcels"),
+    sources.ownership,
+    gpd.read_file(f"zip://{sources.streams}"),
+    CellularAutomataSegmentationConfig(smz_buffer_feet=35.0),
+)
+```
+
+The Voronoi-tessellation strategy (`segmentation/leto.py`, historically named
+for LETO though it predates the real port) takes the same shape but a
+simpler `treemap_lookup` (`VALUE`/`PLT_CN` only, via `load_treemap_lookup`):
+
+```python
+from pipeline.s1_initial_state.data_sources import load_treemap_lookup
 from pipeline.s1_initial_state.segmentation.leto import (
     LetoSegmentationConfig,
     build_leto_management_units,
 )
 
-sources = ProductionDataPaths.from_root(Path("/mnt/d"))
-preflight_production_data(sources)
 units, weights = build_leto_management_units(
     sources.treemap,
     load_treemap_lookup(sources.treemap_vat),
@@ -92,7 +124,7 @@ The boundary-overlay baseline remains available through
 and its CLI. `preflight_boundary_overlay_data(...)` validates its parcels,
 roads, boundary-streams geodatabase, waterbodies, LANDFIRE EVT raster, and BMP
 rules before a dry run or production read, with mount/R2 recovery guidance.
-Both canonical method artifacts contain `MU_ID`, `Acres`,
+All three methods' canonical artifacts contain `MU_ID`, `Acres`,
 `SEGMENTATION_METHOD`, `PLT_CN`, `TM_VALUE`, `OWN_CODE`, `OWN_TYPE`, `SMZ_Pct`,
 and geometry. Persist them with
 `segmentation.artifacts.write_segmentation_artifact(...)`; it writes the
@@ -148,21 +180,29 @@ semantics.
 
 ## Walkthrough and verification
 
-Open `notebooks/LETO_Initial_State_Walkthrough.ipynb` to select either
-segmentation method, inspect method parameters and diagnostics, compare a
-counterpart baseline when its artifact exists, and continue through weights,
-FIA join coverage, species translation, donor imputation, and the initial-state
-map. It imports the production functions, fails closed on missing production
-inputs, and disables output writing until `WRITE_OUTPUTS = True`.
+Open `notebooks/LETO_Initial_State_Walkthrough.ipynb` to select any of the
+three segmentation methods (`cellular_automata` by default), inspect method
+parameters and diagnostics, compare a counterpart baseline when its artifact
+exists, and continue through weights, FIA join coverage, species translation,
+donor imputation, and the initial-state map. It imports the production
+functions, fails closed on missing production inputs, and disables output
+writing until `WRITE_OUTPUTS = True`.
 
-To create a reproducible comparison pair for one `COUNTY_FIPS`:
+The notebook's `COMPARE_BASELINES` path pairs `voronoi_tessellation` against
+`boundary_overlay` specifically -- it predates the cellular-automata method
+and hasn't been generalized to a three-way comparison. To create that
+reproducible comparison pair for one `COUNTY_FIPS`:
 
-1. set `SEGMENTATION_METHOD = "leto"` and `WRITE_OUTPUTS = True`, then run the
-   notebook;
+1. set `SEGMENTATION_METHOD = "voronoi_tessellation"` and
+   `WRITE_OUTPUTS = True`, then run the notebook;
 2. set `SEGMENTATION_METHOD = "boundary_overlay"`, keep `WRITE_OUTPUTS = True`,
    and run it again; and
 3. restore `WRITE_OUTPUTS = False`, set `COMPARE_BASELINES = True`, and rerun to
    inspect the comparison.
+
+`cellular_automata` can still be run and its baseline written on its own
+(`SEGMENTATION_METHOD = "cellular_automata"`, `WRITE_OUTPUTS = True`) --
+just not through this particular paired-comparison cell yet.
 
 Each write-enabled run uses `write_segmentation_artifact` to serialize the
 selected in-memory result to

@@ -533,7 +533,7 @@ def test_build_leto_management_units_preserves_stage_order_and_modal_ties(
         "assign_smz_percent",
     ]
     assert units.loc[0, "MU_ID"] == "1"
-    assert units.loc[0, "SEGMENTATION_METHOD"] == "leto"
+    assert units.loc[0, "SEGMENTATION_METHOD"] == "voronoi_tessellation"
     assert units.loc[0, "TM_VALUE"] == 10
     assert units.loc[0, "PLT_CN"] == "plot-10"
     assert units.loc[0, "OWN_CODE"] == 3

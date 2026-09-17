@@ -1,4 +1,15 @@
-"""Pure-Python LETO management-unit segmentation and attribution."""
+"""Voronoi-tessellation management-unit segmentation and attribution.
+
+Despite the module name, this is not the LETO algorithm: it is a from-scratch
+Thiessen/Voronoi subdivision of the TreeMap domain, unrelated to
+`aauslander480/Leto`. The actual LETO port -- the cellular-automata algorithm
+from that repository's `scripts/Cellular_automata/02_segment_treemap.py` --
+lives in `pipeline/leto_ca.py`, wired into this package's shared attribution
+contract by `cellular_automata.py`, and is the default S1 segmentation
+method. This module (tagged `SEGMENTATION_METHOD = "voronoi_tessellation"`)
+is kept as a selectable alternative -- see `pipeline.s1_initial_state.
+segmentation.SEGMENTATION_METHODS`.
+"""
 
 import math
 from dataclasses import dataclass
@@ -22,6 +33,7 @@ SQUARE_METERS_PER_ACRE = 4_046.872609874251
 METERS_PER_FOOT = 0.3048
 MAX_POINT_ATTEMPTS_PER_POINT = 1_000
 MAX_SUBDIVISION_ROUNDS = 100
+SEGMENTATION_METHOD = "voronoi_tessellation"
 OWNERSHIP_LOOKUP = {
     0: "Unknown Forest",
     1: "Non-Forest",
@@ -443,21 +455,30 @@ def assign_smz_percent(
     return result
 
 
-def _assign_stable_mu_ids(units: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+def assign_stable_mu_ids(
+    units: gpd.GeoDataFrame, method: str = SEGMENTATION_METHOD
+) -> gpd.GeoDataFrame:
+    """Sort units into a deterministic order, number them, and tag the method.
+
+    Shared across segmentation strategies (`cellular_automata.py` uses this
+    too) so every method's `MU_ID` values are assigned the same
+    position-then-geometry-hash way regardless of how the geometries
+    themselves were produced.
+    """
     result = units.copy()
     bounds = result.geometry.bounds
     sort_columns = []
     for name in ("minx", "miny", "maxx", "maxy"):
-        column = f"__leto_{name}"
+        column = f"__mu_id_{name}"
         result[column] = bounds[name]
         sort_columns.append(column)
-    result["__leto_wkb"] = result.geometry.to_wkb(hex=True)
-    result = result.sort_values([*sort_columns, "__leto_wkb"]).reset_index(drop=True)
-    result = result.drop(columns=[*sort_columns, "__leto_wkb"])
+    result["__mu_id_wkb"] = result.geometry.to_wkb(hex=True)
+    result = result.sort_values([*sort_columns, "__mu_id_wkb"]).reset_index(drop=True)
+    result = result.drop(columns=[*sort_columns, "__mu_id_wkb"])
     result["MU_ID"] = pd.array(
         [str(index) for index in range(1, len(result) + 1)], dtype="string"
     )
-    result["SEGMENTATION_METHOD"] = "leto"
+    result["SEGMENTATION_METHOD"] = method
     return result
 
 
@@ -495,7 +516,7 @@ def build_leto_management_units(
     domain = build_treemap_domain(treemap_path, parcels)
     subdivided = subdivide_large_units(domain, config)
     cleaned = cleanup_and_clip_units(subdivided, parcels, config.min_acres)
-    units = _assign_stable_mu_ids(cleaned)
+    units = assign_stable_mu_ids(cleaned)
 
     return attribute_management_units(
         units,

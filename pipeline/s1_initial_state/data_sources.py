@@ -106,6 +106,73 @@ def load_treemap_lookup(path: Path) -> pd.DataFrame:
     return result
 
 
+TREEMAP_ATTRIBUTE_COLUMNS = {
+    "FORTYPCD": "FORTYPCD",
+    "BALIVE": "BALIVE",
+    "QMD": "QMD",
+    "TPA": "TPA_LIVE",
+}
+
+
+def load_treemap_attributes(path: Path) -> pd.DataFrame:
+    """Read the TreeMap VAT's per-plot stand attributes for the CA segmentation.
+
+    TreeMap 2022 ships FORTYPCD, BALIVE, QMD and TPA_LIVE directly in its
+    raster attribute table -- already the plot-level values LETO's
+    `01_build_segmentation_rasters.py` computes for its segmentation
+    features. STDAGE is not in the VAT; see `load_stand_age_by_plot`.
+    """
+    lookup = read_dataframe(path, read_geometry=False)
+    lookup = lookup.rename(
+        columns={column: column.upper() for column in lookup.columns}
+    )
+    required = {"VALUE", "PLT_CN", *TREEMAP_ATTRIBUTE_COLUMNS.values()}
+    missing = required.difference(lookup.columns)
+    if missing:
+        raise ValueError(f"TreeMap VAT missing columns: {sorted(missing)}")
+    result = lookup[["VALUE", "PLT_CN", *TREEMAP_ATTRIBUTE_COLUMNS.values()]].copy()
+    result = result.rename(
+        columns={vat_name: feature_name for feature_name, vat_name in TREEMAP_ATTRIBUTE_COLUMNS.items()}
+    )
+    result["PLT_CN"] = _normalize_plot_ids(result["PLT_CN"])
+    for column in ("FORTYPCD", "BALIVE", "QMD", "TPA"):
+        result[column] = pd.to_numeric(result[column], errors="coerce")
+    return result
+
+
+def load_stand_age_by_plot(path: Path, plot_ids: Collection[str]) -> pd.DataFrame:
+    """Read each plot's STDAGE from its dominant FIA condition.
+
+    LETO reads STDAGE from the FIA COND record of the plot's dominant
+    condition -- the live-forest condition (`COND_STATUS_CD = 1`) with the
+    largest `CONDPROP_UNADJ` -- rather than from the TreeMap VAT, which
+    doesn't carry it.
+    """
+    plots = sorted({str(plot_id) for plot_id in plot_ids})
+    if not plots:
+        return pd.DataFrame(columns=["PLT_CN", "STDAGE"])
+
+    frames = []
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+        for plot_chunk in _chunks(plots, SQLITE_PARAMETER_LIMIT):
+            plot_parameters = ", ".join("?" for _ in plot_chunk)
+            query = (
+                "SELECT PLT_CN, CONDID, STDAGE, CONDPROP_UNADJ FROM COND "
+                f"WHERE PLT_CN IN ({plot_parameters}) "
+                "AND COND_STATUS_CD = 1 AND STDAGE IS NOT NULL"
+            )
+            frames.append(pd.read_sql_query(query, connection, params=plot_chunk))
+
+    cond = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(
+        columns=["PLT_CN", "CONDID", "STDAGE", "CONDPROP_UNADJ"]
+    )
+    cond["PLT_CN"] = cond["PLT_CN"].astype("string")
+    cond = cond.sort_values(
+        ["PLT_CN", "CONDPROP_UNADJ"], ascending=[True, False]
+    ).drop_duplicates("PLT_CN")
+    return cond[["PLT_CN", "STDAGE"]].reset_index(drop=True)
+
+
 def _chunks(values: list[str], size: int) -> Iterator[list[str]]:
     for start in range(0, len(values), size):
         yield values[start : start + size]
