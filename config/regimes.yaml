@@ -15,7 +15,7 @@
 # and are deliberately absent rather than approximated.
 #
 # Loader:  pipeline/s4_fvs/regime_library.py
-# Tests:   tests/test_s4_regime_library.py
+# Checked: regime_library.validate_library, on every load
 
 version: 1
 
@@ -26,7 +26,7 @@ units:
   species: "FVS species code; 0 = all species"
 
 constraints:
-  # Enforced by tests/test_s4_regime_library.py.
+  # Enforced by pipeline/s4_fvs/regime_library.py:validate_library on every load.
   offsets_must_be_multiples_of: 5      # FVS cycle length; a cut lands on a cycle boundary
   max_year_offset: 50                  # projection horizon
   operations_strictly_ordered: true    # no two operations in the same year, ascending

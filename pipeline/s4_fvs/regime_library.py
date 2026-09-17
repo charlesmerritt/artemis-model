@@ -33,11 +33,45 @@ from pipeline.s4_fvs.regime_templates import render_keyfile as _render_keyfile
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "regimes.yaml"
 
 
+TERMINAL_KINDS = {"regeneration_harvest", "retention_harvest"}
+
+
 @functools.lru_cache(maxsize=4)
 def load_library(path: str | Path | None = None) -> dict:
-    """Load and cache the regime library. Cached — `assign_regimes` calls this per row."""
+    """Load, validate and cache the regime library. Cached — `assign_regimes` calls this per row."""
     with open(Path(path) if path else CONFIG_PATH) as f:
-        return yaml.safe_load(f)
+        return validate_library(yaml.safe_load(f))
+
+
+def validate_library(library: dict) -> dict:
+    """Enforce the file's own ``constraints`` block, so the config cannot state a rule it breaks.
+
+    An off-cycle offset is silently shifted by FVS to the next cycle boundary; two cuts in one
+    year render as duplicate ``ThinDBH`` lines; and without a regeneration keyword (issue #17)
+    anything after a stand-replacing entry would cut whatever FVS grew back by default.
+
+    >>> validate_library({"constraints": {"offsets_must_be_multiples_of": 5, "max_year_offset": 50},
+    ...                   "regimes": {"bad": {"operations": [{"year_offset": 12, "kind": "selection"}]}}})
+    Traceback (most recent call last):
+    ...
+    ValueError: regime 'bad': year_offset 12 is not a multiple of 5
+    """
+    rules = library["constraints"]
+    cycle, horizon = rules["offsets_must_be_multiples_of"], rules["max_year_offset"]
+    for name, regime in library["regimes"].items():
+        ops = regime["operations"]
+        offsets = [op["year_offset"] for op in ops]
+        for off in offsets:
+            if off % cycle:
+                raise ValueError(f"regime {name!r}: year_offset {off} is not a multiple of {cycle}")
+            if not 0 <= off <= horizon:
+                raise ValueError(f"regime {name!r}: year_offset {off} is outside 0..{horizon}")
+        if offsets != sorted(set(offsets)):
+            raise ValueError(f"regime {name!r}: operations are not strictly ascending in time")
+        for i, op in enumerate(ops[:-1]):
+            if op.get("kind") in TERMINAL_KINDS:
+                raise ValueError(f"regime {name!r}: operation scheduled after a {op['kind']}")
+    return library
 
 
 def regime_names(library: dict | None = None) -> list[str]:

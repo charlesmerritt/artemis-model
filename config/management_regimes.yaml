@@ -4,9 +4,9 @@
 #
 #   `prescriptions` — the LIBRARY. Eight distinct silvicultural prescriptions, each one
 #     renderable through the verified keyword templates in pipeline/s4_fvs/regime_templates.py.
-#     Library size is the cost driver: the FVS trajectory library is keyed by
-#     `(plot_id, prescription, site_index_bin)` (PLAN.md §4c, notes/methodology-directions.md
-#     item 4), so every prescription added multiplies the run count. Eight is deliberate.
+#     Library size is a cost driver: the target key is `(management unit, prescription)`
+#     (docs/architecture/presentation.html#library). Adding prescriptions expands the
+#     candidate runs; the dated pilot currently deduplicates donor-based inputs.
 #
 #   `owner_classes` — the POLICY. For each owner class from config/ownership_policy.yaml:
 #     two or three eligible prescriptions and one declared default. Prescriptions are
@@ -51,7 +51,7 @@ overrides:
       No entry of any kind, no buffer class exempted. Assigned by geometry, so it
       overrides every ownership and forest-type rule. Riparian units are still grown
       through FVS on the same cycles and still reported as their own polygons — see
-      notes/methodology-directions.md item 2 and PLAN.md §4b. `absolute: true` means no
+      docs/architecture/presentation.html#ownership. `absolute: true` means no
       later rule, and no scheduler decision, may reinstate an entry.
 
 # ---------------------------------------------------------------------------------------
@@ -249,7 +249,7 @@ prescriptions:
       thin-and-burn regime used on southern pine public land. Prescribed fire is NOT
       modelled here: the FVS fire keywords are unverified in this project and the FFE
       state is known to be corrupted across restart barriers
-      (notes/restart-fidelity-findings.md). This prescription is the mechanical thinning
+      (research/restart_fidelity/outputs/arm_c_vs_a.txt). This prescription is the mechanical thinning
       only, and the writeup must say so.
 
 # ---------------------------------------------------------------------------------------
@@ -387,12 +387,12 @@ owner_classes:
 #                        private_corporate_other by parcel evidence, which changes both the
 #                        default prescription and the eligible menu for the demoted units.
 # Everything else resolves to the same template and the same parameters as before, which
-# tests/test_s4_regime_templates.py pins.
+# the regime-template tests pinned until tests/ was removed on 2026-09-14.
 
 # ---------------------------------------------------------------------------------------
 # Trajectory-library cost
 # ---------------------------------------------------------------------------------------
-# 8 prescriptions. Five-county pilot: 693 unique FIA plots (notes/terminology.md). With
+# 8 prescriptions. Five-county pilot: 693 unique FIA plots (docs/architecture/presentation.html#vocabulary). With
 # site-index binning at `si_bins` the upper bound on FVS runs is
 # 693 × 8 × si_bins, before deduplication for plots that are never eligible for a given
 # prescription. Any addition to `prescriptions` must state its cost here.

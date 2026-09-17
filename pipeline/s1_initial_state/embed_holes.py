@@ -18,8 +18,9 @@ which is defined as **not** tree in 2024. ``MAX_FEATURE_YEAR`` caps feature year
 at 2022, the TreeMap vintage being corrected, and ``check_feature_years`` raises
 if that is violated.
 
-The same trap is documented in ``notes/clearcut-vs-agriculture-embeddings.md``,
-where pre-year embeddings drove AUC to 1.000 "largely by construction".
+The earlier experiment in
+``notebooks/Clearcut-Grassland-Feature-Engineering.ipynb`` documents the same trap:
+pre-year embeddings encode the forest history used to define its labels.
 
 Auth: AlphaEarth needs a live Earth Engine token. If ``ee.Initialize()`` fails
 with ``invalid_grant`` the stored refresh token has expired — re-run

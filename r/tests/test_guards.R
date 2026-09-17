@@ -3,7 +3,7 @@
 # ============================================================
 #
 # WHY THIS EXISTS:
-#   The identifier-precision work (see notes/identifier-precision.md) was
+#   The identifier-precision work (see pipeline/ids.py) was
 #   written in a container without R, so the R changes were reviewed by reading
 #   rather than running. Four defects escaped that review, and two of them were
 #   introduced by the fix for the previous one:

@@ -78,6 +78,11 @@ scripts/*
 !scripts/claude-code-env-setup.sh
 !scripts/r2_index.py
 
+# Executable documentation: the repository's rules and doc checks. CI and the
+# pre-commit hook run both, so a clone without them cannot verify anything.
+!scripts/check_conventions.py
+!scripts/check_docs.py
+
 # The LETO ArcGIS prototype: the workflow ARTEMIS is a reimplementation of, kept
 # as reference text rather than runnable code (it is arcpy, and there is no
 # ArcGIS here). Tracked because pipeline modules cite these paths in their
@@ -88,3 +93,12 @@ scripts/*
 !scripts/Create_FVS_Database.txt
 !scripts/Join_FVS_output_to_arc.txt
 !scripts/README.txt
+
+# Local secrets (R2 credentials)
+.env
+
+# Quality reports (scripts/quality.py): coverage output and mutmut's working tree.
+lcov.info
+.coverage
+mutants/
+!scripts/quality.py
