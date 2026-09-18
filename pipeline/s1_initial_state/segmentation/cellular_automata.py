@@ -174,7 +174,15 @@ def _riparian_mask(streams: gpd.GeoDataFrame, transform, shape_hw, crs, buffer_f
     smz = union_all(stream_geometry.buffer(buffer_distance_m))
     if smz.is_empty:
         return np.zeros(shape_hw, dtype="uint8")
-    return rasterize([(smz, 1)], out_shape=shape_hw, transform=transform, fill=0, dtype="uint8")
+    # all_touched=True: a riparian buffer is a protection boundary, so any
+    # cell the buffer polygon overlaps at all counts as riparian. The default
+    # pixel-center test would drop cells the buffer only clips a corner of --
+    # at a 35-75 ft buffer width against a 30 m cell, that is most of them,
+    # leaving a sparse scatter of cells instead of a buffer band.
+    return rasterize(
+        [(smz, 1)], out_shape=shape_hw, transform=transform, fill=0, dtype="uint8",
+        all_touched=True,
+    )
 
 
 def _labels_to_units(labels: np.ndarray, transform, crs) -> gpd.GeoDataFrame:
