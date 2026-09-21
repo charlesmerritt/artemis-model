@@ -14,6 +14,9 @@ assumption rather than a measurement.
 They interlock: ownership picks the owner class, the owner class picks the prescription,
 and a prescription that removes the stand names the fixed tree list that regenerates it.
 
+Per-owner-class regime tables — the human-readable rendering of everything below — live
+in [`docs/ownership-regimes.md`](ownership-regimes.md).
+
 ```text
 Harris ownership raster ───► owner class ─► default prescription ─► FVS keyfile
                                   │              │
