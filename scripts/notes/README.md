@@ -219,7 +219,7 @@ rebuilt as deterministic, scriptable, pixel-level Python under `pipeline/`.
 | Heavy FIA SQL exploration (cohorts, disturbances, ages) | `FIASQLITE2PGSQL/`, `FIA_DATA_PREP/` |
 | Ecoregion climate covariates | `PRISM_LT_EPA/` |
 | Safe data handling in git | `check-staged-large-files.sh` |
-| Integration roadmap / gotchas | `notes/southeast-fvs-artemis-export-package.md` |
+| Integration roadmap / gotchas | `southeast-fvs-artemis-export-package.md` |
 
 They encode the hard-won format knowledge (TPA expansion, species codes,
 ID-as-string preservation, FVS DB layout, multi-state FIA borrowing) that the

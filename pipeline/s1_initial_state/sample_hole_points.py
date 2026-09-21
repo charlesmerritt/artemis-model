@@ -94,6 +94,8 @@ def evt2022_lifeform(shape, bounds, transform) -> np.ndarray:
     """LF2022 EVT lifeform per pixel, for picking hard negatives."""
     from pipeline.s1_initial_state.stratify_treemap_holes import read_evt_window
 
+    # evt_paths resolves through data_access.ensure_local, so this works with
+    # or without the drive mounted (see the statewide-repair note, blocker 8).
     _, lifeforms = read_evt_window(2022, bounds, shape, transform)
     return lifeforms
 

@@ -65,8 +65,18 @@ STRATA = {
 
 
 def evt_paths(year: int) -> tuple[Path, Path]:
+    """LF EVT tif and legend CSV for `year`, resolved to local storage.
+
+    The declared locations are on the external drive; when it is not mounted,
+    each path resolves through ``data_access.ensure_local`` to the repository's
+    ``data/r2_cache`` mirror (or fetches it from R2). When the drive IS mounted
+    ``ensure_local`` returns the declared path unchanged.
+    """
+    from pipeline.data_access import ensure_local
+
     base = DRIVE / f"LF{year}_EVT_CONUS" / f"LF{year}_EVT_CONUS"
-    return base / "Tif" / f"LF{year}_EVT_CONUS.tif", base / "CSV_Data" / f"LF{year}_EVT.csv"
+    return (ensure_local(base / "Tif" / f"LF{year}_EVT_CONUS.tif"),
+            ensure_local(base / "CSV_Data" / f"LF{year}_EVT.csv"))
 
 
 def read_evt_window(year: int, bounds, shape, transform) -> tuple[np.ndarray, np.ndarray]:
