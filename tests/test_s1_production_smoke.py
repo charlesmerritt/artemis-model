@@ -46,6 +46,7 @@ def _load_streams(paths: ProductionDataPaths, parcels: gpd.GeoDataFrame):
 
 
 @pytest.mark.production_data
+@pytest.mark.skipif(not Path("/mnt/d").exists(), reason="production mount /mnt/d is not present")
 def test_real_data_small_aoi_builds_weighted_management_units():
     paths = ProductionDataPaths.from_root(Path("/mnt/d"))
     preflight_production_data(paths)
@@ -70,6 +71,7 @@ def test_real_data_small_aoi_builds_weighted_management_units():
 
 
 @pytest.mark.production_data
+@pytest.mark.skipif(not Path("/mnt/d").exists(), reason="production mount /mnt/d is not present")
 def test_real_oversized_parcel_exercises_seeded_subdivision():
     paths = ProductionDataPaths.from_root(Path("/mnt/d"))
     preflight_production_data(paths)

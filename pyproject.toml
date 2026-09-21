@@ -35,6 +35,10 @@ markers = [
     "arcpy: optional parity tests requiring an ArcGIS Pro Python environment",
     "production_data: integration tests requiring the mounted production sources",
 ]
+testpaths = ["tests", "pipeline", "scripts/quality.py"]
+pythonpath = ["."]
+addopts = ["--doctest-modules", "--import-mode=importlib"]
+doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
 
 [dependency-groups]
 dev = [
@@ -53,15 +57,6 @@ extend-exclude = ["notebooks", "data", ".jupyter-runtime"]
 # Rules are ruff's defaults (E4/E7/E9 + F): correctness and unused code, no
 # style opinions. Deliberately not enabling isort/formatting rules, which would
 # churn the whole repo without catching bugs.
-
-[tool.pytest.ini_options]
-# Tests are rebuilt incrementally in tests/; the doctests in pipeline/ are tests too, so
-# coverage (and therefore CRAP) sees both. The repo root goes on the path because
-# pipeline/ is a namespace package with no __init__.py.
-testpaths = ["tests", "pipeline", "scripts/quality.py"]
-pythonpath = ["."]
-addopts = ["--doctest-modules", "--import-mode=importlib"]
-doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
 
 [tool.mutmut]
 # Mutation testing runs file by file (`scripts/quality.py mutate` selects the file); this is the base.

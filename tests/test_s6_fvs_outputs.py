@@ -617,9 +617,9 @@ def test_unknown_only_ages_keep_tables_and_skip_mean_age_figures(fvs_out, crossw
 
 
 def test_crosswalk_default_matches_the_declared_ownership_run():
-    """The S6 crosswalk resolves the same mounted file as the ownership pipeline."""
-    assert run_pipeline._declared(run_pipeline.OWNER_CROSSWALK_KEY) == run_pipeline._declared(
-        ("raw", "leto_ownership_run", "stand_init"))
+    """The S6 crosswalk is the ownership-segmented run's declared stand-init table."""
+    assert str(run_pipeline._declared(run_pipeline.OWNER_CROSSWALK_KEY)).endswith(
+        "20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv")
 
 
 @pytest.mark.parametrize("local,remote", [
