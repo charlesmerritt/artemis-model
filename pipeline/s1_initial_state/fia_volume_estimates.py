@@ -69,7 +69,6 @@ def five_county_estimates(
     fetch_plan: bool = True,
 ) -> dict:
     """Estimate every ATTRIBUTE_SNUMS attribute over the five-county domain."""
-    params_note = None
     calls: list[dict] = []
     result: dict = {}
     for snum, name in ATTRIBUTE_SNUMS.items():

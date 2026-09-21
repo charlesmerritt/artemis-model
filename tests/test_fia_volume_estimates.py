@@ -7,7 +7,6 @@ EVALIDator call happens in the module's CLI, mirroring
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
