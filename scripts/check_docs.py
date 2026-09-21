@@ -48,7 +48,8 @@ MARKDOWN_BUDGET = {
     "README.md": (119, "keep"),
     "data/index.md": (122, "generated"),                      # scripts/r2_index.py; regrew 2026-09-14 (+6 rows)
     "docs/adr/0001-ruderal-grassland-clean-slate.md": (36, "record"),  # accepted decision, 2026-09-13
-    "docs/config-policy.md": (426, "convert"),                # -> policy deck
+    "docs/config-policy.md": (429, "convert"),                # -> policy deck
+    "docs/ownership-regimes.md": (183, "convert"),            # -> policy deck (per-class regime tables)
     "docs/research/leto-vs-boundary-overlay.md": (120, "record"),      # dated comparison record
     "docs/superpowers/plans/2026-07-20-leto-initial-state.md": (649, "record"),
     "docs/superpowers/plans/2026-07-20-s1-segmentation-strategies.md": (570, "record"),

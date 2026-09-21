@@ -35,6 +35,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import rasterio
 
 from pipeline.spatial_ref import project_crs
 
@@ -201,6 +202,32 @@ def similarity_image(ee, model: dict):
     return ee.Image.cat(bands).reduce(ee.Reducer.max()).rename("similarity")
 
 
+def grid_tiles(transform, rows: int, cols: int,
+               max_tile_pixels: int = 60_000_000 // (4 * OUTPUT_SCALE_M * OUTPUT_SCALE_M)):
+    """Split a whole raster into full-width row bands under the request budget.
+
+    ``run_apply`` tiles the AOI horizontally via :func:`row_tiles`; the
+    statewide scorer (:mod:`score_holes_statewide`) needs arbitrary grids, so
+    the general form takes the grid's transform and pixel budget directly.
+    """
+    if max_tile_pixels < cols:
+        raise ValueError(
+            f"max_tile_pixels {max_tile_pixels} < tile width {cols}: "
+            "a single row band would not fit"
+        )
+    band_rows = max(1, max_tile_pixels // cols)
+    tiles = []
+    for row0 in range(0, rows, band_rows):
+        height = min(band_rows, rows - row0)
+        window = rasterio.windows.Window(col_off=0, row_off=row0, width=cols, height=height)
+        top = transform.f - row0 * OUTPUT_SCALE_M
+        left = transform.c
+        bounds = (left, top - height * OUTPUT_SCALE_M,
+                  left + cols * OUTPUT_SCALE_M, top)
+        tiles.append((window, bounds))
+    return tiles
+
+
 def row_tiles(n_tiles: int) -> list[tuple[float, float, float, float]]:
     """Split the AOI into horizontal strips on exact 30 m pixel boundaries.
 
@@ -239,14 +266,14 @@ def tile_download_params(bounds: tuple[float, float, float, float]) -> dict:
     }
 
 
-def tile_canvas_offsets(transform) -> tuple[int, int]:
+def canvas_offsets(transform, origin: tuple[float, float]) -> tuple[int, int]:
     """Return integer canvas offsets, rejecting any tile not on the TreeMap grid."""
     linear = (transform.a, transform.b, transform.d, transform.e)
     expected = (OUTPUT_SCALE_M, 0, 0, -OUTPUT_SCALE_M)
     if not np.allclose(linear, expected, rtol=0, atol=1e-6):
         raise ValueError(f"Earth Engine tile pixel grid {linear} != expected {expected}")
 
-    left, _, _, top = AOI_BOUNDS_5070
+    left, top = origin
     row_offset = (top - transform.f) / OUTPUT_SCALE_M
     col_offset = (transform.c - left) / OUTPUT_SCALE_M
     row0, col0 = round(row_offset), round(col_offset)
@@ -298,7 +325,7 @@ def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
                     f"Earth Engine tile size {(src.width, src.height)} != expected "
                     f"{(expected_width, expected_height)}"
                 )
-            row0, col0 = tile_canvas_offsets(src.transform)
+            row0, col0 = canvas_offsets(src.transform, (left, top))
             data = src.read()
             profile = profile or src.profile
         tmp.unlink()
