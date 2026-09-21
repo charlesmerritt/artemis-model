@@ -399,7 +399,12 @@ def main() -> None:
         "patches": n_patches,
         "unresolved_patches": len(unresolved),
         "unique_donors": int(assignments["donor_tm_id"].dropna().nunique()),
-        "model_gated_strata_pending_ee": [3, 4],
+        "model_gated_strata": [3, 4] if args.scored_tif is not None else [],
+        "s3_s4_pending_ee": [3, 4] if args.scored_tif is None else [],
+        "gate": (None if args.scored_tif is None else
+                 {"similarity_threshold": GatedScores.from_model_json(args.model_json).similarity_threshold,
+                  "decision_threshold": GatedScores.from_model_json(args.model_json).decision_threshold,
+                  "scored_tif": str(args.scored_tif)}),
         "outputs": {k: str(v) for k, v in paths.items()},
     }
     (out_dir / "repair_summary.json").write_text(json.dumps(summary, indent=2))
