@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import urllib.request
+import time
 from pathlib import Path
 
 import numpy as np
@@ -89,6 +89,52 @@ def grid_tiles(transform, rows: int, cols: int,
     return tiles
 
 
+def _fetch(url: str, dest: Path, attempts: int = 5, timeout_s: int = 600) -> None:
+    """Download one tile with a hard timeout and backoff/retry.
+
+    A bare urlretrieve can hang forever on a stalled connection and EE's
+    download service returns transient 5xx/429 under load; both should retry,
+    not stall the whole 300+-tile run.
+    """
+    import urllib.error
+
+    delay = 5.0
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout_s) as response:
+                dest.write_bytes(response.read())
+            return
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+            status = getattr(exc, "code", None)
+            if attempt == attempts:
+                raise
+            if status is not None and status < 500 and status != 429:
+                raise  # 4xx other than 429 is not transient
+            print(f"  tile fetch attempt {attempt} failed ({exc}); retrying in {delay:.0f}s")
+            time.sleep(delay)
+            delay = min(delay * 2, 120.0)
+
+
+APPLY_STRATA = (3, 4)  # the only strata whose decision reads the scores
+
+
+def needed_tiles(tiles, strata_tif: Path) -> list:
+    """Drop tiles whose strata window contains no S3/S4 pixel.
+
+    Only S3/S4 read the scores: S1/S2 are unconditional and S5 stays a hole,
+    so a window with neither stratum contributes zeros no different from an
+    unrequested window. Florida's grid is ~70% ocean/peninsula, so this skips
+    most of the requests.
+    """
+    keep = []
+    with rasterio.open(strata_tif) as src:
+        for window, bounds in tiles:
+            block = src.read(1, window=window)
+            if np.isin(block, APPLY_STRATA).any():
+                keep.append((window, bounds))
+    return keep
+
+
 def paste_tile(canvas: np.ndarray, tile: np.ndarray, row0: int, col0: int) -> None:
     """Place one tile on the canvas, clipped to the canvas edges."""
     src_r0, dst_r0 = (0, row0) if row0 >= 0 else (-row0, 0)
@@ -107,8 +153,9 @@ def score_statewide(model_json: Path, strata_tif: Path, out_tif: Path,
         rows, cols = src.height, src.width
         transform = src.transform
         profile = src.profile
-    tiles = grid_tiles(transform, rows, cols, max_tile_pixels, max_tile_width)
-    print(f"scoring {rows:,} x {cols:,} px in {len(tiles)} tile(s)")
+    tiles = needed_tiles(grid_tiles(transform, rows, cols, max_tile_pixels, max_tile_width),
+                         strata_tif)
+    print(f"scoring {rows:,} x {cols:,} px in {len(tiles)} tile(s) with S3/S4 pixels")
 
     ee = init_ee()
     model = json.loads(model_json.read_text())
@@ -128,7 +175,7 @@ def score_statewide(model_json: Path, strata_tif: Path, out_tif: Path,
         )
         params = tile_download_params(bounds)
         url = stacked.getDownloadURL(params)
-        urllib.request.urlretrieve(url, tmp)
+        _fetch(url, tmp)
         with rasterio.open(tmp) as tile_src:
             if tile_src.crs != rasterio.crs.CRS.from_epsg(5070):
                 raise ValueError(f"Earth Engine tile CRS {tile_src.crs} != EPSG:5070")

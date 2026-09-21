@@ -92,6 +92,30 @@ def test_gated_add_back_applies_the_mmu_and_respects_the_hole_mask():
     assert out.sum() == 36 + 49  # both blocks survive, the lone pixel does not
 
 
+# ---- the S3/S4 skip -----------------------------------------------------------------------
+
+
+def test_needed_tiles_keeps_only_windows_with_s3_or_s4_pixels(tmp_path):
+    import rasterio
+
+    transform = rasterio.transform.from_origin(1_000_000.0, 2_000_000.0, 30.0, 30.0)
+    rows, cols = 100, 200
+    tiles = score_holes_statewide.grid_tiles(transform, rows, cols,
+                                             max_tile_pixels=10_000, max_tile_width=100)
+    strata = np.zeros((rows, cols), dtype=np.uint8)
+    strata[0:5, 0:5] = 3      # inside the first tile
+    strata[95, 195] = 4       # inside the last tile
+    strata[50, 50] = 2        # S2: unconditional, does NOT need scores
+    path = tmp_path / "strata.tif"
+    with rasterio.open(path, "w", driver="GTiff", height=rows, width=cols, count=1,
+                       dtype="uint8", crs="EPSG:5070", transform=transform) as dst:
+        dst.write(strata, 1)
+    kept = score_holes_statewide.needed_tiles(tiles, path)
+    offsets = {(w.row_off, w.col_off) for w, _ in kept}
+    assert (0, 0) in offsets and (0, 100) in offsets
+    assert (50, 0) not in offsets and (50, 100) not in offsets
+
+
 # ---- the statewide tile maths --------------------------------------------------------------
 
 
