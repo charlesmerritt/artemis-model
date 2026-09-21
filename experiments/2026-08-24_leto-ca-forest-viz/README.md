@@ -202,3 +202,10 @@ repo convention that inputs and outputs aren't committed (root
   vertical axis, which the arrow's slight lean reflects rather than approximates.
 - Harvest overlay classes on t=25/t=50: BA removal fraction in the preceding
   5 years — ≥90% = clearcut, 31–90% = heavy thin, 10–30% = light thin.
+
+---
+
+**Vocabulary update (2026-09-14).** Owner classes are now exactly the Harris et al. (2025)
+RDS-2025-0045 forest classes (`config/ownership_policy.yaml`). "Industrial" above, and
+`private_industrial` in the code and CSVs, is the Harris `corporate` class (value 4);
+`private_family` is `family`. Nothing here used the parcel refinement, so the figures stand.

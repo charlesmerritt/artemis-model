@@ -2,10 +2,11 @@
 Greedy harvest allocator — the baseline and the annealer's initial solution.
 
 .. note::
-   **Architecture status (2026-08-06).** ARTEMIS now builds a library of candidate
+   **Architecture status (2026-09-14).** ARTEMIS builds a library of candidate
    trajectories per stand (contents set by ownership class) and selects one trajectory per
-   stand with **simulated annealing** — see `notes/trajectory-library-and-annealing.md`
-   and `notes/management-pipeline-plan.md` Step 4.3. That scheduler is not implemented yet.
+   stand with **simulated annealing** — see `docs/architecture/presentation.html#search`.
+   The annealer has run once, as `weekly-artifact/2026-08-31/make_annealed_plan.py`, seeded
+   from this module; it has not yet been promoted into `pipeline/`.
 
    This module is *not* deprecated by it. The greedy allocator has two standing jobs in the
    new design:
@@ -21,8 +22,7 @@ Greedy harvest allocator — the baseline and the annealer's initial solution.
    whole precomputed trajectory per stand and evaluates the entire horizon at once.
 
 Allocates harvests across management units, per FVS 5-year cycle, honouring the TPO volume
-caps parsed by ``pipeline.s3_management.tpo_targets``. Follows
-`notes/management-pipeline-plan.md` Step 4.1:
+caps parsed by ``pipeline.s3_management.tpo_targets``:
 
   - Priority: **oldest stand first** (the plan's chosen rule).
   - Each cycle, walk candidate units (those whose regime schedules a harvest that cycle) in

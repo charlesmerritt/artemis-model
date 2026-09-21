@@ -409,3 +409,12 @@ magnitude ranking, so it uses one hue rather than cycling categorical hues past 
    `pipeline/`, and promoting this one — as `pipeline/leto_ca.py` was promoted out of an
    experiment — is the obvious follow-up. It was deliberately not done here: an artifact PR
    should not quietly become an architecture PR.
+
+---
+
+**Vocabulary update (2026-09-14).** Owner classes are now exactly the Harris et al. (2025)
+RDS-2025-0045 forest classes (`config/ownership_policy.yaml`). `private_industrial` is now `corporate` (Harris 4) and `private_family` is now `family`
+(Harris 3); `private_corporate_other` and its parcel refinement no longer exist. The menus
+and prescriptions for those classes did not change, so the plan and its
+numbers stand; `annealed_plan.csv` and the driver keep the old names. `classify_owner` now
+raises on an `OWN_CODE` outside 0-8 instead of degrading to `unknown`.

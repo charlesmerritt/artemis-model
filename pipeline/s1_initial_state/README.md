@@ -1,0 +1,243 @@
+# LETO initial-state pipeline
+
+This package replaces the initial-state portion of the ArcGIS LETO prototype
+with reproducible Python. It covers two legacy operations:
+
+1. `LETO.V1.1.txt:assign_plt_cn` — management units × TreeMap cells → FIA plot
+   weights.
+2. `LETO_CSV_PIPELINE.txt` — plot weights + multistate FIA trees → FVS stand
+   and tree initialization tables.
+
+Management-unit delineation is the first S1 stage, with three interchangeable
+strategies behind one `SEGMENTATION_METHOD` flag (see `segmentation/
+__init__.py`): the default `cellular_automata` (`segmentation/
+cellular_automata.py`) is the actual LETO algorithm, a NumPy/SciPy port of
+`aauslander480/Leto`'s cellular-automata segmentation; `voronoi_tessellation`
+(`segmentation/leto.py`) is a from-scratch Thiessen subdivision of the
+TreeMap domain that predates the real port and is kept as an alternative
+despite its module name; and `boundary_overlay` (`segmentation/
+boundary_overlay.py`) is naive parcel/forest-mask boundary intersection. All
+three produce the same output contract (see `segmentation/artifacts.py`'s
+`CANONICAL_UNIT_COLUMNS`). `pipeline/s3_management/sketch_management_units.py`
+is a separate, independently-evolved implementation used by the S3 pipeline
+stage (owner classes, riparian buffers, TPO targets) -- not a wrapper around
+this package. Creating the FVS SQLite database, running FVS, and painting
+outputs back to the map are not part of this package.
+
+## Inputs
+
+- For cellular-automata segmentation: the production parcel layer, ownership
+  raster, stream layer, TreeMap VAT (for BALIVE/QMD/TPA/FORTYPCD), and FIADB
+  (for each donor plot's FIA COND `STDAGE`).
+- For Voronoi-tessellation segmentation: the production parcel layer,
+  ownership raster, and stream layer.
+- For boundary-overlay segmentation: the parcel, LANDFIRE EVT, stream,
+  waterbody, and road sources consumed by the canonical county runner.
+- TreeMap 2022 plot-ID GeoTIFF.
+- TreeMap lookup containing raster `VALUE` and `PLT_CN` (the production VAT
+  DBF, or a caller-supplied CSV).
+- The production FIADB SQLite database, or one or more state FIA `TREE.csv`
+  files.
+- USFS FVS species-crosswalk workbook and the `EasternSpeciesTranslator` sheet.
+
+The verified production source root is `/mnt/d`. Validate the mount and
+R2-restored source files before processing, then load only the TreeMap VAT and
+FIA plots required by the current management units:
+
+```python
+from pathlib import Path
+
+from pipeline.s1_initial_state.data_sources import (
+    ProductionDataPaths,
+    load_fia_trees_sqlite,
+    load_treemap_lookup,
+    preflight_production_data,
+)
+
+sources = ProductionDataPaths.from_root(Path("/mnt/d"))
+preflight_production_data(sources)
+treemap_lookup = load_treemap_lookup(sources.treemap_vat)
+fia_trees = load_fia_trees_sqlite(sources.fiadb, plot_ids={"223267700000001"})
+```
+
+The SQLite reader opens FIADB in read-only mode and filters by plot and state;
+it does not scan or copy the full production database.
+
+FIA control numbers are read and retained as strings. TreeMap rasterization
+uses the native TreeMap transform and Rasterio's pixel-center rule. This is the
+portable equivalent for non-overlapping management units, but edge cells can
+differ from ArcPy's `PolygonToRaster(..., cell_assignment="MAXIMUM_AREA")` when
+a polygon boundary crosses a cell away from its center.
+
+## Python interface
+
+Create management units and raw plot weights in memory with the default
+cellular-automata segmentation (the actual LETO port):
+
+```python
+from pathlib import Path
+
+import geopandas as gpd
+
+from pipeline.s1_initial_state.data_sources import ProductionDataPaths, preflight_production_data
+from pipeline.s1_initial_state.segmentation.cellular_automata import (
+    CellularAutomataSegmentationConfig,
+    build_cellular_automata_management_units,
+)
+
+sources = ProductionDataPaths.from_root(Path("/mnt/d"))
+preflight_production_data(sources)
+units, weights = build_cellular_automata_management_units(
+    sources.treemap,
+    sources.treemap_vat,
+    sources.fiadb,
+    gpd.read_file(sources.parcels, layer="FL_5_Co_Parcels"),
+    sources.ownership,
+    gpd.read_file(f"zip://{sources.streams}"),
+    CellularAutomataSegmentationConfig(smz_buffer_feet=35.0),
+)
+```
+
+The Voronoi-tessellation strategy (`segmentation/leto.py`, historically named
+for LETO though it predates the real port) takes the same shape but a
+simpler `treemap_lookup` (`VALUE`/`PLT_CN` only, via `load_treemap_lookup`):
+
+```python
+from pipeline.s1_initial_state.data_sources import load_treemap_lookup
+from pipeline.s1_initial_state.segmentation.leto import (
+    LetoSegmentationConfig,
+    build_leto_management_units,
+)
+
+units, weights = build_leto_management_units(
+    sources.treemap,
+    load_treemap_lookup(sources.treemap_vat),
+    gpd.read_file(sources.parcels, layer="FL_5_Co_Parcels"),
+    sources.ownership,
+    gpd.read_file(f"zip://{sources.streams}"),
+    LetoSegmentationConfig(seed=0),
+)
+```
+
+The boundary-overlay baseline remains available through
+`pipeline.s1_initial_state.segmentation.boundary_overlay.process_county(...)`
+and its CLI. `preflight_boundary_overlay_data(...)` validates its parcels,
+roads, boundary-streams geodatabase, waterbodies, LANDFIRE EVT raster, and BMP
+rules before a dry run or production read, with mount/R2 recovery guidance.
+All three methods' canonical artifacts contain `MU_ID`, `Acres`,
+`SEGMENTATION_METHOD`, `PLT_CN`, `TM_VALUE`, `OWN_CODE`, `OWN_TYPE`, `SMZ_Pct`,
+and geometry. Persist them with
+`segmentation.artifacts.write_segmentation_artifact(...)`; it writes the
+GeoPackage plus a JSON manifest with run identity, parameters, code version,
+artifact path, and source fingerprints. Dirty code versions include a digest of
+tracked and untracked worktree content; directory-backed sources include a
+recursive content/metadata digest so changed geodatabase contents cannot reuse
+the same provenance identity.
+
+After segmentation, run the complete file-based initial-state workflow:
+
+```python
+from pipeline.s1_initial_state.leto_initial_state import run_leto_initial_state
+
+tables = run_leto_initial_state(
+    management_units_path="data/interim/management_units.gpkg",
+    management_units_layer="management_units",
+    treemap_path="data/interim/treemap_2022_fl.tif",
+    treemap_lookup_path="data/interim/treemap_tmids_fl.csv",
+    species_crosswalk_path="data/raw/FVS_SpeciesCrosswalk.xls",
+    species_crosswalk_sheet="EasternSpeciesTranslator",
+    fia_tree_paths=[
+        "data/raw/fia/FL_TREE.csv",
+        "data/raw/fia/GA_TREE.csv",
+        "data/raw/fia/AL_TREE.csv",
+        "data/raw/fia/SC_TREE.csv",
+    ],
+    output_dir="data/interim/fvs/leto_initial_state",
+)
+```
+
+For inspection or custom orchestration, use
+`weights.build_plot_weights(...)` and the focused functions in
+`leto_initial_state.py`. The walkthrough notebook calls these functions one
+stage at a time. The returned `tables.diagnostics` series reports weight sums,
+donor counts, unmatched FIA plots, missing FVS species, and direct/imputed stand
+counts before any CSVs are written.
+
+## Outputs
+
+| File | Contents |
+| --- | --- |
+| `MU_PLT_CN_Weights.csv` | Raw TreeMap cell counts and plot weights per management unit |
+| `MU_FVS_Crosswalk.csv` | Management-unit attributes and majority donor plot |
+| `FVS_StandInit.csv` | One FVS Southern stand row per runnable management unit |
+| `FVS_TreeInit.csv` | Weighted live FIA tree rows, including imputed rows |
+| `MU_FVS_Stands_No_Live_Trees.csv` | Units still missing trees after imputation |
+
+The tree table records `TREE_SOURCE`, `DONOR_STAND_ID`, and `NEAR_DIST`.
+Nearest imputation uses polygon-to-polygon distance in the management units'
+projected CRS, matching LETO's `GenerateNearTable(..., closest="CLOSEST")`
+semantics.
+
+## Walkthrough and verification
+
+Open `notebooks/LETO_Initial_State_Walkthrough.ipynb` to select any of the
+three segmentation methods (`cellular_automata` by default), inspect method
+parameters and diagnostics, compare a counterpart baseline when its artifact
+exists, and continue through weights, FIA join coverage, species translation,
+donor imputation, and the initial-state map. It imports the production
+functions, fails closed on missing production inputs, and disables output
+writing until `WRITE_OUTPUTS = True`.
+
+The notebook's `COMPARE_BASELINES` path pairs `voronoi_tessellation` against
+`boundary_overlay` specifically -- it predates the cellular-automata method
+and hasn't been generalized to a three-way comparison. To create that
+reproducible comparison pair for one `COUNTY_FIPS`:
+
+1. set `SEGMENTATION_METHOD = "voronoi_tessellation"` and
+   `WRITE_OUTPUTS = True`, then run the notebook;
+2. set `SEGMENTATION_METHOD = "boundary_overlay"`, keep `WRITE_OUTPUTS = True`,
+   and run it again; and
+3. restore `WRITE_OUTPUTS = False`, set `COMPARE_BASELINES = True`, and rerun to
+   inspect the comparison.
+
+`cellular_automata` can still be run and its baseline written on its own
+(`SEGMENTATION_METHOD = "cellular_automata"`, `WRITE_OUTPUTS = True`) --
+just not through this particular paired-comparison cell yet.
+
+Each write-enabled run uses `write_segmentation_artifact` to serialize the
+selected in-memory result to
+`data/interim/management_units/baselines/<method>/<12COUNTY_FIPS>/ManagementUnits.gpkg`
+and a neighboring `ManagementUnits.manifest.json`. Paired comparison uses
+`load_comparable_artifacts` and rejects a missing manifest or mismatched AOI,
+experiment ID, seed, code version, or shared TreeMap/FIADB/ownership/species
+fingerprint. Strategy names and strategy-specific sources are expected to
+differ. With `WRITE_OUTPUTS = True`, the combined spatial, attribution, and
+initial-state metrics are written as stable `comparison.json` via
+`write_comparison`.
+
+The proposed controlled-factor protocol for testing a future synthesis is in
+`docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md`. It
+preserves both baselines and does not implement or select a hybrid.
+
+The parity test names the legacy operation beside the new operation and checks
+both against shared, deterministic fixtures:
+
+| Legacy LETO | Python port | Compared behavior |
+| --- | --- | --- |
+| `PolygonToRaster` + raster arrays | `build_plot_weights` | Cell counts and plot weights |
+| weight threshold + group normalization | `filter_and_normalize_weights` | Donor retention and sums |
+| FIA merge + species/TPA expressions | `prepare_direct_tree_rows` | Live trees and FVS fields |
+| `GenerateNearTable` + donor copy | `impute_missing_tree_rows` | Donor, distance, and copied tree list |
+
+Run focused verification with:
+
+```bash
+UV_CACHE_DIR=/tmp/artemis-leto-uv-cache uv run pytest --rootdir=. \
+  tests/test_s1_leto_weights.py tests/test_s1_leto_initial_state.py \
+  tests/test_s1_leto_parity.py tests/test_s1_leto_notebook.py
+```
+
+The committed suite includes synthetic regressions, two bounded read-only
+production parcel smokes, and an optional live ArcPy parity gate. A full-county
+or five-county production run still requires the mounted TreeMap, FIA,
+ownership, parcel, stream, and species sources described above.

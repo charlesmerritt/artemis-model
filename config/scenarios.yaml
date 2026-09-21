@@ -2,7 +2,7 @@
 #
 # Modelled on Diaz, Loreno, Ettl & Davies (2018), "Tradeoffs in Timber, Carbon, and Cash
 # Flow under Alternative Management Systems for Douglas-Fir in the Pacific Northwest",
-# Forests 9(8):447, doi:10.3390/f9080447 (Ecotrust). See notes/scenario-framework.md.
+# Forests 9(8):447, doi:10.3390/f9080447 (Ecotrust). See docs/architecture/presentation.html#scope.
 #
 # THE STRUCTURAL POINT. Diaz et al. do not assign one regime per owner and project a
 # single future. They define alternative management systems on two design axes, run
@@ -34,7 +34,7 @@ reference:
     scenario, and reporting KPIs as tradeoffs rather than picking a winner.
   what_differs: >-
     They studied 64 parcels of one forest type under one owner archetype in western
-    OR/WA. We have 57,527 stands across eight ownership classes in north Florida, plus a
+    OR/WA. We have 693 FIA plots across the seven Harris ownership classes in north Florida, plus a
     TPO volume constraint they did not have. So our scenarios must vary regimes PER OWNER
     CLASS rather than swapping one prescription, and BAU is ownership-differentiated
     rather than a single industrial default.
@@ -99,10 +99,10 @@ scenarios:
       itself. Every scenario below, BAU included, resolves entirely against
       config/regimes.yaml. Reconciling the two libraries is issue-tracked, not resolved.
     regimes:
-      private_industrial:
+      corporate:
         by_forest_type:
-          pine:  {regime: pine_plantation_industrial}
-          other: {regime: hardwood_industrial}
+          pine:  {regime: pine_plantation}
+          other: {regime: hardwood_rotation}
 
   short_certified:
     label: "Short rotation, certified practice"
@@ -113,7 +113,7 @@ scenarios:
       any difference from BAU is retention plus the wider buffers, with rotation length
       held constant.
     regimes:
-      private_industrial:
+      corporate:
         by_forest_type:
           pine:  {regime: pine_plantation_retention}
           other: {regime: hardwood_retention}
@@ -126,7 +126,7 @@ scenarios:
       Rotations extended to 40 with a second thin, at the legal minimum for practice.
       Isolates the rotation-length axis against BAU.
     regimes:
-      private_industrial:
+      corporate:
         by_forest_type:
           pine:  {regime: pine_plantation_extended}
           other: {regime: hardwood_extended}
@@ -139,7 +139,7 @@ scenarios:
       Both axes moved — Diaz's LONG~FSC. Expected to be highest carbon and lowest NPV if
       their result carries over to Southeast pine.
     regimes:
-      private_industrial:
+      corporate:
         by_forest_type:
           pine:  {regime: pine_plantation_extended_retention}
           other: {regime: hardwood_extended_retention}
@@ -176,7 +176,7 @@ kpis:
         IN-FOREST CARBON IS DISABLED. config/projection.yaml sets carbon_extension: false
         as a deliberate tripwire — FVS stop/restart silently resets FFE live-fuel state
         and understates total stand carbon by ~8% per barrier
-        (notes/restart-fidelity-findings.md). Iteratively coupled runs cannot report
+        (research/restart_fidelity/outputs/arm_c_vs_a.txt). Iteratively coupled runs cannot report
         carbon until that is resolved. Continuous single-pass runs are unaffected, which
         may be the way to get this KPI first.
       - >-
@@ -196,25 +196,25 @@ kpis:
       - "No harvest or management cost model."
       - "No agreed discount rate. Diaz et al. report sensitivity across rates; we would need to do the same rather than pick one."
     note: >-
-      docs/superpowers/specs/2026-07-17-orchestrator-sketch.md already raises NPV as a
+      The orchestrator sketch (git show e207953:docs/superpowers/specs/2026-07-17-orchestrator-sketch.md) already raises NPV as a
       candidate scheduler objective, so this KPI and the scheduler objective are the same
       missing input.
 
 # ---------------------------------------------------------------------------------
 # Run cost. Every scenario multiplies the trajectory library.
 #
-# Library is keyed on unique(donor plot x regime x site-index bin) (PLAN.md 4c). The
-# LETO run resolves 57,527 stands from 529 donor plots. The four scenarios reference 15
-# distinct regimes between them, so the ceiling is 529 x 15 = 7,935 runs — but only the
+# Library is keyed on unique(donor plot x regime x site-index bin) (docs/architecture/presentation.html#library). The
+# five-county pilot has 693 FIA plots and config/regimes.yaml holds 14 regimes, so the
+# ceiling is 693 x 14 = 9,702 runs — but only the
 # regimes actually reachable from some owner class in some scenario need running.
 #
 # The buffer axis is NOT in this count: it changes stand delineation, not prescriptions,
 # so it needs a re-segmented landscape rather than more FVS runs.
 # ---------------------------------------------------------------------------------
 run_cost:
-  donor_plots: 529
-  distinct_regimes_referenced: 15
-  upper_bound_runs: 7935
+  donor_plots: 693
+  distinct_regimes_referenced: 14
+  upper_bound_runs: 9702
   baseline_runs: 693
   note: >-
     Compare against the no-management baseline's 693 runs. Adding a fifth scenario, or a

@@ -1,0 +1,1 @@
+This work is incomplete! But this folder should hold the pipeline that represents the entire culmination of the work that ARTEMIS does. 

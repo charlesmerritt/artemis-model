@@ -166,4 +166,4 @@ else
   printf '  %d warning(s) above. The toolchain is usable; the flagged capabilities are not.\n' "$warnings"
 fi
 
-printf '\n  Verify with:  uv run pytest tests/ -q\n\n'
+printf '\n  Verify with:  uv run python scripts/check_conventions.py && uv run python scripts/check_docs.py\n\n'

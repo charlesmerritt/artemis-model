@@ -35,6 +35,23 @@ Note on zero-padded IDs: digit-only strings are passed through untouched, so FVS
 ``STAND_ID`` values like ``"010006100083"`` keep their leading zeros. A zero-padded ID that
 has *already* been through a float has lost that padding irrecoverably (there is no way to
 know the intended width), so those must be read as strings at the source.
+
+Examples (doctests; ``scripts/check_docs.py`` runs them, and
+``scripts/check_conventions.py`` rejects ``.astype(str)`` / ``str(int(...))`` on ID columns):
+
+    >>> import pandas as pd
+    >>> pd.Series([236048879010661.0]).astype(str).tolist()   # the bug: a key that joins nothing
+    ['236048879010661.0']
+    >>> as_id_series(pd.Series([236048879010661.0]), column="PLT_CN").tolist()
+    ['236048879010661']
+    >>> normalize_id("1.7498047010478e+13")                   # R's write.csv rendering
+    '17498047010478'
+    >>> normalize_id("010006100083")                          # zero-padded STAND_ID survives
+    '010006100083'
+    >>> normalize_id(float("1234567890123456789"))            # truncated: refused, not repaired
+    Traceback (most recent call last):
+    ...
+    pipeline.ids.IdPrecisionError: column 'id': 1.2345678901234568e+18 exceeds 9007199254740992, ...
 """
 
 from __future__ import annotations

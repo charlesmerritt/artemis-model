@@ -682,9 +682,11 @@ def process_county(
     if "ACRES" in candidate_units.columns:
         candidate_units["source_parcel_area_ha"] = candidate_units["ACRES"] * 0.404686  # acres to ha
 
-    # Reorder columns
+    # Reorder columns. Ownership comes from the Harris raster, so the parcel land-use code
+    # is not carried.
+    candidate_units = candidate_units.drop(columns=["DORUC", "PARUSEDESC"], errors="ignore")
     id_cols = ["unit_id", "unit_class", "buffer_class", "county_fips", "county_name"]
-    parcel_cols = [c for c in candidate_units.columns if c in ["CNTYNAME", "PARCELID", "NPARNO", "DORUC", "PARUSEDESC", "ACRES"]]
+    parcel_cols = [c for c in candidate_units.columns if c in ["CNTYNAME", "PARCELID", "NPARNO", "ACRES"]]
     area_cols = ["source_parcel_area_ha", "unit_area_ha", "size_class"] if "source_parcel_area_ha" in candidate_units.columns else ["unit_area_ha", "size_class"]
     other_cols = [c for c in candidate_units.columns if c not in id_cols + parcel_cols + area_cols + ["geometry"]]
 

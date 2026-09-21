@@ -4,9 +4,9 @@
 #
 #   `prescriptions` — the LIBRARY. Eight distinct silvicultural prescriptions, each one
 #     renderable through the verified keyword templates in pipeline/s4_fvs/regime_templates.py.
-#     Library size is the cost driver: the FVS trajectory library is keyed by
-#     `(plot_id, prescription, site_index_bin)` (PLAN.md §4c, notes/methodology-directions.md
-#     item 4), so every prescription added multiplies the run count. Eight is deliberate.
+#     Library size is a cost driver: the target key is `(management unit, prescription)`
+#     (docs/architecture/presentation.html#library). Adding prescriptions expands the
+#     candidate runs; the dated pilot currently deduplicates donor-based inputs.
 #
 #   `owner_classes` — the POLICY. For each owner class from config/ownership_policy.yaml:
 #     two or three eligible prescriptions and one declared default. Prescriptions are
@@ -51,7 +51,7 @@ overrides:
       No entry of any kind, no buffer class exempted. Assigned by geometry, so it
       overrides every ownership and forest-type rule. Riparian units are still grown
       through FVS on the same cycles and still reported as their own polygons — see
-      notes/methodology-directions.md item 2 and PLAN.md §4b. `absolute: true` means no
+      docs/architecture/presentation.html#ownership. `absolute: true` means no
       later rule, and no scheduler decision, may reinstate an entry.
 
 # ---------------------------------------------------------------------------------------
@@ -116,9 +116,9 @@ prescriptions:
       delay_years: 1
     repeats: true
     rationale: >
-      Short-rotation planted pine on industrial ownership: one commercial thin from below,
-      then a clearcut at rotation age, replanted. The dominant north Florida industrial
-      practice and the largest single contributor to private TPO volume.
+      Short-rotation planted pine: one commercial thin from below, then a clearcut at
+      rotation age, replanted. The dominant north Florida corporate practice and the
+      largest single contributor to private TPO volume.
 
   pine_plantation_long_rotation:
     label: "Pine plantation — sawtimber rotation"
@@ -140,9 +140,9 @@ prescriptions:
       delay_years: 1
     repeats: true
     rationale: >
-      A longer rotation carried to sawtimber. Held by owners who are less
-      capital-constrained than a pulpwood-driven industrial rotation — state forests,
-      non-industrial corporate, and the managed share of family pine.
+      A longer rotation carried to sawtimber, for owners less driven by a pulpwood
+      rotation — state forests, corporate owners choosing sawtimber, and the managed
+      share of family pine.
 
   hardwood_clearcut_regen:
     label: "Hardwood / mixed clearcut with natural regeneration"
@@ -249,7 +249,7 @@ prescriptions:
       thin-and-burn regime used on southern pine public land. Prescribed fire is NOT
       modelled here: the FVS fire keywords are unverified in this project and the FFE
       state is known to be corrupted across restart barriers
-      (notes/restart-fidelity-findings.md). This prescription is the mechanical thinning
+      (research/restart_fidelity/outputs/arm_c_vs_a.txt). This prescription is the mechanical thinning
       only, and the writeup must say so.
 
 # ---------------------------------------------------------------------------------------
@@ -264,7 +264,7 @@ no_management_universally_eligible: true
 
 owner_classes:
 
-  private_industrial:
+  corporate:
     default:
       pine: pine_plantation_short_rotation
       hardwood: hardwood_clearcut_regen
@@ -274,24 +274,12 @@ owner_classes:
       - pine_plantation_long_rotation
       - hardwood_clearcut_regen
     rationale: >
-      Rotation forestry, with the pulpwood and sawtimber rotations as the real economic
-      choice the scheduler makes per stand, and a hardwood path for the non-pine share.
+      Harris corporate forest (value 4). Rotation forestry, with the pulpwood and sawtimber
+      rotations as the real economic choice the scheduler makes per stand, and a hardwood
+      path for the non-pine share. Harris puts not-for-profits and institutions in this
+      class too; `no_management` stays on their menu like everyone's.
 
-  private_corporate_other:
-    default:
-      pine: pine_plantation_long_rotation
-      hardwood: family_light_thin
-      other: family_light_thin
-    eligible:
-      - pine_plantation_long_rotation
-      - family_light_thin
-      - family_uneven_aged_selection
-    rationale: >
-      Corporate title without a timber-asset objective. Managed, but on a longer and
-      lighter footing than industrial — closer to family forest in behaviour than to a
-      TIMO's rotation schedule.
-
-  private_family:
+  family:
     default:
       pine: family_light_thin
       hardwood: family_light_thin
@@ -301,9 +289,10 @@ owner_classes:
       - family_uneven_aged_selection
       - pine_plantation_long_rotation
     rationale: >
-      Light entries by default. `pine_plantation_long_rotation` stays eligible because a
-      real minority of family pine is managed on rotation, and the scheduler needs that
-      option to reach the private TPO volume without over-cutting the industrial class.
+      Harris family forest (value 3). Light entries by default.
+      `pine_plantation_long_rotation` stays eligible because a real minority of family
+      pine is managed on rotation, and the scheduler needs that option to reach the
+      private TPO volume without over-cutting the corporate class.
 
   tribal:
     default:
@@ -368,7 +357,7 @@ owner_classes:
     eligible:
       - family_light_thin
     rationale: >
-      Harris `unknown_forest`, which is not an owner type — it is missing information.
+      Harris `unknown`, which is not an owner type — it is missing information.
       One light entry or nothing: with no owner known, letting the scheduler place a
       rotation clearcut here would be inventing behaviour to hit a volume target. The
       shortfall lands on known private units instead, where it is attributable. Every
@@ -383,16 +372,14 @@ owner_classes:
 #                        parameters exactly).
 #   - State pine       → now public_thin_restore, not selection.
 #   - Local            → now no_management, not selection.
-#   - Corporate        → still industrial-by-default, but now demotable to
-#                        private_corporate_other by parcel evidence, which changes both the
-#                        default prescription and the eligible menu for the demoted units.
+#   - Corporate        → unchanged: plantation rotation for pine, clearcut otherwise.
 # Everything else resolves to the same template and the same parameters as before, which
-# tests/test_s4_regime_templates.py pins.
+# the regime-template tests pinned until tests/ was removed on 2026-09-14.
 
 # ---------------------------------------------------------------------------------------
 # Trajectory-library cost
 # ---------------------------------------------------------------------------------------
-# 8 prescriptions. Five-county pilot: 693 unique FIA plots (notes/terminology.md). With
+# 8 prescriptions. Five-county pilot: 693 unique FIA plots (docs/architecture/presentation.html#vocabulary). With
 # site-index binning at `si_bins` the upper bound on FVS runs is
 # 693 × 8 × si_bins, before deduplication for plots that are never eligible for a given
 # prescription. Any addition to `prescriptions` must state its cost here.

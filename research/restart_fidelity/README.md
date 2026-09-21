@@ -1,7 +1,7 @@
 # FVS Restart Fidelity — how to run
 
-Operational guide. For **what was found and why it matters**, read
-[`BRIEF.md`](BRIEF.md) and [`notes/restart-fidelity-findings.md`](../../notes/restart-fidelity-findings.md).
+Historical restart experiment; current ARTEMIS trajectories run continuously.
+Inspect [`outputs/arm_c_vs_a.txt`](outputs/arm_c_vs_a.txt) and compare with [`compare_arms.py`](compare_arms.py).
 
 **TL;DR of the finding:** stop/restart and in-process pause both reproduce a continuous FVS run
 **exactly** on stand values (BA / Tpa / SDI, max |Δ| = 0.0), including across 5 stands. Only

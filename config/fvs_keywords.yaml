@@ -16,7 +16,8 @@
 #      `pipeline/s4_fvs/regime_templates.py` as inline literals.
 #
 # `pipeline/s4_fvs/regime_templates.py` READS this file; it does not carry its own copies.
-# `tests/test_config.py` and `tests/test_s4_regime_templates.py` pin both halves.
+# Nothing has pinned the two halves together since tests/ was removed on 2026-09-14; a
+# render-and-compare check against the restart-fidelity fixture is owed.
 #
 # Anything still needing a decision is listed under `open_questions` at the bottom. Grep
 # that list before publishing any result that depends on these numbers.
@@ -54,11 +55,11 @@ verification:
     research/restart_fidelity/make_cut_keyfiles.py.
   TimeInt: >-
     Field 1 is the CYCLE NUMBER the interval applies to (blank or 0 = all cycles); field 2
-    is the interval length in years. Three in-repo confirmations: the verified fixture
+    is the interval length in years. In-repo evidence: the verified fixture
     research/restart_fidelity/make_keyfiles.py, whose real FVS output
     (outputs/arm_c_vs_a.txt) reports 1999/2004/2009/2014/2019; the explicit "TimeInt 0 5"
-    in notes/fvs-smoke-rerun-plan.md; and notes/treemap-fvs-workflow.md recording that
-    FVS's default interval is 10 years.
+    in the historical smoke rerun plan (git show e207953:notes/fvs-smoke-rerun-plan.md).
+    pipeline/s4_fvs/regime_templates.py:render_schedule_block renders the verified layout.
   InvYear:  "Single-field keyword; matches the verified restart-fidelity fixture."
   NumCycle: "Single-field keyword; matches the verified restart-fidelity fixture."
   Estab: >-
