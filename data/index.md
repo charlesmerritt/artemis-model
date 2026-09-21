@@ -23,6 +23,9 @@ Declared in `config/data_paths.yaml`; the config key is the last column.
 | `US SE Streams - FINAL/` | 6.51 GB | 990 | EPA NHDPlus 2022 snapshot, per-state stream geodatabases | `raw.nhd` |
 | `TreeMap-2022/` | 5.16 GB | 10 | TreeMap 2022 CONUS imputed FIA plot-ID raster (30 m) with tree table, VAT, and data dictionary | `raw.treemap_2022` |
 | `RDS-2025-0045/` | 5.15 GB | 10 | Forest ownership raster circa 2022, plus its overview pyramid | `raw.ownership` |
+| `LF2022_EVT_CONUS/` | 4.19 GB | 27 | LANDFIRE 2022 Existing Vegetation Type raster and spatial metadata | `raw.landfire` |
+| `20260804_095846_Hard_Ownership_Boundaries/` | 2.65 GB | 18 | An FVS run bundle partitioned by ownership, added 2026-08-04: a 1.5 GB `Inputs/FVS_TreeInit.csv` and per-class `FVS_Inventory_{Private,Riparian,Other}.db`. `Inputs/FVS_StandInit.csv` is the `PLT_CN` → owner-class crosswalk `pipeline/s6_outputs` reads; the inventory databases are not wired into the pipeline | `raw.hard_ownership_boundaries` |
+| `LF2022_VCC_CONUS/` | 2.23 GB | 25 | LANDFIRE 2022 Vegetation Condition Class raster, same layout | `raw.landfire` |
 | `SE_rds100k/` | 1.30 GB | 67 | Southeast roads gdb (MTFCC, RTTYP) plus the MTFCC code reference PDF | `raw.roads` |
 | `Artemis_project_fvs_copy_no_management/` | 1.12 GB | 261 | FVS Online project for the no-management run: `FVS_Data.db`, `FVSOut.db`, three summary CSVs, 249 report PNGs | `raw.Artemis_project_fvs_copy_no_management` |
 | `us_eco_l4_state_boundaries/` | 109.4 MB | 7 | The same Level IV ecoregions, split at state lines | `raw.ecoregions` |
@@ -63,6 +66,9 @@ Adjacent or prior work, kept for provenance. Nothing tracked in git mentions the
 | `directedStudy-treecountseg/` | 21.18 GB | 284 | TreeCountSegHeight deep-learning code and outputs; a single 21 GB data zip is nearly all of it |
 | `backup/` | 20.28 GB | 2 | Two `diskbackup-HALAFEL-20260909-*.tar.gz.partial` archives (8.5 and 11.8 GB) — interrupted uploads, not usable backups |
 | `TreeMap-Vintage/` | 10.28 GB | 4 | Zipped TreeMap 2016 and 2020 releases with their metadata indexes |
+| `LF2024_EVT_CONUS/` | 4.10 GB | 27 | LANDFIRE 2024 Existing Vegetation Type, unpacked beside its root zip. Newer than the LF2022 vintage `raw.landfire.evt_tif` declares |
+| `LF2016_EVT_CONUS/` | 3.93 GB | 27 | LANDFIRE 2016 Existing Vegetation Type — the pre-Remap vintage the GEE EVT asset matches, so the class codes differ from LF2022's. Same Tif/Spatial_Metadata layout; also present as a root zip |
+| `LF2016_FRI_CONUS/` | 2.31 GB | 25 | LANDFIRE 2016 Fire Return Interval raster with overview pyramid and spatial metadata; also present as a root zip |
 | `Bark Images (UGA V1)/` | 2.06 GB | 2,765 | 2,764 labeled bark photographs (UGA, April 2026) and one label CSV |
 | `athens_naip_2023/` | 1.58 GB | 9 | Three NAIP tiles over Athens, GA, with sidecar metadata |
 | `USA Soils Map Units NRCS Polygon - ZIP ONE/` | 240.8 MB | 54 | NRCS soil map-unit polygons in a `Default.gdb` |
