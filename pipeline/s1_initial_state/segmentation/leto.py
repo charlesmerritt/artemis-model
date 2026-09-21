@@ -1,9 +1,9 @@
 """Voronoi-tessellation management-unit segmentation and attribution.
 
 Despite the module name, this is not the LETO algorithm: it is a from-scratch
-Thiessen/Voronoi subdivision of the TreeMap domain, unrelated to
-`aauslander480/Leto`. The actual LETO port -- the cellular-automata algorithm
-from that repository's `scripts/Cellular_automata/02_segment_treemap.py` --
+Thiessen/Voronoi subdivision of the TreeMap domain, unrelated to the external
+aauslander480/Leto repository. The actual LETO port -- the cellular-automata
+algorithm of that repository's `02_segment_treemap.py` --
 lives in `pipeline/leto_ca.py`, wired into this package's shared attribution
 contract by `cellular_automata.py`, and is the default S1 segmentation
 method. This module (tagged `SEGMENTATION_METHOD = "voronoi_tessellation"`)

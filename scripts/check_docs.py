@@ -41,23 +41,41 @@ sys.path.insert(0, str(REPO_ROOT))
 #   convert   durable finding or design owed a deck; delete once the deck lands
 #   code      owed as docstrings, doctests, --help or a check; delete once that lands
 MARKDOWN_BUDGET = {
+    ".agents/skills/linear/SKILL.md": (37, "keep"),            # agent skill; linear.py --help is the usage
     "AGENTS.md": (63, "keep"),                                # the architect's agent brief
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
+    "CONTEXT.md": (64, "keep"),                               # the project vocabulary
     "README.md": (119, "keep"),
-    "data/index.md": (116, "generated"),                      # scripts/r2_index.py
+    "data/index.md": (122, "generated"),                      # scripts/r2_index.py; regrew 2026-09-14 (+6 rows)
+    "docs/adr/0001-ruderal-grassland-clean-slate.md": (36, "record"),  # accepted decision, 2026-09-13
     "docs/config-policy.md": (426, "convert"),                # -> policy deck
+    "docs/research/leto-vs-boundary-overlay.md": (120, "record"),      # dated comparison record
+    "docs/superpowers/plans/2026-07-20-leto-initial-state.md": (649, "record"),
+    "docs/superpowers/plans/2026-07-20-s1-segmentation-strategies.md": (570, "record"),
+    "docs/superpowers/specs/2026-07-19-leto-initial-state-design.md": (232, "record"),
+    "docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md": (433, "record"),
     "docs/references/README.md": (145, "convert"),            # -> docs/architecture#references
     "docs/treemap_holes/README.md": (712, "convert"),         # -> docs/treemap-raster-correction
     "experiments/2026-07-28_16-33-pr9-validation-audit/report.md": (106, "record"),
     "experiments/2026-08-24_leto-ca-forest-viz/README.md": (211, "record"),
     "gee/README.md": (44, "keep"),
     "notes/2026-09-14_statewide_repair_blockers.md": (111, "record"),  # diagnosis, not prose docs
+    "notes/2026-09-16_timing-offsets-evidence.md": (509, "record"),    # research note, issue #51
+    "notes/ruderal-grassland-agent-feedback-loops.md": (69, "record"), # ADR companion
+    "notes/todo.md": (5, "keep"),                             # the untracked-on-Linear backlog
     "notebooks/README.md": (69, "keep"),
     "pipeline/README.md": (36, "keep"),
+    "pipeline/notes.md": (1, "keep"),                         # pointer line
+    "pipeline/s1_initial_state/README.md": (243, "keep"),     # operational entry point
+    "pipeline/s6_outputs/README.md": (166, "keep"),           # operational entry point
     "pipeline/s5_imagery/README.md": (180, "code"),                    # -> module docstrings, --help
     "research/fia_treemap_fortype/README.md": (115, "convert"),        # -> treemap deck
     "research/restart_fidelity/README.md": (204, "convert"),           # -> restart-fidelity deck
     "viewer/README.md": (126, "code"),                                 # -> serve_viewer.py --help
+    "scripts/notes/README.md": (226, "keep"),                 # orientation for scripts/
+    "scripts/notes/southeast-fvs-artemis-export-package.md": (375, "record"),  # 2026-06-09 handoff
+    "weekly-artifact/2026-09-07/README.md": (421, "record"),
+    "weekly-artifact/2026-09-14/README.md": (511, "record"),
     "weekly-artifact/2026-07-19/README.md": (111, "record"),
     "weekly-artifact/2026-07-26/README.md": (156, "record"),
     "weekly-artifact/2026-08-03/README.md": (83, "record"),
