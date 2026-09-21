@@ -99,15 +99,16 @@ def aoi_region(ee):
     return ee.Geometry.Rectangle(list(AOI_BOUNDS_5070), proj=project_crs(), geodesic=False)
 
 
-def annual_embedding(ee, year: int):
-    """Mosaic of the AlphaEarth annual embedding for `year`, restricted to the AOI.
+def annual_embedding(ee, year: int, region=None):
+    """Mosaic of the AlphaEarth annual embedding for `year`, restricted to `region`.
 
     ``filterBounds`` matters: without it the mosaic spans CONUS and every request
-    pays for tiles nowhere near the AOI. Matches the convention in
-    ``notebooks/clearcut_ag_common.annual_embedding``.
+    pays for tiles nowhere near the study area. Matches the convention in
+    ``notebooks/clearcut_ag_common.annual_embedding``. Defaults to the AOI
+    region; the statewide scorer passes its own tile bounds.
     """
     start = ee.Date.fromYMD(year, 1, 1)
-    region = aoi_region(ee)
+    region = aoi_region(ee) if region is None else region
     return (
         ee.ImageCollection(EMBEDDING_COLLECTION)
         .filterDate(start, start.advance(1, "year"))
@@ -157,7 +158,7 @@ def run_sample(years, points_csv: Path, out_csv: Path) -> pd.DataFrame:
     return table
 
 
-def probability_image(ee, model: dict):
+def probability_image(ee, model: dict, region=None):
     """Rebuild the fitted logistic regression as an Earth Engine image.
 
     AlphaEarth bands are unit-norm floats, so a linear model is exactly a band
@@ -165,13 +166,13 @@ def probability_image(ee, model: dict):
     reproduces the sklearn model bit-for-bit rather than re-fitting in EE.
     """
     year = model["feature_year"]
-    image = annual_embedding(ee, year).select(list(model["bands"]))
+    image = annual_embedding(ee, year, region).select(list(model["bands"]))
     weights = ee.Image.constant(list(model["coef"]))
     logit = image.multiply(weights).reduce(ee.Reducer.sum()).add(ee.Image.constant(model["intercept"]))
     return logit.multiply(-1).exp().add(1).pow(-1).rename("prob")
 
 
-def similarity_image(ee, model: dict):
+def similarity_image(ee, model: dict, region=None):
     """Max cosine similarity to any anchor exemplar.
 
     Mirrors ``classify_holes.stage_a_similarity``: one dot product per exemplar,
@@ -188,7 +189,7 @@ def similarity_image(ee, model: dict):
     cut-off. The threshold is fitted on cosine, so the export must be cosine.
     """
     year = model["feature_year"]
-    image = annual_embedding(ee, year).select(list(model["bands"]))
+    image = annual_embedding(ee, year, region).select(list(model["bands"]))
     unit = image.divide(image.pow(2).reduce(ee.Reducer.sum()).sqrt())
     bands = []
     for i, exemplar in enumerate(model["anchor_exemplars"]):
@@ -200,32 +201,6 @@ def similarity_image(ee, model: dict):
             .rename(f"sim_{i}")
         )
     return ee.Image.cat(bands).reduce(ee.Reducer.max()).rename("similarity")
-
-
-def grid_tiles(transform, rows: int, cols: int,
-               max_tile_pixels: int = 60_000_000 // (4 * OUTPUT_SCALE_M * OUTPUT_SCALE_M)):
-    """Split a whole raster into full-width row bands under the request budget.
-
-    ``run_apply`` tiles the AOI horizontally via :func:`row_tiles`; the
-    statewide scorer (:mod:`score_holes_statewide`) needs arbitrary grids, so
-    the general form takes the grid's transform and pixel budget directly.
-    """
-    if max_tile_pixels < cols:
-        raise ValueError(
-            f"max_tile_pixels {max_tile_pixels} < tile width {cols}: "
-            "a single row band would not fit"
-        )
-    band_rows = max(1, max_tile_pixels // cols)
-    tiles = []
-    for row0 in range(0, rows, band_rows):
-        height = min(band_rows, rows - row0)
-        window = rasterio.windows.Window(col_off=0, row_off=row0, width=cols, height=height)
-        top = transform.f - row0 * OUTPUT_SCALE_M
-        left = transform.c
-        bounds = (left, top - height * OUTPUT_SCALE_M,
-                  left + cols * OUTPUT_SCALE_M, top)
-        tiles.append((window, bounds))
-    return tiles
 
 
 def row_tiles(n_tiles: int) -> list[tuple[float, float, float, float]]:
@@ -290,7 +265,6 @@ def canvas_offsets(transform, origin: tuple[float, float]) -> tuple[int, int]:
 def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
     import urllib.request
 
-    import rasterio
 
     ee = init_ee()
     model = json.loads(model_json.read_text())

@@ -39,6 +39,7 @@ from pipeline.s1_initial_state.embed_holes import (
     similarity_image,
     tile_download_params,
 )
+from pipeline.spatial_ref import project_crs
 from pipeline.s1_initial_state.statewide_repair import OUT_DIR as STRATA_DEFAULT
 
 REPO = Path(__file__).resolve().parents[2]
@@ -47,33 +48,44 @@ DEFAULT_STRATA = STRATA_DEFAULT / "treemap_strata_fl.tif"
 DEFAULT_MODEL = DATA_DIR / "hole_model.json"
 DEFAULT_OUT = DATA_DIR / "hole_prob_similarity_statewide.tif"
 
-# Two uint16 bands: 2 * max_tile_pixels * 2 bytes <= 48 MB, under the ceiling.
-DEFAULT_MAX_TILE_PIXELS = 12_000_000
+# Two uint16 bands: the DOWNLOAD ceiling would allow ~12M px per tile, but the
+# server-side COMPUTE of the 6-exemplar similarity + 64-band logistic measured
+# out between 2M and 3M px per request ("User memory limit exceeded" above
+# ~2.5M). 2M keeps a margin; at 640M statewide px that is ~320 tiles.
+DEFAULT_MAX_TILE_PIXELS = 2_000_000
 
 
 def grid_tiles(transform, rows: int, cols: int,
-               max_tile_pixels: int = DEFAULT_MAX_TILE_PIXELS):
-    """Split a whole raster into full-width row bands under the pixel budget.
+               max_tile_pixels: int = DEFAULT_MAX_TILE_PIXELS,
+               max_tile_width: int = 2_000):
+    """Split a raster into 2D tiles under the pixel budget AND the width cap.
 
-    Each band starts on an exact pixel row, so every tile is on the same grid
-    as the strata raster and the reassembled canvas aligns without resampling.
+    The pixel budget bounds the server-side compute of the per-tile scoring
+    (measured: "User memory limit exceeded" between 2M and 3M px). The width
+    cap bounds it independently: a 27,077-wide tile failed even at 1M px while
+    a 2,000 x 1,000 tile passed at 2M px — the per-row footprint scales with
+    width, so full-state row bands blow the limit at any height.
+    Every tile edge sits on an exact pixel row/column, so the reassembled
+    canvas aligns with the strata raster without resampling.
     Returns ``(window, bounds)`` pairs in reading order.
     """
-    if max_tile_pixels < cols:
+    if max_tile_pixels < max_tile_width:
         raise ValueError(
-            f"max_tile_pixels {max_tile_pixels} < tile width {cols}: "
-            "a single row band would not fit"
+            f"max_tile_pixels {max_tile_pixels} < max_tile_width {max_tile_width}: "
+            "a single-row tile would not fit"
         )
-    band_rows = max(1, max_tile_pixels // cols)
+    band_rows = max(1, max_tile_pixels // max_tile_width)
     tiles = []
     for row0 in range(0, rows, band_rows):
         height = min(band_rows, rows - row0)
-        window = windows.Window(col_off=0, row_off=row0, width=cols, height=height)
-        top = transform.f - row0 * OUTPUT_SCALE_M
-        left = transform.c
-        bounds = (left, top - height * OUTPUT_SCALE_M,
-                  left + cols * OUTPUT_SCALE_M, top)
-        tiles.append((window, bounds))
+        for col0 in range(0, cols, max_tile_width):
+            width = min(max_tile_width, cols - col0)
+            window = windows.Window(col_off=col0, row_off=row0, width=width, height=height)
+            top = transform.f - row0 * OUTPUT_SCALE_M
+            left = transform.c + col0 * OUTPUT_SCALE_M
+            bounds = (left, top - height * OUTPUT_SCALE_M,
+                      left + width * OUTPUT_SCALE_M, top)
+            tiles.append((window, bounds))
     return tiles
 
 
@@ -87,28 +99,33 @@ def paste_tile(canvas: np.ndarray, tile: np.ndarray, row0: int, col0: int) -> No
 
 
 def score_statewide(model_json: Path, strata_tif: Path, out_tif: Path,
-                    max_tile_pixels: int = DEFAULT_MAX_TILE_PIXELS) -> Path:
+                    max_tile_pixels: int = DEFAULT_MAX_TILE_PIXELS,
+                    max_tile_width: int = 2_000) -> Path:
     """Evaluate Stage A + Stage B over the strata raster's whole grid."""
     check_feature_years([json.loads(model_json.read_text())["feature_year"]])
     with rasterio.open(strata_tif) as src:
         rows, cols = src.height, src.width
         transform = src.transform
         profile = src.profile
-    tiles = grid_tiles(transform, rows, cols, max_tile_pixels)
+    tiles = grid_tiles(transform, rows, cols, max_tile_pixels, max_tile_width)
     print(f"scoring {rows:,} x {cols:,} px in {len(tiles)} tile(s)")
 
     ee = init_ee()
     model = json.loads(model_json.read_text())
-    stacked = (
-        probability_image(ee, model).multiply(SCORE_SCALE).round()
-        .addBands(similarity_image(ee, model).add(1).multiply(SCORE_SCALE).round())
-        .toUint16()
-    )
 
     origin = (transform.c, transform.f)
     canvas = None
     tmp = out_tif.parent / ".score_tile.tif"
     for i, (window, bounds) in enumerate(tiles, start=1):
+        # Each tile composites only over itself: the statewide mosaic is the
+        # same per-tile computation the AOI apply does, N times, not one
+        # CONUS-spanning graph (which is what blows the user memory limit).
+        region = ee.Geometry.Rectangle(list(bounds), proj=project_crs(), geodesic=False)
+        stacked = (
+            probability_image(ee, model, region).multiply(SCORE_SCALE).round()
+            .addBands(similarity_image(ee, model, region).add(1).multiply(SCORE_SCALE).round())
+            .toUint16()
+        )
         params = tile_download_params(bounds)
         url = stacked.getDownloadURL(params)
         urllib.request.urlretrieve(url, tmp)
@@ -143,9 +160,10 @@ def main() -> None:
     parser.add_argument("--strata-tif", type=Path, default=DEFAULT_STRATA)
     parser.add_argument("--out-tif", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--max-tile-pixels", type=int, default=DEFAULT_MAX_TILE_PIXELS)
+    parser.add_argument("--max-tile-width", type=int, default=2_000)
     args = parser.parse_args()
     score_statewide(args.model_json, args.strata_tif, args.out_tif,
-                    args.max_tile_pixels)
+                    args.max_tile_pixels, args.max_tile_width)
 
 
 if __name__ == "__main__":

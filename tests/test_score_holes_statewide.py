@@ -16,7 +16,7 @@ from affine import Affine
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pipeline.s1_initial_state import embed_holes, statewide_repair
+from pipeline.s1_initial_state import embed_holes, score_holes_statewide, statewide_repair
 
 
 # ---- the threshold gate -------------------------------------------------------------------
@@ -95,23 +95,40 @@ def test_gated_add_back_applies_the_mmu_and_respects_the_hole_mask():
 # ---- the statewide tile maths --------------------------------------------------------------
 
 
-def test_strata_grid_tiles_split_on_exact_rows_within_the_pixel_budget():
+def test_strata_grid_tiles_split_into_2d_tiles_within_budget_and_width():
     transform = rasterio.transform.from_origin(1_000_000.0, 2_000_000.0, 30.0, 30.0)
     rows, cols = 500, 300
-    tiles = embed_holes.grid_tiles(transform, rows, cols, max_tile_pixels=60_000)
-    # 60k px budget, 2 bands uint16 -> fits EE's request ceiling.
-    total = 0
-    for window, _bounds in tiles:
-        assert window.col_off == 0
-        assert window.width == cols
-        assert window.height * cols <= 60_000
-        total += window.height
-    assert total == rows
-    # exact 30 m pixel edges: each tile's north edge sits on the grid
+    tiles = score_holes_statewide.grid_tiles(transform, rows, cols, max_tile_pixels=60_000,
+                                   max_tile_width=200)
     for window, (left, bottom, right, top) in tiles:
+        assert window.width <= 200
+        assert window.height * window.width <= 60_000
+        # every tile edge on the exact 30 m grid
         assert top == 2_000_000.0 - window.row_off * 30.0
+        assert left == 1_000_000.0 + window.col_off * 30.0
         assert bottom == top - window.height * 30.0
-        assert (left, right) == (1_000_000.0, 1_000_000.0 + cols * 30.0)
+        assert right == left + window.width * 30.0
+    # full coverage, no gaps: count once per unique (row_off, col_off)
+    for row_band in range(0, rows, 100):  # 60_000 // 200 = 300 rows per band
+        pass
+    band_rows = 60_000 // 200
+    assert band_rows == 300
+    n_row_bands = (rows + band_rows - 1) // band_rows
+    n_col_bands = (cols + 200 - 1) // 200
+    assert len(tiles) == n_row_bands * n_col_bands
+    assert len({(w.row_off, w.col_off) for w, _ in tiles}) == len(tiles)
+
+
+def test_strata_grid_tiles_cover_the_whole_grid_exactly_once():
+    transform = rasterio.transform.from_origin(1_000_000.0, 2_000_000.0, 30.0, 30.0)
+    rows, cols = 130, 450
+    tiles = score_holes_statewide.grid_tiles(transform, rows, cols, max_tile_pixels=10_000,
+                                   max_tile_width=200)
+    canvas = np.zeros((rows, cols), dtype=int)
+    for window, _ in tiles:
+        canvas[window.row_off:window.row_off + window.height,
+               window.col_off:window.col_off + window.width] += 1
+    assert (canvas == 1).all()
 
 
 def test_tile_download_params_carry_the_tile_transform():
