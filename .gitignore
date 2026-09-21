@@ -24,9 +24,13 @@ data/r2_cache/
 # GEE credentials
 .config/earthengine/
 
-# FVS binaries and build artifacts
+# FVS binaries, sources and build artifacts
 fvs/bin/
 fvs/build/
+# The upstream FVS checkout the weekly artifacts build from
+# (`git clone ForestVegetationSimulator fvs/src`, ~159 MB of third-party Fortran).
+# It is somebody else's repository and is rebuilt on demand, never vendored here.
+fvs/src/
 *.db          # SQLite FVS runs (large); keep fvs_input.db path in versions.lock
 *.log
 
