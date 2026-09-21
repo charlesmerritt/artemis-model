@@ -1,7 +1,6 @@
 """Prepared Florida ownership raster on the TreeMap grid."""
 
 import numpy as np
-import pytest
 import rasterio
 from rasterio.transform import Affine
 
