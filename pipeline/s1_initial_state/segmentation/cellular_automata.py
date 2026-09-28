@@ -1,8 +1,9 @@
 """Production wiring for LETO's cellular-automata management-unit segmentation.
 
 `pipeline.leto_ca` is the algorithm itself -- a faithful NumPy/SciPy port of
-`aauslander480/Leto`'s `scripts/Cellular_automata/02_segment_treemap.py`,
-operating on plain arrays with no I/O of its own. This module is the S1
+the cellular-automata segmentation of the external aauslander480/Leto
+repository (its `02_segment_treemap.py`), operating on plain arrays with no
+I/O of its own. This module is the S1
 adapter around it: it reads the same production sources the other S1
 segmentation methods read (`pipeline.s1_initial_state.data_sources`), builds
 the feature/ownership/valid-mask rasters `leto_ca.segment` needs, and hands
