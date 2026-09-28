@@ -117,6 +117,15 @@ def test_leto_age_alias_and_riparian_override():
     assert p.template == "no_management" and p.regen_slot is None
 
 
+@pytest.mark.parametrize("unusable", ["", "bad", float("nan"), -1])
+def test_invalid_authoritative_age_is_not_replaced_by_a_lower_priority_alias(unusable):
+    # docs/harvest-eligibility.html: the first alias present is authoritative. A
+    # unit-average STDAGE_MEAN cannot certify the stand whose own age is invalid.
+    with pytest.raises(MissingStandAgeError, match="stand age"):
+        assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161,
+                             "stand_age": unusable, "STDAGE_MEAN": 22})
+
+
 @pytest.mark.parametrize("field,value", [
     ("mode", "disabled"), ("underage_action", "ignore"),
     ("unknown_age_action", "assume_mature"), ("minimum_age_years", -1),
