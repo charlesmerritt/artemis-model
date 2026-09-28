@@ -6,18 +6,18 @@
 #
 #   docker build -t artemis .
 #   docker run --rm -it artemis scripts/setup-env.sh --check
-#   docker run --rm -it artemis uv run pytest tests/ -q
+#   docker run --rm -it artemis uv run python scripts/check_docs.py
 #
 # With data. R2 credentials stay outside the image — never bake them in:
 #
 #   docker run --rm -it \
 #     -e RCLONE_CONFIG_R2_ENDPOINT -e RCLONE_CONFIG_R2_ACCESS_KEY_ID \
 #     -e RCLONE_CONFIG_R2_SECRET_ACCESS_KEY \
-#     -v "$PWD/data:/app/data" artemis uv run pytest tests/ -q
+#     -v "$PWD/data:/app/data" artemis bash
 #
 # On the workstation, mount the drive instead and skip the credentials entirely:
 #
-#   docker run --rm -it -v /mnt/d:/mnt/d:ro artemis uv run pytest tests/ -q
+#   docker run --rm -it -v /mnt/d:/mnt/d:ro artemis bash
 #
 # Ubuntu noble to match the cloud environment: its archive rclone (1.60.1) is the
 # version the R2 access path has been exercised against, including the CA shim below.

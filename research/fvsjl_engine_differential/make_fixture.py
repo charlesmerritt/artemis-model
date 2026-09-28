@@ -31,7 +31,8 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=200)
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()
-    work = Path(a.work); work.mkdir(parents=True, exist_ok=True)
+    work = Path(a.work)
+    work.mkdir(parents=True, exist_ok=True)
 
     src = sqlite3.connect(f"file:{a.source}?mode=ro&immutable=1", uri=True)
     cns = [r[0] for r in src.execute("SELECT STAND_CN FROM FVS_STANDINIT_PLOT WHERE VARIANT='SN'")]
@@ -51,7 +52,8 @@ def main() -> None:
 
     for tag, (regime, params) in REGIMES.items():
         for engine in ENGINES:
-            d = work / f"{tag}_{engine}"; d.mkdir(exist_ok=True)
+            d = work / f"{tag}_{engine}"
+            d.mkdir(exist_ok=True)
             for cn in cns:
                 (d / f"{cn}.key").write_text(render_keyfile(
                     cn, cn, regime, params, in_db=str(work / "in.db"), out_db="out.db"))

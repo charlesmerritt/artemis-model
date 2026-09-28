@@ -10,7 +10,8 @@
 # which this script hands off to at the end and which the Dockerfile runs too, so
 # there is one definition of "configured" across all three environments.
 #
-# See notes/claude-code-web-environment.md for the diagnosis behind each step.
+# The comment above each step is its diagnosis. The original investigation:
+# git show e207953:notes/claude-code-web-environment.md
 set -euo pipefail
 
 log() { printf 'env-setup: %s\n' "$1" >&2; }

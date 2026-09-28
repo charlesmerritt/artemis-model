@@ -88,7 +88,7 @@ fvs:
   default_variant: "SN"              # Southern variant for Florida
   # Variant assignment when expanding: keyed by state FIPS in fvs_variants.yaml
   # DISABLED 2026-07-16: carbon output is NOT trustworthy across a 5-year barrier.
-  # Measured (notes/restart-fidelity-findings.md): FVS stop/restart silently resets the
+  # Measured (research/restart_fidelity/outputs/arm_c_vs_a.txt): FVS stop/restart silently resets the
   # FFE live-fuel state, collapsing Forest_Shrub_Herb to a constant 0.02 and understating
   # Total_Stand_Carbon by ~8% at every restart -- while BA/Tpa/SDI stay bit-identical, so
   # no summary-level check catches it. Stand values are exact; only carbon is affected.
@@ -100,7 +100,7 @@ fvs:
   # the adopted architecture. The flag stays false and the tripwire test stays in place
   # because flipping it must remain a conscious, reviewed act; but the blocker is now a
   # scope decision rather than a measured defect.
-  # See notes/trajectory-library-and-annealing.md section 2.
+  # See docs/architecture/presentation.html#shift.
   carbon_extension: false
   carbon_pools:                      # All five IPCC pools -- the intended set when re-enabled
     - aboveground_live
@@ -115,7 +115,7 @@ harvest:
   # simulated annealing. This replaces the previous "pseudo_deterministic" method, which
   # drew a per-pixel schedule from a fitted LCMS harvest probability model; that model is
   # now calibration/validation evidence rather than the forward generator.
-  # See notes/trajectory-library-and-annealing.md.
+  # See docs/architecture/presentation.html#pipeline.
   selection_method: "simulated_annealing"
   random_seed: 42                    # Document this in versions.lock; never change post-publication
   # random_seed must be locked before any results are reported externally
@@ -158,7 +158,7 @@ harvest:
     # Do not collapse these to [] without deciding to accept that behaviour.
     #
     # OPEN: the secondary objective set is undecided -- see
-    # notes/trajectory-library-and-annealing.md section 10, question 1.
+    # docs/architecture/presentation.html#open, decision 1.
     - metric: "harvest_volume"
       form: "evenflow_target"
       target_source: "config/tpo_targets.yaml"
@@ -186,19 +186,8 @@ harvest:
     treatment_budget: 0.0            # disabled until capacity figures exist
 
 ownership:
-  source: "harris_2025"
-  # Pixel values confirmed from US_forest_ownership.tif.xml metadata
-  classes:
-    0: unknown_forest
-    1: non_forest                    # Mask — excluded from FVS pipeline
-    2: water                         # Mask — excluded from FVS pipeline
-    3: family_forest
-    4: corporate_forest              # Full label: "Corporate/Other Private Forest"
-    5: tribal_forest
-    6: federal_forest
-    7: state_forest
-    8: local_forest
-  mask_values: [1, 2]               # non_forest and water
+  source: "harris_2025"              # Harris et al. (2025) RDS-2025-0045, doi:10.2737/RDS-2025-0045
+  # The legend, owner classes and masked values live in config/ownership_policy.yaml alone.
   # Tribal class: fall back to pooled estimate if training sample < 500 harvest events
 
 storage:

@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Proposed ARTEMIS changes for imputing repaired forest areas and replanting clearcuts with their original species and density.">
+  <title>Forest repair and regeneration | ARTEMIS</title>
+  <style>
+    :root{color-scheme:light;--paper:#f6f5ef;--ink:#202e28;--muted:#56645b;--green:#235b43;--line:#ccd4c9;--wash:#e6ede2;--amber:#775021;--white:#fffef9}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:30px}
+    body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    a{color:var(--green);text-underline-offset:3px}a:hover{text-decoration-thickness:2px}a:focus-visible,summary:focus-visible{outline:3px solid var(--green);outline-offset:5px}
+    .skip{position:absolute;left:20px;top:-80px;background:white;padding:12px;z-index:5}.skip:focus{top:12px}
+    .layout{max-width:1380px;margin:auto;display:grid;grid-template-columns:235px minmax(0,1fr);gap:65px;padding:40px 44px 80px}
+    aside{position:sticky;top:35px;align-self:start;font-size:14px}aside .brand{font-weight:750;letter-spacing:.18em;font-size:15px;margin:4px 0 28px}
+    nav a{display:block;padding:9px 0;text-decoration:none;border-bottom:1px solid var(--line)}nav a span{color:var(--muted);margin-right:10px;font-size:12px}
+    .aside-note{color:var(--muted);font-size:12px;margin-top:25px;overflow-wrap:anywhere}
+    main{min-width:0;max-width:920px}.eyebrow{font-size:12px;letter-spacing:.08em;font-weight:700;color:var(--green)}
+    header{padding:20px 0 40px;border-bottom:2px solid var(--ink)}h1{font:normal clamp(40px,5.6vw,72px)/1.06 Georgia,"Times New Roman",serif;letter-spacing:-.035em;margin:18px 0 22px;max-width:780px}
+    .lede{font-size:22px;line-height:1.5;max-width:760px;margin-bottom:26px}.meta{display:flex;flex-wrap:wrap;gap:10px 24px;font-size:12px;color:var(--muted)}
+    section{padding:39px 0 15px;border-bottom:1px solid var(--line)}section:last-of-type{border-bottom:0}.section-no{font-size:12px;color:var(--green);font-weight:700;letter-spacing:.12em}
+    h2{font:normal 34px/1.18 Georgia,"Times New Roman",serif;letter-spacing:-.02em;margin:8px 0 24px}h3{font-size:19px;line-height:1.4;margin:26px 0 10px}p{margin:0 0 17px}li{margin:7px 0}ul,ol{padding-left:24px}
+    .policy{list-style:none;padding:0;counter-reset:policy}.policy li{counter-increment:policy;display:grid;grid-template-columns:45px 1fr;gap:16px;padding:20px 0;border-top:1px solid var(--line)}
+    .policy li:before{content:"0" counter(policy);font:28px Georgia,serif;color:var(--green)}.policy strong{display:block;font-size:20px;margin-bottom:5px}.policy p{margin:0}
+    .note{padding:18px 23px;border-left:3px solid var(--amber);background:#eee9dc;margin:25px 0}.note p:last-child{margin-bottom:0}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:25px}.example{background:var(--wash);padding:23px;margin:24px 0}.example h3{margin-top:0}.small{font-size:14px;color:var(--muted)}
+    figure{margin:25px 0}figcaption{font-size:13px;color:var(--muted);margin-top:12px}.area-bar{display:flex;min-height:76px;color:white;font-size:15px;font-weight:650}.direct{width:60%;background:#235b43;padding:16px}.imputed{width:40%;background:#647453;padding:16px}
+    .equation{font:24px/1.5 Georgia,serif;margin:16px 0 4px}.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.flow div{border-top:3px solid var(--green);padding:15px;background:var(--white)}.flow b{display:block;margin-bottom:7px}.flow p{font-size:14px;margin:0}
+    .table-wrap{overflow-x:auto;margin:20px 0}table{width:100%;border-collapse:collapse;text-align:left;font-size:14px;line-height:1.6}caption{text-align:left;font-size:13px;color:var(--muted);margin-bottom:10px}th{font-weight:700;background:var(--wash)}th,td{padding:14px 15px;vertical-align:top;border-bottom:1px solid var(--line)}td:first-child{width:32%}td code{overflow-wrap:anywhere}th[scope=row]{background:transparent;font-weight:600;width:29%}
+    code{font: .85em/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#e9ece3;padding:2px 4px;border-radius:2px}pre{background:#203a2f;color:#edf3e9;padding:23px;overflow:auto;font-size:13px;line-height:1.65;margin:16px 0 24px;tab-size:2}pre code{font:inherit;padding:0;background:none;color:inherit}
+    details{border-top:1px solid var(--line);padding:15px 0}summary{cursor:pointer;font-weight:650;color:var(--green)}details p{margin-top:14px}.checks li{padding:7px 0}.checks strong{display:block}
+    footer{margin-top:35px;padding-top:20px;border-top:2px solid var(--ink);font-size:12px;color:var(--muted)}.nowrap{white-space:nowrap}
+    @media(max-width:1000px){.layout{grid-template-columns:175px minmax(0,1fr);gap:30px;padding:25px}.lede{font-size:20px}}
+    @media(max-width:760px){.layout{display:block;padding:20px}aside{position:static}aside .brand{margin-bottom:12px}nav{display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:15px}nav a{font-size:12px;padding:5px 0}nav a span,.aside-note{display:none}header{padding-top:15px}.two-col,.flow{grid-template-columns:1fr}h2{font-size:29px}.lede{font-size:19px}th,td{padding:10px}body{font-size:16px}.area-bar{font-size:13px}.direct,.imputed{padding:12px}.policy li{gap:8px}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+    @media print{@page{size:A4;margin:17mm}body{background:white;font-size:10pt}.layout{display:block;max-width:none;padding:0}aside,.skip{display:none}main{max-width:none}header{padding-top:0}h1{font-size:38pt}h2{font-size:23pt}.lede{font-size:14pt}section{padding-top:22px}pre{white-space:pre-wrap;overflow:visible;color:black;background:#eee;font-size:8pt}table{font-size:8pt}.table-wrap{overflow:visible}tr,.note,.example,figure{break-inside:avoid}h2,h3{break-after:avoid}a{color:inherit}.area-bar{print-color-adjust:exact;-webkit-print-color-adjust:exact}.meta,figcaption,footer{font-size:8pt}}
+  </style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to report</a>
+<div class="layout">
+  <aside aria-label="Report navigation">
+    <div class="brand">ARTEMIS</div>
+    <nav aria-label="Contents">
+      <a href="#policy"><span>01</span>The policy</a>
+      <a href="#repair"><span>02</span>Repaired forest</a>
+      <a href="#replant"><span>03</span>After a clearcut</a>
+      <a href="#config"><span>04</span>Config changes</a>
+      <a href="#pipeline"><span>05</span>Pipeline changes</a>
+      <a href="#checks"><span>06</span>Acceptance checks</a>
+      <a href="#evidence"><span>07</span>Evidence and limits</a>
+    </nav>
+    <p class="aside-note">14 September 2026<br>Implementation proposal<br><br>Branch<br>investigate-regeneration-hierarchy</p>
+  </aside>
+  <main id="main">
+    <header>
+      <div class="eyebrow">Forest initialization &amp; management</div>
+      <h1>Forest repair<br>and regeneration</h1>
+      <p class="lede">Impute treelists for repaired forest areas. After clearcuts, replant each stand with its original species and planting density. Keep fixed lists as a last resort.</p>
+      <div class="meta"><span>Proposed changes</span><span>14 September 2026</span><span>Audit baseline: <code>18af1ee</code></span></div>
+    </header>
+
+    <section id="policy" aria-labelledby="policy-title">
+      <div class="section-no">01 / Policy</div>
+      <h2 id="policy-title">Three rules for choosing trees</h2>
+      <ol class="policy">
+        <li><div><strong>Reuse the stand's own configuration after a clearcut.</strong><p>Save species and planting density before management begins. Reuse that record for every rotation, with new seedlings after each clearcut.</p></div></li>
+        <li><div><strong>Impute treelists from nearby stands.</strong><p>Assign repaired raster areas treelists from the nearest suitable donor. Copy the donor tree sizes when repairing inventory for existing forest.</p></div></li>
+        <li><div><strong>Use a fixed fallback only when local sources fail.</strong><p>Choose a documented FIA donor list or a forest-type planting blueprint. Record why it was needed. A missing source must not silently turn an unknown stand into loblolly pine.</p></div></li>
+      </ol>
+      <p>Riparian zones and other protected buffers remain grow-only. Their initial inventory may need repair, but they receive no harvest or planting actions.</p>
+    </section>
+
+    <section id="repair" aria-labelledby="repair-title">
+      <div class="section-no">02 / Initialization</div>
+      <h2 id="repair-title">Keep repaired acres in the weights</h2>
+      <p>The audited weighting code drops unmapped pixels before calculating plot weights. A unit with partly missing coverage can therefore appear fully represented by its surviving TreeMap donors.</p>
+      <p>Count all eligible forest area first. Record mapped inventory and repaired area separately. Also record pixels with no plot match and plots with no usable trees. Impute trees for each missing contribution, then combine the contributions into the unit's treelist.</p>
+      <figure aria-label="Illustrative unit with 60 percent mapped area and 40 percent repaired area">
+        <div class="area-bar"><div class="direct">60% mapped<br>Direct inventory</div><div class="imputed">40% repaired<br>Imputed inventory</div></div>
+        <p class="equation">0.6 × 100 + 0.4 × 100 = 100 trees/acre</p>
+        <figcaption>Illustrative example. Both source treelists contain 100 trees/acre. Apply each area share once. Report the repaired 40% separately.</figcaption>
+      </figure>
+      <h3>Donor selection</h3>
+      <ol>
+        <li>Search direct inventory with usable live trees of the same forest type within 5 km.</li>
+        <li>Search a compatible ecological group within 5 km, separating bottomland and upland hardwood.</li>
+        <li>Use the applicable fixed inventory list after eligible neighbors are exhausted.</li>
+      </ol>
+      <p>The distance limit comes from the existing policy and still needs evaluation with local data. Break equal-distance ties by stable unit ID. Exclude unusable trees before the search; imputed units must not become donor seeds within the same run.</p>
+      <p>Keep the recipient's identity, site attributes and protected status. Search once per repair patch or unit contribution to avoid repeating the same search for each pixel.</p>
+      <div class="note"><p>Some accepted add-back areas already contain regrown forest. Use donor treelists to represent their existing trees. Use a separate seedling rule when establishing new forest.</p></div>
+    </section>
+
+    <section id="replant" aria-labelledby="replant-title">
+      <div class="section-no">03 / Clearcuts</div>
+      <h2 id="replant-title">Save the planting record once</h2>
+      <p>Separate protected areas and finish inventory initialization before saving the planting baseline. Save one record per unit and species with the species code, planting density in trees per acre, density source and baseline ID. This report abbreviates trees per acre as TPA. Record the input vintage and a hash of the baseline contents. All candidate trajectories and later rotations use this unchanged baseline.</p>
+      <div class="flow" aria-label="Replanting sequence">
+        <div><b>1. Capture</b><p>Save the complete species and density record before any thinning or harvest.</p></div>
+        <div><b>2. Clearcut</b><p>Remove the harvested cohort. Preserve the saved record and recipient site.</p></div>
+        <div><b>3. Replant</b><p>Create seedlings from that record after the prescribed delay. Repeat at the next rotation.</p></div>
+      </div>
+      <div class="example">
+        <h3>Same species, same planting density</h3>
+        <p>A saved record of 300 slash pine and 200 longleaf pine trees/acre produces planting requests for those same quantities after each clearcut.</p>
+        <p class="small">Mature diameters, heights and biomass are not restored. Planting density counts trees before survival. Keep survival as a separate model parameter.</p>
+      </div>
+      <h3>When original planting records are missing</h3>
+      <p>Prefer a supplied planting record. Otherwise, use the initialized species-specific trees per acre as an <code>INITIAL_INVENTORY_PROXY</code>. This proxy is a proposed modeling assumption. Current stocking cannot recover trees lost to earlier mortality or thinning.</p>
+      <p>If neither record is usable, try a suitable donor baseline. Use a documented fixed blueprint if the donor search fails. Finish baseline selection before running trajectories. The clearcut renderer must fail if its baseline is missing.</p>
+      <p>Use species-specific trees per acre directly. Do not redistribute a fixed total using stand density index, discard minority species, or capture a new baseline after thinning. Preserve fractional density through FVS keyword formatting.</p>
+    </section>
+
+    <section id="config" aria-labelledby="config-title">
+      <div class="section-no">04 / Configuration</div>
+      <h2 id="config-title">Define the hierarchy in config</h2>
+      <p>Add one regeneration policy file. Keep donor search rules in the fallback config. Keep keyword formatting in the FVS config. These examples describe proposed interfaces; the current loaders do not implement them.</p>
+      <h3>New (proposed): <code>regeneration.yaml</code> in <code>config/</code></h3>
+      <pre><code>version: 1
+
+baseline:
+  source_order:
+    - original_planting_record
+    - initial_inventory_proxy
+    - nearest_eligible_baseline
+    - fixed_planting_blueprint
+  species_density: species_tpa
+  capture_at: initialization_complete
+  reuse: immutable_across_rotations
+
+clearcut:
+  method: replant_original
+  establishment: plant
+  cohort_age_at_establishment_years: 0
+  missing_baseline: error
+
+partial_harvest:
+  regeneration: none
+
+protected_units:
+  management: grow_only
+
+fallback:
+  blueprint_catalog: config/fallback_treelists.yaml
+  unknown_forest_type: error</code></pre>
+      <p class="small">Age zero is the intended cohort state at establishment. Verify its representation in the Southern FVS variant before relying on generated keywords. Thinning and selection do not trigger replanting; retention harvests need their own declared policy.</p>
+      <h3>Revise the existing config files</h3>
+      <div class="table-wrap"><table>
+        <caption>Proposed configuration changes</caption>
+        <thead><tr><th scope="col">File</th><th scope="col">Revision</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><a href="../../config/fallback_treelists.yaml">fallback_treelists.yaml</a></th><td>Define same-type and ecological-group donor eligibility. Replace unrestricted any-type matching. Retain pinned FIA inventory lists as failsafes. Add a separate catalog of planting blueprints. Record each blueprint's species, density, applicable forest types, version and source.</td></tr>
+          <tr><th scope="row"><a href="../../config/management_regimes.yaml">management_regimes.yaml</a></th><td>Replace full-clearcut <code>regen.treelist_slot</code> with <code>method: replant_original</code>. Preserve each prescription's delay and rotation length in its resolved assignment. Replace <code>repeats</code> with a rotation-mode enum.</td></tr>
+          <tr><th scope="row"><a href="../../config/regimes.yaml">regimes.yaml</a></th><td>Attach regeneration to full-clearcut events. Require establishment before later cohort management. Preserve owner menus and existing harvest timing during migration. Reject full replacement for retention harvests.</td></tr>
+          <tr><th scope="row"><a href="../../config/fvs_keywords.yaml">fvs_keywords.yaml</a></th><td>Remove the default loblolly densities of 605 and 400 trees/acre. Remove redistribution by stand density index and the 5% species cutoff. Keep syntax, seedling height and survival assumptions separate from species and density.</td></tr>
+          <tr><th scope="row"><a href="../../config/data_paths.yaml">data_paths.yaml</a></th><td>Register the repair mask, strata, contribution ledger, donor assignments and baseline table through the existing data-access conventions.</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Full-clearcut prescription</h3>
+      <pre><code>regen:
+  method: replant_original
+  policy: regeneration.yaml  # proposed, in config/
+  delay_years: 1  # preserve the hardwood prescription's 3-year delay
+rotation:
+  mode: repeat   # use single where repetition is not prescribed</code></pre>
+      <p>Measure subsequent rotation ages from the new cohort's establishment year, then apply the configured cycle rule. Keep <code>regen: null</code> for grow-only prescriptions.</p>
+      <details open>
+        <summary>Proposed donor configuration</summary>
+        <pre><code>initialization_ladder:
+  - rung: nearest_same_type
+    method: nearest_runnable_unit
+    constraints:
+      max_distance_m: 5000
+      forest_type_match: exact
+  - rung: nearest_compatible_group
+    method: nearest_runnable_unit
+    constraints:
+      max_distance_m: 5000
+      forest_type_match: ecological_group
+  - rung: fixed_inventory_by_type
+    method: fallback_slot
+    mapping: {}  # populate with the reviewed forest-type-to-slot mapping
+
+donor_selection:
+  eligibility: validated_direct_inventory
+  tie_break: ascending_mu_id
+  unknown_recipient_type: require_external_type_or_error
+  unresolved: error</code></pre>
+        <p>The empty mapping is a schema placeholder. It must be populated before use. No universal planting blueprint is proposed; numerical densities need a documented source.</p>
+      </details>
+    </section>
+
+    <section id="pipeline" aria-labelledby="pipeline-title">
+      <div class="section-no">05 / Pipeline</div>
+      <h2 id="pipeline-title">Carry area, species and density through every stage</h2>
+      <div class="table-wrap"><table>
+        <caption>Files to revise; links open the current repository sources</caption>
+        <thead><tr><th scope="col">File or caller</th><th scope="col">Required change</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><a href="../../pipeline/s1_initial_state/finalize_add_back.py">finalize_add_back.py</a></th><td>Export aligned repair/source masks, strata and a manifest. Leave treelist assignment to initialization.</td></tr>
+          <tr><th scope="row"><a href="../../pipeline/leto_ca.py">leto_ca.py</a> and segmentation caller</th><td>Include accepted repairs in the forest domain. Handle missing type and feature data explicitly. Preserve ownership and buffer boundaries.</td></tr>
+          <tr><th scope="row"><a href="../../pipeline/s3_management/assign_plt_cn.py">assign_plt_cn.py</a></th><td>Keep missing area in the denominator. Emit direct and unresolved contribution rows plus complete coverage accounting.</td></tr>
+          <tr><th scope="row"><a href="../../pipeline/s4_fvs/build_fvs_inputs.py">build_fvs_inputs.py</a></th><td>Impute missing contributions from validated donors. Weight each once by area share. Capture the completed baseline. Replace one-source-per-unit reporting with contribution-area totals.</td></tr>
+          <tr><th scope="row"><a href="../../pipeline/s4_fvs/fallback_treelists.py">fallback_treelists.py</a></th><td>Validate failsafe inventories and record their use. Remove unconditional fixed-list clearcut decisions. Retry usable neighbors before fixed fallback.</td></tr>
+          <tr><th scope="row">New: <code>regeneration.py</code> in <code>pipeline/s4_fvs/</code></th><td>Define typed baseline records. Validate and hash those records, then build planting requests from them. Keep geometry and keyword formatting in their existing modules.</td></tr>
+          <tr><th scope="row"><a href="../../pipeline/s3_management/regime_assignment.py">regime_assignment.py</a></th><td>Preserve method, delay and rotation mode as typed fields through assignment and serialization.</td></tr>
+          <tr><th scope="row"><a href="../../pipeline/s4_fvs/regime_templates.py">regime_templates.py</a></th><td>Require explicit species and density. Render Plant records from the baseline. Preserve fractional TPA and pair every full clearcut with establishment.</td></tr>
+          <tr><th scope="row"><a href="../../pipeline/s4_fvs/regime_library.py">regime_library.py</a></th><td>Render establishment when supplying explicit harvest records. Use the same resolved schedule as the template interface.</td></tr>
+          <tr><th scope="row"><a href="../../pipeline/s3_management/harvest_scheduler.py">harvest_scheduler.py</a></th><td>Allocate trajectories without changing planting records. Check that selected trajectories match the unit's baseline and protected status.</td></tr>
+          <tr><th scope="row">August 24 experiment: <a href="../../experiments/2026-08-24_leto-ca-forest-viz/policies.py">policies.py</a>, <a href="../../experiments/2026-08-24_leto-ca-forest-viz/04_fvs_run.py">04_fvs_run.py</a></th><td>Replace independent species/density choices with calls to the shared baseline and event resolver.</td></tr>
+          <tr><th scope="row">Weekly generators: <a href="../../weekly-artifact/2026-08-17/make_trajectory_library.py">August 17 library</a>, <a href="../../weekly-artifact/2026-08-31/make_fvs_batch.py">August 31 batch</a></th><td>Carry baselines into runnable generators. Include baseline and FVS input/config identity in cache keys. Preserve archived outputs and invalidate incompatible cached trajectories.</td></tr>
+          <tr><th scope="row"><a href="../../AGENTS.md">AGENTS.md</a>, <a href="../../pipeline/README.md">pipeline/README.md</a> and affected comments</th><td>Document the hierarchy once implementation and its tests pass. Remove conflicting fixed-restart descriptions.</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Save area contributions and planting baselines</h3>
+      <div class="two-col">
+        <div><h3>Area contribution ledger</h3><p class="small">Key: <code>MU_ID, component_id</code></p><p>Store coverage kind, eligible area, area fraction, source, donor ID, distance and fallback reason. Include unresolved area. Keep mapped inventory, repaired forest and new establishment distinct.</p></div>
+        <div><h3>Saved planting baseline</h3><p class="small">Key: <code>BASELINE_ID, SPECIES</code></p><p>Associate each unit with species-specific planting TPA, density source, vintage and content hash. Use the same baseline for every regime and rotation. Validate FIA control numbers and keep them as strings.</p></div>
+      </div>
+      <p>The plot-weight cutoff must not erase small repair contributions or inflate mapped coverage. If a mapped plot lacks usable live trees, return its area to the unresolved pool and search again.</p>
+    </section>
+
+    <section id="checks" aria-labelledby="checks-title">
+      <div class="section-no">06 / Acceptance</div>
+      <h2 id="checks-title">Validate replanting before the county run</h2>
+      <ol class="checks">
+        <li><strong>Baseline and repeated planting</strong>Write failing tests for source priority, unchanged species/TPA after thinning and two clearcuts, minority species, fractional density, invalid inputs and exact 19-digit IDs.</li>
+        <li><strong>Repair and donor selection</strong>Use a small raster fixture containing mapped, repaired, failed-crosswalk and missing-tree cells. Account for every acre once. Test compatibility, radius boundaries, equal-distance ties, invalid nearest donors and fixed fallback last.</li>
+        <li><strong>Every renderer and caller</strong>Require identical planting requests from both regime interfaces. Exercise the hardwood delay, repeated rotations, horizon boundaries, thinning, retention rejection and grow-only buffers.</li>
+        <li><strong>Southern FVS integration</strong>Run mixed species through clearcut, establishment, growth and a second rotation. Check biomass removal, requested and realized stocking, species, seedling sizes, age and elapsed time. Check for unintended automatic regeneration and rounding losses.</li>
+        <li><strong>County accounting and quality checks</strong>Reconcile masks, units, inputs, trajectories and outputs. Report acres by source and fallback reason. Run coverage, CRAP and mutation checks on changed modules before expanding to five counties.</li>
+      </ol>
+      <p>Extend the existing FVS Plant renderer first. Add external restarts only if the FVS tests show that Plant records cannot produce the required cohort.</p>
+    </section>
+
+    <section id="evidence" aria-labelledby="evidence-title">
+      <div class="section-no">07 / Evidence</div>
+      <h2 id="evidence-title">What the investigation established</h2>
+      <p>The audit at <code>18af1ee</code> reproduced fixed loblolly defaults, missing explicit establishment in the YAML library, a lost regeneration delay, an unconditional fixed-slot resolver, a donor retry gap and partial-coverage errors. These findings motivated this proposal.</p>
+      <p>At the time of the audit, seven characterization assertions and 26 existing tests passed. The assertions reproduced defects; the passing suite did not establish regeneration correctness. No FIA dataset or FVS binary was used in those checks.</p>
+      <div class="note"><p>The archived restart experiment tested a 30% proportional thinning. It did not test an age-zero replacement cohort or repeated clearcuts. The audit did not measure how many acres need fallback lists or how regeneration choices affect projected yield.</p></div>
+      <ul>
+        <li><a href="README.md">Investigation findings and verification record</a></li>
+        <li><a href="proposed_revisions.md">Full revision proposal</a></li>
+        <li><a href="probe.py">Runnable characterization probes</a></li>
+        <li><a href="../restart_fidelity/outputs/gate_cut_injection.txt">Archived thinning and restart evidence</a></li>
+      </ul>
+      <p class="small">These changes remain a proposal. The audit findings describe commit <code>18af1ee</code>. Later working-tree edits need their own validation.</p>
+    </section>
+    <footer>ARTEMIS. Forest repair and regeneration. 14 September 2026.<br>The report includes its styles and diagrams. Source links require the repository.</footer>
+  </main>
+</div>
+</body>
+</html>

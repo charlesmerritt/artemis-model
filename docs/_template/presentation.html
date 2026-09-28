@@ -1,0 +1,403 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARTEMIS — deck template</title>
+<!-- Deck conventions, component classes and the navigation script come from
+     docs/_template/presentation.html. Copy that file to start a new deck; cite a slide
+     from code as path/to/presentation.html#slide-id (scripts/check_docs.py verifies the id). -->
+<style>
+  :root {
+    --paper:#f6f5ef; --card:#ffffff; --ink:#1b221c; --ink-soft:#4b564c; --ink-faint:#79847a;
+    --line:#e4e4da; --line-strong:#d0d0c3; --accent:#2f6b3f; --accent-soft:#e7f0e5;
+    --amber:#b06a11; --amber-soft:#f6ecd9; --slate:#5a6472; --slate-soft:#e9ebee;
+    --pass:#2f6b3f; --pass-bg:#e7f0e5; --fail:#a4562a; --fail-bg:#f6e7dc;
+    --band-a:#edf3ea; --band-b:#f6efe2; --band-c:#ecedf0;
+    --shadow:0 1px 2px rgba(27,34,28,.06), 0 6px 24px rgba(27,34,28,.08);
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#101310; --card:#1a1f1a; --ink:#eef0ea; --ink-soft:#b7beb5; --ink-faint:#828c81;
+      --line:#282e28; --line-strong:#39413a; --accent:#7bbd84; --accent-soft:#20301f;
+      --amber:#e2a24e; --amber-soft:#2c2413; --slate:#9aa6b4; --slate-soft:#20262d;
+      --pass:#7bbd84; --pass-bg:#1d2b1c; --fail:#e08a55; --fail-bg:#2c1d12;
+      --band-a:#161f15; --band-b:#211d12; --band-c:#181c21;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="light"]{--paper:#f6f5ef;--card:#fff;--ink:#1b221c;--ink-soft:#4b564c;--ink-faint:#79847a;--line:#e4e4da;--line-strong:#d0d0c3;--accent:#2f6b3f;--accent-soft:#e7f0e5;--amber:#b06a11;--amber-soft:#f6ecd9;--slate:#5a6472;--slate-soft:#e9ebee;--pass:#2f6b3f;--pass-bg:#e7f0e5;--fail:#a4562a;--fail-bg:#f6e7dc;--band-a:#edf3ea;--band-b:#f6efe2;--band-c:#ecedf0;--shadow:0 1px 2px rgba(27,34,28,.06),0 6px 24px rgba(27,34,28,.08);}
+  :root[data-theme="dark"]{--paper:#101310;--card:#1a1f1a;--ink:#eef0ea;--ink-soft:#b7beb5;--ink-faint:#828c81;--line:#282e28;--line-strong:#39413a;--accent:#7bbd84;--accent-soft:#20301f;--amber:#e2a24e;--amber-soft:#2c2413;--slate:#9aa6b4;--slate-soft:#20262d;--pass:#7bbd84;--pass-bg:#1d2b1c;--fail:#e08a55;--fail-bg:#2c1d12;--band-a:#161f15;--band-b:#211d12;--band-c:#181c21;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 30px rgba(0,0,0,.45);}
+
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:var(--paper); color:var(--ink); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  .deck { display:flex; height:100vh; width:100vw; transition:transform .42s cubic-bezier(.4,0,.2,1); will-change:transform; }
+  @media (prefers-reduced-motion: reduce) { .deck { transition:none; } }
+  /* Vertical centring is done with auto margins on .inner, NOT justify-content:center.
+     On a scrollable flex container, centred content that overflows spills past the
+     scroll origin in both directions, and scrollTop cannot go negative — so the top
+     of the slide (eyebrow, heading) becomes unreachable. Auto margins absorb only
+     positive free space: they centre when the content fits and collapse to zero when
+     it does not, leaving the slide scrollable from its true top. */
+  .slide { flex:0 0 100vw; height:100vh; overflow-y:auto; overflow-x:hidden;
+           display:flex; flex-direction:column;
+           padding:clamp(28px,5vh,64px) clamp(24px,6vw,90px); }
+  .inner { width:100%; max-width:1160px; margin:auto; }
+
+  .eyebrow { font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 14px; }
+  h1 { font-size:clamp(30px,5.2vw,54px); line-height:1.06; margin:0 0 16px; letter-spacing:-.02em; text-wrap:balance; font-weight:800; }
+  h2 { font-size:clamp(22px,3.4vw,34px); line-height:1.12; margin:0 0 8px; letter-spacing:-.015em; text-wrap:balance; font-weight:800; }
+  .kicker { font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; margin:0 0 10px; display:flex; gap:10px; align-items:center; }
+  .kicker .rule { height:1px; flex:1; background:var(--line-strong); }
+  .lede { font-size:clamp(15px,1.7vw,18px); color:var(--ink-soft); max-width:74ch; margin:0; }
+  .lede b { color:var(--ink); font-weight:650; }
+  p.sub { font-size:14.5px; color:var(--ink-faint); margin:2px 0 0; }
+  code, .mono { font-family:var(--mono); font-size:.92em; }
+
+  /* title slide */
+  .title-slide .meta { margin-top:26px; display:flex; flex-wrap:wrap; gap:10px; }
+  .chip { font-family:var(--mono); font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:8px;
+          background:var(--card); border:1px solid var(--line); color:var(--ink-soft); box-shadow:var(--shadow); }
+  .chip b { color:var(--accent); }
+
+  /* stat tiles */
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+  .tiles.three { grid-template-columns:repeat(3,1fr); }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+  .tile .n { font-size:clamp(20px,2.6vw,28px); font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .tile .n.good { color:var(--pass); }
+  .tile .n.warn { color:var(--amber); }
+  .tile .l { font-size:12px; color:var(--ink-faint); margin-top:3px; line-height:1.35; }
+  @media (max-width:760px){ .tiles, .tiles.three { grid-template-columns:repeat(2,1fr);} }
+
+  /* tables */
+  .tbl-wrap { overflow-x:auto; margin-top:16px; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); background:var(--card); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; min-width:520px; }
+  thead th { text-align:left; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; padding:11px 14px; background:transparent; border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+  tbody td { padding:11px 14px; border-bottom:1px solid var(--line); color:var(--ink-soft); vertical-align:top; }
+  tbody tr:last-child td { border-bottom:none; }
+  td.name { color:var(--ink); font-weight:600; }
+  td.num, th.num { text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.num b { color:var(--ink); }
+  tr.failrow td { background:var(--fail-bg); }
+  tr.goodrow td { background:var(--pass-bg); }
+  .res { display:inline-flex; font-weight:700; font-size:11.5px; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .res.pass { color:var(--pass); background:var(--pass-bg); }
+  .res.fail { color:var(--fail); background:var(--fail-bg); }
+  .res.open { color:var(--slate); background:var(--slate-soft); }
+  .res.warn { color:var(--amber); background:var(--amber-soft); }
+
+  /* pipeline bands */
+  .bands { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; }
+  .bcol { border-radius:14px; padding:14px; }
+  .bcol.a { background:var(--band-a); } .bcol.b { background:var(--band-b); } .bcol.c { background:var(--band-c); }
+  .bcol h3 { margin:2px 4px 12px; font-size:13px; letter-spacing:.02em; display:flex; align-items:center; gap:8px; }
+  .stage { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:11px 13px; margin-bottom:9px; box-shadow:var(--shadow); }
+  .stage:last-child { margin-bottom:0; }
+  .stage .st { display:flex; align-items:center; gap:8px; }
+  .stage .st b { font-size:14px; }
+  .stage p { margin:5px 0 0; font-size:12px; color:var(--ink-faint); line-height:1.4; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .dot.done{background:var(--accent);} .dot.prog{background:var(--amber);} .dot.plan{background:var(--slate);}
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:16px; font-size:12.5px; color:var(--ink-soft); }
+  .legend span { display:flex; align-items:center; gap:7px; }
+  @media (max-width:760px){ .bands{ grid-template-columns:1fr;} }
+
+  /* cards */
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:18px; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .tcard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:15px 17px; box-shadow:var(--shadow); }
+  .tcard h4 { margin:0 0 6px; font-size:15.5px; display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+  .tcard h4 .tag { font-family:var(--mono); font-size:11px; font-weight:600; color:var(--accent); background:var(--accent-soft); padding:2px 7px; border-radius:6px; letter-spacing:.02em; }
+  .tcard h4 .tag.warn { color:var(--amber); background:var(--amber-soft); }
+  .tcard h4 .tag.open { color:var(--slate); background:var(--slate-soft); }
+  .tcard p { margin:0 0 8px; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .tcard p:last-child { margin-bottom:0; }
+  .tcard .say { font-size:12.5px; color:var(--ink); border-left:3px solid var(--accent); background:var(--accent-soft); padding:8px 11px; border-radius:0 8px 8px 0; }
+  .tcard .say b { color:var(--accent); }
+  @media (max-width:860px){ .cards, .cards.three { grid-template-columns:1fr;} }
+
+  ul.take { margin:16px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
+  ul.take li { position:relative; padding-left:26px; font-size:15px; color:var(--ink-soft); }
+  ul.take li b { color:var(--ink); }
+  ul.take li::before { content:""; position:absolute; left:4px; top:9px; width:8px; height:8px; border-radius:2px; background:var(--accent); }
+  .caveat { margin-top:16px; border-left:3px solid var(--amber); background:var(--amber-soft); border-radius:0 10px 10px 0; padding:12px 15px; font-size:13.5px; color:var(--ink-soft); }
+  .caveat b { color:var(--ink); }
+  .caveat code { color:var(--ink); }
+  .srcline { margin-top:14px; font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); }
+
+  pre.ascii { margin:18px 0 0; padding:16px 18px; background:var(--card); border:1px solid var(--line);
+              border-radius:12px; box-shadow:var(--shadow); overflow-x:auto;
+              font-family:var(--mono); font-size:12.5px; line-height:1.45; color:var(--ink-soft); }
+  pre.ascii b { color:var(--accent); }
+
+  .flow { display:flex; align-items:stretch; gap:10px; margin-top:20px; flex-wrap:wrap; }
+  .fstep { flex:1 1 150px; background:var(--card); border:1px solid var(--line); border-radius:12px;
+           padding:12px 14px; box-shadow:var(--shadow); }
+  .fstep .t { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; }
+  .fstep .v { font-size:14px; font-weight:700; margin-top:5px; }
+  .fstep .d { font-size:12px; color:var(--ink-faint); margin-top:5px; line-height:1.4; }
+
+  /* HUD */
+  .progress { position:fixed; top:0; left:0; height:3px; background:var(--accent); z-index:50; transition:width .42s cubic-bezier(.4,0,.2,1); }
+  .hud { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:50;
+         display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line);
+         border-radius:999px; padding:5px 6px; box-shadow:var(--shadow); }
+  .hud button { border:none; background:transparent; color:var(--ink-soft); font:inherit; cursor:pointer;
+                width:34px; height:34px; border-radius:999px; display:grid; place-items:center; font-size:16px; }
+  .hud button:hover { background:var(--accent-soft); color:var(--accent); }
+  .hud button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .hud .count { font-family:var(--mono); font-size:13px; color:var(--ink-soft); min-width:56px; text-align:center; font-variant-numeric:tabular-nums; }
+  .hud .sep { width:1px; height:20px; background:var(--line); margin:0 2px; }
+  .hint { position:fixed; bottom:22px; right:22px; z-index:40; font-size:12px; color:var(--ink-faint); font-family:var(--mono); }
+  @media (max-width:600px){ .hint{ display:none; } }
+
+  /* figures */
+  figure.fig { margin:16px 0 0; }
+  figure.fig img { display:block; width:100%; max-height:46vh; object-fit:contain; border-radius:12px;
+                   border:1px solid var(--line); background:#fff; box-shadow:var(--shadow); padding:6px; }
+  figcaption { margin-top:10px; font-size:12.5px; color:var(--ink-faint); line-height:1.45; }
+  figcaption b { color:var(--ink-soft); }
+
+  /* Additions over docs/treemap-raster-correction/presentation.html. */
+  pre.run { margin:16px 0 0; padding:14px 16px; background:var(--card); border:1px solid var(--line);
+            border-radius:12px; box-shadow:var(--shadow); overflow-x:auto;
+            font-family:var(--mono); font-size:12.5px; line-height:1.5; color:var(--ink-faint); }
+  pre.run .cmd { color:var(--ink); font-weight:600; }
+  pre.run .cmd::before { content:"$ "; color:var(--accent); }
+  pre.run .note { color:var(--accent); }
+  .tcard pre.run { box-shadow:none; margin-top:10px; }
+  a { color:var(--accent); }
+</style>
+
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+  <!-- Every slide is a <section class="slide" id="…">. The id is the citation target:
+       code, config and other decks link to presentation.html#that-id. -->
+
+  <section class="slide title-slide" id="title">
+    <div class="inner">
+      <p class="eyebrow">ARTEMIS · deck template</p>
+      <h1>How ARTEMIS documents a finding</h1>
+      <p class="lede">Copy this file to <span class="mono">docs/&lt;topic&gt;/presentation.html</span>, keep the
+        <span class="mono">&lt;style&gt;</span> and <span class="mono">&lt;script&gt;</span> blocks, and replace the
+        slides. It is one self-contained file: it opens from disk, attaches to an email, and needs no build.</p>
+      <div class="meta">
+        <span class="chip">one claim <b>per slide</b></span>
+        <span class="chip">every slide <b>cites its source</b></span>
+        <span class="chip">commands over <b>copied tables</b></span>
+        <span class="chip">deep links <b>#slide-id</b></span>
+      </div>
+      <p class="sub" style="margin-top:22px">Use ← → or space to move through the deck. Swipe on a phone.</p>
+    </div>
+  </section>
+
+  <section class="slide" id="rules">
+    <div class="inner">
+      <p class="kicker">Conventions <span class="rule"></span> 01</p>
+      <h2>Prose drifts; code does not. Put each fact where it cannot go stale.</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Kind of fact</th><th>Where it lives</th><th>Why there</th></tr></thead>
+          <tbody>
+            <tr><td class="name">A rule the code must obey</td><td>A check in <span class="mono">scripts/check_conventions.py</span>, or a raise in the module</td><td>It fails when broken; a sentence does not</td></tr>
+            <tr><td class="name">How to call a function</td><td>A doctest in the module docstring</td><td><span class="mono">scripts/check_docs.py</span> runs it, so the example cannot lie</td></tr>
+            <tr><td class="name">A policy table</td><td>The YAML in <span class="mono">config/</span>, printed by <span class="mono">python -m &lt;module&gt;</span></td><td>The config is the authority; a copy is a second, wrong authority</td></tr>
+            <tr><td class="name">How to run a stage</td><td><span class="mono">--help</span> on the module</td><td>argparse cannot document a flag that does not exist</td></tr>
+            <tr><td class="name">A finding, a design, a decision</td><td>A deck like this one</td><td>A reader has to understand it, and it has to say what it rests on</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="caveat"><b>Markdown is budgeted.</b> <span class="mono">scripts/check_docs.py</span> holds a line
+        ceiling for every surviving <span class="mono">.md</span> file and refuses new ones. Ceilings only go down.</div>
+      <p class="srcline">scripts/check_docs.py · scripts/check_conventions.py</p>
+    </div>
+  </section>
+
+  <section class="slide" id="tiles">
+    <div class="inner">
+      <p class="kicker">Component · stat tiles <span class="rule"></span> 02</p>
+      <h2>Lead with the number, then say what it is a number of</h2>
+      <p class="lede">Headings are <b>claims</b>, not topics. "Forty percent of the AOI has no TreeMap value" — not
+        "Holes".</p>
+      <div class="tiles">
+        <div class="tile"><div class="n good">190.41</div><div class="l">good: the result you are reporting</div></div>
+        <div class="tile"><div class="n warn">47 / 80</div><div class="l">warn: the result that limits it</div></div>
+        <div class="tile"><div class="n">11,831</div><div class="l">plain: context the reader needs</div></div>
+        <div class="tile"><div class="n">0.088</div><div class="l">four across; two across under 760 px</div></div>
+      </div>
+      <p class="srcline">.tiles / .tiles.three · .tile .n.good / .n.warn · .tile .l</p>
+    </div>
+  </section>
+
+  <section class="slide" id="table">
+    <div class="inner">
+      <p class="kicker">Component · table and status badges <span class="rule"></span> 03</p>
+      <h2>A table for anything with rows; badges for state</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Item</th><th>What it does</th><th class="num">Value</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr class="goodrow"><td class="name">goodrow</td><td>the row the slide is about</td><td class="num"><b>1.00</b></td><td><span class="res pass">done</span></td></tr>
+            <tr><td class="name">plain</td><td>ordinary row</td><td class="num">0.50</td><td><span class="res warn">in progress</span></td></tr>
+            <tr><td class="name">plain</td><td>ordinary row</td><td class="num">—</td><td><span class="res open">planned</span></td></tr>
+            <tr class="failrow"><td class="name">failrow</td><td>the row that is wrong</td><td class="num">0.00</td><td><span class="res fail">open defect</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="srcline">.tbl-wrap &gt; table · tr.goodrow / tr.failrow · td.name / td.num · .res.pass / .warn / .open / .fail</p>
+    </div>
+  </section>
+
+  <section class="slide" id="cards">
+    <div class="inner">
+      <p class="kicker">Component · cards <span class="rule"></span> 04</p>
+      <h2>Cards for two or three parallel arguments</h2>
+      <div class="cards">
+        <div class="tcard">
+          <h4>What was found <span class="tag">tag</span></h4>
+          <p>Body text states the evidence. Numbers in <b>bold</b>, identifiers in <span class="mono">mono</span>.</p>
+          <p class="say"><b>Rule:</b> a <span class="mono">.say</span> line carries the one sentence a reader should keep.</p>
+        </div>
+        <div class="tcard">
+          <h4>What it does not show <span class="tag warn">tag warn</span></h4>
+          <p>Use <span class="mono">.cards.three</span> for three. They stack to one column under 860 px.</p>
+          <pre class="run"><span class="cmd">uv run python -m pipeline.spatial_ref</span>
+<span class="note"># .run blocks show a command and, optionally, what it printed</span></pre>
+        </div>
+      </div>
+      <div class="caveat"><b>Caveats get their own box.</b> Anything that limits a claim — sampling frame,
+        post-selection, an unverified input — goes in <span class="mono">.caveat</span>, never in a footnote.</div>
+      <p class="srcline">.cards / .cards.three · .tcard h4 .tag(.warn|.open) · .say · .caveat · pre.run .cmd / .note</p>
+    </div>
+  </section>
+
+  <section class="slide" id="bands">
+    <div class="inner">
+      <p class="kicker">Component · status board <span class="rule"></span> 05</p>
+      <h2>Three bands for where work stands</h2>
+      <div class="bands">
+        <div class="bcol a"><h3><span class="dot done"></span>Built</h3>
+          <div class="stage"><div class="st"><span class="dot done"></span><b>Stage name</b></div><p>one line on what exists and where</p></div>
+        </div>
+        <div class="bcol b"><h3><span class="dot prog"></span>Partial</h3>
+          <div class="stage"><div class="st"><span class="dot prog"></span><b>Stage name</b></div><p>what is missing</p></div>
+        </div>
+        <div class="bcol c"><h3><span class="dot plan"></span>Planned</h3>
+          <div class="stage"><div class="st"><span class="dot plan"></span><b>Stage name</b></div><p>what it will need</p></div>
+        </div>
+      </div>
+      <p class="srcline">.bands &gt; .bcol.a / .b / .c · .stage · .dot.done / .prog / .plan</p>
+    </div>
+  </section>
+
+  <section class="slide" id="flow">
+    <div class="inner">
+      <p class="kicker">Component · flow and diagrams <span class="rule"></span> 06</p>
+      <h2>Flows for a sequence, ASCII only when topology matters</h2>
+      <div class="flow">
+        <div class="fstep"><div class="t">step 1</div><div class="v">Input</div><div class="d">what goes in</div></div>
+        <div class="fstep"><div class="t">step 2</div><div class="v">Transform</div><div class="d">the module that does it</div></div>
+        <div class="fstep"><div class="t">step 3</div><div class="v">Output</div><div class="d">what comes out, and its key</div></div>
+      </div>
+<pre class="ascii">  [a] ──┐
+        ├──&gt; <b>[the thing this slide is about]</b> ──&gt; [c]
+  [b] ──┘</pre>
+      <p class="srcline">.flow &gt; .fstep .t / .v / .d · pre.ascii (b = accent)</p>
+    </div>
+  </section>
+
+  <section class="slide" id="figure">
+    <div class="inner">
+      <p class="kicker">Component · figures <span class="rule"></span> 07</p>
+      <h2>Figures are embedded, so the deck stays one file</h2>
+      <p class="lede">Inline a PNG as <span class="mono">src="data:image/png;base64,…"</span>. Write real alt text: what
+        the figure shows and its key numbers, not "chart". Commit the script that draws it and name that script in
+        the srcline.</p>
+      <figure class="fig">
+        <img alt="Placeholder: a figure goes here." src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='200'%3E%3Crect width='800' height='200' fill='%23e7f0e5'/%3E%3Ctext x='400' y='108' font-family='monospace' font-size='16' text-anchor='middle' fill='%232f6b3f'%3Efigure%3C/text%3E%3C/svg%3E">
+        <figcaption><b>Bold the takeaway.</b> Then say how it was made.</figcaption>
+      </figure>
+      <p class="srcline">figure.fig &gt; img + figcaption · path/to/make_figure.py</p>
+    </div>
+  </section>
+
+  <section class="slide" id="close">
+    <div class="inner">
+      <p class="kicker">Closing <span class="rule"></span> 08</p>
+      <h2>End on the claims, in one list</h2>
+      <ul class="take">
+        <li><b>One bullet per claim the deck made</b> — bold the claim, then the number behind it.</li>
+        <li><b>State the limit last</b> — what the evidence does not establish.</li>
+      </ul>
+      <div class="caveat" style="border-left-color:var(--accent);background:var(--accent-soft)">
+        <b>Checklist before committing:</b> every slide has an <span class="mono">id</span> and a srcline; every
+        number traces to a committed file or a command; <span class="mono">uv run python scripts/check_docs.py</span>
+        passes.</div>
+    </div>
+  </section>
+</div>
+
+<nav class="hud" aria-label="slide navigation">
+  <button id="prev" aria-label="previous slide">‹</button>
+  <span class="count" id="count">1 / 1</span>
+  <button id="next" aria-label="next slide">›</button>
+  <span class="sep"></span>
+  <button id="theme" aria-label="toggle light/dark">◐</button>
+</nav>
+<div class="hint">← → / space</div>
+
+<script>
+  (function(){
+    var deck = document.getElementById('deck');
+    var slides = deck.querySelectorAll('.slide');
+    var n = slides.length, i = 0;
+    var count = document.getElementById('count');
+    var progress = document.getElementById('progress');
+    function render(){
+      deck.style.transform = 'translateX(' + (-i*100) + 'vw)';
+      count.textContent = (i+1) + ' / ' + n;
+      progress.style.width = ((i+1)/n*100) + '%';
+      // Keep the address bar citable: #slide-id is how code and other decks link here.
+      try { history.replaceState(null, '', slides[i].id ? '#' + slides[i].id : location.pathname + location.search); } catch (e) {}
+    }
+    function to(x){ i = Math.max(0, Math.min(n-1, x)); render(); }
+    function go(d){ to(i+d); }
+    function fromHash(){
+      var id = decodeURIComponent(location.hash.slice(1));
+      for (var k = 0; k < n; k++) if (id && slides[k].id === id) i = k;
+      // The browser's own jump to #id scrolls the page and the slide under the transform;
+      // undo it so the deck, not native anchor scrolling, decides what is on screen.
+      requestAnimationFrame(function(){
+        window.scrollTo(0, 0); document.body.scrollLeft = 0; document.body.scrollTop = 0;
+        deck.scrollLeft = 0; slides[i].scrollTop = 0;
+      });
+    }
+    document.getElementById('next').onclick = function(){ go(1); };
+    document.getElementById('prev').onclick = function(){ go(-1); };
+    document.addEventListener('keydown', function(e){
+      if (e.key==='ArrowRight' || e.key===' ' || e.key==='PageDown'){ e.preventDefault(); go(1); }
+      else if (e.key==='ArrowLeft' || e.key==='PageUp'){ e.preventDefault(); go(-1); }
+      else if (e.key==='Home'){ e.preventDefault(); to(0); }
+      else if (e.key==='End'){ e.preventDefault(); to(n-1); }
+    });
+    window.addEventListener('hashchange', function(){ fromHash(); render(); });
+    var x0 = null, y0 = null;
+    deck.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive:true});
+    deck.addEventListener('touchend', function(e){
+      if (x0 === null) return;
+      var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+      x0 = null;
+    }, {passive:true});
+    var root = document.documentElement, modes=['','light','dark'], m=0;
+    document.getElementById('theme').onclick = function(){
+      m=(m+1)%3; if(modes[m]) root.setAttribute('data-theme',modes[m]); else root.removeAttribute('data-theme');
+    };
+    fromHash();
+    render();
+  })();
+</script>

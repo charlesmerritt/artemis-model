@@ -218,8 +218,8 @@ AlphaEarth annual embeddings (64 unit-norm bands, 10 m) were sampled at 2018,
 positive anchor label is *defined* by LF2024 calling the pixel forest. A 2023 or
 2024 embedding would let the classifier read the label off the feature, scoring
 near-perfectly while learning nothing transferable to S3 — which is defined as
-*not* tree in 2024. This is the same failure mode that drove AUC to 1.000
-"largely by construction" in earlier project work (`notes/clearcut-vs-agriculture-embeddings.md`).
+*not* tree in 2024. The feature-year guard in `pipeline/s1_initial_state/embed_holes.py` rejects
+post-2022 features to prevent this leakage.
 
 ### 4.4 Two-stage decision
 
@@ -433,7 +433,7 @@ survive; one does not.
   depend on this.
 
 *Caveats.* A pixel-count area is not the FIA population estimator (see
-`notes/treemap-methodology.md`), so equality was never expected; the test is one
+`docs/treemap-raster-correction/presentation.html`), so equality was never expected; the test is one
 of direction and interval membership. County-level FIA has only 262 contributing
 plots, which is why the interval is ± 6 % wide.
 
@@ -496,8 +496,7 @@ point estimate of **0.329**. The earlier extrapolation to all 72,654 rejected ac
 (~26,000 ac and recall 0.23) was unsupported because boundaries and components
 under 5 ac were never sampled.
 
-**Finding 11 — LCMS Tree Removal is not a usable detector here**, confirming the
-prior from `notes/clearcut-vs-agriculture-embeddings.md`. Its rate is *higher* on
+**Finding 11 — LCMS Tree Removal is not a usable detector here.** Its rate is *higher* on
 rejected S3 (0.408) than accepted (0.302) — a negative lift. Do not use it as a
 primary signal; it is reported for completeness.
 
@@ -693,14 +692,13 @@ rather than borrowed from an unrelated age class.
 
 ---
 
-## Related project notes
+## Executable sources and design
 
-- `notes/treemap-holes-rectification.md` — working notes behind this report
-- `notes/treemap-methodology.md` — how TreeMap imputation works; pixel-count vs
+- `docs/treemap-raster-correction/presentation.html` — how TreeMap imputation works; pixel-count vs
   design-based estimation
-- `notes/clearcut-vs-agriculture-embeddings.md` — prior AlphaEarth work; source of
+- `pipeline/s1_initial_state/embed_holes.py` — enforced feature-year guard; source of
   the leakage warning and the Earth Engine EVT-vintage constraint
-- `notes/treemap-fvs-workflow.md`, `notes/management-pipeline-plan.md` — the FVS
+- `pipeline/s4_fvs/build_fvs_inputs.py`, `docs/architecture/presentation.html#sequence` — the FVS
   machinery Phase 3 would reuse
 
 ## References

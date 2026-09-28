@@ -17,26 +17,36 @@ Two questions, deliberately separated:
     the menu now means the trajectory library can be built for the right set from the
     start, instead of being regenerated when the scheduler arrives.
 
-Owner classes come from `pipeline/s3_management/owner_classes.py`, which resolves the
-Harris ownership raster against the parcel layer. The regime library, the per-owner menus,
+Owner classes come from `pipeline/s3_management/owner_classes.py`: the Harris et al. (2025)
+ownership raster's own forest classes. The regime library, the per-owner menus,
 and the scheduling rules are all in `config/management_regimes.yaml` — this module is the
 resolver, not the policy.
 
 Scheduling: prescriptions declare entries either by **stand age** (a 22-year-old plantation
-on a 25-year rotation is cut in 3 years, not in 30) or by **fixed offsets** from the
-inventory year. Age-based scheduling needs ``stand_age``; without it the prescription falls
-back to its offsets, which is also what reproduces the pre-config behaviour exactly.
+on a 25-year rotation is cut at the next cycle) or by **fixed offsets** from the
+inventory year. Both enforce the configured minimum age at entry. Missing age on a
+managed schedule raises MissingStandAgeError; grow-only needs no age.
 
-Ownership codes follow the LETO / RDS-2025-0045 lookup (3 Family, 4 Corporate/Other
-Private, 5 Tribal, 6 Federal, 7 State, 8 Local). This is a documented policy for review,
-not a calibrated behaviour model.
+Ownership codes are Harris RDS-2025-0045 raster values (3 Family, 4 Corporate/Other
+Private, 5 Tribal, 6 Federal, 7 State, 8 Local) — never the parcel-derived LETO codes; see
+``config/ownership_policy.yaml``. This is a documented policy for review, not a calibrated
+behaviour model.
 
-Usage:
-    from pipeline.s3_management.regime_assignment import assign_prescription
-    p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "stand_age": 22})
-    p.prescription_id   # 'pine_plantation_short_rotation'
-    p.params            # {'thin_year': 2027, 'clearcut_year': 2027, ...} → resolved
-    p.regen_slot        # 'planted_pine_regen'
+Print the whole policy — every owner class's default and eligible menu, and the riparian
+override — straight from the config::
+
+    uv run python -m pipeline.s3_management.regime_assignment
+
+Usage (a doctest; ``scripts/check_docs.py`` runs it):
+
+    >>> from pipeline.s3_management.regime_assignment import assign_prescription
+    >>> p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "stand_age": 22})
+    >>> p.owner_class, p.prescription_id, p.regen_slot
+    ('corporate', 'pine_plantation_short_rotation', 'planted_pine_regen')
+    >>> p.params  # a 22-year-old stand on a 25-year rotation is cut at the next cycle
+    {'year': 2027}
+    >>> eligible_prescriptions("federal")
+    ['public_selection_light', 'public_thin_restore', 'no_management']
 """
 
 from __future__ import annotations
@@ -50,13 +60,12 @@ from pathlib import Path
 import yaml
 
 from pipeline.s3_management.owner_classes import MASKED, classify_owner
+from pipeline.harvest_eligibility import (
+    HarvestEligibilityPolicy, enforce_schedule, load_harvest_eligibility, unknown_age_notes,
+    usable_stand_age, validate_projection,
+)
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "management_regimes.yaml"
-
-# LETO / RDS-2025-0045 ownership classes. Kept as module constants because other modules
-# (and the LAMPS scheduler plan) import them directly.
-FAMILY, CORPORATE, TRIBAL, FEDERAL, STATE, LOCAL = 3, 4, 5, 6, 7, 8
-PUBLIC_OWNERS = {FEDERAL, STATE, TRIBAL, LOCAL}
 
 
 # FIA forest-type-group codes that are pine (longleaf-slash 140s, loblolly-shortleaf 160s,
@@ -89,7 +98,9 @@ class Prescription:
 def load_regimes_config(path: str | None = None) -> dict:
     """Load and cache `config/management_regimes.yaml`."""
     with open(Path(path) if path else CONFIG_PATH) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    HarvestEligibilityPolicy.from_config(config)
+    return config
 
 
 def _riparian_override(config: dict | None = None) -> dict:
@@ -98,7 +109,7 @@ def _riparian_override(config: dict | None = None) -> dict:
     if not override.get("absolute", False):
         raise ValueError(
             "overrides.riparian.absolute must be true — riparian exclusion has no "
-            "non-absolute path to fall back to. See notes/methodology-directions.md item 2."
+            "non-absolute path to fall back to. See config/management_regimes.yaml overrides.riparian."
         )
     return override
 
@@ -182,28 +193,24 @@ def _stand_age(unit: Mapping) -> float | None:
     """
     The unit's stand age, or ``None`` when it is missing or unusable.
 
-    Three things count as unusable, and all three arrive from real data rather than from
-    contrived inputs:
+    Unusable values arrive from real data rather than from contrived inputs:
 
       - ``NaN``. A pandas row with no age carries ``NaN``, not ``None``, and ``float(NaN)``
-        succeeds — so without this check the age would flow into ``math.ceil(NaN)`` and
-        abort the whole assignment instead of taking the documented offset fallback.
+        succeeds, so it would otherwise reach ``math.ceil(NaN)``.
       - Infinity, for the same reason.
       - A negative age, which is an FIA sentinel rather than a measurement. Treating it as
         a real age puts the rotation harvest before the inventory year.
+      - Text that is not a number, such as an empty CSV cell.
 
-    All three fall back to the prescription's offsets, which is exactly what a missing age
-    does.
+    The first alias present (not ``None``) is authoritative, NaN included. An unusable
+    value there is not replaced by a lower-priority alias: a unit-average
+    ``STDAGE_MEAN`` does not certify a stand whose own age is invalid
+    (docs/harvest-eligibility.html). Managed schedules then raise under the configured
+    policy.
     """
-    for key in ("stand_age", "STDAGE", "unit_age", "AGE"):
+    for key in ("stand_age", "STDAGE", "unit_age", "AGE", "STDAGE_MEAN"):
         if key in unit and unit[key] is not None:
-            try:
-                age = float(unit[key])
-            except (TypeError, ValueError):
-                continue
-            if not math.isfinite(age) or age < 0:
-                return None
-            return age
+            return usable_stand_age(unit[key])
     return None
 
 
@@ -214,27 +221,32 @@ def resolve_schedule(
     cycle_years: int,
     horizon_years: int,
     stand_age: float | None,
+    harvest_eligibility: HarvestEligibilityPolicy | None = None,
 ) -> tuple[dict, tuple[str, ...]]:
     """
     Resolve a prescription's schedule into absolute entry years.
 
     Returns ``(year_params, notes)``. Age-based schedules place each entry at
-    ``target_age - stand_age`` years out, snapped up to a cycle boundary; without a stand
-    age they fall back to the prescription's offsets. Entries past the horizon are dropped
-    and noted — the keyfile only runs to ``inv_year + horizon_years``.
+    ``target_age - stand_age`` years out, snapped up to a cycle boundary. The shared age
+    policy then defers the sequence or excludes unknown-age management, and clips to the
+    horizon. Repeated end bounds stay explicit to prevent template-default expansion.
     """
+    validate_projection(cycle_years, horizon_years)
+    timing_keys = {"year", "thin_year", "clearcut_year", "start_year", "end_year"}
+    if timing_keys.intersection(spec.get("params", {})):
+        raise ValueError("entry years must be declared in schedule, not params")
     schedule = spec["schedule"]
     mode = schedule["mode"]
     offsets = schedule.get("offsets", {})
     notes: list[str] = []
-    horizon_end = inv_year + horizon_years
+    policy = harvest_eligibility or load_harvest_eligibility()
 
     if mode == "none":
         return {}, ()
 
-    if mode == "age_based" and stand_age is None:
-        mode = "offset_based"
-        notes.append("age_based schedule fell back to offsets: no stand_age on the unit")
+    raw_age, stand_age = stand_age, usable_stand_age(stand_age)
+    if stand_age is None:
+        return {}, unknown_age_notes(raw_age, policy)
 
     if mode == "offset_based":
         years = {
@@ -264,10 +276,11 @@ def resolve_schedule(
     else:
         raise ValueError(f"unknown schedule mode {mode!r} in management_regimes.yaml")
 
-    kept = {key: year for key, year in years.items() if year <= horizon_end}
-    if len(kept) < len(years):
-        notes.append(f"{len(years) - len(kept)} entry/entries dropped past the {horizon_end} horizon")
-    return kept, tuple(notes)
+    kept, eligibility_notes = enforce_schedule(
+        years, stand_age=stand_age, inv_year=inv_year, cycle_years=cycle_years,
+        horizon_years=horizon_years, policy=policy,
+    )
+    return kept, (*notes, *eligibility_notes)
 
 
 # The parameter names each template builder in pipeline/s4_fvs/regime_templates.py reads.
@@ -347,9 +360,12 @@ def eligible_prescriptions(
     """
     The prescriptions the scheduler may choose among for an owner class.
 
+    This is an owner/forest-type menu, not certification of stand-age eligibility.
+    Resolve each candidate's schedule before generating its FVS trajectory.
+
     ``forest_branch`` (``pine`` / ``hardwood`` / ``other``) filters the menu by each
     prescription's ``forest_types``. Pass it for any stand-level call: without it an
-    industrial *hardwood* stand is offered both pine-plantation prescriptions, and
+    corporate *hardwood* stand is offered both pine-plantation prescriptions, and
     selecting one would apply pine thinning parameters and inject a planted-pine
     regeneration tree list into a hardwood trajectory. Omitting it returns the owner's
     whole menu, which is only meaningful for describing the policy rather than scheduling
@@ -402,12 +418,13 @@ def assign_prescription(
     """
     Assign one unit's default prescription and resolve it to a renderable template.
 
-    ``unit`` is any mapping. Recognised keys: ownership (``OWN_CODE`` and the parcel
-    fields `owner_classes` reads), ``SMZ_Pct``, a forest-type field, and ``stand_age``.
-    Missing fields degrade to the ``other`` branch and offset-based scheduling rather than
-    raising — an unattributed unit still has to get a regime.
+    ``unit`` is any mapping. Recognised keys: the Harris ownership value
+    (``OWN_CODE``, optionally with its ``OWN_TYPE`` label), ``SMZ_Pct``, a forest-type field, and ``stand_age``.
+    Missing forest type degrades to ``other``. Missing age on a managed prescription
+    raises MissingStandAgeError (see harvest_eligibility.unknown_age_action).
     """
     config = config or load_regimes_config()
+    policy = HarvestEligibilityPolicy.from_config(config)
     inv_year = config["inventory_year"] if inv_year is None else inv_year
     cycle_years = config["cycle_years"]
     horizon_years = config["horizon_years"]
@@ -423,7 +440,7 @@ def assign_prescription(
     if owner_class == MASKED:
         raise ValueError(
             "unit resolves to a masked ownership value (non-forest or water); mask these "
-            "out before regime assignment — see config/projection.yaml `ownership.mask_values`"
+            "out before regime assignment — see config/ownership_policy.yaml `masked_harris_values`"
         )
 
     # Riparian is absolute and geometric: among forested land it precedes ownership.
@@ -441,12 +458,13 @@ def assign_prescription(
     year_params, notes = resolve_schedule(
         spec, inv_year=inv_year, cycle_years=cycle_years,
         horizon_years=horizon_years, stand_age=_stand_age(unit),
+        harvest_eligibility=policy,
     )
     template = _template_for(spec, year_params)
     if template == "no_management":
         params = {}
         if spec["template"] != "no_management":
-            notes = (*notes, "resolved to no_management: no entry falls inside the horizon")
+            notes = (*notes, "resolved to no_management: no eligible entry inside the horizon")
     else:
         params = {**_rename_for_template(template, year_params), **spec.get("params", {})}
         params = {k: v for k, v in params.items() if k in _TEMPLATE_PARAMS[template]}
@@ -499,3 +517,25 @@ def assign_prescriptions(units, inv_year: int | None = None):
     df["regen_slot"] = [a.regen_slot for a in assignments]
     df["assignment_notes"] = [";".join(a.notes) for a in assignments]
     return df
+
+
+def main() -> None:
+    """Print the regime policy from `config/management_regimes.yaml`, as the resolver reads it."""
+    config = load_regimes_config()
+    override = _riparian_override(config)
+    print(f"management_regimes.yaml v{config['version']} — {len(config['prescriptions'])} prescriptions, "
+          f"{config['cycle_years']}-yr cycles over {config['horizon_years']} yr from {config['inventory_year']}")
+    print(f"riparian: {override['field']} >= {override['min_value']} -> {{{override['prescription']}}} only "
+          f"(absolute={override['absolute']})\n")
+    for owner, spec in config["owner_classes"].items():
+        defaults = {branch: spec["default"][branch] for branch in (PINE, HARDWOOD, OTHER)}
+        if len(set(defaults.values())) == 1:
+            default = defaults[PINE]
+        else:
+            default = " · ".join(f"{branch}: {name}" for branch, name in defaults.items())
+        menu = [p for p in eligible_prescriptions(owner, config=config) if p != "no_management"]
+        print(f"{owner}\n  default   {default}\n  eligible  {', '.join(menu)} (+ no_management)")
+
+
+if __name__ == "__main__":
+    main()

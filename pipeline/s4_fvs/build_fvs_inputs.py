@@ -350,7 +350,7 @@ def impute_nearest_runnable(
     trees_by_plt: dict[str, pd.DataFrame] = {}
     if tree_init is not None:
         source = tree_init.copy()
-        source[stand_key] = source[stand_key].astype(str)
+        source[stand_key] = as_id_series(source[stand_key], column=stand_key)
         trees_by_plt = {plt: df for plt, df in source.groupby(stand_key)}
 
     fallback_slot_for = _fallback_slot_resolver(policy)
@@ -439,7 +439,7 @@ def summarize_tree_sources(tree_final: pd.DataFrame, units_gdf=None, id_field: s
         if hasattr(attrs, "geometry"):
             attrs = attrs.drop(columns=attrs.geometry.name)
         attrs = pd.DataFrame(attrs).copy()
-        attrs[id_field] = attrs[id_field].astype(str)
+        attrs[id_field] = as_id_series(attrs[id_field], column=id_field)
         if area_field in attrs.columns:
             per_unit = per_unit.merge(attrs[[id_field, area_field]], on=id_field, how="left")
             weight = area_field

@@ -4,7 +4,7 @@ The project spatial reference — one source of truth for every CRS decision in 
 The project CRS is **EPSG:5070, NAD83 / Conus Albers** (ArcGIS labels it
 ``NAD_1983_Contiguous_USA_Albers``). It is declared once in `config/projection.yaml` under
 ``spatial``, and everything reads it from here. No module should contain the string
-``EPSG:5070`` — `tests/test_spatial_ref.py` enforces that, because a hardcoded copy is how
+``EPSG:5070`` — `scripts/check_conventions.py` enforces that, because a hardcoded copy is how
 a project ends up with two CRSs that agree until the day one of them is changed.
 
 Why it matters more than a normal config value: TreeMap 2022, LANDFIRE EVT, and the Harris

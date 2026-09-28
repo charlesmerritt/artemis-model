@@ -1,10 +1,9 @@
-# Merge behaviour for the two files every branch touches.
+# Merge behaviour for uv.lock, the file every branch touches.
 #
-# Measured in notes/branch-triage-2026-08-10.md: across the fifteen open
-# branches, `uv.lock` and `notes/README.md` alone produced 16 of the 50 pairwise
-# merge conflicts. Neither was ever a real disagreement — one is generated, the
-# other is an append-only index — so both are resolved here rather than by hand,
-# once per branch, forever.
+# Measured in the 2026-08-10 branch triage (git show e207953:notes/branch-triage-2026-08-10.md):
+# across the fifteen open branches, `uv.lock` and the notes index alone produced 16 of
+# the 50 pairwise merge conflicts, and neither was ever a real disagreement. The notes
+# index has since been removed, so only the lockfile needs a rule.
 
 # The lockfile is generated from pyproject.toml, so a line-by-line merge of two
 # resolutions is meaningless at best and produces an internally inconsistent
@@ -27,14 +26,3 @@ uv.lock merge=uv-lock
 
 # Generated, and large: keep it out of language stats and collapsed in diffs.
 uv.lock linguist-generated=true
-
-# Append-only index. Every branch adds its own entry at the end, and the entries
-# are independent, so taking both sides is always the right answer — that is
-# exactly what `union` does. The failure mode is a duplicated line when two
-# branches document the same note, which is visible and trivially fixed; the
-# alternative is a conflict on every single branch, which is what we measured.
-#
-# Deliberately scoped to this one index rather than `*.md`: prose files DO have
-# real conflicts, and silently unioning two rewrites of the same paragraph would
-# produce a document that reads as though it were merged cleanly when it was not.
-notes/README.md merge=union

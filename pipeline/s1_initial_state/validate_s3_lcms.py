@@ -30,10 +30,10 @@ All rates describe a restricted sampling frame: one-pixel-eroded interiors of
 connected patches at least 5 acres. They must not be extrapolated to patch
 boundaries, smaller components, or the full accepted/rejected S3 populations.
 
-Note the prior: earlier project work found LCMS tree-removal almost never fires
-on statewide confused-class points (``notes/clearcut-vs-agriculture-embeddings.md``).
-Land-use and land-cover metrics are therefore reported alongside the removal
-metric rather than relying on it alone.
+The comparison in ``notebooks/Clearcut-vs-Agriculture-EVT-Change.ipynb`` reports
+LCMS tree-removal separately from EVT-change flags. Here, land-use and land-cover
+metrics are likewise reported alongside removal; the removal event alone does not
+describe whether a site remains forest land.
 """
 
 from __future__ import annotations

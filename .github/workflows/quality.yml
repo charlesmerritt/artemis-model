@@ -1,0 +1,114 @@
+name: Quality
+
+# CRAP scores and mutation testing (scripts/quality.py), in two modes:
+#   pull_request     report on the pipeline/ files the PR changed; CRAP also as a PR comment
+#   schedule/manual  the retroactive sweep: CRAP for all of pipeline/, and mutation testing on
+#                    one file per run, cycling through every file (or the file you name)
+on:
+  pull_request:
+  schedule:
+    - cron: "0 7 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "pipeline/ file to mutate (blank = today's file in the rotation)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Report-only for now. Set a number to make either report a merge gate, e.g.
+  # CRAP_MAX: "30" (fail if a changed function scores above 30) or MUTATION_SCORE_MIN: "80".
+  CRAP_MAX: ""
+  MUTATION_SCORE_MIN: ""
+
+jobs:
+  crap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the merge base with the target branch
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - run: uv python install
+      - run: uv sync --locked
+
+      - name: Coverage (tests/ and the pipeline doctests)
+        run: uv run pytest -q --cov=pipeline --cov-branch --cov-report=lcov:lcov.info
+
+      - name: CRAP report
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            scope=(--changed-since "origin/$BASE_REF")
+          else
+            scope=(pipeline)
+          fi
+          uv run python scripts/quality.py crap "${scope[@]}" ${CRAP_MAX:+--max-crap "$CRAP_MAX"} \
+            --summary crap.md || status=$?
+          cat crap.md >> "$GITHUB_STEP_SUMMARY"
+          exit "${status:-0}"
+
+      - name: Post CRAP report on the PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('crap.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: crap
+          path: crap.md
+
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - run: uv python install
+      - run: uv sync --locked
+
+      # mutmut is incremental: it re-tests only functions whose source changed, so carry its
+      # results between runs.
+      - uses: actions/cache@v4
+        with:
+          path: mutants
+          key: mutmut-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          restore-keys: mutmut-${{ hashFiles('uv.lock') }}-
+
+      - name: Mutation testing, file by file
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          FILE: ${{ inputs.file }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            scope=(--changed-since "origin/$BASE_REF")
+          elif [ -n "$FILE" ]; then
+            scope=("$FILE")
+          else
+            scope=(--rotation)
+          fi
+          uv run python scripts/quality.py mutate "${scope[@]}" \
+            ${MUTATION_SCORE_MIN:+--min-score "$MUTATION_SCORE_MIN"} --summary mutation.md || status=$?
+          cat mutation.md >> "$GITHUB_STEP_SUMMARY"
+          exit "${status:-0}"

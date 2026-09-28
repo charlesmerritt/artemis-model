@@ -14,6 +14,11 @@ has 693 rows (TreeMap 2022); the ``output2020/`` crosswalk has 688. The raster
 and crosswalk must come from the same TreeMap vintage or pixels are mis-mapped,
 so ``main()`` reports coverage for each candidate pairing and paints with the
 one that actually matches the FVS stands.
+
+Values are per-acre stand attributes (basal area in sq ft/ac) painted uniformly onto every
+pixel imputed to that plot: right for maps and quantiles, wrong to sum. For an area total,
+multiply by pixel acres (900 m² = 0.2224 ac). Spot check from the first run: TM_ID 2623 →
+PLT_CN 17498047010478 → year-0 BA 42.875, and all 1,385 pixels of that TM_ID read 42.87472.
 """
 
 from __future__ import annotations

@@ -1,0 +1,5 @@
+- 120 ac max contiguous clear cut size on private lands
+- 40-80 ac max clear cut size on private lands
+- polygon neighbors in arcgis to build the adjacency matrix
+- turn the polygon neighbors tool into a raster tool
+- use shingo obata approach to identify disturbances up to 2016 to identify disturbances in holes

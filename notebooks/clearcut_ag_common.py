@@ -10,7 +10,7 @@ comparable on identical locations. GEE supplies AlphaEarth embeddings, LCMS hist
 the single available LANDFIRE EVT vintage (v1.4.0, ~2016). The local LF2022 EVT tif
 (EPSG:5070, 30 m) supplies the modern EVT class per point via windowed rasterio sampling.
 
-Design doc: docs/superpowers/specs/2026-07-01-clearcut-vs-agriculture-embeddings-design.md
+Design doc: git show e207953:docs/superpowers/specs/2026-07-01-clearcut-vs-agriculture-embeddings-design.md
 """
 
 from __future__ import annotations
@@ -155,7 +155,7 @@ def evt2022_csv_path(repo_root: Path | None = None) -> Path:
 
 
 # --------------------------------------------------------------------------------------
-# Pure helpers (no network — covered by tests/test_clearcut_ag_common.py)
+# Pure helpers (no network)
 # --------------------------------------------------------------------------------------
 
 def evt_name_is_forest(name) -> bool:

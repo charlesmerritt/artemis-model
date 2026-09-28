@@ -92,3 +92,8 @@ def data_access():
     """
     from pipeline import data_access as module
     return module
+
+# The ArcPy reference fixture imports arcpy at module level; it is executed as a
+# subprocess under an ArcGIS Pro Python (see test_s1_leto_arcpy_parity.py), never
+# imported by the test suite itself. --doctest-modules would import it and fail.
+collect_ignore = ["arcpy_reference"]

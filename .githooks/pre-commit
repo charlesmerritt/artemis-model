@@ -2,4 +2,11 @@
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
-exec "$repo_root/scripts/check-staged-large-files.sh"
+"$repo_root/scripts/check-staged-large-files.sh"
+
+# The repository's rules and documentation are executable; run them before a commit
+# records a state that breaks them. Bypass once with `git commit --no-verify`.
+cd "$repo_root"
+uv run --quiet python scripts/check_conventions.py
+uv run --quiet python scripts/check_docs.py
+uv run --quiet pytest -q

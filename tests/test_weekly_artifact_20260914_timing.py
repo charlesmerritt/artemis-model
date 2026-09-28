@@ -1,8 +1,8 @@
 """The timing-offset expansion of the 2026-09-14 trajectory library.
 
-`weekly-artifact/2026-09-14/make_timing_library.py` adds the `when` axis §4 of
-`notes/trajectory-library-and-annealing.md` specifies: every cutting prescription is
-re-emitted at offsets of 0, 5, 10 and 15 years. The driver's own end-to-end check is
+`weekly-artifact/2026-09-14/make_timing_library.py` adds the `when` axis of
+the timing-offset evidence note (`notes/2026-09-16_timing-offsets-evidence.md`):
+every cutting prescription is re-emitted at offsets of 0, 5, 10 and 15 years. The driver's own end-to-end check is
 strong — all 3,000-odd offset-0 runs must reproduce 2026-08-31's published volumes — but it
 only fires with a 13,000-run FVS batch behind it, and it cannot see the cases that matter
 most at the edges of the horizon: an entry pushed past it, a variant that loses every entry,

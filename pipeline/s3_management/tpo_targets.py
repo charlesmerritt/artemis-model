@@ -4,7 +4,7 @@ Phase 1.1 — parse TPO harvest-level guidance into a clean targets config.
 Turns the Timber Product Output (TPO) guidance spreadsheet
 (``data/raw/Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx``) into a tidy,
 analysis-ready structure the harvest scheduler can consume as annual volume caps.
-See ``notes/management-pipeline-plan.md`` Phase 1, Step 1.1.
+How the scheduler uses them: ``docs/architecture/presentation.html#objective``.
 
 **Real workbook layout (verified against the file on R2 `artemis-r2`):** this is a
 hand-formatted sheet, not a tidy table. A title row and a URL sit at the top; the

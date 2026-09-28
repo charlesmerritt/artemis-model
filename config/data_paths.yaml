@@ -13,20 +13,22 @@
 # project copy at the bottom, whose bucket name differs). Use R2 wherever the
 # drive is not mounted — cloud sandbox, CI runner, second workstation.
 #
-# rclone reads its credentials from the preconfigured RCLONE_CONFIG_R2_*
-# environment variables (type, provider, endpoint, access key, secret), so no
+# rclone reads its credentials from the RCLONE_CONFIG_R2_* environment variables
+# (type, provider, endpoint, access key, secret) — exported, or kept in the
+# gitignored .env at the repo root, which pipeline/data_access.py loads — so no
 # rclone.conf is required and no credentials belong in this file. Verified
-# 2026-07-30 with rclone v1.60.1:
+# 2026-09-14 with rclone v1.75.1 (in a shell, `set -a; . ./.env; set +a` first):
 #
 #     rclone lsf   r2:artemis-r2/data/TreeMap-2022/Data/        # list one directory
-#     rclone size  r2:artemis-r2/data/TreeMap_Chaz/output2020   # check before pulling a tree
+#     rclone lsf -R --fast-list --use-server-modtime r2:artemis-r2/data/   # whole bucket, ~2 s
+#     rclone size  r2:artemis-r2/data/Lowe_TreeMap_Chaz/output2020   # check before pulling a tree
 #     rclone copyto \
 #       r2:artemis-r2/data/Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx \
 #       data/raw/Harvest_level_guidance_from_TPO_reports_1999-2024.xlsx
 #     rclone copy  r2:artemis-r2/data/<dir> /mnt/d/<dir>        # whole directory
 #
 # Prefer fetching individual files: several of these directories are ~1 GiB
-# (`TreeMap_Chaz/output2020` is 1.01 GiB over 11 objects) and the raw TreeMap and
+# (`Lowe_TreeMap_Chaz/output2020` is 1.01 GiB over 11 objects) and the raw TreeMap and
 # FIA trees are far larger.
 #
 # Two things to know. The token is scoped to the bucket, so a bare `rclone lsd r2:`
@@ -52,10 +54,12 @@ r2:
   # processed outputs) under this prefix: <repo>/data/X is <prefix>/Artemis_data/X.
   repo_data_prefix: "Artemis_data"
 
-  # Directories uploaded under a name other than their name on the drive. The value
-  # may contain slashes, for directories filed under a bucket-side parent that has
-  # no counterpart on the drive.
+  # Directories uploaded under a name other than their name on the drive. Either
+  # side may contain slashes: the value for a directory filed under a bucket-side
+  # parent, the key for one lifted out of its drive-side parents. The longest
+  # matching key wins.
   renames:
+    forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries: "20260804_095846_Hard_Ownership_Boundaries"
     Artemis_project_fvs_copy: "Artemis_project_fvs_copy_no_management"
     # The LANDFIRE products sit at the drive root but are grouped in the bucket.
     LF2022_EVT_CONUS: "landfire/LF2022_EVT_CONUS"
@@ -70,29 +74,9 @@ raw:
 
   ownership:
     tif:        "/mnt/d/RDS-2025-0045/Data/US_forest_ownership.tif"
-    # Harris raster values (0 unknown, 3 family, 4 corporate, 5 tribal, 6 federal,
-    # 7 state, 8 local). NOT the same numbering as the LETO OWN_CODE below — see
-    # config/management_regimes.yaml. Both columns are called OWN_CODE downstream.
-
-  leto_ownership_run:
-    # LETO FVS database run, Hard_Ownership_Boundaries, 2026-08-04.
-    # PRIMARY ownership vocabulary for regime assignment: OWN_CODE/OWN_TYPE
-    # (0 Unknown, 1 Private, 2 Corporate, 3 Federal, 4 State, 5 County, 6 NGO, 7 Other)
-    # plus an independent management axis MGMT_CLASS/MGMT_TYPE (0 Upland, 1 Riparian).
-    # 57,527 stands; 1,052,305.90 acres; 529 unique PLT_CN donors; variant SN; FIPS 12.
-    root:         "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries"
-    stand_init:   "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv"
-    tree_init:    "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_TreeInit.csv"
-    plt_cn_weights: "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/Segment_PLT_CN_Weights_Filtered.csv"
-    db_group_summary: "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/FVS_Database_Group_Summary.csv"
-    # Per-owner FVS inventory DBs live under .../Databases/FVS_Inventory_<Group>.db
-    # where <Group> is DB_GROUP: OWN_TYPE for uplands, "Riparian" for riparian stands.
-    r2_prefix:    "r2://artemis-r2/data/20260804_095846_Hard_Ownership_Boundaries/"
-
-  parcel_owner_summary:
-    # Finer owner taxonomy upstream of LETO OWN_TYPE — REIT / TIMO / Company split out.
-    txt:        "/mnt/d/Owner_Summaries_FL5Co_Parcels.txt"
-    r2:         "r2://artemis-r2/data/Owner_Summaries_FL5Co_Parcels.txt"
+    # Harris et al. (2025) RDS-2025-0045: 0 unknown, 1 non-forest, 2 water, 3 family,
+    # 4 corporate, 5 tribal, 6 federal, 7 state, 8 local. The only ownership source
+    # ARTEMIS reads — see config/ownership_policy.yaml.
 
   fia_sqlite:
     db:         "/mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"
@@ -150,8 +134,9 @@ raw:
   ecoregions:
     us_eco_l3_shp: "/mnt/d/us_eco_l3/us_eco_l3.shp"
     us_eco_l3_state_boundaries_shp: "/mnt/d/us_eco_l3_state_boundaries/us_eco_l3_state_boundaries.shp"
-    us_eco_l4_shp: "/mnt/d/us_eco_l4/us_eco_l4.shp"
-    us_eco_l4_state_boundaries_shp: "/mnt/d/us_eco_l4_state_boundaries/us_eco_l4_state_boundaries.shp"
+    # Level IV names do not follow the Level III pattern: checked against R2 2026-09-14.
+    us_eco_l4_shp: "/mnt/d/us_eco_l4/us_eco_l4_no_st.shp"
+    us_eco_l4_state_boundaries_shp: "/mnt/d/us_eco_l4_state_boundaries/us_eco_l4.shp"
 
   Artemis_project_fvs_copy_no_management:
     # For outputs of FVS run from the Windows GUI, the only working interface with FVS so far.
@@ -160,6 +145,15 @@ raw:
     # in the bucket, not 'data/Artemis_project_fvs_copy/' as the drive paths below.
     FVS_Data_db: "/mnt/d/Artemis_project_fvs_copy/FVS_Data.db"
     FVSOut_db: "/mnt/d/Artemis_project_fvs_copy/FVSOut.db"
+
+  hard_ownership_boundaries:
+    # The 2026-08-04 ownership-segmented FVS run: management units cut at hard ownership
+    # boundaries, one inventory database per owner class. Only the stand-init table is
+    # declared, because that is the one file carrying PLT_CN -> (OWN_TYPE, MGMT_TYPE,
+    # Acres) — the crosswalk `pipeline/s6_outputs/owner_attribution.py` reads to put an
+    # owner class on a plot-keyed FVS trajectory. Its `FVS_TreeInit.csv` sibling is 1.5 GB
+    # and nothing here needs it.
+    stand_init_csv: "/mnt/d/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv"
     
 interim:
   root:         "data/interim"

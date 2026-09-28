@@ -135,10 +135,12 @@ def remote_url(path) -> str | None:
 
     rel = _relative_to(absolute, Path(data_paths()["drive"]))
     if rel is not None:
-        head, *tail = rel.parts
-        # A handful of directories were uploaded under a different name.
-        head = cfg.get("renames", {}).get(head, head)
-        return "/".join([base, head, *tail])
+        renames = cfg.get("renames", {})
+        for source in sorted(renames, key=lambda key: len(Path(key).parts), reverse=True):
+            tail = _relative_to(rel, Path(source))
+            if tail is not None:
+                return "/".join([base, renames[source], *tail.parts])
+        return "/".join([base, *rel.parts])
 
     rel = _relative_to(absolute, repo_root() / "data")
     if rel is not None:

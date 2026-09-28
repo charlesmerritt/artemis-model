@@ -1,11 +1,11 @@
 """LETO cellular-automata stand segmentation (LETO stage 2) as a pure-array library.
 
-A faithful port of the boundary-vectorized algorithm in LETO
-`scripts/Cellular_automata/02_segment_treemap.py` (v3) to NumPy/SciPy, with no
+A faithful port of the boundary-vectorized algorithm in LETO's
+`Cellular_automata/02_segment_treemap.py` (v3) to NumPy/SciPy, with no
 raster I/O: callers pass arrays in and get label rasters back. This module
 unifies the two ports that previously lived in
 `experiments/2026-08-24_leto-ca-forest-viz/03_ca_segment.py` (constants,
-riparian management-unit stage) and `research/leto_ca_demo/leto_ca.py`
+riparian management-unit stage) and the `leto_ca_demo` research port
 (parameterized library interface).
 
 The CA loop: every segment-boundary cell simultaneously evaluates joining each

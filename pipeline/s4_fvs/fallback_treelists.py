@@ -44,6 +44,8 @@ from pathlib import Path
 
 import yaml
 
+from pipeline.ids import as_id_series
+
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -301,7 +303,7 @@ def select_donor_plot(candidates, policy: dict | None = None) -> str:
         )
 
     df = candidates.copy()
-    df["PLT_CN"] = df["PLT_CN"].astype(str)
+    df["PLT_CN"] = as_id_series(df["PLT_CN"], column="PLT_CN")
     df["_balive"] = pd.to_numeric(df["BALIVE"], errors="coerce")
     df = df.dropna(subset=["_balive"])
     if len(df) < minimum:
@@ -326,7 +328,7 @@ def resolve_all_slots(plots, policy: dict | None = None) -> dict:
     for slot, spec in policy["slots"].items():
         candidates = filter_candidates(plots, spec["filter"])
         plt_cn = select_donor_plot(candidates, policy)
-        row = candidates[candidates["PLT_CN"].astype(str) == plt_cn].iloc[0]
+        row = candidates[as_id_series(candidates["PLT_CN"], column="PLT_CN") == plt_cn].iloc[0]
         resolved[slot] = {
             "plt_cn": plt_cn,
             "n_candidates": int(len(candidates)),
@@ -388,7 +390,7 @@ def _load_fia_candidates(fia_db: Path, policy: dict):
     with sqlite3.connect(f"file:{fia_db}?mode=ro", uri=True) as con:
         df = pd.read_sql_query(query, con, params=state_codes)
 
-    df["PLT_CN"] = df["PLT_CN"].astype(str)
+    df["PLT_CN"] = as_id_series(df["PLT_CN"], column="PLT_CN")
     location = ["STATECD", "UNITCD", "COUNTYCD", "PLOT"]
     df = (
         df.sort_values([*location, "INVYR"], kind="stable")

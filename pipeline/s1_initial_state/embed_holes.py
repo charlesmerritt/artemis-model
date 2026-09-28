@@ -18,8 +18,9 @@ which is defined as **not** tree in 2024. ``MAX_FEATURE_YEAR`` caps feature year
 at 2022, the TreeMap vintage being corrected, and ``check_feature_years`` raises
 if that is violated.
 
-The same trap is documented in ``notes/clearcut-vs-agriculture-embeddings.md``,
-where pre-year embeddings drove AUC to 1.000 "largely by construction".
+The earlier experiment in
+``notebooks/Clearcut-Grassland-Feature-Engineering.ipynb`` documents the same trap:
+pre-year embeddings encode the forest history used to define its labels.
 
 Auth: AlphaEarth needs a live Earth Engine token. If ``ee.Initialize()`` fails
 with ``invalid_grant`` the stored refresh token has expired — re-run
@@ -34,6 +35,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import rasterio
 
 from pipeline.spatial_ref import project_crs
 
@@ -97,15 +99,16 @@ def aoi_region(ee):
     return ee.Geometry.Rectangle(list(AOI_BOUNDS_5070), proj=project_crs(), geodesic=False)
 
 
-def annual_embedding(ee, year: int):
-    """Mosaic of the AlphaEarth annual embedding for `year`, restricted to the AOI.
+def annual_embedding(ee, year: int, region=None):
+    """Mosaic of the AlphaEarth annual embedding for `year`, restricted to `region`.
 
     ``filterBounds`` matters: without it the mosaic spans CONUS and every request
-    pays for tiles nowhere near the AOI. Matches the convention in
-    ``notebooks/clearcut_ag_common.annual_embedding``.
+    pays for tiles nowhere near the study area. Matches the convention in
+    ``notebooks/clearcut_ag_common.annual_embedding``. Defaults to the AOI
+    region; the statewide scorer passes its own tile bounds.
     """
     start = ee.Date.fromYMD(year, 1, 1)
-    region = aoi_region(ee)
+    region = aoi_region(ee) if region is None else region
     return (
         ee.ImageCollection(EMBEDDING_COLLECTION)
         .filterDate(start, start.advance(1, "year"))
@@ -155,7 +158,7 @@ def run_sample(years, points_csv: Path, out_csv: Path) -> pd.DataFrame:
     return table
 
 
-def probability_image(ee, model: dict):
+def probability_image(ee, model: dict, region=None):
     """Rebuild the fitted logistic regression as an Earth Engine image.
 
     AlphaEarth bands are unit-norm floats, so a linear model is exactly a band
@@ -163,13 +166,13 @@ def probability_image(ee, model: dict):
     reproduces the sklearn model bit-for-bit rather than re-fitting in EE.
     """
     year = model["feature_year"]
-    image = annual_embedding(ee, year).select(list(model["bands"]))
+    image = annual_embedding(ee, year, region).select(list(model["bands"]))
     weights = ee.Image.constant(list(model["coef"]))
     logit = image.multiply(weights).reduce(ee.Reducer.sum()).add(ee.Image.constant(model["intercept"]))
     return logit.multiply(-1).exp().add(1).pow(-1).rename("prob")
 
 
-def similarity_image(ee, model: dict):
+def similarity_image(ee, model: dict, region=None):
     """Max cosine similarity to any anchor exemplar.
 
     Mirrors ``classify_holes.stage_a_similarity``: one dot product per exemplar,
@@ -186,7 +189,7 @@ def similarity_image(ee, model: dict):
     cut-off. The threshold is fitted on cosine, so the export must be cosine.
     """
     year = model["feature_year"]
-    image = annual_embedding(ee, year).select(list(model["bands"]))
+    image = annual_embedding(ee, year, region).select(list(model["bands"]))
     unit = image.divide(image.pow(2).reduce(ee.Reducer.sum()).sqrt())
     bands = []
     for i, exemplar in enumerate(model["anchor_exemplars"]):
@@ -238,14 +241,14 @@ def tile_download_params(bounds: tuple[float, float, float, float]) -> dict:
     }
 
 
-def tile_canvas_offsets(transform) -> tuple[int, int]:
+def canvas_offsets(transform, origin: tuple[float, float]) -> tuple[int, int]:
     """Return integer canvas offsets, rejecting any tile not on the TreeMap grid."""
     linear = (transform.a, transform.b, transform.d, transform.e)
     expected = (OUTPUT_SCALE_M, 0, 0, -OUTPUT_SCALE_M)
     if not np.allclose(linear, expected, rtol=0, atol=1e-6):
         raise ValueError(f"Earth Engine tile pixel grid {linear} != expected {expected}")
 
-    left, _, _, top = AOI_BOUNDS_5070
+    left, top = origin
     row_offset = (top - transform.f) / OUTPUT_SCALE_M
     col_offset = (transform.c - left) / OUTPUT_SCALE_M
     row0, col0 = round(row_offset), round(col_offset)
@@ -262,7 +265,6 @@ def tile_canvas_offsets(transform) -> tuple[int, int]:
 def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
     import urllib.request
 
-    import rasterio
 
     ee = init_ee()
     model = json.loads(model_json.read_text())
@@ -297,7 +299,7 @@ def run_apply(model_json: Path, out_tif: Path, n_tiles: int) -> None:
                     f"Earth Engine tile size {(src.width, src.height)} != expected "
                     f"{(expected_width, expected_height)}"
                 )
-            row0, col0 = tile_canvas_offsets(src.transform)
+            row0, col0 = canvas_offsets(src.transform, (left, top))
             data = src.read()
             profile = profile or src.profile
         tmp.unlink()
