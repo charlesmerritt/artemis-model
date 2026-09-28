@@ -50,6 +50,12 @@ def test_empty_keyfile_fails_command(monkeypatch, capsys):
     assert "keyfile" in capsys.readouterr().err
 
 
+def test_managed_example_without_harvest_fails_command(monkeypatch, capsys):
+    monkeypatch.setattr(check.regime_library, "render_keyfile", lambda *a, **k: "Process\nStop\n")
+    assert check.main([]) == 1
+    assert "harvest" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("state", ["missing", "empty"])
 def test_missing_restart_evidence_fails_command(monkeypatch, tmp_path, capsys, state):
     relative = "research/fia_treemap_fortype/outputs/FL_state_level_scaling_comparison.csv"

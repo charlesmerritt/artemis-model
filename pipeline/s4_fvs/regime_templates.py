@@ -525,6 +525,11 @@ def render_keyfile(
 ) -> str:
     """Render a complete single-stand FVS keyfile for the given regime.
 
+    This is a low-level keyword renderer without stand-age context. Production callers
+    resolve age eligibility through regime_assignment or regime_library first; explicit
+    event lists, saved parameters and experimental policies do not acquire that guard
+    merely by being rendered here. See docs/harvest-eligibility.html.
+
     ``thins`` overrides the built-in builders, so a caller that assembled its operations
     elsewhere — `pipeline.s4_fvs.regime_library`, which reads them from
     `config/regimes.yaml` — can reuse this scaffolding without a Python builder per

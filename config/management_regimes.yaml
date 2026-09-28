@@ -29,6 +29,20 @@ inventory_year: 2022
 cycle_years: 5
 horizon_years: 50
 
+# Conservative project assumption, applied to AGE AT ENTRY for every managed
+# prescription and by config/regimes.yaml's scenario renderer. This is the single
+# source of the policy; 15 is not a universal silvicultural minimum.
+# Deferral shifts the WHOLE sequence by complete cycles, preserving intervals, then
+# clips it to the projection horizon. Higher prescription age targets remain in force.
+# Unknown/invalid age on a managed schedule is an ERROR until a protocol exists to
+# supply it; `exclude_managed_candidate` (grow-only, reason recorded) is the opt-in
+# alternative. Grow-only prescriptions and riparian overrides never need an age.
+harvest_eligibility:
+  mode: minimum_stand_age
+  minimum_age_years: 15
+  underage_action: defer
+  unknown_age_action: error
+
 # Entries scheduled past `inventory_year + horizon_years` are dropped — the keyfile only
 # runs ten 5-year cycles, so a later entry is noise in the keyfile and a lie in the
 # schedule. A prescription whose every entry falls outside the horizon resolves to
@@ -63,11 +77,10 @@ overrides:
 #                                 cycle boundary, floored at one cycle out. Preferred: a
 #                                 22-year-old plantation on a 25-year rotation is cut in
 #                                 3 years, not 30.
-#                  offset_based : fixed offsets from inventory_year. Used when stand_age is
-#                                 unavailable, and it is what reproduces the pre-config
-#                                 behaviour exactly.
-#                `offsets` is therefore required on every prescription — it is the fallback,
-#                not an alternative.
+#                  offset_based : fixed offsets from inventory_year, subject to the
+#                                 same minimum age at entry as age-based schedules.
+#                `offsets` describes planned timings, not proof of age eligibility.
+#                Unknown age is an error under harvest_eligibility.
 # `regen`      — what re-initializes the stand after a stand-replacing entry. Regeneration
 #                is NOT expressed with FVS PLANT/NATREGEN keywords: those field layouts are
 #                unverified in this project (regime_templates.py docstring). Instead the
