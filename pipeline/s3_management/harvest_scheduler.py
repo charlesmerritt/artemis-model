@@ -97,6 +97,10 @@ def allocate_cycle(
     active non-total dimension. ``caps`` maps each dimension to ``{key: annual_cuft}`` — for
     TOTAL the single key is ``""``. Returns ``units`` plus ``harvested`` (bool),
     ``volume_removed``, and ``blocked_by`` (the first dimension that had no room, or "").
+
+    Age priority is not an eligibility screen. Inputs must come from trajectories whose
+    operations passed harvest_eligibility before FVS simulation; this allocator cannot
+    defer a simulated treatment without invalidating its growth and removal estimates.
     """
     for dim in dims:
         if dim != TOTAL and dim not in units.columns:
