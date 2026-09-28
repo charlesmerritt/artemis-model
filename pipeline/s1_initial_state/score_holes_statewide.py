@@ -94,15 +94,24 @@ def _fetch(url: str, dest: Path, attempts: int = 5, timeout_s: int = 600) -> Non
 
     A bare urlretrieve can hang forever on a stalled connection and EE's
     download service returns transient 5xx/429 under load; both should retry,
-    not stall the whole 300+-tile run.
+    not stall the whole 300+-tile run. ``timeout_s`` bounds the whole download:
+    the socket timeout alone resets on every byte, so a slow drip would never
+    trip it.
     """
     import urllib.error
+    import urllib.request
 
     delay = 5.0
     for attempt in range(1, attempts + 1):
         try:
+            deadline = time.monotonic() + timeout_s
+            chunks = []
             with urllib.request.urlopen(url, timeout=timeout_s) as response:
-                dest.write_bytes(response.read())
+                while chunk := response.read1(1 << 16):
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(f"tile download exceeded {timeout_s}s")
+                    chunks.append(chunk)
+            dest.write_bytes(b"".join(chunks))
             return
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
             status = getattr(exc, "code", None)
@@ -161,7 +170,9 @@ def score_statewide(model_json: Path, strata_tif: Path, out_tif: Path,
     model = json.loads(model_json.read_text())
 
     origin = (transform.c, transform.f)
-    canvas = None
+    # Zero-filled up front: with no S3/S4 tile the output is still a valid pair of bands.
+    canvas = np.zeros((2, rows, cols), dtype=np.uint16)
+    out_tif.parent.mkdir(parents=True, exist_ok=True)  # the tile scratch file lives here
     tmp = out_tif.parent / ".score_tile.tif"
     for i, (window, bounds) in enumerate(tiles, start=1):
         # Each tile composites only over itself: the statewide mosaic is the
@@ -185,15 +196,12 @@ def score_statewide(model_json: Path, strata_tif: Path, out_tif: Path,
                 raise ValueError(f"tile {i} shape {data.shape} != "
                                  f"{(2, window.height, window.width)}")
         tmp.unlink()
-        if canvas is None:
-            canvas = np.zeros((2, rows, cols), dtype=data.dtype)
         paste_tile(canvas, data, row0, col0)
         print(f"  tile {i}/{len(tiles)} rows {window.row_off}:{window.row_off + window.height}")
     tmp.unlink(missing_ok=True)
 
     profile.update(count=2, dtype="uint16", nodata=None, compress="lzw",
                    tiled=False, blockysize=None, blockxsize=None)
-    out_tif.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(out_tif, "w", **profile) as dst:
         dst.write(canvas)
     print(f"wrote {out_tif} {canvas.shape} "

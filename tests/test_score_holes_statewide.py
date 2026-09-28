@@ -171,3 +171,102 @@ def test_canvas_offsets_reject_an_off_grid_tile():
     bad = Affine(30.0, 0, 1_000_000.0 + 7.5, 0, -30.0, 2_000_000.0 - 60 * 30.0)
     with pytest.raises(ValueError, match="not aligned"):
         embed_holes.canvas_offsets(bad, (1_000_000.0, 2_000_000.0))
+
+
+# ---- the statewide run's edges ------------------------------------------------------------
+
+
+def _strata_tif(path, strata):
+    import rasterio
+
+    transform = rasterio.transform.from_origin(1_000_000.0, 2_000_000.0, 30.0, 30.0)
+    with rasterio.open(path, "w", driver="GTiff", height=strata.shape[0], width=strata.shape[1],
+                       count=1, dtype="uint8", crs="EPSG:5070", transform=transform) as dst:
+        dst.write(strata, 1)
+    return path
+
+
+def _offline(monkeypatch, tmp_path):
+    model = tmp_path / "model.json"
+    model.write_text('{"feature_year": 2022}')
+    monkeypatch.setattr(score_holes_statewide, "check_feature_years", lambda years: None)
+    return model
+
+
+def test_no_s3_s4_pixels_writes_zero_bands_into_a_new_directory(tmp_path, monkeypatch):
+    import rasterio
+
+    model = _offline(monkeypatch, tmp_path)
+    monkeypatch.setattr(score_holes_statewide, "init_ee", lambda: None)
+    strata = _strata_tif(tmp_path / "strata.tif", np.full((20, 30), 2, dtype=np.uint8))
+    out = tmp_path / "new" / "dir" / "scores.tif"
+    score_holes_statewide.score_statewide(model, strata, out)
+    with rasterio.open(out) as src:
+        assert src.count == 2 and (src.read() == 0).all()
+
+
+def test_first_tile_downloads_into_a_new_output_directory(tmp_path, monkeypatch):
+    import rasterio
+
+    class Image:
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: self if name != "getDownloadURL" else "fake://tile"
+
+    class Geometry:
+        @staticmethod
+        def Rectangle(*args, **kwargs):
+            return None
+
+    class EE:
+        pass
+
+    EE.Geometry = Geometry
+    fetched = {}
+
+    def fake_fetch(url, dest):
+        left, bottom, right, top = fetched["bounds"]
+        width, height = round((right - left) / 30), round((top - bottom) / 30)
+        with rasterio.open(dest, "w", driver="GTiff", height=height, width=width, count=2,
+                           dtype="uint16", crs="EPSG:5070",
+                           transform=rasterio.transform.from_origin(left, top, 30.0, 30.0)) as dst:
+            dst.write(np.full((2, height, width), 7, dtype=np.uint16))
+
+    def fake_params(bounds):
+        fetched["bounds"] = bounds
+        return {}
+
+    model = _offline(monkeypatch, tmp_path)
+    monkeypatch.setattr(score_holes_statewide, "init_ee", lambda: EE)
+    monkeypatch.setattr(score_holes_statewide, "probability_image", lambda *a: Image())
+    monkeypatch.setattr(score_holes_statewide, "similarity_image", lambda *a: Image())
+    monkeypatch.setattr(score_holes_statewide, "tile_download_params", fake_params)
+    monkeypatch.setattr(score_holes_statewide, "_fetch", fake_fetch)
+    strata = _strata_tif(tmp_path / "strata.tif", np.full((20, 30), 3, dtype=np.uint8))
+    out = tmp_path / "fresh" / "scores.tif"
+    score_holes_statewide.score_statewide(model, strata, out)
+    with rasterio.open(out) as src:
+        assert (src.read() == 7).all()
+
+
+def test_tile_fetch_enforces_a_total_deadline_on_a_slow_drip(tmp_path, monkeypatch):
+    class Dribble:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read1(self, n=-1):
+            return b"x"  # always one more byte, never EOF
+
+        def read(self, n=-1):
+            return self.read1(n)
+
+    clock = iter(range(0, 10**9, 100))
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: Dribble())
+    monkeypatch.setattr(score_holes_statewide.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(score_holes_statewide.time, "sleep", lambda s: None)
+    dest = tmp_path / "tile.tif"
+    with pytest.raises(TimeoutError):
+        score_holes_statewide._fetch("fake://tile", dest, attempts=2, timeout_s=10)
+    assert not dest.exists()
