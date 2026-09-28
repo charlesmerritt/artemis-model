@@ -248,25 +248,37 @@ def test_first_tile_downloads_into_a_new_output_directory(tmp_path, monkeypatch)
         assert (src.read() == 7).all()
 
 
-def test_tile_fetch_enforces_a_total_deadline_on_a_slow_drip(tmp_path, monkeypatch):
-    class Dribble:
-        def __enter__(self):
-            return self
+class _Response:
+    """A fake HTTP response whose every read waits ``pause`` seconds, then yields one byte."""
 
-        def __exit__(self, *exc):
-            return False
+    def __init__(self, pause):
+        self.pause = pause
 
-        def read1(self, n=-1):
-            return b"x"  # always one more byte, never EOF
+    def __enter__(self):
+        return self
 
-        def read(self, n=-1):
-            return self.read1(n)
+    def __exit__(self, *exc):
+        return False
 
-    clock = iter(range(0, 10**9, 100))
-    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: Dribble())
-    monkeypatch.setattr(score_holes_statewide.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(score_holes_statewide.time, "sleep", lambda s: None)
+    def read1(self, n=-1):
+        import time
+
+        time.sleep(self.pause)
+        return b"x"  # never EOF
+
+    read = read1
+
+
+@pytest.mark.parametrize("pause", [0.01, 5.0], ids=["slow_drip", "blocked_read"])
+def test_tile_fetch_holds_its_deadline(tmp_path, monkeypatch, pause):
+    # A slow drip resets the socket timeout on every byte; a read that blocks
+    # near the deadline would otherwise run a full socket timeout past it.
+    import time
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: _Response(pause))
     dest = tmp_path / "tile.tif"
+    start = time.monotonic()
     with pytest.raises(TimeoutError):
-        score_holes_statewide._fetch("fake://tile", dest, attempts=2, timeout_s=10)
+        score_holes_statewide._fetch("fake://tile", dest, attempts=1, timeout_s=0.3)
+    assert time.monotonic() - start < 2.0
     assert not dest.exists()

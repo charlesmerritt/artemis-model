@@ -89,29 +89,56 @@ def grid_tiles(transform, rows: int, cols: int,
     return tiles
 
 
+def _download(url: str, timeout_s: float) -> bytes:
+    """Return ``url``'s body, or raise ``TimeoutError`` once ``timeout_s`` has elapsed.
+
+    The socket timeout alone cannot bound a download: it resets on every byte, so
+    a slow drip never trips it, and a read that blocks just before a deadline
+    runs a full socket timeout past it. The read therefore runs in a worker and
+    the caller stops waiting at the deadline. The abandoned worker stops at its
+    next chunk; the socket timeout still bounds a worker blocked in a read.
+    """
+    import threading
+    import urllib.request
+
+    stop = threading.Event()
+    outcome: dict = {}
+
+    def read() -> None:
+        try:
+            chunks = []
+            with urllib.request.urlopen(url, timeout=timeout_s) as response:
+                while not stop.is_set() and (chunk := response.read1(1 << 16)):
+                    chunks.append(chunk)
+            outcome["body"] = b"".join(chunks)
+        except Exception as exc:  # re-raised on the caller's thread
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=read, daemon=True)
+    worker.start()
+    worker.join(timeout_s)
+    if worker.is_alive():
+        stop.set()
+        raise TimeoutError(f"tile download exceeded {timeout_s}s")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["body"]
+
+
 def _fetch(url: str, dest: Path, attempts: int = 5, timeout_s: int = 600) -> None:
-    """Download one tile with a hard timeout and backoff/retry.
+    """Download one tile with a hard per-attempt deadline and backoff/retry.
 
     A bare urlretrieve can hang forever on a stalled connection and EE's
     download service returns transient 5xx/429 under load; both should retry,
-    not stall the whole 300+-tile run. ``timeout_s`` bounds the whole download:
-    the socket timeout alone resets on every byte, so a slow drip would never
-    trip it.
+    not stall the whole 300+-tile run. ``timeout_s`` bounds each attempt's whole
+    download (see :func:`_download`); every retry gets a fresh deadline.
     """
     import urllib.error
-    import urllib.request
 
     delay = 5.0
     for attempt in range(1, attempts + 1):
         try:
-            deadline = time.monotonic() + timeout_s
-            chunks = []
-            with urllib.request.urlopen(url, timeout=timeout_s) as response:
-                while chunk := response.read1(1 << 16):
-                    if time.monotonic() > deadline:
-                        raise TimeoutError(f"tile download exceeded {timeout_s}s")
-                    chunks.append(chunk)
-            dest.write_bytes(b"".join(chunks))
+            dest.write_bytes(_download(url, timeout_s))
             return
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
             status = getattr(exc, "code", None)
