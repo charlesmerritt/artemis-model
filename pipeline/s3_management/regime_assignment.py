@@ -202,14 +202,15 @@ def _stand_age(unit: Mapping) -> float | None:
         a real age puts the rotation harvest before the inventory year.
       - Text that is not a number, such as an empty CSV cell.
 
-    An unusable value in one alias is skipped, not taken as the answer: the first alias
-    holding a usable age wins. With none, managed schedules raise under the configured
+    The first alias present (not ``None``) is authoritative, NaN included. An unusable
+    value there is not replaced by a lower-priority alias: a unit-average
+    ``STDAGE_MEAN`` does not certify a stand whose own age is invalid
+    (docs/harvest-eligibility.html). Managed schedules then raise under the configured
     policy.
     """
     for key in ("stand_age", "STDAGE", "unit_age", "AGE", "STDAGE_MEAN"):
-        age = usable_stand_age(unit.get(key))
-        if age is not None:
-            return age
+        if key in unit and unit[key] is not None:
+            return usable_stand_age(unit[key])
     return None
 
 

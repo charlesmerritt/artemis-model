@@ -118,12 +118,12 @@ def test_leto_age_alias_and_riparian_override():
 
 
 @pytest.mark.parametrize("unusable", ["", "bad", float("nan"), -1])
-def test_unusable_age_column_falls_through_to_a_usable_one(unusable):
-    # An empty or sentinel value in an earlier alias is not an age; a later
-    # alias with a real one must be used rather than raising MissingStandAgeError.
-    p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161,
+def test_invalid_authoritative_age_is_not_replaced_by_a_lower_priority_alias(unusable):
+    # docs/harvest-eligibility.html: the first alias present is authoritative. A
+    # unit-average STDAGE_MEAN cannot certify the stand whose own age is invalid.
+    with pytest.raises(MissingStandAgeError, match="stand age"):
+        assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161,
                              "stand_age": unusable, "STDAGE_MEAN": 22})
-    assert p.params == {"year": 2027}
 
 
 @pytest.mark.parametrize("field,value", [
