@@ -103,7 +103,7 @@ missing-composition default, missing library establishment, lost delay, uncondit
 resolver, dead donor skipping a usable neighbor, and partial donor coverage. These are
 characterization probes of deficiencies, not acceptance tests for desired behavior.
 The targeted existing suite passed **2 tests**; it does not cover these regeneration guarantees.
-The full repository suite also passed **26 tests**. Ruff passed for the reproduction script,
+The full repository suite passed at the audit's base commit `18af1ee` (26 tests then). Ruff passed for the reproduction script,
 and `git diff --check` passed.
 
 No external FIA data or FVS binary was used, so donor availability, affected landscape

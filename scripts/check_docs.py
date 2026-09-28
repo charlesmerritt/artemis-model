@@ -42,7 +42,7 @@ sys.path.insert(0, str(REPO_ROOT))
 #   code      owed as docstrings, doctests, --help or a check; delete once that lands
 MARKDOWN_BUDGET = {
     ".agents/skills/linear/SKILL.md": (37, "keep"),            # agent skill; linear.py --help is the usage
-    "AGENTS.md": (72, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-21 for the regeneration gotcha
+    "AGENTS.md": (72, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-28 for the regeneration gotcha
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
     "CONTEXT.md": (64, "keep"),                               # the project vocabulary
     "README.md": (119, "keep"),
