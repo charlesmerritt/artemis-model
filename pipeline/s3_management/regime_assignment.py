@@ -193,21 +193,23 @@ def _stand_age(unit: Mapping) -> float | None:
     """
     The unit's stand age, or ``None`` when it is missing or unusable.
 
-    Three things count as unusable, and all three arrive from real data rather than from
-    contrived inputs:
+    Unusable values arrive from real data rather than from contrived inputs:
 
       - ``NaN``. A pandas row with no age carries ``NaN``, not ``None``, and ``float(NaN)``
-        succeeds — so without this check the age would flow into ``math.ceil(NaN)`` and
-        abort the whole assignment instead of taking the documented offset fallback.
+        succeeds, so it would otherwise reach ``math.ceil(NaN)``.
       - Infinity, for the same reason.
       - A negative age, which is an FIA sentinel rather than a measurement. Treating it as
         a real age puts the rotation harvest before the inventory year.
+      - Text that is not a number, such as an empty CSV cell.
 
-    Invalid or missing age raises for managed schedules under the configured policy.
+    An unusable value in one alias is skipped, not taken as the answer: the first alias
+    holding a usable age wins. With none, managed schedules raise under the configured
+    policy.
     """
     for key in ("stand_age", "STDAGE", "unit_age", "AGE", "STDAGE_MEAN"):
-        if key in unit and unit[key] is not None:
-            return usable_stand_age(unit[key])
+        age = usable_stand_age(unit.get(key))
+        if age is not None:
+            return age
     return None
 
 
