@@ -25,7 +25,7 @@
 version: 1
 
 # All scenario regime operations share management_regimes.yaml:harvest_eligibility.
-# Pass inventory stand age to regime_library; unknown age excludes managed entries.
+# Pass inventory stand age to regime_library; unknown age on a cutting regime errors.
 # These scenario offsets remain planned inventory-relative timings, not rotation ages.
 
 reference:

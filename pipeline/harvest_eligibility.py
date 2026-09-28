@@ -23,7 +23,25 @@ class UnderageAction(StrEnum):
 
 
 class UnknownAgeAction(StrEnum):
+    ERROR = "error"
     EXCLUDE_MANAGED_CANDIDATE = "exclude_managed_candidate"
+
+
+class MissingStandAgeError(ValueError):
+    """A managed schedule needs a stand age, and no protocol yet supplies a missing one."""
+
+
+UNKNOWN_AGE_NOTE = "harvest eligibility: excluded managed candidate: unknown stand age"
+
+
+def unknown_age_notes(stand_age, policy: "HarvestEligibilityPolicy") -> tuple[str, ...]:
+    """Raise under ERROR; otherwise the note recording why managed entries were dropped."""
+    if policy.unknown_age_action is UnknownAgeAction.ERROR:
+        raise MissingStandAgeError(
+            f"stand age is missing or invalid ({stand_age!r}) for a managed schedule; "
+            "there is no protocol to supply it yet, so this is an error rather than a guess"
+        )
+    return (UNKNOWN_AGE_NOTE,)
 
 
 @dataclass(frozen=True)
@@ -95,7 +113,7 @@ def enforce_schedule(
         return {}, ()
     age = usable_stand_age(stand_age)
     if age is None:
-        return {}, ("harvest eligibility: excluded managed candidate: unknown stand age",)
+        return {}, unknown_age_notes(stand_age, policy)
     age_at_first_entry = age + min(entries) - inv_year
     delay = max(0, math.ceil((policy.minimum_age_years - age_at_first_entry) / cycle_years)) * cycle_years
     notes = []

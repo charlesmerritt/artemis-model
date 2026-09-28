@@ -24,8 +24,8 @@ resolver, not the policy.
 
 Scheduling: prescriptions declare entries either by **stand age** (a 22-year-old plantation
 on a 25-year rotation is cut at the next cycle) or by **fixed offsets** from the
-inventory year. Both enforce the configured minimum age at entry. Missing age excludes
-managed entries with a recorded reason; grow-only remains available.
+inventory year. Both enforce the configured minimum age at entry. Missing age on a
+managed schedule raises MissingStandAgeError; grow-only needs no age.
 
 Ownership codes are Harris RDS-2025-0045 raster values (3 Family, 4 Corporate/Other
 Private, 5 Tribal, 6 Federal, 7 State, 8 Local) — never the parcel-derived LETO codes; see
@@ -61,8 +61,8 @@ import yaml
 
 from pipeline.s3_management.owner_classes import MASKED, classify_owner
 from pipeline.harvest_eligibility import (
-    HarvestEligibilityPolicy, enforce_schedule, load_harvest_eligibility, usable_stand_age,
-    validate_projection,
+    HarvestEligibilityPolicy, enforce_schedule, load_harvest_eligibility, unknown_age_notes,
+    usable_stand_age, validate_projection,
 )
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "management_regimes.yaml"
@@ -203,7 +203,7 @@ def _stand_age(unit: Mapping) -> float | None:
       - A negative age, which is an FIA sentinel rather than a measurement. Treating it as
         a real age puts the rotation harvest before the inventory year.
 
-    Invalid or missing age excludes managed candidates under the configured policy.
+    Invalid or missing age raises for managed schedules under the configured policy.
     """
     for key in ("stand_age", "STDAGE", "unit_age", "AGE", "STDAGE_MEAN"):
         if key in unit and unit[key] is not None:
@@ -241,9 +241,9 @@ def resolve_schedule(
     if mode == "none":
         return {}, ()
 
-    stand_age = usable_stand_age(stand_age)
+    raw_age, stand_age = stand_age, usable_stand_age(stand_age)
     if stand_age is None:
-        return {}, ("harvest eligibility: excluded managed candidate: unknown stand age",)
+        return {}, unknown_age_notes(raw_age, policy)
 
     if mode == "offset_based":
         years = {
@@ -417,8 +417,8 @@ def assign_prescription(
 
     ``unit`` is any mapping. Recognised keys: the Harris ownership value
     (``OWN_CODE``, optionally with its ``OWN_TYPE`` label), ``SMZ_Pct``, a forest-type field, and ``stand_age``.
-    Missing forest type degrades to ``other``. Missing age excludes managed entries;
-    the assignment retains the requested prescription ID and records the reason.
+    Missing forest type degrades to ``other``. Missing age on a managed prescription
+    raises MissingStandAgeError (see harvest_eligibility.unknown_age_action).
     """
     config = config or load_regimes_config()
     policy = HarvestEligibilityPolicy.from_config(config)

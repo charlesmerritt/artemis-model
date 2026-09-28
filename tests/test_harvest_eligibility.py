@@ -4,7 +4,9 @@ from copy import deepcopy
 
 import pytest
 
-from pipeline.harvest_eligibility import HarvestEligibilityPolicy, enforce_schedule
+from pipeline.harvest_eligibility import (
+    HarvestEligibilityPolicy, MissingStandAgeError, UnknownAgeAction, enforce_schedule,
+)
 from pipeline.s3_management.regime_assignment import (
     assign_prescription, load_regimes_config, resolve_schedule,
 )
@@ -15,6 +17,13 @@ def policy(minimum=15):
     config = deepcopy(load_regimes_config())
     config["harvest_eligibility"]["minimum_age_years"] = minimum
     return HarvestEligibilityPolicy.from_config(config)
+
+
+def excluding_config():
+    """The opt-in alternative to the default hard error: exclude and record why."""
+    config = deepcopy(load_regimes_config())
+    config["harvest_eligibility"]["unknown_age_action"] = "exclude_managed_candidate"
+    return config
 
 
 def years(name, age, *, minimum=15, horizon=50):
@@ -55,9 +64,44 @@ def test_existing_higher_age_targets_remain(name, age, expected):
     assert years(name, age)[0] == expected
 
 
-@pytest.mark.parametrize("age", [None, float("nan"), float("inf"), -1, "bad", True])
+UNKNOWN_AGES = [None, float("nan"), float("inf"), -1, "bad", True]
+
+
+def test_configured_policy_errors_on_unknown_age():
+    assert policy().unknown_age_action is UnknownAgeAction.ERROR
+
+
+@pytest.mark.parametrize("age", UNKNOWN_AGES)
+def test_unknown_age_is_a_hard_error_for_managed_assignment(age):
+    with pytest.raises(MissingStandAgeError, match="stand age"):
+        assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "stand_age": age})
+
+
+def test_absent_age_column_is_a_hard_error():
+    with pytest.raises(MissingStandAgeError, match="stand age"):
+        assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161})
+
+
+def test_unknown_age_is_a_hard_error_for_library_render():
+    with pytest.raises(MissingStandAgeError, match="stand age"):
+        regime_library.render_keyfile("MU", "1234567890123456789", "pine_plantation")
+
+
+def test_unknown_age_still_allowed_where_nothing_is_harvested():
+    p = assign_prescription({"OWN_CODE": 8, "FORTYPCD": 161})   # local: grow-only default
+    assert p.template == "no_management"
+    p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "SMZ_Pct": 100})
+    assert p.template == "no_management"
+
+
+def test_missing_stand_age_error_is_a_value_error():
+    assert issubclass(MissingStandAgeError, ValueError)
+
+
+@pytest.mark.parametrize("age", UNKNOWN_AGES)
 def test_unknown_age_excludes_managed_assignment_with_reason(age):
-    p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "stand_age": age})
+    p = assign_prescription({"OWN_CODE": 4, "FORTYPCD": 161, "stand_age": age},
+                            config=excluding_config())
     assert p.template == "no_management"
     assert p.params == {}
     assert p.regen_slot is None
@@ -107,8 +151,10 @@ def test_library_uses_same_deferral_and_preserves_operations():
     with pytest.warns(UserWarning, match="deferred"):
         thins = regime_library.build_thins("pine_plantation", stand_age=0)
     assert [(t.year - 2022, t.proportion) for t in thins] == [(15, .4), (30, 1.)]
+    exclude = HarvestEligibilityPolicy.from_config(excluding_config())
     with pytest.warns(UserWarning, match="unknown stand age"):
-        key = regime_library.render_keyfile("MU", "1234567890123456789", "pine_plantation")
+        key = regime_library.render_keyfile("MU", "1234567890123456789", "pine_plantation",
+                                            harvest_eligibility=exclude)
     assert "ThinDBH" not in key and "Estab" not in key
 
 

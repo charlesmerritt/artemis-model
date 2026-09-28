@@ -37,8 +37,10 @@ of the threshold in <a href="../config/regimes.yaml">regimes.yaml</a> or
 meets the minimum. Preserve intervals, treatment order, and higher rotation targets.</li>
 <li>Clip the result to the projection horizon. Repeated-entry end bounds remain explicit;
 removing the bound would allow template defaults to create unintended entries.</li>
-<li>Unknown, malformed, negative, nonfinite, or boolean age excludes managed entries.
-Keep grow-only, record the reason, and do not infer maturity from elapsed time alone.</li>
+<li>Unknown, malformed, negative, nonfinite, or boolean age on a managed schedule is a hard
+error (<code>MissingStandAgeError</code>) until a protocol exists to supply it. Grow-only needs
+no age. <code>unknown_age_action: exclude_managed_candidate</code> is the opt-in alternative:
+grow-only with the reason recorded. Never infer maturity from elapsed time alone.</li>
 </ol>
 <p>Assignment records diagnostics in <code>Prescription.notes</code> and retains the
 requested prescription ID when its template becomes <code>no_management</code>.
@@ -53,7 +55,7 @@ Its <code>cuts(name)</code> function remains menu metadata, not stand-level elig
 <tr><td>Age 0 / short plantation prescription</td><td>15, 25</td><td>15, 25</td></tr>
 <tr><td>Age 22 / short plantation prescription</td><td>Thin collides with next-cycle clearcut</td><td>Clearcut at +5 only</td></tr>
 <tr><td>Age 0 / corporate pine comparison regime (<code>pine_plantation</code>)</td><td>10, 25</td><td>15, 30</td></tr>
-<tr><td>Unknown age / any managed prescription</td><td>Any</td><td>No managed entries; exclusion recorded</td></tr>
+<tr><td>Unknown age / any managed prescription</td><td>Any</td><td>Error: <code>MissingStandAgeError</code></td></tr>
 </tbody></table></div>
 <p>The assignment reader accepts <code>stand_age</code>, <code>STDAGE</code>,
 <code>unit_age</code>, <code>AGE</code>, then <code>STDAGE_MEAN</code>, in that order.

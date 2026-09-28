@@ -19,7 +19,7 @@
 # Age eligibility: the single harvest_eligibility block in management_regimes.yaml.
 # build_thins/render_keyfile require usable stand_age for managed entries. Planned
 # offsets are deferred as a whole sequence when underage, then clipped to the horizon.
-# Unknown age produces grow-only with an explicit warning, not an offset fallback.
+# Unknown age on a cutting regime is an error (harvest_eligibility.unknown_age_action).
 
 version: 1
 

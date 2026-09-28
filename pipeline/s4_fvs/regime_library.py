@@ -12,8 +12,8 @@ regimes needing PLANT/NATREGEN, ThinBBA, or shelterwood cannot be expressed here
 that is issue #17, and approximating them with ThinDBH would be worse than their absence.
 
 Year offsets are inventory-relative planned timings. The shared harvest_eligibility
-policy in management_regimes.yaml defers young-stand schedules and excludes managed
-entries with unknown age. Callers must supply inventory stand age, including on reruns.
+policy in management_regimes.yaml defers young-stand schedules and raises on unknown
+age. Callers must supply inventory stand age, including on reruns.
 
 Usage:
     from pipeline.s4_fvs.regime_library import build_thins, render_keyfile
@@ -114,7 +114,7 @@ def build_thins(
 ) -> list[ThinDBH]:
     """Resolve eligible operations; warnings identify deferral, clipping or exclusion.
 
-    Missing age returns no operations, never a legacy age-free harvest schedule.
+    Missing age raises MissingStandAgeError, never a legacy age-free harvest schedule.
     ``cuts(name)`` describes the library menu, not this stand's resolved eligibility.
     """
     thins, notes = _resolve_thins(
