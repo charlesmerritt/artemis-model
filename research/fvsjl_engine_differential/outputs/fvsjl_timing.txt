@@ -1,0 +1,4 @@
+first call (JIT) 26.7 s
+none jl serial: 146.17 s bad=0
+thin jl serial: 226.54 s bad=0
+plant jl serial: 227.06 s bad=0
