@@ -189,6 +189,22 @@ def scored_add_back(strata: np.ndarray, hole: np.ndarray, scored: np.ndarray,
     return apply_mmu(raw, min_acres) & hole
 
 
+def stamp_donors(donor: np.ndarray, labels: np.ndarray, assignments: pd.DataFrame) -> np.ndarray:
+    """Write each patch's donor ``TM_ID`` into ``donor`` in place; return the recovered mask.
+
+    A patch without a reachable donor stays a hole. Stamping it would write
+    ``TM_ID`` 0 (no plot) with recovery provenance, which FVS cannot initialize.
+    """
+    donor_per_patch = np.zeros(int(labels.max()) + 1, dtype=np.uint32)
+    for patch_id, value in assignments["donor_tm_id"].items():
+        if pd.notna(value):
+            donor_per_patch[patch_id] = int(value)
+    stamped = donor_per_patch[labels]
+    recovered = stamped > 0
+    donor[recovered] = stamped[recovered]
+    return recovered
+
+
 def _read_aligned(path: Path, bounds, shape, transform) -> np.ndarray:
     """Window read that fails loudly on grid misalignment (never resample).
 
@@ -320,30 +336,28 @@ def main() -> None:
     del land, fl_mask, extent
 
     hole_pixels = int(hole.sum())
-    if args.scored_tif is not None:
+    # Read once: the summary must record the thresholds actually applied, even if
+    # the model file changes while the repair runs.
+    gate = None if args.scored_tif is None else GatedScores.from_model_json(args.model_json)
+    if gate is not None:
         add_back = scored_add_back(
             strata, hole, _read_scored(args.scored_tif, strata, win_transform),
-            GatedScores.from_model_json(args.model_json), args.min_acres,
+            gate, args.min_acres,
         )
     else:
         add_back = unconditional_add_back(strata) & hole
         add_back = apply_mmu(add_back, args.min_acres) & hole
-    add_back_pixels = int(add_back.sum())
+    candidate_pixels = int(add_back.sum())
 
     labels, n_patches = label_patches(add_back)
     assignments, unresolved = donor_assignments(donor, labels, strata=strata)
-    print(f"add-back: {add_back_pixels:,} px in {n_patches:,} patches; "
-          f"{len(unresolved):,} patch(es) without a reachable donor")
-
-    # Stamp the donors: recovered pixels carry the donor's TM_ID.
-    donor_per_patch = np.zeros(n_patches + 1, dtype=np.uint32)
-    for patch_id, value in assignments["donor_tm_id"].items():
-        if pd.notna(value):
-            donor_per_patch[patch_id] = int(value)
-    donor_pixels = donor_per_patch[labels]
-    del labels, donor_per_patch
-    donor[add_back] = donor_pixels[add_back]
-    del donor_pixels
+    # Recovered pixels carry the donor's TM_ID; donorless patches stay holes.
+    add_back = stamp_donors(donor, labels, assignments)
+    del labels
+    add_back_pixels = int(add_back.sum())
+    print(f"add-back: {add_back_pixels:,} px in {n_patches - len(unresolved):,} patches; "
+          f"{len(unresolved):,} patch(es) ({candidate_pixels - add_back_pixels:,} px) "
+          f"without a reachable donor left as holes")
     provenance = np.zeros((rows, cols), dtype=np.uint8)
     provenance[add_back] = 1
 
@@ -398,12 +412,13 @@ def main() -> None:
         "added_back_acres": float(add_back_pixels * ACRES_PER_PIXEL),
         "patches": n_patches,
         "unresolved_patches": len(unresolved),
+        "unresolved_pixels_left_as_holes": candidate_pixels - add_back_pixels,
         "unique_donors": int(assignments["donor_tm_id"].dropna().nunique()),
-        "model_gated_strata": [3, 4] if args.scored_tif is not None else [],
-        "s3_s4_pending_ee": [3, 4] if args.scored_tif is None else [],
-        "gate": (None if args.scored_tif is None else
-                 {"similarity_threshold": GatedScores.from_model_json(args.model_json).similarity_threshold,
-                  "decision_threshold": GatedScores.from_model_json(args.model_json).decision_threshold,
+        "model_gated_strata": [3, 4] if gate is not None else [],
+        "s3_s4_pending_ee": [3, 4] if gate is None else [],
+        "gate": (None if gate is None else
+                 {"similarity_threshold": gate.similarity_threshold,
+                  "decision_threshold": gate.decision_threshold,
                   "scored_tif": str(args.scored_tif)}),
         "outputs": {k: str(v) for k, v in paths.items()},
     }

@@ -144,3 +144,16 @@ def test_read_aligned_pads_a_short_footprint_with_nodata(tmp_path):
     # Entirely outside: all nodata, never an origin error.
     out = _read_aligned(path, (-1000000, 400000, -994000, 406000), (200, 200), transform)
     assert (out == 32767).all()
+
+
+def test_stamp_donors_leaves_unresolved_patches_as_holes():
+    from pipeline.s1_initial_state.statewide_repair import stamp_donors
+
+    donor = np.array([[0, 0, 7], [0, 0, 0]], dtype=np.uint32)
+    labels = np.array([[1, 1, 0], [2, 2, 0]], dtype=np.int32)
+    assignments = pd.DataFrame({"donor_tm_id": [42, pd.NA]}, index=[1, 2])
+    recovered = stamp_donors(donor, labels, assignments)
+    # Patch 1 carries its donor; patch 2 had none and must not become TM_ID 0
+    # marked as recovered: it stays a hole, outside the recovered mask.
+    assert np.array_equal(recovered, [[True, True, False], [False, False, False]])
+    assert np.array_equal(donor, [[42, 42, 7], [0, 0, 0]])
