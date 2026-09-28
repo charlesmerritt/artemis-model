@@ -41,7 +41,7 @@ sys.path.insert(0, str(REPO_ROOT))
 #   convert   durable finding or design owed a deck; delete once the deck lands
 #   code      owed as docstrings, doctests, --help or a check; delete once that lands
 MARKDOWN_BUDGET = {
-    "AGENTS.md": (63, "keep"),                                # the architect's agent brief
+    "AGENTS.md": (72, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-21 for the regeneration gotcha
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
     "README.md": (119, "keep"),
     "data/index.md": (116, "generated"),                      # scripts/r2_index.py
@@ -54,8 +54,12 @@ MARKDOWN_BUDGET = {
     "notes/2026-09-14_statewide_repair_blockers.md": (111, "record"),  # diagnosis, not prose docs
     "notebooks/README.md": (69, "keep"),
     "pipeline/README.md": (36, "keep"),
+    "docs/owner-parameters/README.md": (226, "record"),               # owner-class parameter synthesis
+    "docs/owner-parameters/synthesized-2026-09-14.md": (211, "record"),
     "pipeline/s5_imagery/README.md": (180, "code"),                    # -> module docstrings, --help
     "research/fia_treemap_fortype/README.md": (115, "convert"),        # -> treemap deck
+    "research/regeneration_audit/README.md": (113, "record"),          # investigation with runnable probes
+    "research/regeneration_audit/proposed_revisions.md": (249, "convert"),  # owed regeneration.py
     "research/restart_fidelity/README.md": (204, "convert"),           # -> restart-fidelity deck
     "viewer/README.md": (126, "code"),                                 # -> serve_viewer.py --help
     "weekly-artifact/2026-07-19/README.md": (111, "record"),
