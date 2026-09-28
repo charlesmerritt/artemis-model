@@ -1,0 +1,39 @@
+{
+  "county_acres": 1824689.2,
+  "land_acres": 1805020.7,
+  "published_forest_acres": 1094685.8,
+  "hole_acres": 710335.1,
+  "rule_accepted_before_mmu_acres": 97798.3,
+  "added_back_acres": 74068.0,
+  "dropped_by_mmu_or_no_donor_acres": 23730.3,
+  "improved_forest_acres": 1168753.9,
+  "patches": 2886,
+  "counties": [
+    "12003 Baker",
+    "12023 Columbia",
+    "12047 Hamilton",
+    "12121 Suwannee",
+    "12125 Union"
+  ],
+  "stitch_overlap_pixels": {
+    "add_back_method_bits.tif": 0,
+    "bookend_strata.tif": 0,
+    "nwos2022_improved.tif": 0,
+    "nwos2022_provenance.tif": 0,
+    "nwos2022_published.tif": 0,
+    "treemap2022_improved.tif": 0,
+    "treemap2022_provenance.tif": 0,
+    "treemap2022_published.tif": 0
+  },
+  "added_back_credit_acres": {
+    "bookends": 74068.0,
+    "obata_disturbance": null,
+    "hansen_loss": null
+  },
+  "methods": {
+    "bookends": "run",
+    "obata_disturbance": "pending",
+    "hansen_loss": "pending"
+  },
+  "rule": "union"
+}

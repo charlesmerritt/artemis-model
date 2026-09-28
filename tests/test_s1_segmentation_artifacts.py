@@ -1,5 +1,6 @@
 """Canonical segmentation artifact and provenance regressions."""
 
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -228,7 +229,11 @@ def test_comparison_rejects_mismatched_shared_source_fingerprint(tmp_path: Path)
         load_comparable_artifacts(reference, candidate)
 
 
-def test_dirty_code_version_changes_with_worktree_content(tmp_path: Path):
+def test_dirty_code_version_changes_with_worktree_content(tmp_path: Path, monkeypatch):
+    # Under the pre-commit hook git exports GIT_DIR / GIT_INDEX_FILE; inherited, they point
+    # every git call below at the real repository, and "initial" gets committed there.
+    for name in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(name)
     repository = tmp_path / "repository"
     repository.mkdir()
     subprocess.run(["git", "init", "-q", repository], check=True)

@@ -1,0 +1,567 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Improved Rasters FL</title>
+<!-- Deck: the five-county improved TreeMap/NWOS rasters. Figures: make_figures.py.
+     Deck conventions, component classes and the navigation script come from
+     docs/_template/presentation.html. Copy that file to start a new deck; cite a slide
+     from code as path/to/presentation.html#slide-id (scripts/check_docs.py verifies the id). -->
+<style>
+  :root {
+    --paper:#f6f5ef; --card:#ffffff; --ink:#1b221c; --ink-soft:#4b564c; --ink-faint:#79847a;
+    --line:#e4e4da; --line-strong:#d0d0c3; --accent:#2f6b3f; --accent-soft:#e7f0e5;
+    --amber:#b06a11; --amber-soft:#f6ecd9; --slate:#5a6472; --slate-soft:#e9ebee;
+    --pass:#2f6b3f; --pass-bg:#e7f0e5; --fail:#a4562a; --fail-bg:#f6e7dc;
+    --band-a:#edf3ea; --band-b:#f6efe2; --band-c:#ecedf0;
+    --shadow:0 1px 2px rgba(27,34,28,.06), 0 6px 24px rgba(27,34,28,.08);
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#101310; --card:#1a1f1a; --ink:#eef0ea; --ink-soft:#b7beb5; --ink-faint:#828c81;
+      --line:#282e28; --line-strong:#39413a; --accent:#7bbd84; --accent-soft:#20301f;
+      --amber:#e2a24e; --amber-soft:#2c2413; --slate:#9aa6b4; --slate-soft:#20262d;
+      --pass:#7bbd84; --pass-bg:#1d2b1c; --fail:#e08a55; --fail-bg:#2c1d12;
+      --band-a:#161f15; --band-b:#211d12; --band-c:#181c21;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="light"]{--paper:#f6f5ef;--card:#fff;--ink:#1b221c;--ink-soft:#4b564c;--ink-faint:#79847a;--line:#e4e4da;--line-strong:#d0d0c3;--accent:#2f6b3f;--accent-soft:#e7f0e5;--amber:#b06a11;--amber-soft:#f6ecd9;--slate:#5a6472;--slate-soft:#e9ebee;--pass:#2f6b3f;--pass-bg:#e7f0e5;--fail:#a4562a;--fail-bg:#f6e7dc;--band-a:#edf3ea;--band-b:#f6efe2;--band-c:#ecedf0;--shadow:0 1px 2px rgba(27,34,28,.06),0 6px 24px rgba(27,34,28,.08);}
+  :root[data-theme="dark"]{--paper:#101310;--card:#1a1f1a;--ink:#eef0ea;--ink-soft:#b7beb5;--ink-faint:#828c81;--line:#282e28;--line-strong:#39413a;--accent:#7bbd84;--accent-soft:#20301f;--amber:#e2a24e;--amber-soft:#2c2413;--slate:#9aa6b4;--slate-soft:#20262d;--pass:#7bbd84;--pass-bg:#1d2b1c;--fail:#e08a55;--fail-bg:#2c1d12;--band-a:#161f15;--band-b:#211d12;--band-c:#181c21;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 30px rgba(0,0,0,.45);}
+
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:var(--paper); color:var(--ink); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  .deck { display:flex; height:100vh; width:100vw; transition:transform .42s cubic-bezier(.4,0,.2,1); will-change:transform; }
+  @media (prefers-reduced-motion: reduce) { .deck { transition:none; } }
+  /* Vertical centring is done with auto margins on .inner, NOT justify-content:center.
+     On a scrollable flex container, centred content that overflows spills past the
+     scroll origin in both directions, and scrollTop cannot go negative — so the top
+     of the slide (eyebrow, heading) becomes unreachable. Auto margins absorb only
+     positive free space: they centre when the content fits and collapse to zero when
+     it does not, leaving the slide scrollable from its true top. */
+  .slide { flex:0 0 100vw; height:100vh; overflow-y:auto; overflow-x:hidden;
+           display:flex; flex-direction:column;
+           padding:clamp(28px,5vh,64px) clamp(24px,6vw,90px); }
+  .inner { width:100%; max-width:1160px; margin:auto; }
+
+  .eyebrow { font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 14px; }
+  h1 { font-size:clamp(30px,5.2vw,54px); line-height:1.06; margin:0 0 16px; letter-spacing:-.02em; text-wrap:balance; font-weight:800; }
+  h2 { font-size:clamp(22px,3.4vw,34px); line-height:1.12; margin:0 0 8px; letter-spacing:-.015em; text-wrap:balance; font-weight:800; }
+  .kicker { font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; margin:0 0 10px; display:flex; gap:10px; align-items:center; }
+  .kicker .rule { height:1px; flex:1; background:var(--line-strong); }
+  .lede { font-size:clamp(15px,1.7vw,18px); color:var(--ink-soft); max-width:74ch; margin:0; }
+  .lede b { color:var(--ink); font-weight:650; }
+  p.sub { font-size:14.5px; color:var(--ink-faint); margin:2px 0 0; }
+  code, .mono { font-family:var(--mono); font-size:.92em; }
+
+  /* title slide */
+  .title-slide .meta { margin-top:26px; display:flex; flex-wrap:wrap; gap:10px; }
+  .chip { font-family:var(--mono); font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:8px;
+          background:var(--card); border:1px solid var(--line); color:var(--ink-soft); box-shadow:var(--shadow); }
+  .chip b { color:var(--accent); }
+
+  /* stat tiles */
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+  .tiles.three { grid-template-columns:repeat(3,1fr); }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+  .tile .n { font-size:clamp(20px,2.6vw,28px); font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .tile .n.good { color:var(--pass); }
+  .tile .n.warn { color:var(--amber); }
+  .tile .l { font-size:12px; color:var(--ink-faint); margin-top:3px; line-height:1.35; }
+  @media (max-width:760px){ .tiles, .tiles.three { grid-template-columns:repeat(2,1fr);} }
+
+  /* tables */
+  .tbl-wrap { overflow-x:auto; margin-top:16px; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); background:var(--card); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; min-width:520px; }
+  thead th { text-align:left; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; padding:11px 14px; background:transparent; border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+  tbody td { padding:11px 14px; border-bottom:1px solid var(--line); color:var(--ink-soft); vertical-align:top; }
+  tbody tr:last-child td { border-bottom:none; }
+  td.name { color:var(--ink); font-weight:600; }
+  td.num, th.num { text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.num b { color:var(--ink); }
+  tr.failrow td { background:var(--fail-bg); }
+  tr.goodrow td { background:var(--pass-bg); }
+  .res { display:inline-flex; font-weight:700; font-size:11.5px; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .res.pass { color:var(--pass); background:var(--pass-bg); }
+  .res.fail { color:var(--fail); background:var(--fail-bg); }
+  .res.open { color:var(--slate); background:var(--slate-soft); }
+  .res.warn { color:var(--amber); background:var(--amber-soft); }
+
+  /* pipeline bands */
+  .bands { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; }
+  .bcol { border-radius:14px; padding:14px; }
+  .bcol.a { background:var(--band-a); } .bcol.b { background:var(--band-b); } .bcol.c { background:var(--band-c); }
+  .bcol h3 { margin:2px 4px 12px; font-size:13px; letter-spacing:.02em; display:flex; align-items:center; gap:8px; }
+  .stage { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:11px 13px; margin-bottom:9px; box-shadow:var(--shadow); }
+  .stage:last-child { margin-bottom:0; }
+  .stage .st { display:flex; align-items:center; gap:8px; }
+  .stage .st b { font-size:14px; }
+  .stage p { margin:5px 0 0; font-size:12px; color:var(--ink-faint); line-height:1.4; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .dot.done{background:var(--accent);} .dot.prog{background:var(--amber);} .dot.plan{background:var(--slate);}
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:16px; font-size:12.5px; color:var(--ink-soft); }
+  .legend span { display:flex; align-items:center; gap:7px; }
+  @media (max-width:760px){ .bands{ grid-template-columns:1fr;} }
+
+  /* cards */
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:18px; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .tcard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:15px 17px; box-shadow:var(--shadow); }
+  .tcard h4 { margin:0 0 6px; font-size:15.5px; display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+  .tcard h4 .tag { font-family:var(--mono); font-size:11px; font-weight:600; color:var(--accent); background:var(--accent-soft); padding:2px 7px; border-radius:6px; letter-spacing:.02em; }
+  .tcard h4 .tag.warn { color:var(--amber); background:var(--amber-soft); }
+  .tcard h4 .tag.open { color:var(--slate); background:var(--slate-soft); }
+  .tcard p { margin:0 0 8px; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .tcard p:last-child { margin-bottom:0; }
+  .tcard .say { font-size:12.5px; color:var(--ink); border-left:3px solid var(--accent); background:var(--accent-soft); padding:8px 11px; border-radius:0 8px 8px 0; }
+  .tcard .say b { color:var(--accent); }
+  @media (max-width:860px){ .cards, .cards.three { grid-template-columns:1fr;} }
+
+  ul.take { margin:16px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
+  ul.take li { position:relative; padding-left:26px; font-size:15px; color:var(--ink-soft); }
+  ul.take li b { color:var(--ink); }
+  ul.take li::before { content:""; position:absolute; left:4px; top:9px; width:8px; height:8px; border-radius:2px; background:var(--accent); }
+  .caveat { margin-top:16px; border-left:3px solid var(--amber); background:var(--amber-soft); border-radius:0 10px 10px 0; padding:12px 15px; font-size:13.5px; color:var(--ink-soft); }
+  .caveat b { color:var(--ink); }
+  .caveat code { color:var(--ink); }
+  .srcline { margin-top:14px; font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); }
+
+  pre.ascii { margin:18px 0 0; padding:16px 18px; background:var(--card); border:1px solid var(--line);
+              border-radius:12px; box-shadow:var(--shadow); overflow-x:auto;
+              font-family:var(--mono); font-size:12.5px; line-height:1.45; color:var(--ink-soft); }
+  pre.ascii b { color:var(--accent); }
+
+  .flow { display:flex; align-items:stretch; gap:10px; margin-top:20px; flex-wrap:wrap; }
+  .fstep { flex:1 1 150px; background:var(--card); border:1px solid var(--line); border-radius:12px;
+           padding:12px 14px; box-shadow:var(--shadow); }
+  .fstep .t { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; }
+  .fstep .v { font-size:14px; font-weight:700; margin-top:5px; }
+  .fstep .d { font-size:12px; color:var(--ink-faint); margin-top:5px; line-height:1.4; }
+
+  /* HUD */
+  .progress { position:fixed; top:0; left:0; height:3px; background:var(--accent); z-index:50; transition:width .42s cubic-bezier(.4,0,.2,1); }
+  .hud { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:50;
+         display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line);
+         border-radius:999px; padding:5px 6px; box-shadow:var(--shadow); }
+  .hud button { border:none; background:transparent; color:var(--ink-soft); font:inherit; cursor:pointer;
+                width:34px; height:34px; border-radius:999px; display:grid; place-items:center; font-size:16px; }
+  .hud button:hover { background:var(--accent-soft); color:var(--accent); }
+  .hud button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .hud .count { font-family:var(--mono); font-size:13px; color:var(--ink-soft); min-width:56px; text-align:center; font-variant-numeric:tabular-nums; }
+  .hud .sep { width:1px; height:20px; background:var(--line); margin:0 2px; }
+  .hint { position:fixed; bottom:22px; right:22px; z-index:40; font-size:12px; color:var(--ink-faint); font-family:var(--mono); }
+  @media (max-width:600px){ .hint{ display:none; } }
+
+  /* figures */
+  figure.fig { margin:16px 0 0; }
+  figure.fig img { display:block; width:100%; max-height:46vh; object-fit:contain; border-radius:12px;
+                   border:1px solid var(--line); background:#fff; box-shadow:var(--shadow); padding:6px; }
+  figcaption { margin-top:10px; font-size:12.5px; color:var(--ink-faint); line-height:1.45; }
+  figcaption b { color:var(--ink-soft); }
+
+  /* Additions over docs/treemap-raster-correction/presentation.html. */
+  pre.run { margin:16px 0 0; padding:14px 16px; background:var(--card); border:1px solid var(--line);
+            border-radius:12px; box-shadow:var(--shadow); overflow-x:auto;
+            font-family:var(--mono); font-size:12.5px; line-height:1.5; color:var(--ink-faint); }
+  pre.run .cmd { color:var(--ink); font-weight:600; }
+  pre.run .cmd::before { content:"$ "; color:var(--accent); }
+  pre.run .note { color:var(--accent); }
+  .tcard pre.run { box-shadow:none; margin-top:10px; }
+  a { color:var(--accent); }
+  /* Additions for this deck: split layouts, full-screen maps, pending method slots. */
+  .split { display:grid; grid-template-columns:1.15fr 1fr; gap:18px; align-items:start; }
+  @media (max-width:900px){ .split { grid-template-columns:1fr; } }
+  .tiles.two { grid-template-columns:repeat(2,1fr); }
+  figure.fig.tall img { max-height:60vh; }
+  .slide.map .inner { max-width:1500px; }
+  figure.fig.full img { max-height:84vh; }
+  .pending { margin-top:18px; border:2px dashed var(--line-strong); border-radius:14px; padding:16px 18px; background:var(--card); }
+  .pending p { margin:0 0 6px; color:var(--ink-soft); font-size:14.5px; }
+  .split table, table.compact { min-width:0; }
+  table.compact tbody td { padding:7px 12px; }
+  figure.fig.short img { max-height:38vh; }
+  .tcard p.cite { font-size:11.5px; color:var(--ink-faint); border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
+</style>
+
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+  <section class="slide" id="holes">
+    <div class="inner">
+      <p class="eyebrow">Improved rasters · five-county Florida AOI · standup 2026-09-29</p>
+      <p class="kicker">The problem <span class="rule"></span> 01</p>
+      <h2>TreeMap's holes are NWOS's holes</h2>
+      <p class="lede">Planted pine you can see in NAIP carries <b>no TreeMap plot</b>, and the ownership raster calls the
+        same ground <b>Non-forest</b>. TreeMap's forest comes from LANDFIRE EVT, and NWOS's land cover from NLCD. Both are in the NLCD lineage, and they miss the same land.</p>
+      <figure class="fig tall"><img src="figures/fig01_holes_treemap_nwos.jpg" alt="Two NAIP chips of planted pine with the TreeMap and NWOS rasters over them; the outlined stands have no TreeMap plot and NWOS calls them non-forest">
+        <figcaption>White outline: land this repair adds back. NWOS Non-forest is drawn clear, so the imagery shows through.
+          Across the AOI, <b>66%</b> of the land we add back (48,840 of 74,068 ac) is NWOS Non-forest, and 152,096 ac of
+          TreeMap's <i>published</i> forest already is.</figcaption></figure>
+      <p class="srcline">docs/improved-rasters-fl/make_figures.py · fig_holes · sites in data/chip_sites.csv</p>
+    </div>
+  </section>
+
+  <section class="slide" id="missing">
+    <div class="inner">
+      <p class="kicker">How much is missing <span class="rule"></span> 02</p>
+      <h2>TreeMap maps 95% of Florida's forest and 87% of the AOI's</h2>
+      <p class="lede">Against FIA's design-based forest-land estimate, TreeMap 2022 is <b>855k ac short statewide</b> and
+        <b>161k ac short in the five counties</b>. The AOI gap is 2.12 standard errors, outside FIA's 95% interval.</p>
+      <div class="split">
+        <figure class="fig"><img src="figures/fig02_fia_gap.png" alt="Dot chart of TreeMap 2022 forest as a percent of the FIA estimate for Florida, the AOI and five counties"></figure>
+        <div class="tbl-wrap"><table class="compact">
+          <thead><tr><th>Geography</th><th class="num">FIA forest ac</th><th class="num">SE</th><th class="num">TreeMap ac</th><th class="num">Short</th></tr></thead>
+          <tbody>
+            <tr><td class="name">Florida</td><td class="num">16,816,373</td><td class="num">0.9%</td><td class="num">15,961,784</td><td class="num"><b>854,589</b></td></tr>
+            <tr><td class="name">5-county AOI</td><td class="num">1,255,424</td><td class="num">6.0%</td><td class="num">1,094,686</td><td class="num"><b>160,738</b></td></tr>
+            <tr><td>Baker</td><td class="num">282,210</td><td class="num">12.5%</td><td class="num">290,434</td><td class="num">−8,224</td></tr>
+            <tr><td>Columbia</td><td class="num">366,897</td><td class="num">11.6%</td><td class="num">321,473</td><td class="num">45,424</td></tr>
+            <tr><td>Hamilton</td><td class="num">219,170</td><td class="num">16.3%</td><td class="num">193,396</td><td class="num">25,775</td></tr>
+            <tr><td>Suwannee</td><td class="num">240,362</td><td class="num">15.2%</td><td class="num">182,243</td><td class="num">58,119</td></tr>
+            <tr><td>Union</td><td class="num">146,785</td><td class="num">20.1%</td><td class="num">107,141</td><td class="num">39,644</td></tr>
+          </tbody></table></div>
+      </div>
+      <p class="sub">FIA: EVALIDator, forest land area (attribute 2), evaluation group 122022 (EVALID 122201, EXPCURR). The AOI is
+        requested as one domain so its sampling error is correct (262 plots; Florida 3,234). A single county's interval is ±25–40%, so county
+        comparisons show direction, not proof.</p>
+      <p class="srcline">data/fia_forest_area.json · data/treemap_florida.json · data/fia_gap.csv</p>
+    </div>
+  </section>
+
+  <section class="slide" id="methods">
+    <div class="inner">
+      <p class="kicker">Three ways to find the missing forest <span class="rule"></span> 03</p>
+      <h2>Three methods, three kinds of evidence</h2>
+      <p class="lede">Each method proposes TreeMap holes to add back. Bookends read <b>LANDFIRE classifications</b>; the other two
+        read <b>Landsat time series</b> through different algorithms. Only bookends has run in this pipeline. The other two are
+        wired in and waiting for their rasters.</p>
+      <div class="cards three">
+        <div class="tcard"><h4>Bookends <span class="tag">run</span></h4>
+          <p>LANDFIRE EVT <b>2016</b> and <b>2024</b> bracket each hole. S1 (logged 2016, tree 2024) and S2 (tree at both)
+            are added back outright. S3/S4 (evidence at one end) pass only if an AlphaEarth-embedding classifier agrees
+            (similarity ≥ 0.907, p ≥ 0.5). S5 (no evidence) never passes.</p>
+          <p class="cite">LANDFIRE EVT LF2016 Remap &amp; LF2024 (USGS/USDA FS). Google Satellite Embedding V1 (AlphaEarth).</p></div>
+        <div class="tcard"><h4>Landsat disturbance <span class="tag open">pending</span></h4>
+          <p>Shingo Obata's Integrated Forest Z-score detector runs through every Landsat 5/7/8 scene and dates the
+            <b>last stand-replacing disturbance</b>. We accept a hole whose cut is dated <b>2010–2022</b>.</p>
+          <p class="cite">Obata, Cieszewski, Bettinger, Lowe &amp; Bernardes (2018), “Estimating the last disturbance year of
+            forest stands in Coastal Georgia using all the available Landsat imagery with Google Earth Engine,” ForestSAT 2018.
+            Code: ShingObt/GEE (geepipe fork).</p></div>
+        <div class="tcard"><h4>Hansen forest loss <span class="tag open">pending</span></h4>
+          <p>UMD Global Forest Change records the year of canopy loss. We accept a hole with loss in <b>2001–2022</b> on
+            ground that carried <b>≥ 30% canopy in 2000</b>.</p>
+          <p class="cite">Hansen et al. (2013), “High-resolution global maps of 21st-century forest cover change,”
+            <i>Science</i> 342:850–853. GFC v1.13 (2025).</p></div>
+      </div>
+      <p class="sub">Products repaired: TreeMap 2022 CONUS (Houtman et al. 2025, RDS-2025-0032) and forest ownership circa 2022
+        (Harris, Caputo &amp; Butler 2025, RDS-2025-0045).</p>
+      <p class="srcline">pipeline/s1_initial_state/add_back_methods.py · county_improvement.py (obata_rule, hansen_rule)</p>
+    </div>
+  </section>
+
+  <section class="slide" id="bookend-chips">
+    <div class="inner">
+      <p class="kicker">Method 1 · bookends <span class="rule"></span> 04</p>
+      <h2>What bookends add back: pine stands in NAIP</h2>
+      <p class="lede">One example per stratum, taken from among the most interior patches. Bookends propose <b>97,798 ac</b>; a
+        5-acre minimum patch leaves <b>74,068 ac in ≈2,900 patches</b>, each filled from one of <b>199 donor plots</b>.</p>
+      <figure class="fig tall"><img src="figures/fig04_bookend_chips.jpg" alt="Four chips, one per bookend stratum, showing the added-back patch over TreeMap and over NAIP"></figure>
+      <div class="tiles">
+        <div class="tile"><div class="n">41.5k</div><div class="l">S1 hole ac · logged 2016 → tree 2024 · outright</div></div>
+        <div class="tile"><div class="n">11.4k</div><div class="l">S2 hole ac · tree 2016 and 2024 · outright</div></div>
+        <div class="tile"><div class="n">151k</div><div class="l">S3 + S4 hole ac · evidence at one end · model-gated</div></div>
+        <div class="tile"><div class="n warn">506k</div><div class="l">S5 hole ac · no evidence at either end · never added</div></div>
+      </div>
+      <p class="srcline">fig_bookend_chips · NAIP USDA/NAIP/DOQQ, flight closest to mid-2022 · /mnt/d/improved-rasters/aoi_5county/bookend_strata.tif</p>
+    </div>
+  </section>
+
+  <section class="slide" id="obata-chips">
+    <div class="inner">
+      <p class="kicker">Method 2 · Landsat disturbance <span class="rule"></span> 05</p>
+      <h2>Obata disturbance chips: the slot is built, the run is next</h2>
+      <p class="lede">The pipeline reads a <b>last-disturbance-year raster</b> on TreeMap's grid and accepts cuts dated 2010–2022.
+        A geepipe run for WRS-2 <b>p17r39</b> (2010–2023) already covers 100% of the AOI. Pointing the county run at it turns
+        this method on.</p>
+      <div class="pending">
+        <p><b>Pending: no chips yet.</b> Once the raster is supplied, <span class="mono">make_figures.py</span> draws the same chip
+          layout as slide 04 for this method.</p>
+        <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --obata-tif &lt;lastDist-2010-2023-p17-r39…tif&gt;</span></pre>
+        <ul class="take">
+          <li><b>AOI:</b> one scene (p17r39); the exported run is <span class="mono">raster-improvement/GEE-raster-correct/data/runs/</span>.</li>
+          <li><b>Statewide:</b> a greedy cover of Florida needs <b>14 WRS-2 scenes</b>, about an hour of Earth Engine time each. Where scenes overlap, the mosaic needs a rule.</li>
+          <li><b>Known recall:</b> 12 of 12 random detections were real clearings in NAIP, but recall is about 38%, so its acreage is a floor.</li>
+        </ul>
+      </div>
+      <p class="srcline">county_improvement.Inputs.obata · obata_rule · raster-improvement/notes/disturbance-vs-treemap-holes.md</p>
+    </div>
+  </section>
+
+  <section class="slide" id="hansen-chips">
+    <div class="inner">
+      <p class="kicker">Method 3 · Hansen forest loss <span class="rule"></span> 06</p>
+      <h2>Hansen chips: the slot is built, one Earth Engine pull away</h2>
+      <p class="lede">The pipeline reads a two-band Hansen raster (lossyear, treecover2000) on TreeMap's grid and accepts loss
+        in 2001–2022 on ground with ≥ 30% canopy in 2000. The data is global, so the county-by-county scale-up needs no new
+        processing, only a pull onto the grid.</p>
+      <div class="pending">
+        <p><b>Pending: no chips yet.</b> Same chip layout as slide 04 once the raster is supplied.</p>
+        <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --hansen-tif &lt;hansen_on_treemap_grid.tif&gt;</span></pre>
+        <ul class="take">
+          <li><b>Source:</b> <span class="mono">UMD/hansen/global_forest_change_2025_v1_13</span>, read with the TreeMap <span class="mono">crsTransform</span> (never <span class="mono">scale=</span>; that is a silent 15 m shift).</li>
+          <li><b>Known weakness:</b> in the pilot, about half of Hansen-only add-back was agriculture in NAIP. It is the most permissive method, so it is credited last.</li>
+        </ul>
+      </div>
+      <p class="srcline">county_improvement.Inputs.hansen · hansen_rule · raster-improvement/scripts/step11_fetch_aoi_layers.py (fetch_hansen)</p>
+    </div>
+  </section>
+
+  <section class="slide" id="together">
+    <div class="inner">
+      <p class="kicker">Putting them together <span class="rule"></span> 07</p>
+      <h2>Bookends alone move the AOI from −2.12 to −1.14 SE of FIA</h2>
+      <p class="lede">Each bar is TreeMap as published plus what each method adds. Methods are credited in order of
+        permissiveness: <b>bookends → Obata → Hansen</b>. A pixel found by several methods counts once, under the first. Obata and
+        Hansen will stack onto the same bars when they run.</p>
+      <figure class="fig short"><img src="figures/fig07_area_vs_fia.png" alt="Stacked horizontal bars: TreeMap published plus bookends add-back, as percent of FIA, with FIA 95% interval whiskers, for the AOI and five counties"></figure>
+      <div class="tbl-wrap"><table class="compact">
+        <thead><tr><th>Geography</th><th class="num">Published ac</th><th class="num">+ Bookends</th><th class="num">Improved ac</th><th class="num">% of FIA</th><th class="num">vs FIA</th></tr></thead>
+        <tbody>
+          <tr><td class="name">5-county AOI</td><td class="num">1,094,686</td><td class="num">74,068</td><td class="num"><b>1,168,754</b></td><td class="num">93.1%</td><td class="num"><b>−1.14 SE</b></td></tr>
+          <tr><td>Baker</td><td class="num">290,434</td><td class="num">15,872</td><td class="num">306,306</td><td class="num">108.5%</td><td class="num">+0.68 SE</td></tr>
+          <tr><td>Columbia</td><td class="num">321,473</td><td class="num">20,265</td><td class="num">341,738</td><td class="num">93.1%</td><td class="num">−0.59 SE</td></tr>
+          <tr><td>Hamilton</td><td class="num">193,396</td><td class="num">12,614</td><td class="num">206,009</td><td class="num">94.0%</td><td class="num">−0.37 SE</td></tr>
+          <tr><td>Suwannee</td><td class="num">182,243</td><td class="num">19,914</td><td class="num">202,156</td><td class="num">84.1%</td><td class="num">−1.05 SE</td></tr>
+          <tr><td>Union</td><td class="num">107,141</td><td class="num">5,403</td><td class="num">112,544</td><td class="num">76.7%</td><td class="num">−1.16 SE</td></tr>
+          </tbody></table></div>
+      <p class="srcline">fig_area_vs_fia · data/area_vs_fia.csv · add_back_methods.priority_attribution</p>
+    </div>
+  </section>
+
+  <section class="slide" id="synthesis">
+    <div class="inner">
+      <p class="kicker">Proposed synthesis <span class="rule"></span> 08</p>
+      <h2>Proposal: add back forest where any two methods agree</h2>
+      <p class="lede">One method alone can be fooled: bookends by LANDFIRE's carry-forward, Hansen by agriculture, the
+        detector by missed cuts. Two agreeing methods are harder to fool. The rule is one flag,
+        <span class="mono">--rule at_least_two</span>. It refuses to run until two methods have run, so it cannot silently
+        add back nothing.</p>
+      <div class="split">
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Found by</th><th class="num">Pilot ac</th><th>Any-two rule</th><th class="num">NAIP check</th></tr></thead>
+          <tbody>
+            <tr class="goodrow"><td class="name">All three</td><td class="num">37,338</td><td><span class="res pass">add</span></td><td class="num">5 / 6</td></tr>
+            <tr class="goodrow"><td class="name">Bookends + Obata</td><td class="num">10,426</td><td><span class="res pass">add</span></td><td class="num"></td></tr>
+            <tr class="goodrow"><td class="name">Bookends + Hansen</td><td class="num">20,097</td><td><span class="res pass">add</span></td><td class="num"></td></tr>
+            <tr class="goodrow"><td class="name">Obata + Hansen</td><td class="num">60,653</td><td><span class="res warn">add · check</span></td><td class="num">—</td></tr>
+            <tr><td>Bookends only</td><td class="num">6,196</td><td><span class="res open">hold</span></td><td class="num">6 / 6</td></tr>
+            <tr><td>Obata only</td><td class="num">38,638</td><td><span class="res open">hold</span></td><td class="num">4 / 6</td></tr>
+            <tr><td>Hansen only</td><td class="num">82,135</td><td><span class="res fail">reject</span></td><td class="num">3 / 6</td></tr>
+          </tbody></table></div>
+        <div>
+          <div class="tiles two">
+            <div class="tile"><div class="n good">128,514</div><div class="l">ac added under any-two (pilot)</div></div>
+            <div class="tile"><div class="n good">−0.42 SE</div><div class="l">AOI vs FIA under any-two, inside the interval</div></div>
+          </div>
+          <div class="caveat"><b>Before adopting it:</b> Obata and Hansen are both Landsat change detectors, not independent
+            evidence, and their pair is 47% of the consensus. Check that cell against NAIP first. Bookends-only has
+            the best NAIP record, so it may deserve a place too.</div>
+        </div>
+      </div>
+      <p class="sub">Pilot numbers are exploratory: they come from the three-method comparison in
+        <span class="mono">raster-improvement/scripts/step12_three_method_synthesis.py</span>, presented in
+        <span class="mono">docs/treemap-raster-correction/presentation.html</span>, not from this pipeline.</p>
+      <p class="srcline">add_back_methods.ConsensusRule · MethodMasks.combine</p>
+    </div>
+  </section>
+
+  <section class="slide map" id="aoi-treemap-before">
+    <div class="inner">
+      <p class="kicker">Five-county AOI · TreeMap 2022 · before <span class="rule"></span> 09</p>
+      <figure class="fig full"><img src="figures/fig09_treemap_before.png" alt="Map of the five-county AOI: TreeMap 2022 forest in green, unmapped land in tan"></figure>
+      <p class="srcline">/mnt/d/improved-rasters/aoi_5county/treemap2022_published.tif · preview at 60 m, priority-downsampled</p>
+    </div>
+  </section>
+
+  <section class="slide map" id="aoi-treemap-after">
+    <div class="inner">
+      <p class="kicker">Five-county AOI · TreeMap 2022 · after <span class="rule"></span> 10</p>
+      <figure class="fig full"><img src="figures/fig10_treemap_after.png" alt="Map of the five-county AOI after repair: added-back forest in violet"></figure>
+      <p class="srcline">/mnt/d/improved-rasters/aoi_5county/treemap2022_improved.tif (TM_ID) · treemap2022_provenance.tif (colours)</p>
+    </div>
+  </section>
+
+  <section class="slide map" id="aoi-nwos-before">
+    <div class="inner">
+      <p class="kicker">Five-county AOI · NWOS ownership 2022 · before <span class="rule"></span> 11</p>
+      <figure class="fig full"><img src="figures/fig11_nwos_before.png" alt="Map of NWOS ownership classes across the AOI as published"></figure>
+      <p class="srcline">/mnt/d/improved-rasters/aoi_5county/nwos2022_published.tif · Harris 0–8 classes on the TreeMap grid</p>
+    </div>
+  </section>
+
+  <section class="slide map" id="aoi-nwos-after">
+    <div class="inner">
+      <p class="kicker">Five-county AOI · NWOS ownership 2022 · after <span class="rule"></span> 12</p>
+      <figure class="fig full"><img src="figures/fig12_nwos_after.png" alt="Map of NWOS ownership classes after every improved-forest pixel is given an owner"></figure>
+      <p class="srcline">/mnt/d/improved-rasters/aoi_5county/nwos2022_improved.tif · nwos2022_provenance.tif</p>
+    </div>
+  </section>
+
+  <section class="slide" id="ownership-repair">
+    <div class="inner">
+      <p class="kicker">The ownership repair <span class="rule"></span> 13</p>
+      <h2>Every forest pixel gets an owner, in four steps</h2>
+      <div class="flow">
+        <div class="fstep"><div class="t">1 · Align</div><div class="v">NWOS onto TreeMap's grid</div><div class="d">10 m EPSG:4269 warped (nearest) onto the 30 m EPSG:5070 TreeMap grid. No class changes.</div></div>
+        <div class="fstep"><div class="t">2 · Define forest</div><div class="v">Improved TreeMap</div><div class="d">Published forest plus added-back forest: 1,168,754 ac.</div></div>
+        <div class="fstep"><div class="t">3 · Find the gaps</div><div class="v">Forest NWOS calls Non-forest</div><div class="d">201,862 ac: 200,936 Non-forest (152,096 on published forest, 48,840 on added-back land) and 926 water.</div></div>
+        <div class="fstep"><div class="t">4 · Impute</div><div class="v">Nearest known owner</div><div class="d">Take the class of the nearest family, corporate, tribal, federal, state or local pixel within 1.9 km. Past that, Unknown forest (144 ac).</div></div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Owner class, on improved forest</th><th class="num">Before ac</th><th class="num">After ac</th><th class="num">Change</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Family</td><td class="num">577,891</td><td class="num">711,813</td><td class="num">+133,922</td></tr>
+          <tr><td class="name">Corporate</td><td class="num">193,166</td><td class="num">243,885</td><td class="num">+50,719</td></tr>
+          <tr><td class="name">Federal</td><td class="num">142,125</td><td class="num">151,145</td><td class="num">+9,020</td></tr>
+          <tr><td class="name">Local</td><td class="num">28,234</td><td class="num">34,974</td><td class="num">+6,740</td></tr>
+          <tr><td class="name">State</td><td class="num">8,672</td><td class="num">9,991</td><td class="num">+1,319</td></tr>
+          <tr><td class="name">Unknown forest</td><td class="num">16,803</td><td class="num">16,946</td><td class="num">+143</td></tr>
+          <tr class="failrow"><td class="name">Non-forest / water</td><td class="num">201,862</td><td class="num">0</td><td class="num">−201,862</td></tr>
+        </tbody></table></div>
+      <p class="sub">Known owners and NWOS's own Unknown forest never change. The scope is a flag: <span class="mono">--ownership-scope
+        added_back</span> would re-own only the 48,840 ac of added-back land and leave the published-forest gap alone.</p>
+      <p class="srcline">pipeline/s1_initial_state/ownership_repair.py · repair_ownership · OwnershipRepairScope</p>
+    </div>
+  </section>
+
+  <section class="slide" id="init-options">
+    <div class="inner">
+      <p class="kicker">Initialization <span class="rule"></span> 14</p>
+      <h2>How should an added-back pixel be initialized?</h2>
+      <p class="lede">A recovered pixel needs a <b>tree list</b> so FVS can grow it, and an <b>owner</b> so a regime can be
+        assigned. The options:</p>
+      <div class="cards">
+        <div class="tcard"><h4>Vegetation</h4>
+          <p><b>Spatial nearest neighbour</b>: the plot most common around the patch. Cheap, and keeps the local species mix.</p>
+          <p><b>Feature-space nearest neighbour</b>: the nearest plot whose AlphaEarth embedding looks alike (cosine ≥ 0.9 within
+            210 m, the Union County prototype).</p>
+          <p><b>Stratum-matched donor</b>: an S1 (logged 2016 → regrowth) patch takes a young-pine plot, not the mature
+            stand beside it.</p>
+          <p><b>Prescribed establishment</b>: an owner-class planting (for example corporate slash pine at age 0), as for clearcuts.</p></div>
+        <div class="tcard"><h4>Ownership</h4>
+          <p><b>Nearest known owner</b>: the class of the nearest NWOS owner pixel.</p>
+          <p><b>Parcel majority</b>: the dominant owner class among known-owner pixels in the same parcel. The Florida parcel
+            layer is on the drive.</p>
+          <p><b>Modal neighbourhood</b>: the most common owner in a ring around the patch, not the single nearest pixel.</p>
+          <p><b>Leave Unknown forest</b>: honest, but unknown forest gets no regime.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" id="nn-imputation">
+    <div class="inner">
+      <p class="kicker">What we do: nearest-neighbour imputation <span class="rule"></span> 15</p>
+      <h2>Vegetation by patch, ownership by pixel</h2>
+      <figure class="fig"><img src="figures/fig15_imputation_zoom.jpg" alt="Four panels of one site: TreeMap forest type before and after donor fill, NWOS owner before and after nearest-owner fill, over NAIP"></figure>
+      <div class="cards">
+        <div class="tcard"><h4>Vegetation (TreeMap) <span class="tag">per patch</span></h4>
+          <p>Each accepted patch is 8-connected. It takes the <b>modal TreeMap plot</b> in the first ring around it that has any
+            (3, 7, 15, 31, then 63 px), so one patch gets one plot and becomes one stand. The donor's own tree rows are its
+            establishment list, with <span class="mono">PLT_CN</span> kept as a string. AOI: 199 donor plots, 7,897 tree rows.</p></div>
+        <div class="tcard"><h4>Ownership (NWOS) <span class="tag">per pixel</span></h4>
+          <p>Each forest pixel NWOS calls Non-forest takes the <b>nearest known-owner pixel</b> (Euclidean distance transform, up to
+            63 px). A patch can split between two owners along the midline between them, just as real ownership boundaries cut stands.</p></div>
+      </div>
+      <div class="caveat"><b>Open item:</b> the donor is a <i>standing</i> plot. For an S1 patch (cut 2016, regrowing), copying a
+        mature plot overstates biomass. The regeneration-audit gotcha applies: pair the donor's species with seedling
+        size and age, not its DBH and height.</div>
+      <p class="srcline">impute_establishment.donor_assignments · ownership_repair.repair_ownership · fig_imputation</p>
+    </div>
+  </section>
+
+  <section class="slide" id="conclusion">
+    <div class="inner">
+      <p class="kicker">Conclusion <span class="rule"></span> 16</p>
+      <h2>Bookends close 46% of the AOI gap; two more methods are ready to plug in</h2>
+      <ul class="take">
+        <li><b>Built and run, county by county.</b> Baker, Columbia, Hamilton, Suwannee and Union ran one at a time; each is
+          saved on its own and then stitched. No pixel was claimed twice.</li>
+        <li><b>TreeMap: +74,068 ac.</b> The AOI moves from 87.2% to 93.1% of FIA, and from −2.12 to −1.14 SE, now inside the interval.</li>
+        <li><b>NWOS: 201,862 ac of forest had no owner.</b> 201,718 ac now take the nearest owner's class, and 144 ac become Unknown forest.</li>
+        <li><b>Next:</b> plug in Obata (p17r39 already covers the AOI) and Hansen, check the Obata + Hansen cell against NAIP,
+          then switch to <span class="mono">--rule at_least_two</span>.</li>
+        <li><b>Then scale:</b> add counties to <span class="mono">--counties</span> until Florida is stitched. Statewide the
+          gap is 855k ac; Obata needs 14 Landsat scenes.</li>
+        <li><b>Limits:</b> donors are mature plots on young ground; post-2016 cuts that TreeMap still maps as standing forest are
+          not holes, so this repair cannot see them.</li>
+      </ul>
+      <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --counties 12003 12023 12047 12121 12125</span>
+<span class="cmd">uv run python docs/improved-rasters-fl/make_figures.py</span>
+<span class="note"># rasters: /mnt/d/improved-rasters/counties/&lt;fips&gt;_&lt;name&gt;/ and /mnt/d/improved-rasters/aoi_5county/ (COG)</span></pre>
+    </div>
+  </section>
+</div>
+
+<nav class="hud" aria-label="slide navigation">
+  <button id="prev" aria-label="previous slide">‹</button>
+  <span class="count" id="count">1 / 1</span>
+  <button id="next" aria-label="next slide">›</button>
+  <span class="sep"></span>
+  <button id="theme" aria-label="toggle light/dark">◐</button>
+</nav>
+<div class="hint">← → / space</div>
+
+<script>
+  (function(){
+    var deck = document.getElementById('deck');
+    var slides = deck.querySelectorAll('.slide');
+    var n = slides.length, i = 0;
+    var count = document.getElementById('count');
+    var progress = document.getElementById('progress');
+    function render(){
+      deck.style.transform = 'translateX(' + (-i*100) + 'vw)';
+      count.textContent = (i+1) + ' / ' + n;
+      progress.style.width = ((i+1)/n*100) + '%';
+      // Keep the address bar citable: #slide-id is how code and other decks link here.
+      try { history.replaceState(null, '', slides[i].id ? '#' + slides[i].id : location.pathname + location.search); } catch (e) {}
+    }
+    function to(x){ i = Math.max(0, Math.min(n-1, x)); render(); }
+    function go(d){ to(i+d); }
+    function fromHash(){
+      var id = decodeURIComponent(location.hash.slice(1));
+      for (var k = 0; k < n; k++) if (id && slides[k].id === id) i = k;
+      // The browser's own jump to #id scrolls the page and the slide under the transform;
+      // undo it so the deck, not native anchor scrolling, decides what is on screen.
+      requestAnimationFrame(function(){
+        window.scrollTo(0, 0); document.body.scrollLeft = 0; document.body.scrollTop = 0;
+        deck.scrollLeft = 0; slides[i].scrollTop = 0;
+      });
+    }
+    document.getElementById('next').onclick = function(){ go(1); };
+    document.getElementById('prev').onclick = function(){ go(-1); };
+    document.addEventListener('keydown', function(e){
+      if (e.key==='ArrowRight' || e.key===' ' || e.key==='PageDown'){ e.preventDefault(); go(1); }
+      else if (e.key==='ArrowLeft' || e.key==='PageUp'){ e.preventDefault(); go(-1); }
+      else if (e.key==='Home'){ e.preventDefault(); to(0); }
+      else if (e.key==='End'){ e.preventDefault(); to(n-1); }
+    });
+    window.addEventListener('hashchange', function(){ fromHash(); render(); });
+    var x0 = null, y0 = null;
+    deck.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive:true});
+    deck.addEventListener('touchend', function(e){
+      if (x0 === null) return;
+      var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+      x0 = null;
+    }, {passive:true});
+    var root = document.documentElement, modes=['','light','dark'], m=0;
+    document.getElementById('theme').onclick = function(){
+      m=(m+1)%3; if(modes[m]) root.setAttribute('data-theme',modes[m]); else root.removeAttribute('data-theme');
+    };
+    fromHash();
+    render();
+  })();
+</script>
