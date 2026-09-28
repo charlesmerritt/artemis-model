@@ -1,6 +1,6 @@
 # Scaled nearest-neighbour establishment for added-back forest
 
-**Status:** accepted, 2026-09-28
+**Status:** superseded by [ADR 0003](0003-dated-stand-age-and-young-plots.md) (accepted 2026-09-28)
 
 ## Context
 
