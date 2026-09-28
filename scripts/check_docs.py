@@ -42,7 +42,7 @@ sys.path.insert(0, str(REPO_ROOT))
 #   code      owed as docstrings, doctests, --help or a check; delete once that lands
 MARKDOWN_BUDGET = {
     ".agents/skills/linear/SKILL.md": (37, "keep"),            # agent skill; linear.py --help is the usage
-    "AGENTS.md": (63, "keep"),                                # the architect's agent brief
+    "AGENTS.md": (72, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-28 for the regeneration gotcha
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
     "CONTEXT.md": (64, "keep"),                               # the project vocabulary
     "README.md": (119, "keep"),
@@ -71,6 +71,8 @@ MARKDOWN_BUDGET = {
     "pipeline/s6_outputs/README.md": (166, "keep"),           # operational entry point
     "pipeline/s5_imagery/README.md": (180, "code"),                    # -> module docstrings, --help
     "research/fia_treemap_fortype/README.md": (115, "convert"),        # -> treemap deck
+    "research/regeneration_audit/README.md": (113, "record"),          # investigation with runnable probes
+    "research/regeneration_audit/proposed_revisions.md": (249, "convert"),  # owed regeneration.py
     "research/restart_fidelity/README.md": (204, "convert"),           # -> restart-fidelity deck
     "viewer/README.md": (126, "code"),                                 # -> serve_viewer.py --help
     "scripts/notes/README.md": (226, "keep"),                 # orientation for scripts/

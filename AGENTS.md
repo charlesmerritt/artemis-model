@@ -4,6 +4,15 @@
 Data may be available on an external hard drive under /mnt/d/ symlinked to data on the work laptop, otherwise it is available in Cloudflare R2.
 
 ## Gotchas
+### Regeneration has multiple paths; a rendered clearcut does not prove reestablishment
+
+`regime_templates` emits establishment defaults, while `regime_library` passes explicit
+harvests without regeneration. Configured `regen_slot`, `delay_years`, and `repeats` do not
+establish that a restart loop consumes them. See `research/regeneration_audit/README.md`
+and its runnable probes before changing this policy. Reusing an original stand after a
+clearcut must distinguish a seedling configuration from restoring mature DBH/height;
+resetting age alone would restore mature biomass.
+
 ### FIA control numbers (`PLT_CN`, `STAND_CN`, etc.) must not be cast via `str(int(...))`
 
 `PLT_CN` and the other FIA control numbers (`STAND_CN`, `COND_CN`, `PLOT_CN`, `TREE_CN`,
