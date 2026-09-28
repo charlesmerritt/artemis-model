@@ -185,6 +185,10 @@
   table.compact tbody td { padding:7px 12px; }
   figure.fig.short img { max-height:38vh; }
   .tcard p.cite { font-size:11.5px; color:var(--ink-faint); border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
+  .tcard p.chosen { border-left:3px solid var(--accent); background:var(--accent-soft); padding:7px 10px; border-radius:0 8px 8px 0; }
+  .decision { margin-top:16px; border-left:3px solid var(--accent); background:var(--accent-soft); border-radius:0 10px 10px 0;
+              padding:12px 15px; font-size:13.5px; color:var(--ink-soft); }
+  .decision b { color:var(--ink); }
 </style>
 
 <div class="progress" id="progress"></div>
@@ -289,7 +293,8 @@
       <div class="pending">
         <p><b>Pending: no chips yet.</b> Once the raster is supplied, <span class="mono">make_figures.py</span> draws the same chip
           layout as slide 04 for this method.</p>
-        <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --obata-tif &lt;lastDist-2010-2023-p17-r39…tif&gt;</span></pre>
+        <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.young_stand_profiles</span>  <span class="note"># only when FIA changes; about 4 min</span>
+<span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --obata-tif &lt;lastDist-2010-2023-p17-r39…tif&gt;</span></pre>
         <ul class="take">
           <li><b>AOI:</b> one scene (p17r39); the exported run is <span class="mono">raster-improvement/GEE-raster-correct/data/runs/</span>.</li>
           <li><b>Statewide:</b> a greedy cover of Florida needs <b>14 WRS-2 scenes</b>, about an hour of Earth Engine time each. Where scenes overlap, the mosaic needs a rule.</li>
@@ -309,7 +314,8 @@
         processing, only a pull onto the grid.</p>
       <div class="pending">
         <p><b>Pending: no chips yet.</b> Same chip layout as slide 04 once the raster is supplied.</p>
-        <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --hansen-tif &lt;hansen_on_treemap_grid.tif&gt;</span></pre>
+        <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.young_stand_profiles</span>  <span class="note"># only when FIA changes; about 4 min</span>
+<span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --hansen-tif &lt;hansen_on_treemap_grid.tif&gt;</span></pre>
         <ul class="take">
           <li><b>Source:</b> <span class="mono">UMD/hansen/global_forest_change_2025_v1_13</span>, read with the TreeMap <span class="mono">crsTransform</span> (never <span class="mono">scale=</span>; that is a silent 15 m shift).</li>
           <li><b>Known weakness:</b> in the pilot, about half of Hansen-only add-back was agriculture in NAIP. It is the most permissive method, so it is credited last.</li>
@@ -450,7 +456,10 @@
             210 m, the Union County prototype).</p>
           <p><b>Stratum-matched donor</b>: an S1 (logged 2016 → regrowth) patch takes a young-pine plot, not the mature
             stand beside it.</p>
-          <p><b>Prescribed establishment</b>: an owner-class planting (for example corporate slash pine at age 0), as for clearcuts.</p></div>
+          <p><b>Prescribed establishment</b>: an owner-class planting (for example corporate slash pine at age 0), as for clearcuts.</p>
+          <p class="chosen"><span class="res pass">chosen</span> <b>Scaled nearest neighbour</b>: the spatial neighbour gives the forest
+            type and species mix; an FIA age-5 profile of that forest type gives the density and tree size. Standing forest (S2)
+            keeps the neighbour as is. Slide 15.</p></div>
         <div class="tcard"><h4>Ownership</h4>
           <p><b>Nearest known owner</b>: the class of the nearest NWOS owner pixel.</p>
           <p><b>Parcel majority</b>: the dominant owner class among known-owner pixels in the same parcel. The Florida parcel
@@ -463,22 +472,41 @@
 
   <section class="slide" id="nn-imputation">
     <div class="inner">
-      <p class="kicker">What we do: nearest-neighbour imputation <span class="rule"></span> 15</p>
+      <p class="kicker">What we do: scaled nearest-neighbour imputation <span class="rule"></span> 15</p>
       <h2>Vegetation by patch, ownership by pixel</h2>
-      <figure class="fig"><img src="figures/fig15_imputation_zoom.jpg" alt="Four panels of one site: TreeMap forest type before and after donor fill, NWOS owner before and after nearest-owner fill, over NAIP"></figure>
+      <figure class="fig short"><img src="figures/fig15_imputation_zoom.jpg" alt="Four panels of one site: TreeMap forest type before and after donor fill, NWOS owner before and after nearest-owner fill, over NAIP"></figure>
       <div class="cards">
         <div class="tcard"><h4>Vegetation (TreeMap) <span class="tag">per patch</span></h4>
           <p>Each accepted patch is 8-connected. It takes the <b>modal TreeMap plot</b> in the first ring around it that has any
-            (3, 7, 15, 31, then 63 px), so one patch gets one plot and becomes one stand. The donor's own tree rows are its
-            establishment list, with <span class="mono">PLT_CN</span> kept as a string. AOI: 199 donor plots, 7,897 tree rows.</p></div>
+            (3, 7, 15, 31, then 63 px), so one patch gets one plot and becomes one stand. The donor gives the
+            <b>forest type and species mix</b>.</p>
+          <p>A cut or regrowing patch (S1, S3, S4: 72,469 ac) takes its <b>density and tree size from the age-5 profile</b> of
+            that forest type below. Each donor species gets its share of the donor's live TPA. The raster marks these pixels
+            provenance 4. Standing forest (S2: 1,599 ac) keeps the donor's own tree rows, provenance 2.
+            <span class="mono">PLT_CN</span> stays a string.</p>
+          <table class="compact">
+            <thead><tr><th>Age 5, FIA AL/FL/GA</th><th class="num">TPA</th><th class="num">DBH in</th><th class="num">HT ft</th><th class="num">Plots</th></tr></thead>
+            <tbody>
+              <tr><td class="name">Longleaf / slash pine</td><td class="num">381</td><td class="num">2.94</td><td class="num">15.7</td><td class="num">532</td></tr>
+              <tr><td class="name">Loblolly / shortleaf pine</td><td class="num">471</td><td class="num">2.75</td><td class="num">16.7</td><td class="num">1,203</td></tr>
+              <tr><td class="name">Oak / pine</td><td class="num">332</td><td class="num">2.74</td><td class="num">17.8</td><td class="num">452</td></tr>
+              <tr><td class="name">Oak / gum / cypress</td><td class="num">237</td><td class="num">2.96</td><td class="num">20.0</td><td class="num">174</td></tr>
+              <tr><td class="name">Other hardwood</td><td class="num">279</td><td class="num">3.00</td><td class="num">20.1</td><td class="num">824</td></tr>
+              <tr><td>Other (3 plots: uses all plots)</td><td class="num">375</td><td class="num">2.84</td><td class="num">17.7</td><td class="num">3,188</td></tr>
+            </tbody></table>
+          <p class="cite">STDAGE 3–7, single-condition national-design plots, 1997–2024. TPA is the median plot's live trees
+            (DIA ≥ 1 in); DBH is the TPA-weighted quadratic mean. Seedlings are measured but not added: TreeMap's tree lists
+            carry none.</p></div>
         <div class="tcard"><h4>Ownership (NWOS) <span class="tag">per pixel</span></h4>
           <p>Each forest pixel NWOS calls Non-forest takes the <b>nearest known-owner pixel</b> (Euclidean distance transform, up to
             63 px). A patch can split between two owners along the midline between them, just as real ownership boundaries cut stands.</p></div>
       </div>
-      <div class="caveat"><b>Open item:</b> the donor is a <i>standing</i> plot. For an S1 patch (cut 2016, regrowing), copying a
-        mature plot overstates biomass. The regeneration-audit gotcha applies: pair the donor's species with seedling
-        size and age, not its DBH and height.</div>
-      <p class="srcline">impute_establishment.donor_assignments · ownership_repair.repair_ownership · fig_imputation</p>
+      <div class="decision"><b>Decided: scaled nearest neighbour.</b> A neighbour's mature trees no longer land on cut ground. Added-back
+        live basal area falls from <b>5.94M ft² with mature donors to 1.36M ft²</b> as established (80.2 → 18.4 ft²/ac; live TPA
+        469 → 381). The profile sets density by default; <span class="mono">density: donor</span> would keep the donor's TPA and
+        still reset size. Record: <span class="mono">docs/adr/0002-scaled-nearest-neighbour-establishment.md</span>.</div>
+      <p class="srcline">impute_establishment.scaled_establishment_lists · config/establishment.yaml · config/young_stand_profiles.yaml ·
+        data/aoi_summary.json (establishment.live_effect) · ownership_repair.repair_ownership · fig_imputation</p>
     </div>
   </section>
 
@@ -491,16 +519,22 @@
           saved on its own and then stitched. No pixel was claimed twice.</li>
         <li><b>TreeMap: +74,068 ac.</b> The AOI moves from 87.2% to 93.1% of FIA, and from −2.12 to −1.14 SE, now inside the interval.</li>
         <li><b>NWOS: 201,862 ac of forest had no owner.</b> 201,718 ac now take the nearest owner's class, and 144 ac become Unknown forest.</li>
+        <li><b>Decided: scaled nearest neighbour.</b> Cut and regrowing patches (72,469 ac) start at age 5, with the donor's species
+          mix and the FIA age-5 density and size of its forest type. Standing forest (1,599 ac) keeps its donor. Added-back live
+          basal area: 5.94M → 1.36M ft². The mature-donor limit is resolved (ADR 0002).</li>
         <li><b>Next:</b> plug in Obata (p17r39 already covers the AOI) and Hansen, check the Obata + Hansen cell against NAIP,
           then switch to <span class="mono">--rule at_least_two</span>.</li>
         <li><b>Then scale:</b> add counties to <span class="mono">--counties</span> until Florida is stitched. Statewide the
           gap is 855k ac; Obata needs 14 Landsat scenes.</li>
-        <li><b>Limits:</b> donors are mature plots on young ground; post-2016 cuts that TreeMap still maps as standing forest are
-          not holes, so this repair cannot see them.</li>
+        <li><b>Limits:</b> every scaled stand starts at age 5, whatever year it was cut; the Obata cut year can date it later.
+          Post-2016 cuts that TreeMap still maps as standing forest are not holes, so this repair cannot see them.</li>
       </ul>
-      <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --counties 12003 12023 12047 12121 12125</span>
+      <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.young_stand_profiles</span>  <span class="note"># only when FIA changes; about 4 min</span>
+<span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --counties 12003 12023 12047 12121 12125</span>
 <span class="cmd">uv run python docs/improved-rasters-fl/make_figures.py</span>
 <span class="note"># rasters: /mnt/d/improved-rasters/counties/&lt;fips&gt;_&lt;name&gt;/ and /mnt/d/improved-rasters/aoi_5county/ (COG)</span></pre>
+      <p class="srcline">data/aoi_summary.json (added_back_acres_by_mode, establishment.live_effect) · config/young_stand_profiles.yaml ·
+        docs/adr/0002-scaled-nearest-neighbour-establishment.md</p>
     </div>
   </section>
 </div>

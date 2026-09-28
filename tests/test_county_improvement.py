@@ -10,20 +10,26 @@ from pipeline.s1_initial_state.county_improvement import (
     OUTSIDE,
     Grid,
     TreeMapProvenance as TP,
+    county_summary,
     hansen_rule,
     improve_block,
     obata_rule,
     read_on_grid,
     stitch_rasters,
 )
+from pipeline.s1_initial_state.impute_establishment import EstablishmentMode as M
 from pipeline.s1_initial_state.ownership_repair import OwnershipProvenance as OP
+
+MODES = {1: M.SCALED_YOUNG, 2: M.DONOR_AS_IS, 3: M.SCALED_YOUNG, 4: M.SCALED_YOUNG}
 
 PX = 0.2224  # acres per pixel
 
 
-def block(tm, land=None, bookends=None, obata=None, nwos=None, **kw):
+def block(tm, land=None, bookends=None, obata=None, nwos=None, strata=None, **kw):
     tm = np.array(tm, dtype=np.uint32)
     land = np.ones(tm.shape, dtype=bool) if land is None else np.array(land, dtype=bool)
+    # Default S2 (tree at both bookends): donor as is, provenance 2.
+    strata = np.full(tm.shape, 2, dtype=np.uint8) if strata is None else np.array(strata, dtype=np.uint8)
     masks = MethodMasks({
         AddBackMethod.BOOKENDS: None if bookends is None else np.array(bookends, dtype=bool),
         AddBackMethod.OBATA_DISTURBANCE: None if obata is None else np.array(obata, dtype=bool),
@@ -31,7 +37,8 @@ def block(tm, land=None, bookends=None, obata=None, nwos=None, **kw):
     nwos = np.full(tm.shape, 3, dtype=np.uint8) if nwos is None else np.array(nwos, dtype=np.uint8)
     kw.setdefault("rule", ConsensusRule.UNION)
     kw.setdefault("min_acres", 0.0)
-    return improve_block(tm, land, masks, np.zeros(tm.shape, dtype=np.uint8), nwos, **kw)
+    kw.setdefault("stratum_modes", MODES)
+    return improve_block(tm, land, masks, strata, nwos, **kw)
 
 
 def test_an_accepted_patch_takes_its_neighbours_plot_and_is_marked_added_back():
@@ -77,6 +84,45 @@ def test_added_back_forest_gets_the_nearest_known_owner():
     r = block([[7, 0, 0]], bookends=[[0, 1, 0]], nwos=[[4, 1, 1]])
     assert r.ownership.tolist() == [[4, 4, 1]]
     assert r.ownership_provenance.tolist() == [[OP.PUBLISHED, OP.IMPUTED, OP.NOT_FOREST]]
+
+
+def test_a_cut_or_regrowing_patch_is_marked_added_back_young_and_standing_forest_added_back():
+    # Left patch S1 (logged 2016, tree 2024): scaled young list. Right patch S2: donor as is.
+    r = block([[7, 0, 0, 7, 0, 0, 7]],
+              bookends=[[0, 1, 1, 0, 1, 1, 0]],
+              strata=[[0, 1, 1, 0, 2, 2, 0]])
+    assert r.provenance[0].tolist() == [TP.PUBLISHED, TP.ADDED_BACK_YOUNG, TP.ADDED_BACK_YOUNG,
+                                        TP.PUBLISHED, TP.ADDED_BACK, TP.ADDED_BACK, TP.PUBLISHED]
+    assert r.improved[0].tolist() == [7] * 7          # both keep the donor TM_ID
+    assert r.added_back[0].tolist() == [False, True, True, False, True, True, False]
+    assert sorted(r.assignments["establishment_mode"]) == ["donor_as_is", "scaled_young"]
+
+
+def test_a_patch_without_a_stratum_is_scaled_young():
+    r = block([[7, 0, 7]], bookends=[[0, 1, 0]], strata=[[0, 0, 0]])
+    assert r.provenance[0, 1] == TP.ADDED_BACK_YOUNG
+
+
+def test_added_back_covers_both_provenance_codes():
+    prov = np.array([TP.WATER, TP.PUBLISHED, TP.ADDED_BACK, TP.UNMAPPED_LAND, TP.ADDED_BACK_YOUNG])
+    assert TP.added_back(prov).tolist() == [False, False, True, False, True]
+
+
+def test_county_summary_counts_added_back_acres_by_mode_and_both_as_holes():
+    r = block([[7, 0, 0, 7, 0, 0, 7, 0]],
+              bookends=[[0, 1, 1, 0, 1, 0, 0, 0]],
+              strata=[[0, 1, 1, 0, 2, 2, 0, 5]])
+    import pandas as pd
+    patches = r.assignments.assign(county_pixels=1)
+    whole = (slice(None), slice(None))
+    s = county_summary("12003", r, np.zeros(r.provenance.shape, dtype=np.uint8),
+                       np.ones(r.provenance.shape, dtype=bool), whole,
+                       np.zeros(r.provenance.shape, dtype=bool), ConsensusRule.UNION, 0.0, "all_forest", 63,
+                       pd.DataFrame(patches))
+    assert s["added_back_acres"] == pytest.approx(round(3 * PX, 1))
+    assert s["added_back_acres_by_mode"] == {"scaled_young": round(2 * PX, 1),
+                                             "donor_as_is": round(1 * PX, 1)}
+    assert s["hole_acres"] == pytest.approx(round(5 * PX, 1))   # 3 added back + 2 still unmapped
 
 
 def test_obata_rule_accepts_cuts_dated_2010_through_2022():

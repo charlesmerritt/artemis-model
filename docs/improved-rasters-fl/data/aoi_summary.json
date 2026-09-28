@@ -30,6 +30,75 @@
     "obata_disturbance": null,
     "hansen_loss": null
   },
+  "added_back_acres_by_mode": {
+    "scaled_young": 72468.9,
+    "donor_as_is": 1599.3
+  },
+  "establishment": {
+    "target_age": 5,
+    "density": "forest_type_profile",
+    "stratum_modes": {
+      "S1": "scaled_young",
+      "S2": "donor_as_is",
+      "S3": "scaled_young",
+      "S4": "scaled_young",
+      "S5": "scaled_young"
+    },
+    "donors": 199,
+    "tree_list_rows": {
+      "donor_as_is": 1981,
+      "scaled_young": 684
+    },
+    "live_effect": {
+      "by_mode": {
+        "donor_as_is": {
+          "acres": 1599.3,
+          "mature_donor": {
+            "live_tpa": 535.7,
+            "live_ba_ft2_per_ac": 76.1,
+            "live_trees": 856738,
+            "live_ba_ft2": 121662
+          },
+          "established": {
+            "live_tpa": 535.7,
+            "live_ba_ft2_per_ac": 76.1,
+            "live_trees": 856738,
+            "live_ba_ft2": 121662
+          }
+        },
+        "scaled_young": {
+          "acres": 72468.8,
+          "mature_donor": {
+            "live_tpa": 467.1,
+            "live_ba_ft2_per_ac": 80.3,
+            "live_trees": 33847744,
+            "live_ba_ft2": 5818650
+          },
+          "established": {
+            "live_tpa": 377.3,
+            "live_ba_ft2_per_ac": 17.1,
+            "live_trees": 27339476,
+            "live_ba_ft2": 1242832
+          }
+        }
+      },
+      "total": {
+        "acres": 74068.1,
+        "mature_donor": {
+          "live_tpa": 468.5,
+          "live_ba_ft2_per_ac": 80.2,
+          "live_trees": 34704482,
+          "live_ba_ft2": 5940313
+        },
+        "established": {
+          "live_tpa": 380.7,
+          "live_ba_ft2_per_ac": 18.4,
+          "live_trees": 28196214,
+          "live_ba_ft2": 1364494
+        }
+      }
+    }
+  },
   "methods": {
     "bookends": "run",
     "obata_disturbance": "pending",

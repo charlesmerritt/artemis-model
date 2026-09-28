@@ -1,0 +1,32 @@
+# How an added-back TreeMap patch is initialized: scaled nearest-neighbour establishment.
+# Decision record: docs/adr/0002-scaled-nearest-neighbour-establishment.md.
+# Read by pipeline/s1_initial_state/impute_establishment.py (EstablishmentPolicy) and by
+# pipeline/s1_initial_state/county_improvement.py.
+#
+# The donor plot (the modal TreeMap plot in the ring around a patch) always gives the
+# forest type and the species mix. What else it gives depends on the patch's LANDFIRE
+# bookend stratum:
+#
+#   scaled_young  the stand is re-established at `target_age`: density and tree size come
+#                 from config/young_stand_profiles.yaml (the donor's forest type group,
+#                 measured on FIA plots), the species shares from the donor. Raster
+#                 provenance 4 (ADDED_BACK_YOUNG).
+#   donor_as_is   the donor's own tree rows, verbatim. Raster provenance 2 (ADDED_BACK).
+
+target_age: 5              # years; the profiles are measured on FIA STDAGE target_age ± 2
+
+# Where the scaled list's TPA comes from.
+#   forest_type_profile  the age-5 profile's median live TPA, split by the donor's species
+#                        shares. The default: a mature donor's TPA is what survived decades
+#                        of mortality and thinning, not a planting density.
+#   donor                the donor's own live TPA by species (sizes still reset to the profile).
+density: forest_type_profile
+
+# Mode per LANDFIRE 2016/2024 bookend stratum. A stratum not listed (0: no strata given)
+# is scaled_young: without evidence of standing forest, never add mature biomass.
+stratum_modes:
+  1: scaled_young          # S1 logged 2016 -> tree 2024: cut, now regrowing
+  2: donor_as_is           # S2 tree 2016 and 2024: standing forest at both bookends
+  3: scaled_young          # S3 tree 2016 -> open 2024: cut after 2016
+  4: scaled_young          # S4 open 2016 -> tree 2024: regrowth
+  5: scaled_young          # S5 no evidence: only a disturbance detector can add it back

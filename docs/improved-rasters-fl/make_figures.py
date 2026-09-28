@@ -45,6 +45,10 @@ from pipeline.s1_initial_state.county_improvement import (  # noqa: E402
 )
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL  # noqa: E402
 from pipeline.s1_initial_state.statewide_repair import FLGrid  # noqa: E402
+from pipeline.s1_initial_state.young_stand_profiles import (  # noqa: E402
+    ForestTypeGroup as FTG,
+    forest_type_group,
+)
 from pipeline.s1_initial_state.verify_fia_evalidator import (  # noqa: E402
     ATTRIBUTE_AREA_FOREST,
     EVAL_GRP,
@@ -301,6 +305,8 @@ def draw_map(classes: np.ndarray, transform, palette: dict[int, str], legend: li
 def fig_aoi_maps(aoi: dict) -> None:
     prov, t, nodata = read("treemap2022_provenance.tif")
     nodata = int(nodata)
+    # Both establishment modes are added back (2 donor as is, 4 scaled young): one colour.
+    prov = np.where(TP.added_back(prov), np.uint8(TP.ADDED_BACK), prov)
     order = [int(TP.ADDED_BACK), int(TP.PUBLISHED), int(TP.UNMAPPED_LAND), int(TP.WATER), nodata]
     before = prov.copy()
     before[prov == TP.ADDED_BACK] = TP.UNMAPPED_LAND
@@ -314,7 +320,9 @@ def fig_aoi_maps(aoi: dict) -> None:
              "fig09_treemap_before.png", "TreeMap 2022 as published: five-county AOI")
     draw_map(priority_reduce(prov, 2, order), t, pal,
              [(f"TreeMap forest ({pub / 1e6:.3f}M ac)", PUBLISHED),
-              (f"Added back, donor-filled (+{add / 1e3:,.1f}k ac)", ADDED),
+              (f"Added back, donor-filled (+{add / 1e3:,.1f}k ac; "
+               f"{aoi['added_back_acres_by_mode']['scaled_young'] / 1e3:,.1f}k at age "
+               f"{aoi['establishment']['target_age']})", ADDED),
               ("Land still unmapped", UNMAPPED), ("Water", WATER)],
              "fig10_treemap_after.png", "TreeMap 2022 improved: five-county AOI")
 
@@ -391,7 +399,7 @@ def outline(ax, mask: np.ndarray, half_m: float, color: str) -> None:
 def added_patches(prov: np.ndarray, strata: np.ndarray, nwos: np.ndarray, t,
                   min_px: int = 150) -> pd.DataFrame:
     """Accepted patches in the AOI with centroid, size, modal stratum and interior depth."""
-    labels, n = ndimage.label(prov == TP.ADDED_BACK, structure=np.ones((3, 3)))
+    labels, n = ndimage.label(TP.added_back(prov), structure=np.ones((3, 3)))
     sizes = np.bincount(labels.ravel())
     depth = ndimage.distance_transform_edt(labels > 0)
     rows = []
@@ -441,7 +449,7 @@ def fig_holes(sites: pd.DataFrame) -> None:
         rgb, date = naip_chip(s.x, s.y, half, 3.0)
         tm = window_of(tm_before, t, s.x, s.y, half)
         ow = window_of(own, t, s.x, s.y, half)
-        hole = window_of(prov, t, s.x, s.y, half) == TP.ADDED_BACK
+        hole = TP.added_back(window_of(prov, t, s.x, s.y, half))
         row[0].imshow(rgb, extent=(-half, half, -half, half))
         row[0].set_xticks([]), row[0].set_yticks([])
         outline(row[0], hole, half, "#ffffff")
@@ -471,6 +479,7 @@ def fig_bookend_chips(sites: pd.DataFrame) -> None:
     for i, (_, s) in enumerate(sites.iterrows()):
         rgb, date = naip_chip(s.x, s.y, half, 2.0)
         cls = window_of(prov, t, s.x, s.y, half)
+        cls = np.where(TP.added_back(cls), np.uint8(TP.ADDED_BACK), cls)
         overlay(axes[0, i], np.full_like(rgb, 255), cls, pal, 1.0, half)
         axes[1, i].imshow(rgb, extent=(-half, half, -half, half))
         axes[1, i].set_xticks([]), axes[1, i].set_yticks([])
@@ -487,9 +496,9 @@ def fig_bookend_chips(sites: pd.DataFrame) -> None:
     save_jpg(fig, "fig04_bookend_chips.jpg")
 
 
-FOREST_GROUPS = [("Longleaf / slash pine", range(140, 150)), ("Loblolly / shortleaf pine", range(160, 170)),
-                 ("Oak / pine", range(400, 410)), ("Oak / gum / cypress", range(600, 610)),
-                 ("Oak / hickory & other hardwood", range(500, 1000))]
+FOREST_GROUPS = [("Longleaf / slash pine", FTG.LONGLEAF_SLASH), ("Loblolly / shortleaf pine", FTG.LOBLOLLY_SHORTLEAF),
+                 ("Oak / pine", FTG.OAK_PINE), ("Oak / gum / cypress", FTG.OAK_GUM_CYPRESS),
+                 ("Oak / hickory & other hardwood", FTG.OTHER_HARDWOOD)]
 GROUP_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]
 
 
@@ -500,11 +509,9 @@ def forest_group_lut() -> np.ndarray:
                                  read_geometry=False)
     value = vat.Value.to_numpy().astype(np.int64)   # the raster's own cell value
     fortype = vat.FORTYPCD.to_numpy().astype(np.int64)
+    index = {group: gi for gi, (_, group) in enumerate(FOREST_GROUPS, start=1)}
     lut = np.zeros(int(value.max()) + 1, dtype=np.uint8)
-    for gi, (_, codes) in enumerate(FOREST_GROUPS, start=1):
-        sel = np.isin(fortype, list(codes)) & (lut[value] == 0)
-        lut[value[sel]] = gi
-    lut[value[lut[value] == 0]] = len(FOREST_GROUPS) + 1  # other
+    lut[value] = [index.get(forest_type_group(code), len(FOREST_GROUPS) + 1) for code in fortype]
     return lut
 
 
@@ -523,7 +530,7 @@ def fig_imputation(site: pd.Series) -> None:
         overlay(ax, rgb, cls, pal, 0.8, half)
         ax.set_title(title, loc="left", fontsize=10.5, color=INK)
     prov, t, _ = read("treemap2022_provenance.tif")
-    added = window_of(prov, t, site.x, site.y, half) == TP.ADDED_BACK
+    added = TP.added_back(window_of(prov, t, site.x, site.y, half))
     for ax, name, title in ((axes[2], "nwos2022_published.tif", "NWOS owner, before"),
                             (axes[3], "nwos2022_improved.tif", "after: nearest known owner")):
         own, t, _ = read(name)
@@ -550,12 +557,12 @@ def main() -> None:
     FIG.mkdir(exist_ok=True)
     DATA.mkdir(exist_ok=True)
     aoi, counties = summaries()
+    pd.json_normalize(counties).to_csv(DATA / "county_summaries.csv", index=False)
+    (DATA / "aoi_summary.json").write_text(json.dumps(aoi, indent=2))
     if "fia" in args.only:
         fia = fia_estimates()
         fig_fia_gap(fia, treemap_florida(), counties, aoi)
         fig_area_vs_fia(fia, counties, aoi)
-        pd.json_normalize(counties).to_csv(DATA / "county_summaries.csv", index=False)
-        (DATA / "aoi_summary.json").write_text(json.dumps(aoi, indent=2))
     if "maps" in args.only:
         fig_aoi_maps(aoi)
     if "chips" in args.only:

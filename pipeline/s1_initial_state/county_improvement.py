@@ -19,7 +19,11 @@ Per county:
 4. **Decision.** ``ConsensusRule`` combines the proposals, then the 5 ac minimum patch
    area applies.
 5. **Vegetation.** Each accepted patch takes the modal TreeMap plot (``TM_ID``) in the
-   nearest ring that has any (:func:`impute_establishment.donor_assignments`).
+   nearest ring that has any (:func:`impute_establishment.donor_assignments`). Its
+   bookend stratum sets the establishment mode (``config/establishment.yaml``): a cut
+   or regrowing patch (S1, S3, S4) is ``scaled_young``, provenance 4, and takes only
+   type and species mix from the donor; standing forest (S2) is ``donor_as_is``,
+   provenance 2.
 6. **Ownership.** Improved-forest pixels NWOS does not carry as forest take the nearest
    known owner (:mod:`ownership_repair`).
 
@@ -27,13 +31,21 @@ Outputs, one folder per county under ``/mnt/d/improved-rasters/counties/<fips>_<
 ``treemap2022_{published,improved,provenance}.tif``,
 ``nwos2022_{published,improved,provenance}.tif``, ``add_back_method_bits.tif``,
 ``bookend_strata.tif``, ``establishment_patches.csv`` and ``summary.json``. ``stitch``
-writes the same rasters for the AOI under ``aoi_5county/``.
+writes the same rasters for the AOI under ``aoi_5county/``, plus
+``establishment_tree_lists.csv`` keyed by ``(TM_ID, establishment_mode)`` and, in its
+``summary.json``, the live basal area and TPA the added-back acres carry with mature
+donors vs. as established.
+
+A consumer joining ``treemap2022_improved.tif`` to TreeMap's tree table must check the
+provenance first: a provenance-4 pixel's ``TM_ID`` names its donor for forest type and
+species mix only, and its trees are the ``scaled_young`` rows of the establishment list.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
 from pathlib import Path
@@ -45,7 +57,7 @@ from rasterio import features
 from rasterio.transform import Affine
 from rasterio.windows import Window
 
-from pipeline.ids import read_id_csv
+from pipeline.ids import as_id_series, read_id_csv
 from pipeline.spatial_ref import project_crs
 from pipeline.s1_initial_state.add_back_methods import (
     METHOD_PRIORITY,
@@ -57,9 +69,13 @@ from pipeline.s1_initial_state.add_back_methods import (
 )
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL, apply_mmu
 from pipeline.s1_initial_state.impute_establishment import (
+    EstablishmentMode,
     donor_assignments,
-    establishment_tree_lists,
+    establishment_effect,
     label_patches,
+    load_establishment_policy,
+    mode_for_stratum,
+    scaled_establishment_lists,
 )
 from pipeline.s1_initial_state.ownership_repair import (
     MAX_DISTANCE_PX,
@@ -95,10 +111,23 @@ class Stage(StrEnum):
 
 
 class TreeMapProvenance(IntEnum):
-    WATER = 0           # LANDFIRE 2022 water; never a hole
-    PUBLISHED = 1       # TreeMap 2022 as published
-    ADDED_BACK = 2      # hole accepted by the consensus rule, filled with a donor plot
-    UNMAPPED_LAND = 3   # land TreeMap does not map and no accepted method adds back
+    WATER = 0             # LANDFIRE 2022 water; never a hole
+    PUBLISHED = 1         # TreeMap 2022 as published
+    ADDED_BACK = 2        # accepted hole, donor_as_is: the donor plot's own tree rows
+    UNMAPPED_LAND = 3     # land TreeMap does not map and no accepted method adds back
+    ADDED_BACK_YOUNG = 4  # accepted hole, scaled_young: the TM_ID gives type and species mix only;
+                          # initialize from the scaled establishment list, never the donor's rows
+
+    @classmethod
+    def added_back(cls, provenance: np.ndarray) -> np.ndarray:
+        """Pixels added back under either establishment mode."""
+        return np.isin(provenance, (cls.ADDED_BACK, cls.ADDED_BACK_YOUNG))
+
+
+PROVENANCE_BY_MODE = {EstablishmentMode.SCALED_YOUNG: TreeMapProvenance.ADDED_BACK_YOUNG,
+                      EstablishmentMode.DONOR_AS_IS: TreeMapProvenance.ADDED_BACK}
+PROVENANCE_DESCRIPTION = ("0 water, 1 published, 2 added back (donor as is), 3 unmapped land, "
+                          "4 added back young (scaled establishment list, not the donor's trees)")
 
 
 @dataclass(frozen=True)
@@ -114,6 +143,11 @@ class Inputs:
     counties: Path = Path("/mnt/d/county_p010g.shp_nt00934/countyp010g.shp")
     obata: Path | None = None    # geepipe lastDist (disturbance year) on the TreeMap grid
     hansen: Path | None = None   # band 1 lossyear, band 2 treecover2000, on the TreeMap grid
+
+    @property
+    def vat(self) -> Path:
+        """TreeMap's value attribute table: raster ``Value`` (== ``TM_ID``) -> ``FORTYPCD``, ..."""
+        return self.treemap.with_name(self.treemap.name + ".vat.dbf")
 
     def evt(self, year: int) -> tuple[Path, Path]:
         base = self.landfire / f"LF{year}_EVT_CONUS" / f"LF{year}_EVT_CONUS"
@@ -183,7 +217,16 @@ def stamp_donors(ids: np.ndarray, labels: np.ndarray, assignments: pd.DataFrame)
     return recovered
 
 
-PATCH_COLUMNS = ["pixels", "acres", "stratum", "donor_tm_id", "est_year_low", "est_year_high"]
+PATCH_COLUMNS = ["pixels", "acres", "stratum", "donor_tm_id", "est_year_low", "est_year_high",
+                 "establishment_mode"]
+
+
+def mode_provenance(labels: np.ndarray, assignments: pd.DataFrame) -> np.ndarray:
+    """Per pixel, the added-back provenance code of its patch's establishment mode (0 off-patch)."""
+    per_patch = np.zeros(int(labels.max()) + 1, dtype=np.uint8)
+    for patch_id, mode in assignments.get("establishment_mode", pd.Series(dtype=object)).items():
+        per_patch[patch_id] = PROVENANCE_BY_MODE[EstablishmentMode(mode)]
+    return per_patch[labels]
 
 
 @dataclass
@@ -201,15 +244,22 @@ class BlockResult:
 
 def improve_block(tm_ids: np.ndarray, land: np.ndarray, masks: MethodMasks, strata: np.ndarray,
                   nwos: np.ndarray, *, rule: ConsensusRule, min_acres: float,
+                  stratum_modes: Mapping[int, EstablishmentMode],
                   scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
                   reach: float = MAX_DISTANCE_PX) -> BlockResult:
-    """Decide, fill and re-own the holes of one block. ``tm_ids`` is 0 where TreeMap has no plot."""
+    """Decide, fill and re-own the holes of one block. ``tm_ids`` is 0 where TreeMap has no plot.
+
+    ``stratum_modes`` maps a patch's bookend stratum to its establishment mode; a stratum
+    it does not list is ``scaled_young`` (:func:`impute_establishment.mode_for_stratum`).
+    """
     hole = (tm_ids == 0) & land
     accepted = apply_mmu(masks.combine(rule) & hole, min_acres) & hole
     labels, n_patches = label_patches(accepted)
     improved = tm_ids.copy()
     if n_patches:
         assignments, _ = donor_assignments(improved, labels, strata=strata)
+        assignments["establishment_mode"] = [
+            str(mode_for_stratum(s, stratum_modes)) for s in assignments["stratum"]]
     else:  # donor_assignments cannot index an empty frame
         assignments = pd.DataFrame(columns=PATCH_COLUMNS).rename_axis("patch_id")
     added_back = stamp_donors(improved, labels, assignments)
@@ -217,7 +267,7 @@ def improve_block(tm_ids: np.ndarray, land: np.ndarray, masks: MethodMasks, stra
     provenance = np.full(tm_ids.shape, TreeMapProvenance.WATER, dtype=np.uint8)
     provenance[hole] = TreeMapProvenance.UNMAPPED_LAND
     provenance[tm_ids > 0] = TreeMapProvenance.PUBLISHED
-    provenance[added_back] = TreeMapProvenance.ADDED_BACK
+    provenance[added_back] = mode_provenance(labels, assignments)[added_back]
 
     ownership, ownership_provenance = repair_ownership(
         nwos, improved > 0, added_back, scope=scope, max_distance_px=reach)
@@ -277,7 +327,10 @@ def _write(path: Path, values: np.ndarray, transform: Affine, nodata, descriptio
 def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_ROOT, *,
                    rule: ConsensusRule = ConsensusRule.UNION, min_acres: float = 5.0,
                    scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
-                   reach: float = MAX_DISTANCE_PX) -> dict:
+                   reach: float = MAX_DISTANCE_PX,
+                   stratum_modes: Mapping[int, EstablishmentMode] | None = None) -> dict:
+    if stratum_modes is None:
+        stratum_modes = load_establishment_policy().stratum_modes
     geom = load_county(inputs.counties, fips)
     with rasterio.open(inputs.treemap) as src:
         tm_transform, tm_nodata = src.transform, src.nodata
@@ -300,7 +353,7 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     nwos = read_on_grid(inputs.ownership, grid, fill=NWOS_NODATA)
 
     r = improve_block(tm_ids, land, masks, strata, nwos, rule=rule, min_acres=min_acres,
-                      scope=scope, reach=reach)
+                      stratum_modes=stratum_modes, scope=scope, reach=reach)
 
     # Crop the padding away and mask to the county.
     crop = (slice(PAD_PX, -PAD_PX), slice(PAD_PX, -PAD_PX))
@@ -322,9 +375,9 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
         "treemap2022_published.tif": (county(tm_published, tm_nodata), tm_nodata,
                                       "TreeMap 2022 TM_ID as published"),
         "treemap2022_improved.tif": (county(tm_improved, tm_nodata), tm_nodata,
-                                     "TreeMap 2022 TM_ID with accepted holes donor-filled"),
-        "treemap2022_provenance.tif": (county(r.provenance, OUTSIDE), OUTSIDE,
-                                       "0 water, 1 published, 2 added back, 3 unmapped land"),
+                                     "TreeMap 2022 TM_ID with accepted holes donor-filled; "
+                                     "on provenance 4 the TM_ID gives forest type and species mix only"),
+        "treemap2022_provenance.tif": (county(r.provenance, OUTSIDE), OUTSIDE, PROVENANCE_DESCRIPTION),
         "add_back_method_bits.tif": (county(r.method_bits, OUTSIDE), OUTSIDE,
                                      "bit 1 bookends, 2 obata, 4 hansen (proposals before the rule)"),
         "bookend_strata.tif": (county(strata, OUTSIDE), OUTSIDE,
@@ -363,7 +416,7 @@ def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_
         return a[crop] & inside
 
     prov = r.provenance
-    hole = c((prov == TreeMapProvenance.UNMAPPED_LAND) | (prov == TreeMapProvenance.ADDED_BACK))
+    hole = c((prov == TreeMapProvenance.UNMAPPED_LAND) | TreeMapProvenance.added_back(prov))
     added = c(r.added_back)
     proposals = MethodMasks({m: (None if r.masks.masks[m] is None else c(r.masks.masks[m]))
                              for m in METHOD_PRIORITY})
@@ -391,6 +444,8 @@ def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_
         },
         "rule_accepted_before_mmu_acres": _acres(combined),
         "added_back_acres": _acres(added),
+        "added_back_acres_by_mode": {str(m): _acres(c(prov == code))
+                                     for m, code in PROVENANCE_BY_MODE.items()},
         "added_back_credit_acres": {str(m): None if v is None else round(v * ACRES_PER_PIXEL, 1)
                                     for m, v in credited.items()},
         "dropped_by_mmu_or_no_donor_acres": round(_acres(combined) - _acres(added), 1),
@@ -441,6 +496,51 @@ def stitch_rasters(paths: list[Path], out: Path) -> int:
     return overlap
 
 
+TREE_COLUMNS = ["TM_ID", "PLT_CN", "STATUSCD", "TPA_UNADJ", "SPCD", "DIA", "HT", "CR"]
+
+
+def donor_forest_types(vat: Path, tm_ids) -> pd.Series:
+    """``FORTYPCD`` by donor ``TM_ID`` (string index), from TreeMap's VAT.
+
+    The VAT carries ``Value`` as a float; :func:`as_id_series` turns it into the exact
+    ``TM_ID`` string (TreeMap 2022's ``Value`` equals its ``TM_ID``). Its float ``PLT_CN``
+    is never read.
+    """
+    import pyogrio
+
+    vat_table = pyogrio.read_dataframe(vat, columns=["Value", "FORTYPCD"], read_geometry=False)
+    codes = pd.Series(vat_table["FORTYPCD"].to_numpy(),
+                      index=as_id_series(vat_table["Value"], column="TM_ID").to_numpy())
+    return codes[codes.index.isin(set(tm_ids))]
+
+
+def stitch_establishment(patches: pd.DataFrame, inputs: Inputs, out_dir: Path) -> dict:
+    """Write ``establishment_tree_lists.csv`` and return the policy and its effect.
+
+    The lists are keyed by ``(TM_ID, establishment_mode)``. The effect compares the live
+    basal area and TPA of the added-back acres under their mature donors with what is
+    established, AOI-wide and by mode; a patch crossing a county line counts its pixels
+    in each county once.
+    """
+    resolved = patches.dropna(subset=["donor_tm_id"]).rename(columns={"donor_tm_id": "TM_ID"})
+    donor_modes = resolved[["TM_ID", "establishment_mode"]].drop_duplicates()
+    tree_table = read_id_csv(inputs.tree_table, usecols=TREE_COLUMNS)
+    donor_rows = tree_table[tree_table["TM_ID"].isin(set(donor_modes["TM_ID"]))]
+    policy = load_establishment_policy()
+    lists = scaled_establishment_lists(donor_modes, donor_rows,
+                                       donor_forest_types(inputs.vat, donor_modes["TM_ID"]), policy)
+    lists.to_csv(out_dir / "establishment_tree_lists.csv", index=False)
+    acres = resolved.assign(acres=resolved["county_pixels"] * ACRES_PER_PIXEL)
+    return {
+        "target_age": policy.target_age,
+        "density": str(policy.density),
+        "stratum_modes": {f"S{k}": str(v) for k, v in sorted(policy.stratum_modes.items())},
+        "donors": int(donor_modes["TM_ID"].nunique()),
+        "tree_list_rows": {str(m): int(n) for m, n in lists.groupby("establishment_mode").size().items()},
+        "live_effect": establishment_effect(acres, donor_rows, lists),
+    }
+
+
 SUM_KEYS = ("county_acres", "land_acres", "published_forest_acres", "hole_acres",
             "rule_accepted_before_mmu_acres", "added_back_acres",
             "dropped_by_mmu_or_no_donor_acres", "improved_forest_acres", "patches")
@@ -456,18 +556,11 @@ def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inp
 
     summaries = [json.loads((d / "summary.json").read_text()) for d in dirs]
     pd.json_normalize(summaries).to_csv(out_dir / "county_summaries.csv", index=False)
-    patches = pd.concat([pd.read_csv(d / "establishment_patches.csv", dtype={"donor_tm_id": "string"})
+    patches = pd.concat([pd.read_csv(d / "establishment_patches.csv",
+                                     dtype={"donor_tm_id": "string", "establishment_mode": "string"})
                          for d in dirs], ignore_index=True)
     patches.to_csv(out_dir / "establishment_patches.csv", index=False)
-
-    # Establishment tree lists: every donor's verbatim tree rows, once per donor.
-    donors = (patches.drop_duplicates("donor_tm_id").dropna(subset=["donor_tm_id"])
-              .set_index("patch_id"))
-    tree_table = read_id_csv(inputs.tree_table,
-                             usecols=["TM_ID", "PLT_CN", "STATUSCD", "TPA_UNADJ", "SPCD"])
-    lists = establishment_tree_lists(donors, tree_table)
-    lists.drop(columns=["patch_id", "acres", "stratum"], errors="ignore").to_csv(
-        out_dir / "establishment_tree_lists.csv", index=False)
+    establishment = stitch_establishment(patches, inputs, out_dir)
 
     total = {k: round(sum(s[k] for s in summaries), 1) for k in SUM_KEYS}
     total["counties"] = [f"{s['county_fips']} {s['county']}" for s in summaries]
@@ -476,6 +569,10 @@ def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inp
         m: None if summaries[0]["added_back_credit_acres"][m] is None
         else round(sum(s["added_back_credit_acres"][m] for s in summaries), 1)
         for m in summaries[0]["added_back_credit_acres"]}
+    total["added_back_acres_by_mode"] = {
+        m: round(sum(s["added_back_acres_by_mode"][m] for s in summaries), 1)
+        for m in summaries[0]["added_back_acres_by_mode"]}
+    total["establishment"] = establishment
     total["methods"] = {m: summaries[0]["methods"][m]["status"] for m in summaries[0]["methods"]}
     total["rule"] = summaries[0]["rule"]
     (out_dir / "summary.json").write_text(json.dumps(total, indent=2))
@@ -505,8 +602,9 @@ def main() -> None:
         for fips in args.counties:
             s = improve_county(fips, inputs, args.out_root, rule=args.rule,
                                min_acres=args.min_acres, scope=args.ownership_scope)
+            young = s["added_back_acres_by_mode"][str(EstablishmentMode.SCALED_YOUNG)]
             print(f"{fips} {s['county']:<9} holes {s['hole_acres']:>10,.0f} ac   "
-                  f"added back {s['added_back_acres']:>9,.0f} ac   "
+                  f"added back {s['added_back_acres']:>9,.0f} ac ({young:,.0f} scaled young)   "
                   f"forest {s['published_forest_acres']:>10,.0f} -> {s['improved_forest_acres']:>10,.0f} ac")
     total = stitch(args.counties, args.out_root, inputs)
     print(json.dumps(total, indent=2))

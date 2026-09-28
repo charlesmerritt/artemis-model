@@ -42,12 +42,13 @@ sys.path.insert(0, str(REPO_ROOT))
 #   code      owed as docstrings, doctests, --help or a check; delete once that lands
 MARKDOWN_BUDGET = {
     ".agents/skills/linear/SKILL.md": (37, "keep"),            # agent skill; linear.py --help is the usage
-    "AGENTS.md": (72, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-28 for the regeneration gotcha
+    "AGENTS.md": (74, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-28 for the regeneration gotcha, 72->74 for its provenance-4 rule (ADR 0002)
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
     "CONTEXT.md": (64, "keep"),                               # the project vocabulary
     "README.md": (119, "keep"),
     "data/index.md": (122, "generated"),                      # scripts/r2_index.py; regrew 2026-09-14 (+6 rows)
     "docs/adr/0001-ruderal-grassland-clean-slate.md": (36, "record"),  # accepted decision, 2026-09-13
+    "docs/adr/0002-scaled-nearest-neighbour-establishment.md": (93, "record"),  # accepted decision, 2026-09-28
     "docs/config-policy.md": (429, "convert"),                # -> policy deck
     "docs/ownership-regimes.md": (183, "convert"),            # -> policy deck (per-class regime tables)
     "docs/research/leto-vs-boundary-overlay.md": (120, "record"),      # dated comparison record
