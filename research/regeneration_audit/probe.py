@@ -29,7 +29,7 @@ def main():
     assert [(r.species, r.trees_per_acre) for r in natural] == [("LP", 400.0)]
     print("Clearcut without composition -> LP, 400 TPA; no neighbor lookup")
 
-    key = render_keyfile("MU_1", "1234567890123456789", "pine_plantation_industrial")
+    key = render_keyfile("MU_1", "1234567890123456789", "pine_plantation")
     assert "ThinDBH" in key and "Estab" not in key
     print("YAML-library plantation keyfile -> harvest present, Estab absent")
 

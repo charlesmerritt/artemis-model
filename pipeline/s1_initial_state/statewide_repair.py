@@ -152,6 +152,43 @@ def unconditional_add_back(strata: np.ndarray) -> np.ndarray:
     return np.isin(strata, (1, 2))
 
 
+@dataclasses.dataclass(frozen=True)
+class GatedScores:
+    """The fitted Stage A / Stage B thresholds applied to S3/S4."""
+
+    similarity_threshold: float
+    decision_threshold: float
+
+    @classmethod
+    def from_model_json(cls, path) -> "GatedScores":
+        model = json.loads(Path(path).read_text())
+        return cls(model["similarity_threshold"], model["decision_threshold"])
+
+
+def scored_add_back(strata: np.ndarray, hole: np.ndarray, scored: np.ndarray,
+                    gate: GatedScores, min_acres: float = 5.0) -> np.ndarray:
+    """S1/S2 unconditionally, S3/S4 only where both fitted stages pass.
+
+    ``scored`` is the two-band fixed-point export of
+    :mod:`score_holes_statewide` (band 1 = prob*SCORE_SCALE, band 2 =
+    (cosine+1)*SCORE_SCALE), decoded with the same scale here — and it must be
+    aligned with ``strata`` (checked at the CLI layer, as
+    :mod:`finalize_add_back` does).
+    """
+    from pipeline.s1_initial_state.embed_holes import SCORE_SCALE
+
+    probability = scored[0].astype(float) / SCORE_SCALE
+    similarity = scored[1].astype(float) / SCORE_SCALE - 1.0
+    conditional = (
+        np.isin(strata, (3, 4))
+        & (similarity >= gate.similarity_threshold)
+        & (probability >= gate.decision_threshold)
+    )
+    raw = (unconditional_add_back(strata) | conditional) & hole
+    from pipeline.s1_initial_state.finalize_add_back import apply_mmu
+    return apply_mmu(raw, min_acres) & hole
+
+
 def _read_aligned(path: Path, bounds, shape, transform) -> np.ndarray:
     """Window read that fails loudly on grid misalignment (never resample).
 
@@ -185,12 +222,34 @@ def _read_aligned(path: Path, bounds, shape, transform) -> np.ndarray:
     return padded
 
 
+def _read_scored(path: Path, strata: np.ndarray, transform) -> np.ndarray:
+    """Read the two-band scored raster, failing loudly on any misalignment."""
+    with rasterio.open(path) as src:
+        if src.shape != strata.shape:
+            raise ValueError(f"scored raster {src.shape} != strata {strata.shape}")
+        if src.crs != rasterio.crs.CRS.from_epsg(5070):
+            raise ValueError(f"scored raster CRS {src.crs} != EPSG:5070")
+        if not np.allclose(tuple(src.transform), tuple(transform), rtol=0, atol=1e-6):
+            raise ValueError(
+                f"scored raster transform {src.transform} != strata transform {transform}")
+        scored = src.read()
+    if scored.dtype != np.uint16 or scored.shape[0] != 2:
+        raise ValueError(f"expected two uint16 score bands, got {scored.dtype} x {scored.shape[0]}")
+    return scored
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
     parser.add_argument("--min-acres", type=float, default=5.0)
     parser.add_argument("--tile", type=int, default=2048, help="tile edge in pixels")
     parser.add_argument("--tree-table", type=Path, default=TREE_TABLE_CSV)
+    parser.add_argument("--scored-tif", type=Path, default=None,
+                        help="two-band fixed-point Stage A/B scores over the same grid "
+                             "(score_holes_statewide); when given, S3/S4 are gated by the "
+                             "model thresholds instead of staying holes")
+    parser.add_argument("--model-json", type=Path,
+                        default=REPO / "data/interim/treemap_holes/hole_model.json")
     args = parser.parse_args()
 
     import geopandas as gpd
@@ -261,8 +320,14 @@ def main() -> None:
     del land, fl_mask, extent
 
     hole_pixels = int(hole.sum())
-    add_back = unconditional_add_back(strata) & hole
-    add_back = apply_mmu(add_back, args.min_acres) & hole
+    if args.scored_tif is not None:
+        add_back = scored_add_back(
+            strata, hole, _read_scored(args.scored_tif, strata, win_transform),
+            GatedScores.from_model_json(args.model_json), args.min_acres,
+        )
+    else:
+        add_back = unconditional_add_back(strata) & hole
+        add_back = apply_mmu(add_back, args.min_acres) & hole
     add_back_pixels = int(add_back.sum())
 
     labels, n_patches = label_patches(add_back)
@@ -334,7 +399,12 @@ def main() -> None:
         "patches": n_patches,
         "unresolved_patches": len(unresolved),
         "unique_donors": int(assignments["donor_tm_id"].dropna().nunique()),
-        "model_gated_strata_pending_ee": [3, 4],
+        "model_gated_strata": [3, 4] if args.scored_tif is not None else [],
+        "s3_s4_pending_ee": [3, 4] if args.scored_tif is None else [],
+        "gate": (None if args.scored_tif is None else
+                 {"similarity_threshold": GatedScores.from_model_json(args.model_json).similarity_threshold,
+                  "decision_threshold": GatedScores.from_model_json(args.model_json).decision_threshold,
+                  "scored_tif": str(args.scored_tif)}),
         "outputs": {k: str(v) for k, v in paths.items()},
     }
     (out_dir / "repair_summary.json").write_text(json.dumps(summary, indent=2))

@@ -2,9 +2,9 @@
 
 **Status:** accepted
 
-An earlier investigation (`notes/clearcut-vs-agriculture-embeddings.md`) already scored
-ruderal grassland as a confused class, using LCMS tree-removal as the ground-truth anchor
-for a supervised classifier (spatial-CV AUC 0.99+). We are discarding that as the basis for
+An earlier investigation — scored in 2026-08, deleted with the prose notes in the
+2026-09-14 cleanup — treated ruderal grassland as a confused class using LCMS
+tree-removal as ground truth for a supervised classifier (AUC 0.99+). We discard that as the basis for
 production rectification and starting over: LCMS is not trusted as ground truth on its own,
 the sampling engineering (MMU filter, erosion, spatial blocks) is being kept only as
 optionally-reusable geometry, and the classification method is deliberately left

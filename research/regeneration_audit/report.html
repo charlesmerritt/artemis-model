@@ -116,7 +116,7 @@
       <div class="section-no">04 / Configuration</div>
       <h2 id="config-title">Define the hierarchy in config</h2>
       <p>Add one regeneration policy file. Keep donor search rules in the fallback config. Keep keyword formatting in the FVS config. These examples describe proposed interfaces; the current loaders do not implement them.</p>
-      <h3>New: <code>config/regeneration.yaml</code></h3>
+      <h3>New (proposed): <code>regeneration.yaml</code> in <code>config/</code></h3>
       <pre><code>version: 1
 
 baseline:
@@ -160,7 +160,7 @@ fallback:
       <h3>Full-clearcut prescription</h3>
       <pre><code>regen:
   method: replant_original
-  policy: config/regeneration.yaml
+  policy: regeneration.yaml  # proposed, in config/
   delay_years: 1  # preserve the hardwood prescription's 3-year delay
 rotation:
   mode: repeat   # use single where repetition is not prescribed</code></pre>
