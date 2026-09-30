@@ -36,6 +36,9 @@ writes the same rasters for the AOI under ``aoi_5county/``, plus
 ``summary.json``, the live basal area and TPA the added-back acres carry with mature
 donors vs. as established.
 
+Dating and aging the add-back pixels (ADR 0003) is a second pass over a run folder:
+:mod:`pipeline.s1_initial_state.add_back_stand_age`.
+
 A consumer joining ``treemap2022_improved.tif`` to TreeMap's tree table must check the
 provenance first: a provenance-4 pixel's ``TM_ID`` names its donor for forest type and
 species mix only, and its trees are the ``scaled_young`` rows of the establishment list.
