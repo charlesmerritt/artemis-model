@@ -80,17 +80,23 @@ def sample_pixels(provenance: np.ndarray, transform: Affine, n_per_class: int,
         rows, cols = np.unravel_index(np.sort(rng.choice(flat, n_per_class, replace=False)), mask.shape)
         frames.append(pd.DataFrame({"sample_class": str(cls), "row": rows, "col": cols}))
     table = pd.concat(frames, ignore_index=True)
-    table["x"] = transform.c + (table["col"] + 0.5) * transform.a
-    table["y"] = transform.f + (table["row"] + 0.5) * transform.e
-    table["block"] = (np.floor(table["x"] / BLOCK_M).astype(int).astype(str) + "_"
-                      + np.floor(table["y"] / BLOCK_M).astype(int).astype(str))
+    return pd.concat([table, pixel_points(table["row"], table["col"], transform)], axis=1)
+
+
+def pixel_points(rows, cols, transform: Affine) -> pd.DataFrame:
+    """Pixel centres: ``x, y`` (EPSG:5070), the 10 km CV ``block``, and ``lon, lat``."""
     from pyproj import Transformer
 
     from pipeline.spatial_ref import project_crs
 
+    rows, cols = np.asarray(rows), np.asarray(cols)
+    out = pd.DataFrame({"x": transform.c + (cols + 0.5) * transform.a,
+                        "y": transform.f + (rows + 0.5) * transform.e})
+    out["block"] = (np.floor(out["x"] / BLOCK_M).astype(int).astype(str) + "_"
+                    + np.floor(out["y"] / BLOCK_M).astype(int).astype(str))
     to_wgs84 = Transformer.from_crs(project_crs(), "EPSG:4326", always_xy=True)
-    table["lon"], table["lat"] = to_wgs84.transform(table["x"].to_numpy(), table["y"].to_numpy())
-    return table
+    out["lon"], out["lat"] = to_wgs84.transform(out["x"].to_numpy(), out["y"].to_numpy())
+    return out
 
 
 def sample_embeddings(ee, table: pd.DataFrame, year: int = FEATURE_YEAR) -> pd.DataFrame:
@@ -199,40 +205,56 @@ def treemap_like(prob: np.ndarray, threshold: float) -> np.ndarray:
 # ── the raster ──────────────────────────────────────────────────────────────────────────
 
 
-def write_score_raster(ee, detector: HoleDetector, like: Path, out: Path) -> None:
-    """Evaluate ``detector`` on ``like``'s 30 m grid; band 1 = hole probability * SCORE_SCALE (uint16)."""
+def grid_region(ee, like: Path):
+    """The bounds of ``like``'s grid as an Earth Engine rectangle in EPSG:5070."""
+    with rasterio.open(like) as src:
+        b = src.bounds
+    return ee.Geometry.Rectangle([b.left, b.bottom, b.right, b.top], proj="EPSG:5070", geodesic=False)
+
+
+def download_on_grid(ee, image, like: Path, out: Path, dtype: str, description: str,
+                     max_tile_pixels: int = 2_000_000) -> None:
+    """Download every band of ``image`` onto ``like``'s 30 m grid, tile by tile, checked to the pixel."""
     import tempfile
 
     from rasterio import windows
 
-    from pipeline.s1_initial_state.embed_holes import canvas_offsets, probability_image, tile_download_params
+    from pipeline.s1_initial_state.embed_holes import canvas_offsets, tile_download_params
     from pipeline.s1_initial_state.score_holes_statewide import _fetch, grid_tiles
 
     with rasterio.open(like) as src:
         transform, height, width, crs = src.transform, src.height, src.width, src.crs
-    left, top = transform.c, transform.f
-    region = ee.Geometry.Rectangle([left, top - height * 30, left + width * 30, top],
-                                   proj="EPSG:5070", geodesic=False)
-    image = (probability_image(ee, detector.as_embed_model(), region)
-             .multiply(SCORE_SCALE).round().toUint16())
-    canvas = np.zeros((height, width), dtype=np.uint16)
-    tiles = grid_tiles(transform, height, width)
+    canvas = None
+    tiles = grid_tiles(transform, height, width, max_tile_pixels=max_tile_pixels)
     with tempfile.TemporaryDirectory() as tmp:
         for i, (window, bounds) in enumerate(tiles, start=1):
             path = Path(tmp) / f"tile_{i}.tif"
             _fetch(image.getDownloadURL(tile_download_params(bounds)), path)
             with rasterio.open(path) as t:
-                row0, col0 = canvas_offsets(t.transform, (left, top))
+                row0, col0 = canvas_offsets(t.transform, (transform.c, transform.f))
                 if (row0, col0) != (int(window.row_off), int(window.col_off)):
                     raise ValueError(f"tile {i} landed at {(row0, col0)}, expected {window}")
-                canvas[windows.Window(col0, row0, t.width, t.height).toslices()] = t.read(1)
-            print(f"  score tile {i}/{len(tiles)}")
-    profile = dict(driver="GTiff", height=height, width=width, count=1, dtype="uint16", crs=crs,
-                   transform=transform, nodata=0, compress="deflate", tiled=True)
+                data = t.read()
+            if canvas is None:
+                canvas = np.zeros((data.shape[0], height, width), dtype=dtype)
+            canvas[(slice(None), *windows.Window(col0, row0, data.shape[2], data.shape[1]).toslices())] = data
+            print(f"  {out.name} tile {i}/{len(tiles)}")
+    profile = dict(driver="GTiff", height=height, width=width, count=canvas.shape[0], dtype=dtype,
+                   crs=crs, transform=transform, compress="deflate", tiled=True)
     with rasterio.open(out, "w", **profile) as dst:
-        dst.write(canvas, 1)
-        dst.update_tags(description=f"AlphaEarth {detector.feature_year} hole probability * {SCORE_SCALE}; "
-                                    f"below {detector.threshold:.4f} looks like TreeMap forest")
+        dst.write(canvas)
+        dst.update_tags(description=description)
+
+
+def write_score_raster(ee, detector: HoleDetector, like: Path, out: Path) -> None:
+    """Evaluate ``detector`` on ``like``'s 30 m grid; band 1 = hole probability * SCORE_SCALE (uint16)."""
+    from pipeline.s1_initial_state.embed_holes import probability_image
+
+    image = (probability_image(ee, detector.as_embed_model(), grid_region(ee, like))
+             .multiply(SCORE_SCALE).round().toUint16())
+    download_on_grid(ee, image, like, out, "uint16",
+                     f"AlphaEarth {detector.feature_year} hole probability * {SCORE_SCALE}; "
+                     f"below {detector.threshold:.4f} looks like TreeMap forest")
 
 
 def main() -> None:
