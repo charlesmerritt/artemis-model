@@ -109,8 +109,8 @@ row; comparing without that filter manufactures a large fake divergence at every
 | `thin_from_below` | 1808 | 88.6% | 90.8% | 91.2% | 808,427 vs 808,208 (−0.03%) |
 | `plantation_rotation` | 1786 | 97.5% | 84.4% | 91.4% | 409,976 vs 409,296 (−0.17%) |
 
-Rows differing by more than 5% are 0.0–1.0% of each regime. At the landscape totals ARTEMIS
-actually optimises against, the two engines agree to better than 0.2%. This is *not*
+>5% rows: 0.0–1.0% per regime. **Final totals stale until re-run:** they counted mid-run crashes
+at their last year; `compare.py` now drops those and exits 1 on a missed gate (thin's 90.8%). This is *not*
 bit-exactness: FVSjl's own validation is against a different FVS build than
 `/usr/local/bin/FVSsn`, and ARTEMIS's historical outputs came from a third
 (`FVSsn.dll` via rFVS 2024.7.1 on Windows). Whichever engine ARTEMIS runs, the reference
@@ -130,7 +130,8 @@ This is the finding with the widest consequences, and it is **not** primarily ab
   recently-regenerated stands, which is exactly the post-clearcut population the scheduler
   reasons about. `run_shard` counts these as `failed` and moves on.
 - Verify against the Windows DLL before drawing conclusions; this open-fvs build may have
-  been compiled with FP traps the production DLL does not enable.
+  been compiled with FP traps the production DLL does not enable. Only 32 stands left no rows
+  in each regime; the other 1/5/10 SIGFPEs presumably crashed after some cycles ("partial").
 
 ## 5. Open blockers
 
@@ -185,8 +186,7 @@ class FvsEngine(Protocol):
   bulk-loads them into DuckDB. Thread-private outputs also avoid SQLite write contention.
 - A `done(trajectory_id)` table makes the worker resumable, so a crash (B5) or a killed
   overnight batch costs only the jobs in flight. Python restarts the worker and continues.
-- `juliacall` in-process is rejected: it does not compose with the multiprocessing pool, and
-  a Julia-level crash would take Python down with it.
+- `juliacall` in-process is rejected: no multiprocessing pool, and a Julia crash kills Python.
 - **Keyfile text stays the contract**, so artemis's verified renderers and keyword register
   keep their meaning and any job can be replayed through FVSsn byte for byte.
 

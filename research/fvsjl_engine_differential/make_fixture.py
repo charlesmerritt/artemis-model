@@ -44,6 +44,8 @@ def main() -> None:
     for table in ("FVS_STANDINIT_PLOT", "FVS_TREEINIT_PLOT"):
         dst.execute(src.execute("SELECT sql FROM sqlite_master WHERE name=?", (table,)).fetchone()[0])
         rows = src.execute(f"SELECT * FROM {table} WHERE STAND_CN IN ({marks})", cns).fetchall()
+        if not rows:
+            raise SystemExit(f"no rows in {table} for the {len(cns)} sampled STAND_CNs")
         dst.executemany(f"INSERT INTO {table} VALUES ({','.join('?' * len(rows[0]))})", rows)
         dst.execute(f"CREATE INDEX i_{table} ON {table}(STAND_CN)")
         print(table, len(rows))
@@ -54,6 +56,8 @@ def main() -> None:
         for engine in ENGINES:
             d = work / f"{tag}_{engine}"
             d.mkdir(exist_ok=True)
+            for stale in d.glob("*.key"):  # a rerun with another --seed/--n must not keep old stands
+                stale.unlink()
             for cn in cns:
                 (d / f"{cn}.key").write_text(render_keyfile(
                     cn, cn, regime, params, in_db=str(work / "in.db"), out_db="out.db"))
