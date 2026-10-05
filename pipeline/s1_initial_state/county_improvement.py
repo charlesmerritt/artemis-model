@@ -549,6 +549,23 @@ SUM_KEYS = ("county_acres", "land_acres", "published_forest_acres", "hole_acres"
             "dropped_by_mmu_or_no_donor_acres", "improved_forest_acres", "patches")
 
 
+def sum_county_summaries(summaries: list[dict]) -> dict:
+    """The AOI totals: acres summed over counties; method status and rule from the first."""
+    first = summaries[0]
+    total = {k: round(sum(s[k] for s in summaries), 1) for k in SUM_KEYS}
+    total["counties"] = [f"{s['county_fips']} {s['county']}" for s in summaries]
+    total["added_back_credit_acres"] = {
+        m: None if first["added_back_credit_acres"][m] is None
+        else round(sum(s["added_back_credit_acres"][m] for s in summaries), 1)
+        for m in first["added_back_credit_acres"]}
+    total["added_back_acres_by_mode"] = {
+        m: round(sum(s["added_back_acres_by_mode"][m] for s in summaries), 1)
+        for m in first["added_back_acres_by_mode"]}
+    total["methods"] = {m: first["methods"][m]["status"] for m in first["methods"]}
+    total["rule"] = first["rule"]
+    return total
+
+
 def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inputs()) -> dict:
     dirs = [county_dir(out_root, f) for f in fips_list]
     out_dir = out_root / AOI_NAME
@@ -565,19 +582,9 @@ def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inp
     patches.to_csv(out_dir / "establishment_patches.csv", index=False)
     establishment = stitch_establishment(patches, inputs, out_dir)
 
-    total = {k: round(sum(s[k] for s in summaries), 1) for k in SUM_KEYS}
-    total["counties"] = [f"{s['county_fips']} {s['county']}" for s in summaries]
+    total = sum_county_summaries(summaries)
     total["stitch_overlap_pixels"] = overlaps
-    total["added_back_credit_acres"] = {
-        m: None if summaries[0]["added_back_credit_acres"][m] is None
-        else round(sum(s["added_back_credit_acres"][m] for s in summaries), 1)
-        for m in summaries[0]["added_back_credit_acres"]}
-    total["added_back_acres_by_mode"] = {
-        m: round(sum(s["added_back_acres_by_mode"][m] for s in summaries), 1)
-        for m in summaries[0]["added_back_acres_by_mode"]}
     total["establishment"] = establishment
-    total["methods"] = {m: summaries[0]["methods"][m]["status"] for m in summaries[0]["methods"]}
-    total["rule"] = summaries[0]["rule"]
     (out_dir / "summary.json").write_text(json.dumps(total, indent=2))
     return total
 

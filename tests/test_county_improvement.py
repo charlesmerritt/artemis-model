@@ -15,7 +15,9 @@ from pipeline.s1_initial_state.county_improvement import (
     improve_block,
     obata_rule,
     read_on_grid,
+    SUM_KEYS,
     stitch_rasters,
+    sum_county_summaries,
 )
 from pipeline.s1_initial_state.impute_establishment import EstablishmentMode as M
 from pipeline.s1_initial_state.ownership_repair import OwnershipProvenance as OP
@@ -168,3 +170,24 @@ def test_stitch_pastes_each_county_where_it_has_data_first_county_winning_overla
         assert s.read(1).tolist() == [[1, 1, OUTSIDE], [OUTSIDE, 1, OUTSIDE], [OUTSIDE, 2, 2]]
         assert s.transform == Affine(30, 0, 0, 0, -30, 60)
         assert s.nodata == OUTSIDE
+
+
+def county(fips, name, acres, credit, young):
+    summary = {k: acres for k in SUM_KEYS}
+    summary.update(county_fips=fips, county=name, rule="union",
+                   added_back_credit_acres={"bookends": credit, "hansen_loss": None},
+                   added_back_acres_by_mode={"scaled_young": young},
+                   methods={"bookends": {"status": "ok"}, "hansen_loss": {"status": "missing"}})
+    return summary
+
+
+def test_county_summaries_sum_to_the_aoi_total_keeping_a_missing_method_missing():
+    total = sum_county_summaries([county("12001", "Alachua", 1.04, 2.0, 0.5),
+                                  county("12003", "Baker", 2.03, 3.0, 1.25)])
+
+    assert total["added_back_acres"] == 3.1  # summed, then rounded once
+    assert total["counties"] == ["12001 Alachua", "12003 Baker"]
+    assert total["added_back_credit_acres"] == {"bookends": 5.0, "hansen_loss": None}
+    assert total["added_back_acres_by_mode"] == {"scaled_young": 1.8}
+    assert total["methods"] == {"bookends": "ok", "hansen_loss": "missing"}
+    assert total["rule"] == "union"
