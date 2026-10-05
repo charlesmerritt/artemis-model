@@ -202,7 +202,7 @@
         same ground <b>Non-forest</b>. TreeMap's forest comes from LANDFIRE EVT, and NWOS's land cover from NLCD. Both are in the NLCD lineage, and they miss the same land.</p>
       <figure class="fig tall"><img src="figures/fig01_holes_treemap_nwos.jpg" alt="Two NAIP chips of planted pine with the TreeMap and NWOS rasters over them; the outlined stands have no TreeMap plot and NWOS calls them non-forest">
         <figcaption>White outline: land this repair adds back. NWOS Non-forest is drawn clear, so the imagery shows through.
-          Across the AOI, <b>69%</b> of the land we add back (111,454 of 162,103 ac) is NWOS Non-forest, and 152,096 ac of
+          Across the AOI, <b>62%</b> of the land we add back (75,532 of 121,883 ac) is NWOS Non-forest, and 152,096 ac of
           TreeMap's <i>published</i> forest already is.</figcaption></figure>
       <p class="srcline">docs/improved-rasters-fl/make_figures.py · fig_holes · sites in data/chip_sites.csv</p>
     </div>
@@ -271,7 +271,7 @@
       <p class="kicker">Method 1 · bookends <span class="rule"></span> 04</p>
       <h2>What bookends add back: pine stands in NAIP</h2>
       <p class="lede">One example per stratum, from the most interior patches credited to bookends. After the EVT gate, bookends propose
-        <b>92,580 ac</b>. Of the <b>162,103 ac</b> the union rule accepts (5,103 patches, 229 donor plots), <b>77,790 ac</b> are
+        <b>84,242 ac</b>. Of the <b>121,883 ac</b> the union rule accepts (4,116 patches, 221 donor plots), <b>71,402 ac</b> are
         credited to bookends.</p>
       <figure class="fig tall"><img src="figures/fig04_bookend_chips.jpg" alt="Four chips, one per bookend stratum, showing the added-back patch over TreeMap and over NAIP"></figure>
       <div class="tiles">
@@ -287,14 +287,14 @@
   <section class="slide" id="obata-chips">
     <div class="inner">
       <p class="kicker">Method 2 · Landsat disturbance <span class="rule"></span> 05</p>
-      <h2>What Obata adds back: cuts dated 2010–2022 that the LANDFIRE bookends miss</h2>
+      <h2>What Obata adds back: cuts dated 2010–2022 that the bookends miss</h2>
       <p class="lede">The geepipe run for WRS-2 <b>p17r39</b> (2010–2023) covers the AOI. After the gate Obata proposes
-        <b>114,946 ac</b>; <b>50,933 ac</b> are credited to it, because bookends did not find them first. Every chip here is S5:
-        no forest evidence in either LANDFIRE bookend.</p>
+        <b>95,440 ac</b>; <b>36,039 ac</b> are credited to it, because bookends did not find them first.</p>
       <figure class="fig tall"><img src="figures/fig05_obata_chips.jpg" alt="Four chips of patches credited to the Obata detector, over TreeMap and over NAIP">
-        <figcaption>Three of the four are mostly pine in NAIP. The 655 ac patch on the right is mostly a <b>mine</b>: disturbed
-          ground is what the detector finds. LANDFIRE calls 20% of it Quarries-Strip Mines, which no gate blocks, and the rest
-          ruderal grassland and pasture.</figcaption></figure>
+        <figcaption>The first is young pine and cut-over ground in NAIP; the second is open ground with scattered trees,
+          which LANDFIRE 2024 calls ruderal grassland and, in part, row crop. The third (417 ac) is <b>mine spoil</b>: ridged,
+          reclaimed ground that LANDFIRE calls ruderal grassland and floodplain forest. The fourth (54 ac) sits on rows of
+          <b>built structures</b>, not forest. The detector finds disturbance; no EVT gate catches these two.</figcaption></figure>
       <p class="srcline">fig_method_chips · data/chip_sites.csv (use = obata_chip) · county_improvement.obata_rule</p>
     </div>
   </section>
@@ -303,12 +303,13 @@
     <div class="inner">
       <p class="kicker">Method 3 · Hansen forest loss <span class="rule"></span> 06</p>
       <h2>What Hansen adds back: the most permissive method, credited last</h2>
-      <p class="lede">Loss in 2001–2022 on ground with ≥ 30% canopy in 2000. After the gate Hansen proposes <b>153,467 ac</b>,
-        the most of any method; only <b>33,380 ac</b> are left to credit to it once bookends and Obata are counted.</p>
+      <p class="lede">Loss in 2001–2022 on ground with ≥ 30% canopy in 2000. After the gate Hansen proposes <b>120,038 ac</b>,
+        the most of any method; only <b>14,443 ac</b> are left to credit to it once bookends and Obata are counted.</p>
       <figure class="fig tall"><img src="figures/fig06_hansen_chips.jpg" alt="Four chips of patches credited to Hansen loss, over TreeMap and over NAIP">
-        <figcaption>LANDFIRE calls all four patches <b>Pasture and Hay</b> (86–98% of each), which every gate keeps. NAIP shows
-          two of them (first and fourth) are pine and two (second and third) are <b>pasture</b>: EVT cannot tell them apart, so
-          the Hansen-only cell needs another check. The any-two rule (slide 09) drops all 33,380 Hansen-only acres.</figcaption></figure>
+        <figcaption>With pasture and hay blocked (v3), the Hansen chips look like harvested forest: a clearcut (third), a cut
+          swamp that LANDFIRE calls floodplain forest and basin swamp (second), and open ground with scattered trees that
+          LANDFIRE calls ruderal grassland (first, fourth). Before v3,
+          LANDFIRE called every Hansen chip Pasture and Hay, and half were hay fields.</figcaption></figure>
       <p class="srcline">fig_method_chips · data/chip_sites.csv (use = hansen_chip) · county_improvement.hansen_rule ·
         UMD/hansen/global_forest_change_2025_v1_13 on the TreeMap crsTransform</p>
     </div>
@@ -317,31 +318,33 @@
   <section class="slide" id="evt-gate">
     <div class="inner">
       <p class="kicker">The EVT 2022 gate <span class="rule"></span> 07</p>
-      <h2>The gate keeps add-back off 2022 cropland, roads and built-up land</h2>
+      <h2>The gate keeps add-back off 2022 hay, cropland, roads and built-up land</h2>
       <p class="lede">The methods see disturbance, not what the ground is now. The gate reads <b>LANDFIRE EVT 2022</b> and strips
         every method's proposals on ineligible classes <b>before</b> the rule and the 5 ac minimum. The default is
-        <span class="mono">--evt-gate evt2022_agriculture_developed_v2</span>.</p>
+        <span class="mono">--evt-gate evt2022_agriculture_developed_pasture_v3</span>.</p>
       <div class="split">
         <div class="tbl-wrap"><table class="compact">
           <thead><tr><th>EVT 2022 class rejected</th><th class="num">Proposed ac</th></tr></thead>
           <tbody>
-            <tr><td class="name">Developed-Roads</td><td class="num">25,240</td></tr>
+            <tr><td class="name">Pasture and hayland (7997, v3)</td><td class="num">45,415</td></tr>
+            <tr><td class="name">Developed-Roads (v2)</td><td class="num">25,240</td></tr>
             <tr><td class="name">Row crop</td><td class="num">18,448</td></tr>
             <tr><td class="name">Fallow / idle cropland</td><td class="num">5,706</td></tr>
             <tr><td class="name">Close grown crop</td><td class="num">4,048</td></tr>
             <tr><td class="name">Row crop – close grown crop</td><td class="num">2,232</td></tr>
-            <tr><td class="name">Developed, low / medium intensity</td><td class="num">2,025</td></tr>
-            <tr><td>Other classes</td><td class="num">731</td></tr>
+            <tr><td class="name">Developed, low / medium intensity (v2)</td><td class="num">2,025</td></tr>
+            <tr><td>Other classes</td><td class="num">730</td></tr>
           </tbody></table></div>
         <div>
           <div class="tiles two">
             <div class="tile"><div class="n">261k</div><div class="l">ac any method proposes, before the gate</div></div>
-            <div class="tile"><div class="n warn">58.4k</div><div class="l">ac the gate rejects; 27.6k of it developed (the v2 addition)</div></div>
+            <div class="tile"><div class="n warn">103.8k</div><div class="l">ac the gate rejects; 45.4k of it pasture/hay (v3), 27.6k developed (v2)</div></div>
           </div>
           <ul class="take">
             <li><b>v1</b> blocks crops, orchards and aquaculture but keeps pasture and hay. Unknown codes and nodata fail closed.</li>
-            <li><b>v2</b> also blocks developed low/medium/high intensity and roads (7296–7299). Union add-back: 189,024 → <b>162,103 ac</b>.</li>
-            <li>Re-running v1 through the pipeline reproduces the published gated run pixel for pixel.</li>
+            <li><b>v2</b> also blocks developed low/medium/high intensity and roads (7296–7299). <b>v3</b> also blocks Eastern Warm
+              Temperate Pasture and Hayland (7997): Hansen and Obata were adding back hay fields. Pine LANDFIRE mislabels as hay goes too.</li>
+            <li>Union add-back: v1 189,024 → v2 162,103 → <b>v3 121,883 ac</b>. v1 through the pipeline reproduces the published run pixel for pixel.</li>
           </ul>
         </div>
       </div>
@@ -352,19 +355,19 @@
   <section class="slide" id="together">
     <div class="inner">
       <p class="kicker">Putting them together <span class="rule"></span> 08</p>
-      <h2>Three methods move the AOI from −2.12 SE of FIA to +0.02 SE</h2>
+      <h2>Three methods move the AOI from −2.12 SE of FIA to −0.51 SE</h2>
       <p class="lede">Each bar is TreeMap as published plus what each method adds. Methods are credited in order of
         permissiveness: <b>bookends → Obata → Hansen</b>. A pixel found by several methods counts once, under the first.</p>
       <figure class="fig short"><img src="figures/fig07_area_vs_fia.png" alt="Stacked horizontal bars: TreeMap published plus the bookends, Obata and Hansen add-back, as percent of FIA, with FIA 95% interval whiskers, for the AOI and five counties"></figure>
       <div class="tbl-wrap"><table class="compact">
         <thead><tr><th>Geography</th><th class="num">Published ac</th><th class="num">+ Bookends</th><th class="num">+ Obata</th><th class="num">+ Hansen</th><th class="num">Improved ac</th><th class="num">% of FIA</th><th class="num">vs FIA</th></tr></thead>
         <tbody>
-          <tr><td class="name">5-county AOI</td><td class="num">1,094,686</td><td class="num">77,790</td><td class="num">50,933</td><td class="num">33,380</td><td class="num"><b>1,256,789</b></td><td class="num">100.1%</td><td class="num"><b>+0.02 SE</b></td></tr>
-          <tr><td>Baker</td><td class="num">290,434</td><td class="num">16,960</td><td class="num">5,962</td><td class="num">6,702</td><td class="num">320,057</td><td class="num">113.4%</td><td class="num">+1.07 SE</td></tr>
-          <tr><td>Columbia</td><td class="num">321,473</td><td class="num">21,347</td><td class="num">9,328</td><td class="num">8,367</td><td class="num">360,515</td><td class="num">98.3%</td><td class="num">−0.15 SE</td></tr>
-          <tr><td>Hamilton</td><td class="num">193,396</td><td class="num">13,886</td><td class="num">14,744</td><td class="num">6,020</td><td class="num">228,046</td><td class="num">104.0%</td><td class="num">+0.25 SE</td></tr>
-          <tr><td>Suwannee</td><td class="num">182,243</td><td class="num">19,821</td><td class="num">18,536</td><td class="num">9,666</td><td class="num">230,266</td><td class="num">95.8%</td><td class="num">−0.28 SE</td></tr>
-          <tr><td>Union</td><td class="num">107,141</td><td class="num">5,776</td><td class="num">2,364</td><td class="num">2,625</td><td class="num">117,906</td><td class="num">80.3%</td><td class="num">−0.98 SE</td></tr>
+          <tr><td class="name">5-county AOI</td><td class="num">1,094,686</td><td class="num">71,402</td><td class="num">36,039</td><td class="num">14,443</td><td class="num"><b>1,216,569</b></td><td class="num">96.9%</td><td class="num"><b>−0.51 SE</b></td></tr>
+          <tr><td>Baker</td><td class="num">290,434</td><td class="num">15,861</td><td class="num">4,710</td><td class="num">3,888</td><td class="num">314,892</td><td class="num">111.6%</td><td class="num">+0.93 SE</td></tr>
+          <tr><td>Columbia</td><td class="num">321,473</td><td class="num">20,185</td><td class="num">5,895</td><td class="num">3,191</td><td class="num">350,744</td><td class="num">95.6%</td><td class="num">−0.38 SE</td></tr>
+          <tr><td>Hamilton</td><td class="num">193,396</td><td class="num">13,187</td><td class="num">12,658</td><td class="num">4,043</td><td class="num">223,283</td><td class="num">101.9%</td><td class="num">+0.12 SE</td></tr>
+          <tr><td>Suwannee</td><td class="num">182,243</td><td class="num">16,971</td><td class="num">11,045</td><td class="num">2,342</td><td class="num">212,600</td><td class="num">88.4%</td><td class="num">−0.76 SE</td></tr>
+          <tr><td>Union</td><td class="num">107,141</td><td class="num">5,199</td><td class="num">1,731</td><td class="num">979</td><td class="num">115,050</td><td class="num">78.4%</td><td class="num">−1.07 SE</td></tr>
           </tbody></table></div>
       <p class="srcline">fig_area_vs_fia · data/area_vs_fia.csv · add_back_methods.priority_attribution</p>
     </div>
@@ -382,25 +385,25 @@
         <div class="tbl-wrap"><table>
           <thead><tr><th>Found by</th><th class="num">Added-back ac</th><th>Any-two rule</th></tr></thead>
           <tbody>
-            <tr class="goodrow"><td class="name">All three</td><td class="num">39,163</td><td><span class="res pass">add</span></td></tr>
-            <tr class="goodrow"><td class="name">Obata + Hansen</td><td class="num">32,492</td><td><span class="res warn">add · check</span></td></tr>
-            <tr class="goodrow"><td class="name">Bookends + Hansen</td><td class="num">22,247</td><td><span class="res pass">add</span></td></tr>
-            <tr class="goodrow"><td class="name">Bookends + Obata</td><td class="num">11,087</td><td><span class="res pass">add</span></td></tr>
-            <tr><td>Hansen only</td><td class="num">33,380</td><td><span class="res fail">reject</span></td></tr>
-            <tr><td>Obata only</td><td class="num">18,441</td><td><span class="res open">hold</span></td></tr>
-            <tr><td>Bookends only</td><td class="num">5,292</td><td><span class="res open">hold</span></td></tr>
+            <tr class="goodrow"><td class="name">All three</td><td class="num">37,559</td><td><span class="res pass">add</span></td></tr>
+            <tr class="goodrow"><td class="name">Obata + Hansen</td><td class="num">23,783</td><td><span class="res warn">add · check</span></td></tr>
+            <tr class="goodrow"><td class="name">Bookends + Hansen</td><td class="num">19,510</td><td><span class="res pass">add</span></td></tr>
+            <tr class="goodrow"><td class="name">Bookends + Obata</td><td class="num">10,162</td><td><span class="res pass">add</span></td></tr>
+            <tr><td>Hansen only</td><td class="num">14,443</td><td><span class="res fail">reject</span></td></tr>
+            <tr><td>Obata only</td><td class="num">12,256</td><td><span class="res open">hold</span></td></tr>
+            <tr><td>Bookends only</td><td class="num">4,171</td><td><span class="res open">hold</span></td></tr>
           </tbody></table></div>
         <div>
           <div class="tiles two">
-            <div class="tile"><div class="n good">104,989</div><div class="l">ac of the union add-back two methods agree on</div></div>
-            <div class="tile"><div class="n good">−0.73 SE</div><div class="l">AOI vs FIA on those acres (95.6%), inside the interval</div></div>
+            <div class="tile"><div class="n good">91,014</div><div class="l">ac of the union add-back two methods agree on</div></div>
+            <div class="tile"><div class="n good">−0.92 SE</div><div class="l">AOI vs FIA on those acres (94.4%), inside the interval</div></div>
           </div>
           <div class="caveat"><b>Before adopting it:</b> Obata and Hansen are both Landsat change detectors, not independent
-            evidence, and their pair is 31% of the consensus. Check that cell against NAIP first. In the pilot's NAIP
+            evidence, and their pair is 26% of the consensus. Check that cell against NAIP first. In the pilot's NAIP
             check bookends-only had the best record (6 of 6), so it may deserve a place too.</div>
         </div>
       </div>
-      <p class="sub">From the union run with the v2 gate: the accepted pixels by which methods proposed them. The any-two rows
+      <p class="sub">From the union run with the v3 gate: the accepted pixels by which methods proposed them. The any-two rows
         are a subset of that run, not an any-two run, whose 5 ac minimum would apply to the any-two mask itself (#86).</p>
       <p class="srcline">data/agreement_cells.csv · add_back_methods.ConsensusRule · MethodMasks.combine</p>
     </div>
@@ -444,23 +447,23 @@
       <h2>Every forest pixel gets an owner, in four steps</h2>
       <div class="flow">
         <div class="fstep"><div class="t">1 · Align</div><div class="v">NWOS onto TreeMap's grid</div><div class="d">10 m EPSG:4269 warped (nearest) onto the 30 m EPSG:5070 TreeMap grid. No class changes.</div></div>
-        <div class="fstep"><div class="t">2 · Define forest</div><div class="v">Improved TreeMap</div><div class="d">Published forest plus added-back forest: 1,256,788 ac.</div></div>
-        <div class="fstep"><div class="t">3 · Find the gaps</div><div class="v">Forest NWOS calls Non-forest</div><div class="d">264,817 ac: 263,550 Non-forest (152,096 on published forest, 111,454 on added-back land) and 1,267 water.</div></div>
-        <div class="fstep"><div class="t">4 · Impute</div><div class="v">Nearest known owner</div><div class="d">Take the class of the nearest family, corporate, tribal, federal, state or local pixel within 1.9 km. Past that, Unknown forest (421 ac).</div></div>
+        <div class="fstep"><div class="t">2 · Define forest</div><div class="v">Improved TreeMap</div><div class="d">Published forest plus added-back forest: 1,216,569 ac.</div></div>
+        <div class="fstep"><div class="t">3 · Find the gaps</div><div class="v">Forest NWOS calls Non-forest</div><div class="d">228,869 ac: 227,628 Non-forest (152,096 on published forest, 75,532 on added-back land) and 1,241 water.</div></div>
+        <div class="fstep"><div class="t">4 · Impute</div><div class="v">Nearest known owner</div><div class="d">Take the class of the nearest family, corporate, tribal, federal, state or local pixel within 1.9 km. Past that, Unknown forest (375 ac).</div></div>
       </div>
       <div class="tbl-wrap"><table>
         <thead><tr><th>Owner class, on improved forest</th><th class="num">Before ac</th><th class="num">After ac</th><th class="num">Change</th></tr></thead>
         <tbody>
-          <tr><td class="name">Family</td><td class="num">592,179</td><td class="num">772,155</td><td class="num">+179,976</td></tr>
-          <tr><td class="name">Corporate</td><td class="num">199,578</td><td class="num">264,889</td><td class="num">+65,311</td></tr>
-          <tr><td class="name">Federal</td><td class="num">143,912</td><td class="num">153,676</td><td class="num">+9,764</td></tr>
-          <tr><td class="name">Local</td><td class="num">28,616</td><td class="num">36,293</td><td class="num">+7,677</td></tr>
-          <tr><td class="name">State</td><td class="num">8,784</td><td class="num">10,453</td><td class="num">+1,669</td></tr>
-          <tr><td class="name">Unknown forest</td><td class="num">18,902</td><td class="num">19,323</td><td class="num">+421</td></tr>
-          <tr class="failrow"><td class="name">Non-forest / water</td><td class="num">264,817</td><td class="num">0</td><td class="num">−264,817</td></tr>
+          <tr><td class="name">Family</td><td class="num">589,123</td><td class="num">741,599</td><td class="num">+152,476</td></tr>
+          <tr><td class="name">Corporate</td><td class="num">198,700</td><td class="num">256,259</td><td class="num">+57,559</td></tr>
+          <tr><td class="name">Federal</td><td class="num">143,909</td><td class="num">153,589</td><td class="num">+9,680</td></tr>
+          <tr><td class="name">Local</td><td class="num">28,539</td><td class="num">35,750</td><td class="num">+7,211</td></tr>
+          <tr><td class="name">State</td><td class="num">8,736</td><td class="num">10,304</td><td class="num">+1,568</td></tr>
+          <tr><td class="name">Unknown forest</td><td class="num">18,693</td><td class="num">19,068</td><td class="num">+375</td></tr>
+          <tr class="failrow"><td class="name">Non-forest / water</td><td class="num">228,869</td><td class="num">0</td><td class="num">−228,869</td></tr>
         </tbody></table></div>
       <p class="sub">Known owners and NWOS's own Unknown forest never change. The scope is a flag: <span class="mono">--ownership-scope
-        added_back</span> would re-own only the 111,454 ac of added-back land and leave the published-forest gap alone.</p>
+        added_back</span> would re-own only the 75,532 ac of added-back land and leave the published-forest gap alone.</p>
       <p class="srcline">data/ownership.csv · data/ownership_summary.json · ownership_repair.repair_ownership · OwnershipRepairScope</p>
     </div>
   </section>
@@ -502,9 +505,9 @@
           <p>Each accepted patch is 8-connected. It takes the <b>modal TreeMap plot</b> in the first ring around it that has any
             (3, 7, 15, 31, then 63 px), so one patch gets one plot and becomes one stand. The donor gives the
             <b>forest type and species mix</b>.</p>
-          <p>A cut or regrowing patch (S1, S3, S4, S5: 160,585 ac) takes its <b>density and tree size from the age-5 profile</b> of
+          <p>A cut or regrowing patch (S1, S3, S4, S5: 120,430 ac) takes its <b>density and tree size from the age-5 profile</b> of
             that forest type below. Each donor species gets its share of the donor's live TPA. The raster marks these pixels
-            provenance 4. Standing forest (S2: 1,517 ac) keeps the donor's own tree rows, provenance 2.
+            provenance 4. Standing forest (S2: 1,453 ac) keeps the donor's own tree rows, provenance 2.
             <span class="mono">PLT_CN</span> stays a string.</p>
           <table class="compact">
             <thead><tr><th>Age 5, FIA AL/FL/GA</th><th class="num">TPA</th><th class="num">DBH in</th><th class="num">HT ft</th><th class="num">Plots</th></tr></thead>
@@ -524,8 +527,8 @@
             63 px). A patch can split between two owners along the midline between them, just as real ownership boundaries cut stands.</p></div>
       </div>
       <div class="decision"><b>Decided: scaled nearest neighbour.</b> A neighbour's mature trees no longer land on cut ground. Added-back
-        live basal area falls from <b>12.69M ft² with mature donors to 2.87M ft²</b> as established (78.3 → 17.7 ft²/ac; live TPA
-        451 → 380). The profile sets density by default; <span class="mono">density: donor</span> would keep the donor's TPA and
+        live basal area falls from <b>9.73M ft² with mature donors to 2.17M ft²</b> as established (79.8 → 17.8 ft²/ac; live TPA
+        458 → 380). The profile sets density by default; <span class="mono">density: donor</span> would keep the donor's TPA and
         still reset size. Record: <span class="mono">docs/adr/0002-scaled-nearest-neighbour-establishment.md</span>.</div>
       <p class="srcline">impute_establishment.scaled_establishment_lists · config/establishment.yaml · config/young_stand_profiles.yaml ·
         data/aoi_summary.json (establishment.live_effect) · ownership_repair.repair_ownership · fig_imputation</p>
@@ -539,23 +542,23 @@
       <ul class="take">
         <li><b>Built and run, county by county.</b> Baker, Columbia, Hamilton, Suwannee and Union ran one at a time; each is
           saved on its own and then stitched. No pixel was claimed twice.</li>
-        <li><b>TreeMap: +162,103 ac</b> under the union rule (bookends 77,790, Obata 50,933, Hansen 33,380). The AOI moves from
-          87.2% to 100.1% of FIA, and from −2.12 to +0.02 SE.</li>
-        <li><b>EVT gate v2 is the default.</b> 58,429 ac of proposals on 2022 cropland, roads and developed land are rejected
-          before the rule. The gate does not catch pasture that LANDFIRE mislabels, or mines.</li>
-        <li><b>NWOS: 264,817 ac of forest had no owner.</b> 264,396 ac now take the nearest owner's class, and 421 ac become Unknown forest.</li>
-        <li><b>Scaled nearest neighbour.</b> Cut and regrowing patches (160,585 ac) take the donor's species mix and the FIA
-          age-5 density and size of its forest type. Added-back live basal area: 12.69M → 2.87M ft² (ADR 0002).</li>
+        <li><b>TreeMap: +121,883 ac</b> under the union rule (bookends 71,402, Obata 36,039, Hansen 14,443). The AOI moves from
+          87.2% to 96.9% of FIA, and from −2.12 to −0.51 SE, inside the interval.</li>
+        <li><b>EVT gate v3 is the default.</b> 103,844 ac of proposals on 2022 hay, cropland, roads and developed land are
+          rejected before the rule. It does not catch mine spoil or built structures LANDFIRE files as grassland or forest.</li>
+        <li><b>NWOS: 228,869 ac of forest had no owner.</b> 228,495 ac now take the nearest owner's class, and 375 ac become Unknown forest.</li>
+        <li><b>Scaled nearest neighbour.</b> Cut and regrowing patches (120,430 ac) take the donor's species mix and the FIA
+          age-5 density and size of its forest type. Added-back live basal area: 9.73M → 2.17M ft² (ADR 0002).</li>
         <li><b>Dated, not fixed at age 5</b> (ADR 0003): the latest Obata or Hansen cut year dates each pixel. Union add-back
-          by stand age in 2022: 0–5 yr 39,055 ac, 6–10 yr 82,301, 11–20 yr 37,575, undated (bookends only) 3,172.</li>
-        <li><b>Next:</b> check the Obata + Hansen and Hansen-only cells against NAIP, settle the detector tie-break (#90) and
+          by stand age in 2022: 0–5 yr 35,438 ac, 6–10 yr 70,118, 11–20 yr 14,192, undated (bookends only) 2,135.</li>
+        <li><b>Next:</b> screen mine spoil and built structures out of Obata, check the Obata + Hansen cell against NAIP, settle the detector tie-break (#90) and
           calibrate Obata against Hansen and LANDFIRE (#97), then decide on <span class="mono">--rule at_least_two</span>.</li>
         <li><b>Then scale:</b> add counties to <span class="mono">--counties</span> until Florida is stitched. Statewide the
           gap is 855k ac; Obata needs 14 Landsat scenes.</li>
         <li><b>Limits:</b> post-2016 cuts that TreeMap still maps as standing forest are not holes, so this repair cannot see them.</li>
       </ul>
       <pre class="run"><span class="cmd">uv run python -m pipeline.s1_initial_state.young_stand_profiles</span>  <span class="note"># only when FIA changes; about 4 min</span>
-<span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --obata-tif &lt;lastDist…tif&gt; --hansen-tif &lt;hansen_aoi.tif&gt;</span>  <span class="note"># --evt-gate defaults to v2</span>
+<span class="cmd">uv run python -m pipeline.s1_initial_state.county_improvement --obata-tif &lt;lastDist…tif&gt; --hansen-tif &lt;hansen_aoi.tif&gt;</span>  <span class="note"># --evt-gate defaults to v3</span>
 <span class="cmd">uv run python -m pipeline.s1_initial_state.add_back_stand_age &lt;out-root&gt;/aoi_5county --obata-tif … --hansen-tif …</span>
 <span class="cmd">uv run python docs/improved-rasters-fl/make_figures.py</span>  <span class="note"># --run-root / --inputs-root without /mnt/d</span>
 <span class="note"># rasters: /mnt/d/improved-rasters/counties/&lt;fips&gt;_&lt;name&gt;/ and /mnt/d/improved-rasters/aoi_5county/ (COG)</span></pre>

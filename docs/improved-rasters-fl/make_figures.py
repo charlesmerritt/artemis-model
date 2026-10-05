@@ -83,6 +83,8 @@ METHOD_LABEL = {AddBackMethod.BOOKENDS: "LANDFIRE bookends",
                 AddBackMethod.OBATA_DISTURBANCE: "Obata Landsat disturbance",
                 AddBackMethod.HANSEN_LOSS: "Hansen forest loss"}
 BASE_GREY = "#b9b8ae"
+ADDED_OTHER = "#b3abe0"   # chips: add-back credited to a method other than the slide's
+OTHER_LINE = "#ffd84d"
 # Harris/NWOS 0-8, the palette docs/county-correction already uses.
 OWNERS = ["#404040", "#d9cfbe", "#63d3f2", "#b5533c", "#f5d000", "#642a89", "#788c00", "#f27600", "#753b16"]
 OWNER_LABELS = ["Unknown forest", "Non-forest", "Water", "Family", "Corporate", "Tribal", "Federal",
@@ -557,37 +559,46 @@ def pick_method_sites(p: pd.DataFrame, method: AddBackMethod, n: int, seed: int 
 
 def fig_bookend_chips(sites: pd.DataFrame) -> None:
     """Slide 4: added-back land credited to bookends, one site per stratum, next to NAIP."""
-    fig_chips(sites, lambda s: STRATUM_TEXT[s.stratum], "added back (bookends)", "fig04_bookend_chips.jpg")
+    fig_chips(sites, AddBackMethod.BOOKENDS, lambda s: STRATUM_TEXT[s.stratum], "fig04_bookend_chips.jpg")
 
 
 def fig_method_chips(sites: pd.DataFrame, method: AddBackMethod, name: str) -> None:
     """Slides 5 and 6: added-back land credited to Obata or Hansen, next to NAIP."""
-    fig_chips(sites, lambda s: STRATUM_TEXT.get(s.stratum, "S5 · no bookend evidence"),
-              f"added back ({METHOD_LABEL[method]})", name)
+    fig_chips(sites, method, lambda s: STRATUM_TEXT.get(s.stratum, "S5 · no bookend evidence"), name)
 
 
-def fig_chips(sites: pd.DataFrame, title, added_label: str, name: str) -> None:
+def fig_chips(sites: pd.DataFrame, method: AddBackMethod, title, name: str) -> None:
+    """Chips around ``sites``: add-back credited to ``method`` in violet with a white line on
+    NAIP; add-back credited to another method in light violet with a yellow line."""
     prov, t, _ = read("treemap2022_provenance.tif")
+    bits, _, _ = read("add_back_method_bits.tif")
+    mine = credited_method(bits) == METHOD_PRIORITY.index(method)
+    other_cls = np.uint8(250)  # a class code no provenance uses
     half = 900.0
     n = len(sites)
     fig, axes = plt.subplots(2, n, figsize=(3.2 * n, 6.6))
-    pal = {TP.PUBLISHED: PUBLISHED, TP.ADDED_BACK: ADDED, TP.UNMAPPED_LAND: UNMAPPED, TP.WATER: WATER}
+    pal = {TP.PUBLISHED: PUBLISHED, TP.ADDED_BACK: ADDED, other_cls: ADDED_OTHER, TP.UNMAPPED_LAND: UNMAPPED,
+           TP.WATER: WATER}
     for i, (_, s) in enumerate(sites.iterrows()):
         rgb, date = naip_chip(s.x, s.y, half, 2.0)
         cls = window_of(prov, t, s.x, s.y, half)
-        cls = np.where(TP.added_back(cls), np.uint8(TP.ADDED_BACK), cls)
+        added = TP.added_back(cls)
+        credited = added & window_of(mine, t, s.x, s.y, half)
+        cls = np.where(credited, np.uint8(TP.ADDED_BACK), np.where(added, other_cls, cls))
         overlay(axes[0, i], np.full_like(rgb, 255), cls, pal, 1.0, half)
         axes[1, i].imshow(rgb, extent=(-half, half, -half, half))
         axes[1, i].set_xticks([]), axes[1, i].set_yticks([])
-        outline(axes[1, i], cls == TP.ADDED_BACK, half, "#ffffff")
+        if (added & ~credited).any():
+            outline(axes[1, i], added & ~credited, half, OTHER_LINE)
+        outline(axes[1, i], credited, half, "#ffffff")
         axes[0, i].set_title(f"{title(s)}\n{s.px * ACRES_PER_PIXEL:,.0f} ac patch",
                              loc="left", fontsize=9.5, color=INK)
         axes[1, i].set_title(f"NAIP {date}", loc="left", fontsize=9.5, color=INK_SOFT)
     fig.legend(handles=[Patch(color=PUBLISHED, label="TreeMap forest"),
-                        Patch(color=ADDED, label=added_label),
-                        Patch(color=UNMAPPED, label="still unmapped"),
-                        Patch(facecolor="none", edgecolor="#777", label="white line on NAIP: added back")],
-               loc="lower center", ncol=4, frameon=False, fontsize=9.5, bbox_to_anchor=(0.5, -0.02))
+                        Patch(color=ADDED, label=f"added back, credited to {METHOD_LABEL[method]} (white line)"),
+                        Patch(color=ADDED_OTHER, label="added back, another method (yellow line)"),
+                        Patch(color=UNMAPPED, label="still unmapped")],
+               loc="lower center", ncol=2, frameon=False, fontsize=9.5, bbox_to_anchor=(0.5, -0.06))
     fig.subplots_adjust(wspace=0.04, hspace=0.16, bottom=0.07)
     save_jpg(fig, name)
 
@@ -692,8 +703,10 @@ def main() -> None:
         fig_method_chips(hansen, AddBackMethod.HANSEN_LOSS, "fig06_hansen_chips.jpg")
         fig_holes(holes)
         shown = set(chips.pid) | set(holes.pid)
-        fig_imputation(pick_sites(patches[~patches.pid.isin(shown) & (patches.nwos_non_forest >= 0.8)],
-                                  (1,), 1, seed=11).iloc[0])
+        zoom = pick_sites(patches[~patches.pid.isin(shown) & (patches.nwos_non_forest >= 0.8)], (1,), 1, seed=11)
+        pd.concat([pd.read_csv(DATA / "chip_sites.csv"), zoom.assign(use="imputation_zoom")]).to_csv(
+            DATA / "chip_sites.csv", index=False)
+        fig_imputation(zoom.iloc[0])
     for p in sorted(FIG.iterdir()):
         print(f"{p.stat().st_size / 1024:8.0f} KB  {p.name}")
 

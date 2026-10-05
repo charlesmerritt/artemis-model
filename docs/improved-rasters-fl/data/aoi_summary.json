@@ -3,11 +3,11 @@
   "land_acres": 1805020.7,
   "published_forest_acres": 1094685.8,
   "hole_acres": 710335.1,
-  "rule_accepted_before_mmu_acres": 202714.4,
-  "added_back_acres": 162102.8,
-  "dropped_by_mmu_or_no_donor_acres": 40611.6,
-  "improved_forest_acres": 1256788.4,
-  "patches": 5103,
+  "rule_accepted_before_mmu_acres": 157299.3,
+  "added_back_acres": 121883.0,
+  "dropped_by_mmu_or_no_donor_acres": 35416.3,
+  "improved_forest_acres": 1216568.6,
+  "patches": 4116,
   "counties": [
     "12003 Baker",
     "12023 Columbia",
@@ -16,13 +16,13 @@
     "12125 Union"
   ],
   "added_back_credit_acres": {
-    "bookends": 77789.6,
-    "obata_disturbance": 50932.8,
-    "hansen_loss": 33380.4
+    "bookends": 71401.7,
+    "obata_disturbance": 36038.6,
+    "hansen_loss": 14442.6
   },
   "added_back_acres_by_mode": {
-    "scaled_young": 160585.2,
-    "donor_as_is": 1517.4
+    "scaled_young": 120429.9,
+    "donor_as_is": 1453.2
   },
   "methods": {
     "bookends": "run",
@@ -31,9 +31,9 @@
   },
   "rule": "union",
   "evt_gate": {
-    "policy": "evt2022_agriculture_developed_v2",
+    "policy": "evt2022_agriculture_developed_pasture_v3",
     "raw_proposal_acres": 261143.6,
-    "rejected_acres": 58429.1
+    "rejected_acres": 103844.3
   },
   "stitch_overlap_pixels": {
     "add_back_method_bits.tif": 0,
@@ -58,57 +58,57 @@
       "S4": "scaled_young",
       "S5": "scaled_young"
     },
-    "donors": 229,
+    "donors": 221,
     "tree_list_rows": {
-      "donor_as_is": 2099,
-      "scaled_young": 799
+      "donor_as_is": 1875,
+      "scaled_young": 773
     },
     "live_effect": {
       "by_mode": {
         "donor_as_is": {
-          "acres": 1517.4,
+          "acres": 1453.2,
           "mature_donor": {
-            "live_tpa": 502.7,
-            "live_ba_ft2_per_ac": 74.9,
-            "live_trees": 762801,
-            "live_ba_ft2": 113671
+            "live_tpa": 499.3,
+            "live_ba_ft2_per_ac": 75.0,
+            "live_trees": 725590,
+            "live_ba_ft2": 108995
           },
           "established": {
-            "live_tpa": 502.7,
-            "live_ba_ft2_per_ac": 74.9,
-            "live_trees": 762801,
-            "live_ba_ft2": 113671
+            "live_tpa": 499.3,
+            "live_ba_ft2_per_ac": 75.0,
+            "live_trees": 725590,
+            "live_ba_ft2": 108995
           }
         },
         "scaled_young": {
-          "acres": 160585.3,
+          "acres": 120429.8,
           "mature_donor": {
-            "live_tpa": 450.0,
-            "live_ba_ft2_per_ac": 78.3,
-            "live_trees": 72261299,
-            "live_ba_ft2": 12579060
+            "live_tpa": 457.9,
+            "live_ba_ft2_per_ac": 79.9,
+            "live_trees": 55140694,
+            "live_ba_ft2": 9616669
           },
           "established": {
-            "live_tpa": 378.3,
-            "live_ba_ft2_per_ac": 17.2,
-            "live_trees": 60747237,
-            "live_ba_ft2": 2754954
+            "live_tpa": 378.2,
+            "live_ba_ft2_per_ac": 17.1,
+            "live_trees": 45547721,
+            "live_ba_ft2": 2062188
           }
         }
       },
       "total": {
-        "acres": 162102.7,
+        "acres": 121883.0,
         "mature_donor": {
-          "live_tpa": 450.5,
-          "live_ba_ft2_per_ac": 78.3,
-          "live_trees": 73024100,
-          "live_ba_ft2": 12692731
+          "live_tpa": 458.4,
+          "live_ba_ft2_per_ac": 79.8,
+          "live_trees": 55866284,
+          "live_ba_ft2": 9725664
         },
         "established": {
-          "live_tpa": 379.5,
-          "live_ba_ft2_per_ac": 17.7,
-          "live_trees": 61510038,
-          "live_ba_ft2": 2868625
+          "live_tpa": 379.7,
+          "live_ba_ft2_per_ac": 17.8,
+          "live_trees": 46273310,
+          "live_ba_ft2": 2171183
         }
       }
     }
