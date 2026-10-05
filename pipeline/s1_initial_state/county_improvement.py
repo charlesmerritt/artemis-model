@@ -16,7 +16,9 @@ Per county:
    (LANDFIRE 2016/2024 strata plus the AlphaEarth gate) always runs. Obata and Hansen
    run when their rasters are supplied (``--obata-tif``, ``--hansen-tif``); otherwise
    they are pending.
-4. **Decision.** ``ConsensusRule`` combines the proposals, then the 5 ac minimum patch
+4. **Decision.** The EVT 2022 gate (:mod:`evt_gate`, ``--evt-gate``, default
+   ``evt2022_agriculture_developed_v2``) limits every method's proposals to eligible
+   LANDFIRE 2022 classes. ``ConsensusRule`` then combines them, and the 5 ac minimum patch
    area applies.
 5. **Vegetation.** Each accepted patch takes the modal TreeMap plot (``TM_ID``) in the
    nearest ring that has any (:func:`impute_establishment.donor_assignments`). Its
@@ -29,9 +31,11 @@ Per county:
 
 Outputs, one folder per county under ``/mnt/d/improved-rasters/counties/<fips>_<name>/``:
 ``treemap2022_{published,improved,provenance}.tif``,
-``nwos2022_{published,improved,provenance}.tif``, ``add_back_method_bits.tif``,
-``bookend_strata.tif``, ``establishment_patches.csv`` and ``summary.json``. ``stitch``
-writes the same rasters for the AOI under ``aoi_5county/``, plus
+``nwos2022_{published,improved,provenance}.tif``, ``add_back_method_bits.tif`` (after the
+gate) and ``add_back_method_bits_raw.tif`` (before it), ``evt2022_add_back_eligible.tif``,
+``evt2022_gate_rejected.tif``, ``evt2022_gate_rejections.csv``, ``bookend_strata.tif``,
+``establishment_patches.csv`` and ``summary.json``. ``stitch`` writes the same rasters and
+rejections for the AOI under ``aoi_5county/``, a ``manifest.json`` naming the gate, plus
 ``establishment_tree_lists.csv`` keyed by ``(TM_ID, establishment_mode)`` and, in its
 ``summary.json``, the live basal area and TPA the added-back acres carry with mature
 donors vs. as established.
@@ -70,6 +74,7 @@ from pipeline.s1_initial_state.add_back_methods import (
     method_bits,
     priority_attribution,
 )
+from pipeline.s1_initial_state.evt_gate import EvtGatePolicy, eligibility
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL, apply_mmu
 from pipeline.s1_initial_state.impute_establishment import (
     EstablishmentMode,
@@ -237,6 +242,7 @@ class BlockResult:
     improved: np.ndarray               # uint32 TM_ID, 0 where no plot
     provenance: np.ndarray             # uint8 TreeMapProvenance
     method_bits: np.ndarray            # uint8 METHOD_BIT of every run method proposing the pixel
+    method_bits_raw: np.ndarray        # uint8 the same, before the EVT gate
     added_back: np.ndarray             # bool: accepted and donor-filled
     ownership: np.ndarray              # uint8 Harris 0-8 after repair
     ownership_provenance: np.ndarray   # uint8 OwnershipProvenance
@@ -244,18 +250,33 @@ class BlockResult:
     labels: np.ndarray                 # accepted-patch labels, indexing ``assignments``
     masks: MethodMasks = field(repr=False)
 
+    @property
+    def gate_rejected(self) -> np.ndarray:
+        """Pixels some method proposed and the EVT gate rejected.
+
+        The gate strips a pixel from every method at once, so a raw proposal with no
+        gated bit left is exactly a rejected one.
+        """
+        return (self.method_bits_raw > 0) & (self.method_bits == 0)
+
 
 def improve_block(tm_ids: np.ndarray, land: np.ndarray, masks: MethodMasks, strata: np.ndarray,
                   nwos: np.ndarray, *, rule: ConsensusRule, min_acres: float,
                   stratum_modes: Mapping[int, EstablishmentMode],
                   scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
-                  reach: float = MAX_DISTANCE_PX) -> BlockResult:
+                  reach: float = MAX_DISTANCE_PX,
+                  eligible: np.ndarray | None = None) -> BlockResult:
     """Decide, fill and re-own the holes of one block. ``tm_ids`` is 0 where TreeMap has no plot.
 
     ``stratum_modes`` maps a patch's bookend stratum to its establishment mode; a stratum
     it does not list is ``scaled_young`` (:func:`impute_establishment.mode_for_stratum`).
+    ``eligible`` is the EVT gate (:func:`evt_gate.eligibility`): every method's proposals
+    are limited to it before the rule and the minimum patch area. ``None`` gates nothing.
     """
     hole = (tm_ids == 0) & land
+    raw_bits = method_bits(masks) * hole
+    if eligible is not None:
+        masks = masks.restricted_to(eligible)
     accepted = apply_mmu(masks.combine(rule) & hole, min_acres) & hole
     labels, n_patches = label_patches(accepted)
     improved = tm_ids.copy()
@@ -274,7 +295,7 @@ def improve_block(tm_ids: np.ndarray, land: np.ndarray, masks: MethodMasks, stra
 
     ownership, ownership_provenance = repair_ownership(
         nwos, improved > 0, added_back, scope=scope, max_distance_px=reach)
-    return BlockResult(improved, provenance, method_bits(masks) * hole, added_back,
+    return BlockResult(improved, provenance, method_bits(masks) * hole, raw_bits, added_back,
                        ownership, ownership_provenance, assignments, labels, masks)
 
 
@@ -331,7 +352,8 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
                    rule: ConsensusRule = ConsensusRule.UNION, min_acres: float = 5.0,
                    scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
                    reach: float = MAX_DISTANCE_PX,
-                   stratum_modes: Mapping[int, EstablishmentMode] | None = None) -> dict:
+                   stratum_modes: Mapping[int, EstablishmentMode] | None = None,
+                   evt_gate: EvtGatePolicy = EvtGatePolicy.AGRICULTURE_DEVELOPED_V2) -> dict:
     if stratum_modes is None:
         stratum_modes = load_establishment_policy().stratum_modes
     geom = load_county(inputs.counties, fips)
@@ -341,7 +363,8 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
 
     tm = read_on_grid(inputs.treemap, grid, fill=tm_nodata)
     tm_ids = np.where(tm == tm_nodata, 0, tm).astype(np.uint32)
-    codes = {y: legend_code_sets(pd.read_csv(inputs.evt(y)[1])) for y in (2016, 2022, 2024)}
+    legends = {y: pd.read_csv(inputs.evt(y)[1]) for y in (2016, 2022, 2024)}
+    codes = {y: legend_code_sets(legend) for y, legend in legends.items()}
     evt = {}
     for year in codes:
         with rasterio.open(inputs.evt(year)[0]) as src:
@@ -354,9 +377,10 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     gate = GatedScores.from_model_json(inputs.model)
     masks = _method_masks(inputs, grid, strata, hole, scored, gate)
     nwos = read_on_grid(inputs.ownership, grid, fill=NWOS_NODATA)
+    eligible = eligibility(evt[2022], legends[2022], evt_gate)
 
     r = improve_block(tm_ids, land, masks, strata, nwos, rule=rule, min_acres=min_acres,
-                      stratum_modes=stratum_modes, scope=scope, reach=reach)
+                      stratum_modes=stratum_modes, scope=scope, reach=reach, eligible=eligible)
 
     # Crop the padding away and mask to the county.
     crop = (slice(PAD_PX, -PAD_PX), slice(PAD_PX, -PAD_PX))
@@ -374,6 +398,7 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     out_dir.mkdir(parents=True, exist_ok=True)
     tm_published = np.where(tm_ids > 0, tm_ids, np.uint32(tm_nodata)).astype(np.uint32)
     tm_improved = np.where(r.improved > 0, r.improved, np.uint32(tm_nodata)).astype(np.uint32)
+    rejected = r.gate_rejected
     rasters = {
         "treemap2022_published.tif": (county(tm_published, tm_nodata), tm_nodata,
                                       "TreeMap 2022 TM_ID as published"),
@@ -382,7 +407,14 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
                                      "on provenance 4 the TM_ID gives forest type and species mix only"),
         "treemap2022_provenance.tif": (county(r.provenance, OUTSIDE), OUTSIDE, PROVENANCE_DESCRIPTION),
         "add_back_method_bits.tif": (county(r.method_bits, OUTSIDE), OUTSIDE,
-                                     "bit 1 bookends, 2 obata, 4 hansen (proposals before the rule)"),
+                                     "bit 1 bookends, 2 obata, 4 hansen "
+                                     "(proposals after the EVT gate, before the rule)"),
+        "add_back_method_bits_raw.tif": (county(r.method_bits_raw, OUTSIDE), OUTSIDE,
+                                         "bit 1 bookends, 2 obata, 4 hansen (proposals before the EVT gate)"),
+        "evt2022_add_back_eligible.tif": (county(eligible.astype(np.uint8), OUTSIDE), OUTSIDE,
+                                          f"1 EVT 2022 class eligible under {evt_gate}"),
+        "evt2022_gate_rejected.tif": (county(rejected.astype(np.uint8), OUTSIDE), OUTSIDE,
+                                      f"1 a method proposed the pixel and {evt_gate} rejected it"),
         "bookend_strata.tif": (county(strata, OUTSIDE), OUTSIDE,
                                "LANDFIRE 2016/2024 strata S1-S5 over holes; 0 not a hole"),
         "nwos2022_published.tif": (county(nwos, NWOS_NODATA), NWOS_NODATA,
@@ -404,15 +436,17 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     patches = patches[patches["county_pixels"] > 0]
     patches.insert(0, "county_fips", fips)
     patches.reset_index().to_csv(out_dir / "establishment_patches.csv", index=False)
+    gate_rejections(county(evt[2022], 0), county(rejected, False), legends[2022]).to_csv(
+        out_dir / GATE_REJECTIONS_CSV, index=False)
 
     summary = county_summary(fips, r, strata, land, crop, outside, rule, min_acres, scope, reach,
-                             patches)
+                             patches, evt_gate=evt_gate)
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary
 
 
 def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_acres,
-                   scope, reach, patches: pd.DataFrame) -> dict:
+                   scope, reach, patches: pd.DataFrame, *, evt_gate: EvtGatePolicy) -> dict:
     inside = ~outside
 
     def c(a):  # crop to the county
@@ -463,7 +497,39 @@ def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_
                 c(r.ownership_provenance == OwnershipProvenance.IMPUTED) & added),
             "unresolved_acres": _acres(c(oprov == OwnershipProvenance.UNRESOLVED)),
         },
+        "evt_gate": {
+            "policy": str(evt_gate),
+            "raw_proposal_acres": _acres(c(r.method_bits_raw > 0)),
+            "rejected_acres": _acres(c(r.gate_rejected)),
+        },
     }
+
+
+GATE_REJECTIONS_CSV = "evt2022_gate_rejections.csv"
+REJECTION_COLUMNS = ["evt_value", "rejected_pixels", "rejected_acres", "EVT_NAME"]
+
+
+def gate_rejections(evt: np.ndarray, rejected: np.ndarray, legend: pd.DataFrame) -> pd.DataFrame:
+    """Pixels the EVT gate rejected, by EVT 2022 class, largest first."""
+    values, pixels = np.unique(evt[rejected], return_counts=True)
+    return _rejection_table(pd.Series(pixels, index=values), legend.set_index("VALUE")["EVT_NAME"])
+
+
+def sum_gate_rejections(tables: list[pd.DataFrame]) -> pd.DataFrame:
+    """County rejection tables summed into one, by EVT 2022 class."""
+    rows = pd.concat(tables, ignore_index=True)
+    names = rows.drop_duplicates("evt_value").set_index("evt_value")["EVT_NAME"]
+    return _rejection_table(rows.groupby("evt_value")["rejected_pixels"].sum(), names)
+
+
+def _rejection_table(pixels: pd.Series, names: pd.Series) -> pd.DataFrame:
+    """Rejected pixels (indexed by EVT value) as a table, named from ``names`` (also by value)."""
+    table = pd.DataFrame({"evt_value": pixels.index.astype(np.int64),
+                          "rejected_pixels": pixels.to_numpy(dtype=np.int64)})
+    table["rejected_acres"] = (table["rejected_pixels"] * ACRES_PER_PIXEL).round(4)
+    table["EVT_NAME"] = names.reindex(table["evt_value"]).to_numpy()
+    return (table.sort_values(["rejected_pixels", "evt_value"], ascending=[False, True])
+            .reset_index(drop=True)[REJECTION_COLUMNS])
 
 
 # ── the stitch ──────────────────────────────────────────────────────────────────────────
@@ -563,6 +629,9 @@ def sum_county_summaries(summaries: list[dict]) -> dict:
         for m in first["added_back_acres_by_mode"]}
     total["methods"] = {m: first["methods"][m]["status"] for m in first["methods"]}
     total["rule"] = first["rule"]
+    total["evt_gate"] = {"policy": first["evt_gate"]["policy"], **{
+        k: round(sum(s["evt_gate"][k] for s in summaries), 1)
+        for k in ("raw_proposal_acres", "rejected_acres")}}
     return total
 
 
@@ -580,13 +649,23 @@ def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inp
                                      dtype={"donor_tm_id": "string", "establishment_mode": "string"})
                          for d in dirs], ignore_index=True)
     patches.to_csv(out_dir / "establishment_patches.csv", index=False)
+    sum_gate_rejections([pd.read_csv(d / GATE_REJECTIONS_CSV) for d in dirs]).to_csv(
+        out_dir / GATE_REJECTIONS_CSV, index=False)
     establishment = stitch_establishment(patches, inputs, out_dir)
 
     total = sum_county_summaries(summaries)
     total["stitch_overlap_pixels"] = overlaps
     total["establishment"] = establishment
     (out_dir / "summary.json").write_text(json.dumps(total, indent=2))
+    (out_dir / "manifest.json").write_text(json.dumps(run_manifest(total, inputs), indent=2))
     return total
+
+
+def run_manifest(total: dict, inputs: Inputs) -> dict:
+    """What produced the AOI outputs: the decision settings and the input paths."""
+    return {"counties": total["counties"], "rule": total["rule"],
+            "evt_gate": total["evt_gate"]["policy"], "methods": total["methods"],
+            "inputs": {k: None if v is None else str(v) for k, v in vars(inputs).items()}}
 
 
 def main() -> None:
@@ -604,6 +683,9 @@ def main() -> None:
                         help="geepipe lastDist raster on the TreeMap grid (enables the Obata method)")
     parser.add_argument("--hansen-tif", type=Path, default=None,
                         help="Hansen GFC lossyear/treecover2000 on the TreeMap grid (enables Hansen)")
+    parser.add_argument("--evt-gate", type=EvtGatePolicy,
+                        default=EvtGatePolicy.AGRICULTURE_DEVELOPED_V2, choices=list(EvtGatePolicy),
+                        help="EVT 2022 classes an add-back proposal may land on (default: v2)")
     parser.add_argument("--stage", type=Stage, default=Stage.ALL, choices=list(Stage))
     args = parser.parse_args()
 
@@ -611,7 +693,8 @@ def main() -> None:
     if args.stage is Stage.ALL:
         for fips in args.counties:
             s = improve_county(fips, inputs, args.out_root, rule=args.rule,
-                               min_acres=args.min_acres, scope=args.ownership_scope)
+                               min_acres=args.min_acres, scope=args.ownership_scope,
+                               evt_gate=args.evt_gate)
             young = s["added_back_acres_by_mode"][str(EstablishmentMode.SCALED_YOUNG)]
             print(f"{fips} {s['county']:<9} holes {s['hole_acres']:>10,.0f} ac   "
                   f"added back {s['added_back_acres']:>9,.0f} ac ({young:,.0f} scaled young)   "

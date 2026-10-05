@@ -61,6 +61,10 @@ class MethodMasks:
     def pending(self) -> tuple[AddBackMethod, ...]:
         return tuple(m for m in METHOD_PRIORITY if self.masks[m] is None)
 
+    def restricted_to(self, allowed: np.ndarray) -> MethodMasks:
+        """Every run method's proposals limited to ``allowed``; a pending method stays pending."""
+        return MethodMasks({m: None if mk is None else mk & allowed for m, mk in self.masks.items()})
+
     def votes(self) -> np.ndarray:
         """How many run methods propose each pixel."""
         if not self.run:

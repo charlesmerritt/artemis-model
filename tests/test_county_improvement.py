@@ -1,6 +1,9 @@
 """County-by-county improvement: the pure core, the grid reads, and the stitch."""
 
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import pytest
 import rasterio
 from rasterio.transform import Affine
@@ -11,14 +14,19 @@ from pipeline.s1_initial_state.county_improvement import (
     Grid,
     TreeMapProvenance as TP,
     county_summary,
+    gate_rejections,
     hansen_rule,
     improve_block,
     obata_rule,
+    Inputs,
     read_on_grid,
+    run_manifest,
     SUM_KEYS,
     stitch_rasters,
     sum_county_summaries,
+    sum_gate_rejections,
 )
+from pipeline.s1_initial_state.evt_gate import EvtGatePolicy
 from pipeline.s1_initial_state.impute_establishment import EstablishmentMode as M
 from pipeline.s1_initial_state.ownership_repair import OwnershipProvenance as OP
 
@@ -27,7 +35,7 @@ MODES = {1: M.SCALED_YOUNG, 2: M.DONOR_AS_IS, 3: M.SCALED_YOUNG, 4: M.SCALED_YOU
 PX = 0.2224  # acres per pixel
 
 
-def block(tm, land=None, bookends=None, obata=None, nwos=None, strata=None, **kw):
+def block(tm, land=None, bookends=None, obata=None, nwos=None, strata=None, eligible=None, **kw):
     tm = np.array(tm, dtype=np.uint32)
     land = np.ones(tm.shape, dtype=bool) if land is None else np.array(land, dtype=bool)
     # Default S2 (tree at both bookends): donor as is, provenance 2.
@@ -40,6 +48,8 @@ def block(tm, land=None, bookends=None, obata=None, nwos=None, strata=None, **kw
     kw.setdefault("rule", ConsensusRule.UNION)
     kw.setdefault("min_acres", 0.0)
     kw.setdefault("stratum_modes", MODES)
+    if eligible is not None:
+        kw["eligible"] = np.array(eligible, dtype=bool)
     return improve_block(tm, land, masks, strata, nwos, **kw)
 
 
@@ -105,6 +115,38 @@ def test_a_patch_without_a_stratum_is_scaled_young():
     assert r.provenance[0, 1] == TP.ADDED_BACK_YOUNG
 
 
+def test_the_evt_gate_rejects_proposals_on_ineligible_pixels():
+    r = block([[7, 0, 0, 7]], bookends=[[0, 1, 1, 0]], eligible=[[1, 1, 0, 1]])
+    assert r.provenance[0].tolist() == [TP.PUBLISHED, TP.ADDED_BACK, TP.UNMAPPED_LAND, TP.PUBLISHED]
+
+
+def test_the_evt_gate_applies_before_the_minimum_patch_area():
+    # Three proposed pixels clear a 2-pixel MMU; gated down to one, the patch is dropped.
+    r = block([[7, 0, 0, 0, 7]], bookends=[[0, 1, 1, 1, 0]], eligible=[[1, 1, 0, 0, 1]],
+              min_acres=2 * PX)
+    assert TP.added_back(r.provenance).sum() == 0
+
+
+def test_the_evt_gate_applies_before_the_consensus_rule():
+    # Both methods agree on both holes; the gate strips the right one from every method,
+    # so its two votes become none.
+    r = block([[7, 0, 0, 7]], bookends=[[0, 1, 1, 0]], obata=[[0, 1, 1, 0]],
+              eligible=[[1, 1, 0, 1]], rule=ConsensusRule.AT_LEAST_TWO)
+    assert r.provenance[0].tolist() == [TP.PUBLISHED, TP.ADDED_BACK, TP.UNMAPPED_LAND, TP.PUBLISHED]
+
+
+def test_method_bits_are_after_the_gate_and_raw_bits_before_it():
+    r = block([[7, 0, 0, 7]], bookends=[[0, 1, 1, 0]], obata=[[0, 0, 1, 0]],
+              eligible=[[1, 1, 0, 1]])
+    assert r.method_bits[0].tolist() == [0, 1, 0, 0]
+    assert r.method_bits_raw[0].tolist() == [0, 1, 1 | 2, 0]
+
+
+def test_without_an_eligibility_mask_raw_and_gated_bits_agree():
+    r = block([[7, 0, 0, 7]], bookends=[[0, 1, 1, 0]])
+    assert r.method_bits.tolist() == r.method_bits_raw.tolist()
+
+
 def test_added_back_covers_both_provenance_codes():
     prov = np.array([TP.WATER, TP.PUBLISHED, TP.ADDED_BACK, TP.UNMAPPED_LAND, TP.ADDED_BACK_YOUNG])
     assert TP.added_back(prov).tolist() == [False, False, True, False, True]
@@ -114,13 +156,12 @@ def test_county_summary_counts_added_back_acres_by_mode_and_both_as_holes():
     r = block([[7, 0, 0, 7, 0, 0, 7, 0]],
               bookends=[[0, 1, 1, 0, 1, 0, 0, 0]],
               strata=[[0, 1, 1, 0, 2, 2, 0, 5]])
-    import pandas as pd
     patches = r.assignments.assign(county_pixels=1)
     whole = (slice(None), slice(None))
     s = county_summary("12003", r, np.zeros(r.provenance.shape, dtype=np.uint8),
                        np.ones(r.provenance.shape, dtype=bool), whole,
                        np.zeros(r.provenance.shape, dtype=bool), ConsensusRule.UNION, 0.0, "all_forest", 63,
-                       pd.DataFrame(patches))
+                       pd.DataFrame(patches), evt_gate=EvtGatePolicy.NONE)
     assert s["added_back_acres"] == pytest.approx(round(3 * PX, 1))
     assert s["added_back_acres_by_mode"] == {"scaled_young": round(2 * PX, 1),
                                              "donor_as_is": round(1 * PX, 1)}
@@ -177,7 +218,9 @@ def county(fips, name, acres, credit, young):
     summary.update(county_fips=fips, county=name, rule="union",
                    added_back_credit_acres={"bookends": credit, "hansen_loss": None},
                    added_back_acres_by_mode={"scaled_young": young},
-                   methods={"bookends": {"status": "ok"}, "hansen_loss": {"status": "missing"}})
+                   methods={"bookends": {"status": "ok"}, "hansen_loss": {"status": "missing"}},
+                   evt_gate={"policy": "evt2022_agriculture_developed_v2",
+                             "raw_proposal_acres": acres, "rejected_acres": credit})
     return summary
 
 
@@ -191,3 +234,58 @@ def test_county_summaries_sum_to_the_aoi_total_keeping_a_missing_method_missing(
     assert total["added_back_acres_by_mode"] == {"scaled_young": 1.8}
     assert total["methods"] == {"bookends": "ok", "hansen_loss": "missing"}
     assert total["rule"] == "union"
+    assert total["evt_gate"] == {"policy": "evt2022_agriculture_developed_v2",
+                                 "raw_proposal_acres": 3.1, "rejected_acres": 5.0}
+
+
+def test_county_summary_records_the_gate_and_what_it_rejected():
+    r = block([[7, 0, 0, 0, 7]], bookends=[[0, 1, 1, 0, 0]], obata=[[0, 0, 1, 1, 0]],
+              eligible=[[1, 1, 0, 0, 1]])
+    whole = (slice(None), slice(None))
+    shape = r.provenance.shape
+    s = county_summary("12003", r, np.zeros(shape, dtype=np.uint8), np.ones(shape, dtype=bool),
+                       whole, np.zeros(shape, dtype=bool), ConsensusRule.UNION, 0.0, "all_forest",
+                       63, pd.DataFrame(r.assignments.assign(county_pixels=1)),
+                       evt_gate=EvtGatePolicy.AGRICULTURE_V1)
+    assert s["evt_gate"] == {"policy": "evt2022_agriculture_v1",
+                             "raw_proposal_acres": round(3 * PX, 1),
+                             "rejected_acres": round(2 * PX, 1)}
+
+
+LEGEND = pd.DataFrame({"VALUE": [7755, 7296, 9001],
+                       "EVT_NAME": ["Crops", "Developed-Low Intensity", "Pine"]})
+
+
+def test_gate_rejections_count_rejected_pixels_by_evt_class_largest_first():
+    evt = np.array([[7755, 7296, 7296], [9001, 7755, 7296]])
+    rejected = np.array([[1, 1, 1], [0, 0, 1]], dtype=bool)
+    table = gate_rejections(evt, rejected, LEGEND)
+    assert table.to_dict("list") == {
+        "evt_value": [7296, 7755], "rejected_pixels": [3, 1],
+        "rejected_acres": [round(3 * PX, 4), round(PX, 4)],
+        "EVT_NAME": ["Developed-Low Intensity", "Crops"]}
+
+
+def test_gate_rejections_sum_over_counties_by_evt_class():
+    a = gate_rejections(np.array([7755, 7296]), np.array([True, True]), LEGEND)
+    b = gate_rejections(np.array([7296, 7296]), np.array([True, True]), LEGEND)
+    total = sum_gate_rejections([a, b])
+    assert total["evt_value"].tolist() == [7296, 7755]
+    assert total["rejected_pixels"].tolist() == [3, 1]
+    assert total["rejected_acres"].tolist() == [round(3 * PX, 4), round(PX, 4)]
+    assert total["EVT_NAME"].tolist() == ["Developed-Low Intensity", "Crops"]
+
+
+def test_the_run_manifest_records_the_gate_rule_and_inputs():
+    total = {"counties": ["12003 Baker"], "rule": "union", "methods": {"bookends": "run"},
+             "evt_gate": {"policy": "evt2022_agriculture_developed_v2", "rejected_acres": 1.0}}
+    m = run_manifest(total, Inputs(hansen=Path("/x/hansen.tif")))
+    assert m["evt_gate"] == "evt2022_agriculture_developed_v2"
+    assert m["rule"] == "union" and m["counties"] == ["12003 Baker"]
+    assert m["inputs"]["hansen"] == "/x/hansen.tif" and m["inputs"]["obata"] is None
+
+
+def test_gate_rejected_is_a_raw_proposal_the_gate_stripped_from_every_method():
+    r = block([[7, 0, 0, 0, 7]], bookends=[[0, 1, 1, 0, 0]], obata=[[0, 0, 1, 1, 0]],
+              eligible=[[1, 1, 1, 0, 1]])
+    assert r.gate_rejected[0].tolist() == [False, False, False, True, False]
