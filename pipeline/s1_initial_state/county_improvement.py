@@ -17,7 +17,7 @@ Per county:
    run when their rasters are supplied (``--obata-tif``, ``--hansen-tif``); otherwise
    they are pending.
 4. **Decision.** The EVT 2022 gate (:mod:`evt_gate`, ``--evt-gate``, default
-   ``evt2022_agriculture_developed_v2``) limits every method's proposals to eligible
+   ``evt2022_agriculture_developed_pasture_v3``) limits every method's proposals to eligible
    LANDFIRE 2022 classes. ``ConsensusRule`` then combines them, and the 5 ac minimum patch
    area applies.
 5. **Vegetation.** Each accepted patch takes the modal TreeMap plot (``TM_ID``) in the
@@ -353,7 +353,7 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
                    scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
                    reach: float = MAX_DISTANCE_PX,
                    stratum_modes: Mapping[int, EstablishmentMode] | None = None,
-                   evt_gate: EvtGatePolicy = EvtGatePolicy.AGRICULTURE_DEVELOPED_V2) -> dict:
+                   evt_gate: EvtGatePolicy = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3) -> dict:
     if stratum_modes is None:
         stratum_modes = load_establishment_policy().stratum_modes
     geom = load_county(inputs.counties, fips)
@@ -684,8 +684,8 @@ def main() -> None:
     parser.add_argument("--hansen-tif", type=Path, default=None,
                         help="Hansen GFC lossyear/treecover2000 on the TreeMap grid (enables Hansen)")
     parser.add_argument("--evt-gate", type=EvtGatePolicy,
-                        default=EvtGatePolicy.AGRICULTURE_DEVELOPED_V2, choices=list(EvtGatePolicy),
-                        help="EVT 2022 classes an add-back proposal may land on (default: v2)")
+                        default=EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3, choices=list(EvtGatePolicy),
+                        help="EVT 2022 classes an add-back proposal may land on (default: v3)")
     parser.add_argument("--stage", type=Stage, default=Stage.ALL, choices=list(Stage))
     args = parser.parse_args()
 

@@ -10,7 +10,10 @@ and the minimum patch area. Analysis and the v2 decision: ``docs/evt2022-add-bac
   or ``EVT_LF`` Agriculture) except pasture and hay; water, snow/ice and the fill class
   are never eligible. This reproduces the published run's ``evt2022_gate_legend.csv``.
 - ``AGRICULTURE_DEVELOPED_V2``: v1, and developed low/medium/high intensity and roads
-  blocked too. The adopted gate.
+  blocked too.
+- ``AGRICULTURE_DEVELOPED_PASTURE_V3``: v2, and Eastern Warm Temperate Pasture and Hayland
+  (7997) blocked too: Hansen and Obata add back FL5 hay fields LANDFIRE files there. Some
+  planted pine LANDFIRE mislabels as 7997 goes with them. The adopted gate.
 
 Codes the legend does not list, and nodata, fail closed under every gate but ``NONE``.
 """
@@ -24,6 +27,7 @@ import pandas as pd
 
 DEVELOPED_BLOCKED = (7296, 7297, 7298, 7299)   # Developed-Low/Medium/High Intensity, Roads
 NEVER_ELIGIBLE_LIFEFORMS = ("Water", "Snow-Ice", "Fill-NoData")
+PASTURE_BLOCKED = (7997,)                       # Eastern Warm Temperate Pasture and Hayland
 PASTURE_AND_HAY = "Pasture and Hay"            # matches "Pasture and Hay" and "... Pasture and Hayland"
 
 
@@ -31,6 +35,7 @@ class EvtGatePolicy(StrEnum):
     NONE = "none"
     AGRICULTURE_V1 = "evt2022_agriculture_v1"
     AGRICULTURE_DEVELOPED_V2 = "evt2022_agriculture_developed_v2"
+    AGRICULTURE_DEVELOPED_PASTURE_V3 = "evt2022_agriculture_developed_pasture_v3"
 
     def eligible_codes(self, legend: pd.DataFrame) -> np.ndarray:
         """The LF 2022 EVT ``VALUE`` codes this gate lets an add-back proposal through on."""
@@ -40,8 +45,10 @@ class EvtGatePolicy(StrEnum):
         agricultural = ((legend["EVT_PHYS"] == "Agricultural") | (legend["EVT_LF"] == "Agriculture"))
         pasture = legend["EVT_NAME"].str.contains(PASTURE_AND_HAY, regex=False)
         blocked = (agricultural & ~pasture) | legend["EVT_LF"].isin(NEVER_ELIGIBLE_LIFEFORMS)
-        if self is EvtGatePolicy.AGRICULTURE_DEVELOPED_V2:
+        if self in (EvtGatePolicy.AGRICULTURE_DEVELOPED_V2, EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3):
             blocked |= legend["VALUE"].isin(DEVELOPED_BLOCKED)
+        if self is EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3:
+            blocked |= legend["VALUE"].isin(PASTURE_BLOCKED)
         return values[~blocked.to_numpy()]
 
 
