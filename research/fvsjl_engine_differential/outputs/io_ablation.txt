@@ -1,0 +1,3 @@
+in=disk  out=none (summary text only): 0.29s  140.2 runs/s
+in=disk  out=DSNOut on disk: 33.03s  1.2 runs/s
+in=disk  out=DSNOut on tmpfs: 0.37s  109.4 runs/s
