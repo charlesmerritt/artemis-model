@@ -11,7 +11,9 @@ harvests without regeneration. Configured `regen_slot`, `delay_years`, and `repe
 establish that a restart loop consumes them. See `research/regeneration_audit/README.md`
 and its runnable probes before changing this policy. Reusing an original stand after a
 clearcut must distinguish a seedling configuration from restoring mature DBH/height;
-resetting age alone would restore mature biomass.
+resetting age alone would restore mature biomass. Added-back TreeMap pixels with provenance 4
+carry a donor `TM_ID` for forest type and species mix only: initialize them from the
+`scaled_young` rows of `establishment_tree_lists.csv`, never the donor's tree rows (ADR 0002).
 
 ### FIA control numbers (`PLT_CN`, `STAND_CN`, etc.) must not be cast via `str(int(...))`
 

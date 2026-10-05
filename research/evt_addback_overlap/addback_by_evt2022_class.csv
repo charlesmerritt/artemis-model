@@ -1,0 +1,72 @@
+VALUE,EVT_NAME,EVT_PHYS,aoi_ac,published_ac,hole_ac,proposed_ac,added_back_ac,left_out_ac,proposed_share,added_back_share,left_out_share_of_holes
+9823,Southeastern Ruderal Grassland,Exotic Herbaceous,119136.1216,0.0000,119136.1216,97698.5408,92923.6128,26212.5088,0.3741,0.4219,0.2200
+7997,Eastern Warm Temperate Pasture and Hayland,Agricultural,233686.8000,0.0000,233686.8000,45415.1920,37842.6944,195844.1056,0.1739,0.1718,0.8381
+7299,Developed-Roads,Developed-Roads,102345.3664,0.0000,102345.3664,25239.5088,18294.1792,84051.1872,0.0966,0.0831,0.8213
+7994,Eastern Warm Temperate Row Crop,Agricultural,57639.6304,0.0000,57639.6304,18447.6352,17234.2208,40405.4096,0.0706,0.0782,0.7010
+9323,Southeastern Ruderal Shrubland,Exotic Tree-Shrub,17825.3600,0.0000,17825.3600,13093.1328,11137.7920,6687.5680,0.0501,0.0506,0.3752
+9322,Southeastern North American Temperate Forest Plantation,Conifer,471273.8288,462633.5888,8640.2400,8505.2432,7592.2912,1047.9488,0.0326,0.0345,0.1213
+9586,East Gulf Coastal Plain Small Stream and River Floodplain Herbaceous,Riparian,10841.7776,0.0000,10841.7776,6142.2432,5007.3360,5834.4416,0.0235,0.0227,0.5381
+7996,Eastern Warm Temperate Fallow/Idle Cropland,Agricultural,19073.2464,0.0000,19073.2464,5706.1168,4988.6544,14084.5920,0.0219,0.0226,0.7384
+7916,Eastern Warm Temperate Urban Evergreen Forest,Developed,30260.6336,0.0000,30260.6336,8624.4496,4244.7264,26015.9072,0.0330,0.0193,0.8597
+7995,Eastern Warm Temperate Close Grown Crop,Agricultural,17514.2224,0.0000,17514.2224,4047.6800,3318.6528,14195.5696,0.0155,0.0151,0.8105
+7489,Floridian Highlands Freshwater Marsh,Riparian,5720.1280,0.0000,5720.1280,2896.3152,2187.7488,3532.3792,0.0111,0.0099,0.6175
+7919,Eastern Warm Temperate Urban Shrubland,Developed,15138.7680,0.0000,15138.7680,2606.0832,1978.9152,13159.8528,0.0100,0.0090,0.8693
+7993,Eastern Warm Temperate Row Crop - Close Grown Crop,Agricultural,7990.8320,0.0000,7990.8320,2232.4512,1830.7968,6160.0352,0.0085,0.0083,0.7709
+9321,Southeastern Native Ruderal Forest,Conifer-Hardwood,85077.5632,82586.0160,2491.5472,2439.7280,1350.4128,1141.1344,0.0093,0.0061,0.4580
+7918,Eastern Warm Temperate Urban Herbaceous,Developed,9479.8000,0.0000,9479.8000,1390.2224,1110.8880,8368.9120,0.0053,0.0050,0.8828
+9249,Southern Coastal Plain Nonriverine Basin Swamp,Riparian,138442.8880,137264.3904,1178.4976,1169.6016,993.6832,184.8144,0.0045,0.0045,0.1568
+7936,Eastern Warm Temperate Developed Evergreen Forest,Developed,9981.0896,0.0000,9981.0896,4148.6496,822.2128,9158.8768,0.0159,0.0037,0.9176
+7296,Developed-Low Intensity,Developed-Low Intensity,12094.1120,0.0000,12094.1120,1346.1872,811.5376,11282.5744,0.0052,0.0037,0.9329
+7349,East Gulf Coastal Plain Interior Upland Longleaf Pine Woodland,Conifer,123621.9296,122747.6752,874.2544,859.5760,716.5728,157.6816,0.0033,0.0033,0.1804
+9247,Southern Coastal Plain Blackwater River Floodplain Forest,Riparian,62318.0368,61438.0000,880.0368,870.9184,716.1280,163.9088,0.0033,0.0033,0.1863
+7939,Eastern Warm Temperate Developed Herbaceous,Developed,3854.4144,0.0000,3854.4144,835.3344,646.7392,3207.6752,0.0032,0.0029,0.8322
+7297,Developed-Medium Intensity,Developed-Medium Intensity,5144.3344,0.0000,5144.3344,678.5424,502.8464,4641.4880,0.0026,0.0023,0.9023
+9085,East Gulf Coastal Plain Small Stream and River Floodplain Forest,Riparian,36056.1552,35306.8896,749.2656,742.8160,483.4976,265.7680,0.0028,0.0022,0.3547
+9585,East Gulf Coastal Plain Small Stream and River Floodplain Shrubland,Riparian,550.4400,0.0000,550.4400,510.1856,460.8128,89.6272,0.0020,0.0021,0.1628
+7295,Quarries-Strip Mines-Gravel Pits-Well and Wind Pads,Quarries-Strip Mines-Gravel Pits-Well and Wind Pads,1133.7952,0.0000,1133.7952,458.1440,447.0240,686.7712,0.0018,0.0020,0.6057
+7938,Eastern Warm Temperate Developed Shrubland,Developed,2286.7168,0.0000,2286.7168,445.6896,267.7696,2018.9472,0.0017,0.0012,0.8829
+7298,Developed-High Intensity,Developed-High Intensity,2016.0560,0.0000,2016.0560,294.2352,255.5376,1760.5184,0.0011,0.0012,0.8732
+7990,Eastern Warm Temperate Orchard,Agricultural,717.4624,0.0000,717.4624,340.7168,235.0768,482.3856,0.0013,0.0011,0.6723
+7460,Southern Coastal Plain Nonriverine Cypress Dome,Riparian,37505.3136,37151.6976,353.6160,349.1680,227.2928,126.3232,0.0013,0.0010,0.3572
+7347,Atlantic Coastal Plain Upland Longleaf Pine Woodland,Conifer,13793.9152,13575.7408,218.1744,209.5008,206.1648,12.0096,0.0008,0.0009,0.0550
+7915,Eastern Warm Temperate Urban Deciduous Forest,Developed,1142.0240,0.0000,1142.0240,288.0080,180.1440,961.8800,0.0011,0.0008,0.8423
+7571,Southern Coastal Plain Seepage Swamp and Baygall Shrubland,Riparian,231.9632,0.0000,231.9632,193.7104,169.9136,62.0496,0.0007,0.0008,0.2675
+7330,Southern Coastal Plain Dry Upland Hardwood Forest,Hardwood,63779.6496,63540.1248,239.5248,233.5200,164.3536,75.1712,0.0009,0.0007,0.3138
+7937,Eastern Warm Temperate Developed Mixed Forest,Developed,3175.2048,0.0000,3175.2048,770.3936,140.1120,3035.0928,0.0030,0.0006,0.9559
+7461,Southern Coastal Plain Seepage Swamp and Baygall Woodland,Riparian,22709.9312,22458.6192,251.3120,250.2000,122.5424,128.7696,0.0010,0.0006,0.5124
+7387,Florida Peninsula Inland Scrub Shrubland,Shrubland,244.6400,0.0000,244.6400,152.5664,112.5344,132.1056,0.0006,0.0005,0.5400
+7935,Eastern Warm Temperate Developed Deciduous Forest,Developed,1746.0624,0.0000,1746.0624,821.5456,86.5136,1659.5488,0.0031,0.0004,0.9505
+7917,Eastern Warm Temperate Urban Mixed Forest,Developed,2398.8064,0.0000,2398.8064,227.2928,78.9520,2319.8544,0.0009,0.0004,0.9671
+9320,Southeastern Native Ruderal Flooded & Swamp Forest,Riparian,9574.7648,9480.9120,93.8528,93.8528,76.5056,17.3472,0.0004,0.0003,0.1848
+7998,Eastern Warm Temperate Wheat,Agricultural,586.6912,0.0000,586.6912,79.8416,62.9392,523.7520,0.0003,0.0003,0.8927
+9541,Atlantic Coastal Plain Blackwater Stream Floodplain Shrubland,Riparian,77.8400,0.0000,77.8400,67.6096,48.0384,29.8016,0.0003,0.0002,0.3829
+9324,Southeastern Ruderal Wet Meadow & Marsh,Riparian,48.2608,0.0000,48.2608,28.9120,27.8000,20.4608,0.0001,0.0001,0.4240
+7578,East Gulf Coastal Plain Wet Savanna,Riparian,1476.5136,1449.3808,27.1328,27.1328,26.0208,1.1120,0.0001,0.0001,0.0410
+7547,Central Florida Pine Wet Flatwoods,Riparian,6376.6528,6345.0720,31.5808,31.5808,24.6864,6.8944,0.0001,0.0001,0.2183
+7357,Southern Coastal Plain Mesic Slope Forest,Hardwood,13505.2400,13475.6608,29.5792,29.3568,24.4640,5.1152,0.0001,0.0001,0.1729
+7356,Florida Longleaf Pine Sandhill,Conifer,6367.5344,6351.2992,16.2352,15.7904,12.2320,4.0032,0.0001,0.0001,0.2466
+7992,Eastern Warm Temperate Bush fruit and berries,Agricultural,58.2688,0.0000,58.2688,16.2352,11.1200,47.1488,0.0001,0.0001,0.8092
+9250,Southern Coastal Plain Oak Dome and Hammock,Riparian,3304.4192,3285.5152,18.9040,18.6816,10.6752,8.2288,0.0001,0.0000,0.4353
+7454,East Gulf Coastal Plain Near-Coast Pine Flatwoods,Conifer,1466.2832,1455.8304,10.4528,10.4528,9.3408,1.1120,0.0000,0.0000,0.1064
+9239,Southern Atlantic Coastal Plain Depression Pondshore,Riparian,12.8992,0.0000,12.8992,9.1184,7.5616,5.3376,0.0000,0.0000,0.4138
+9041,Atlantic Coastal Plain Blackwater Stream Floodplain Forest,Riparian,3806.3760,3796.8128,9.5632,9.3408,5.5600,4.0032,0.0000,0.0000,0.4186
+7453,Central Florida Pine Flatwoods,Conifer,1194.2880,1190.0624,4.2256,4.2256,3.5584,0.6672,0.0000,0.0000,0.1579
+9240,Southern Atlantic Coastal Plain Florida Beach,Sparsely Vegetated,3.7808,0.0000,3.7808,3.1136,3.1136,0.6672,0.0000,0.0000,0.1765
+9319,Southeastern Exotic Ruderal Forest,Exotic Tree-Shrub,2740.4128,2736.1872,4.2256,4.2256,2.6688,1.5568,0.0000,0.0000,0.3684
+7450,Southern Atlantic Coastal Plain Wet Pine Savanna and Flatwoods,Riparian,890.7120,888.0432,2.6688,2.4464,1.3344,1.3344,0.0000,0.0000,0.5000
+9050,Atlantic Coastal Plain Small Blackwater River Floodplain Forest,Riparian,2511.3408,2507.5600,3.7808,3.7808,0.6672,3.1136,0.0000,0.0000,0.8235
+7545,East Gulf Coastal Plain Near-Coast Pine Wet Flatwoods,Riparian,84.7344,84.0672,0.6672,0.6672,0.6672,0.0000,0.0000,0.0000,0.0000
+7485,East Gulf Coastal Plain Wet Prairie,Riparian,4.2256,0.0000,4.2256,0.6672,0.6672,3.5584,0.0000,0.0000,0.8421
+9077,East Gulf Coastal Plain Depression Pondshore,Riparian,39.3648,0.0000,39.3648,2.4464,0.4448,38.9200,0.0000,0.0000,0.9887
+9332,Southeastern Exotic Ruderal Flooded & Swamp Forest,Riparian,818.8768,817.9872,0.8896,0.8896,0.2224,0.6672,0.0000,0.0000,0.7500
+7515,Southern Coastal Plain Herbaceous Seep and Bog,Riparian,2.0016,0.0000,2.0016,1.1120,0.0000,2.0016,0.0000,0.0000,1.0000
+7565,Florida Peninsula Inland Scrub Woodland,Conifer,71.6128,70.9456,0.6672,0.6672,0.0000,0.6672,0.0000,0.0000,1.0000
+9248,Southern Coastal Plain Hydric Hammock,Riparian,1939.5504,1939.1056,0.4448,0.4448,0.0000,0.4448,0.0000,0.0000,1.0000
+7292,Open Water,Open Water,19668.3888,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,
+7455,East Gulf Coastal Plain Southern Loblolly Flatwoods,Conifer,91.8512,91.8512,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,
+7501,Southern Atlantic Coastal Plain Nonriverine Swamp and Wet Hardwood Forest,Riparian,13.7888,13.7888,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,
+7335,Southern Atlantic Coastal Plain Dry and Dry-Mesic Oak Forest,Hardwood,1.3344,1.3344,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,
+7589,East Gulf Coastal Plain Southern Loblolly-Hardwood Flatwoods,Conifer-Hardwood,0.8896,0.8896,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,
+7588,East Gulf Coastal Plain Southern Hardwood Flatwoods,Hardwood,0.6672,0.6672,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,
+7991,Eastern Warm Temperate Vineyard,Agricultural,0.2224,0.0000,0.2224,0.0000,0.0000,0.2224,0.0000,0.0000,1.0000
+9098,Florida River Floodplain Marsh,Riparian,0.2224,0.0000,0.2224,0.0000,0.0000,0.2224,0.0000,0.0000,1.0000
