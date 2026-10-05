@@ -297,7 +297,7 @@ def draw_map(classes: np.ndarray, transform, palette: dict[int, str], legend: li
                 bbox=dict(boxstyle="round,pad=0.25", fc=PAPER, ec="none", alpha=0.85))
     ax.set_axis_off()
     ax.set_title(title, loc="left", fontsize=14, color=INK, fontweight="bold")
-    ax.legend(handles=[Patch(color=c, label=l) for l, c in legend], loc="lower left",
+    ax.legend(handles=[Patch(color=c, label=label_text) for label_text, c in legend], loc="lower left",
               frameon=True, facecolor=PAPER, edgecolor=LINE, fontsize=10)
     save_png(fig, name, colors=64)
 
@@ -539,7 +539,7 @@ def fig_imputation(site: pd.Series) -> None:
         ax.set_title(title, loc="left", fontsize=10.5, color=INK)
     for ax in axes:
         outline(ax, added, half, "#ffffff")
-    fig.legend(handles=[Patch(color=c, label=l) for (l, _), c in zip(FOREST_GROUPS, GROUP_COLORS)]
+    fig.legend(handles=[Patch(color=c, label=label_text) for (label_text, _), c in zip(FOREST_GROUPS, GROUP_COLORS)]
                + [Patch(color="#8a8a84", label="Other forest type")],
                loc="upper center", ncol=3, frameon=False, fontsize=9, bbox_to_anchor=(0.31, 0.06))
     fig.legend(handles=[Patch(color=OWNERS[i], label=OWNER_LABELS[i]) for i in (0, 3, 4, 6, 7, 8)],
