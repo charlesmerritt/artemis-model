@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FL5 Add-Back by EVT 2022</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Public+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column, a field-survey report. Summary figures, then tables that scroll on their own. */
+:root{
+  --bg:#f5f6f2; --surface:#ffffff; --fg:#1d2420; --muted:#5d6a62; --line:#d7ddd6;
+  --accent:#2f6b4f; --accent-soft:#dbe9e0; --warn:#a0522d; --warn-soft:#f3e2d6; --bar:#9cbfaa;
+  --display:"Fraunces",Georgia,serif; --body:"Public Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141a17; --surface:#1b231f; --fg:#e4ebe6; --muted:#9aa89f; --line:#2f3a34;
+  --accent:#7fc4a0; --accent-soft:#22362c; --warn:#e3a07a; --warn-soft:#3a2a20; --bar:#4d7a62; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141a17; --surface:#1b231f; --fg:#e4ebe6; --muted:#9aa89f; --line:#2f3a34;
+  --accent:#7fc4a0; --accent-soft:#22362c; --warn:#e3a07a; --warn-soft:#3a2a20; --bar:#4d7a62; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--body)}
+.wrap{max-width:980px;margin:0 auto;padding-inline:20px;padding-block:36px 64px;display:grid;gap:40px}
+h1,h2{font-family:var(--display);font-weight:650;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:2.1rem} h2{font-size:1.35rem}
+.eyebrow{font:500 .72rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+p{margin:0;max-width:68ch} .muted{color:var(--muted)}
+header{display:grid;gap:12px}
+section{display:grid;gap:14px;min-width:0}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.fig{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px;display:grid;gap:4px}
+.fig .n{font:600 1.6rem/1.1 var(--display);font-variant-numeric:tabular-nums}
+.fig .l{font-size:.85rem;color:var(--muted)}
+.fig.warn .n{color:var(--warn)} .fig.good .n{color:var(--accent)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+th{font:500 .7rem/1.2 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);position:sticky;top:0;background:var(--surface)}
+th.sortable{cursor:pointer} th.sortable:hover,th.sortable:focus-visible{color:var(--fg);outline:none}
+td:first-child,th:first-child,td.l,th.l{text-align:left}
+td.name{white-space:normal;min-width:220px}
+tr:last-child td{border-bottom:0}
+tr.hl td{background:var(--accent-soft)} tr.bad td{background:var(--warn-soft)}
+.code{font-family:var(--mono);color:var(--muted);font-size:.8rem}
+.barcell{min-width:140px}
+.bar{height:8px;border-radius:2px;background:var(--bar);display:inline-block;vertical-align:middle}
+.chip{font:500 .7rem/1 var(--mono);padding:3px 6px;border-radius:3px;background:var(--accent-soft);color:var(--accent)}
+.chip.w{background:var(--warn-soft);color:var(--warn)}
+.note{border-left:3px solid var(--line);padding-left:14px;color:var(--muted);font-size:.9rem;display:grid;gap:6px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+select{font:inherit;padding:4px 8px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--fg)}
+ul{margin:0;padding-left:20px;max-width:70ch} li{margin-block:4px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">PR #94 · gated union run · five-county AOI · LANDFIRE EVT 2022</div>
+  <h1>Which EVT classes the add-back lands sit in</h1>
+  <p class="muted">Every pixel in the five-county add-back, cross-tabbed against LANDFIRE 2022 EVT. The run already blocks cropland (<code>evt2022_agriculture_v1</code>) but lets pasture/hay and every Developed class through. Acres are 30 m pixels at 0.2224 ac.</p>
+</header>
+
+<section>
+  <div class="figs" id="figs"></div>
+</section>
+
+<section>
+  <h2>By class group</h2>
+  <p class="muted">Holes are TreeMap 2022 nodata on land. <em>Proposed</em> is any method before the crop gate. <em>Coverage</em> is added ÷ hole acres. <em>Hansen-only</em> is add-back no other method supports.</p>
+  <div class="tbl"><table id="groups"></table></div>
+</section>
+
+<section>
+  <h2>Filter scenarios</h2>
+  <p class="muted">Each filter is applied to the gated proposals, then the 5 ac MMU (8-connected) is re-run. The re-run reproduces the shipped add-back to within 45 ac. Target classes are Southeastern Ruderal Grassland (9823) and Ruderal Shrubland (9323). <em>Target lost to MMU</em> counts target pixels lost because a filter cut their patch below 5 ac.</p>
+  <div class="tbl"><table id="scen"></table></div>
+  <div class="note">
+    <div><strong>Adopted (V2):</strong> keep pasture/hay and the crop ban, and block Developed-Roads plus Developed Low, Medium and High Intensity (7296–7299). The full re-run with PR #94's county-improvement code added back 162,103 ac in 5,103 patches, within 34 ac of this estimate. Rasters: <code>r2:artemis-r2/data/raster_improvement_data/processed/improved-rasters-evt2022-gate-v2/aoi_5county</code>.</div>
+    <div>An allowlist of natural and ruderal EVT classes gives exactly the same result as S3, so it isn't listed separately.</div>
+    <div>Accuracy isn't re-estimated here. If the ~70% NAIP accuracy errors are mostly pasture and roadside pixels, S2/S3 remove most of them, but the label sample would need to be re-scored to confirm that.</div>
+  </div>
+</section>
+
+<section>
+  <h2>How much of the target classes we never add back</h2>
+  <div class="tbl"><table id="target"></table></div>
+  <p class="muted">Most of the missed ruderal grassland is bookend stratum 5, where no LANDFIRE bookend evidence exists. No method proposed it at all, so an EVT gate can't recover it. Only a new evidence source (the disturbance-dating work in #58) could.</p>
+</section>
+
+<section>
+  <h2>Every class</h2>
+  <div class="controls">
+    <label for="grpfilter" class="muted">Group</label>
+    <select id="grpfilter"><option value="">All</option></select>
+    <span class="muted" style="font-size:.85rem">Click a column header to sort. Classes with at least 50 ac added or 2,000 ac of hole are shown.</span>
+  </div>
+  <div class="tbl"><table id="classes"></table></div>
+</section>
+
+<section>
+  <h2>Method</h2>
+  <ul class="muted">
+    <li>Run: <code>r2:artemis-r2/data/raster_improvement_data/processed/improved-rasters-evt2022-gated/aoi_5county</code>. Holes are <code>treemap2022_provenance</code> ∈ {2,3,4}, and add-back is {2,4} (849,926 px = 189,024 ac, matching <code>summary.json</code>).</li>
+    <li>EVT is <code>LF2022_EVT_CONUS.tif</code> clipped to the run grid. It is pixel-aligned with the run, so no resampling was needed.</li>
+    <li>Method bits: 1 bookends, 2 Obata, 4 Hansen. "≥2 methods" means bits 3, 5, 6 or 7.</li>
+    <li>The MMU was re-run AOI-wide rather than per county with padding, which changes the result by 0.02%. The donor step is assumed to stamp every surviving patch.</li>
+  </ul>
+</section>
+</div>
+
+<script>
+const D = {"classes":[{"evt":9823,"hole":119136.1,"added":92134.5,"proposed":97698.5,"two":72326.5,"honly":9594.3,"name":"Southeastern Ruderal Grassland","phys":"Exotic Herbaceous","group":"Ruderal"},{"evt":7997,"hole":233686.8,"added":36186.7,"proposed":45415.2,"two":12408.8,"honly":17151.5,"name":"Eastern Warm Temperate Pasture and Hayland","phys":"Agricultural","group":"Pasture/hay"},{"evt":7299,"hole":102345.4,"added":17901.9,"proposed":25239.5,"two":4709.8,"honly":9938.6,"name":"Developed-Roads","phys":"Developed-Roads","group":"Roads"},{"evt":9323,"hole":17825.4,"added":10986.1,"proposed":13093.1,"two":7677.0,"honly":1829.9,"name":"Southeastern Ruderal Shrubland","phys":"Exotic Tree-Shrub","group":"Ruderal"},{"evt":9322,"hole":8640.2,"added":7558.0,"proposed":8505.2,"two":4708.9,"honly":180.1,"name":"Southeastern North American Temperate Forest Plantation","phys":"Conifer","group":"Forest"},{"evt":9586,"hole":10841.8,"added":4980.2,"proposed":6142.2,"two":1926.9,"honly":2395.5,"name":"East Gulf Coastal Plain Small Stream and River Floodplain Herbaceous","phys":"Riparian","group":"Riparian/wetland"},{"evt":7916,"hole":30260.6,"added":4131.5,"proposed":8624.4,"two":1547.5,"honly":1958.9,"name":"Eastern Warm Temperate Urban Evergreen Forest","phys":"Developed","group":"Developed"},{"evt":7489,"hole":5720.1,"added":2178.0,"proposed":2896.3,"two":1142.7,"honly":782.2,"name":"Floridian Highlands Freshwater Marsh","phys":"Riparian","group":"Riparian/wetland"},{"evt":7919,"hole":15138.8,"added":1919.5,"proposed":2606.1,"two":1004.1,"honly":579.1,"name":"Eastern Warm Temperate Urban Shrubland","phys":"Developed","group":"Developed"},{"evt":9321,"hole":2491.5,"added":1264.8,"proposed":2439.7,"two":835.8,"honly":88.7,"name":"Southeastern Native Ruderal Forest","phys":"Conifer-Hardwood","group":"Ruderal"},{"evt":7918,"hole":9479.8,"added":1076.6,"proposed":1390.2,"two":520.2,"honly":310.0,"name":"Eastern Warm Temperate Urban Herbaceous","phys":"Developed","group":"Developed"},{"evt":9249,"hole":1178.5,"added":989.5,"proposed":1169.6,"two":865.1,"honly":25.1,"name":"Southern Coastal Plain Nonriverine Basin Swamp","phys":"Riparian","group":"Riparian/wetland"},{"evt":7296,"hole":12094.1,"added":785.3,"proposed":1346.2,"two":170.6,"honly":493.1,"name":"Developed-Low Intensity","phys":"Developed-Low Intensity","group":"Developed"},{"evt":7936,"hole":9981.1,"added":783.7,"proposed":4148.6,"two":240.2,"honly":190.8,"name":"Eastern Warm Temperate Developed Evergreen Forest","phys":"Developed","group":"Developed"},{"evt":7349,"hole":874.3,"added":710.6,"proposed":859.6,"two":512.2,"honly":35.1,"name":"East Gulf Coastal Plain Interior Upland Longleaf Pine Woodland","phys":"Conifer","group":"Forest"},{"evt":9247,"hole":880.0,"added":707.7,"proposed":870.9,"two":542.7,"honly":65.4,"name":"Southern Coastal Plain Blackwater River Floodplain Forest","phys":"Riparian","group":"Riparian/wetland"},{"evt":7939,"hole":3854.4,"added":630.5,"proposed":835.3,"two":139.9,"honly":379.2,"name":"Eastern Warm Temperate Developed Herbaceous","phys":"Developed","group":"Developed"},{"evt":7297,"hole":5144.3,"added":493.5,"proposed":678.5,"two":100.7,"honly":341.8,"name":"Developed-Medium Intensity","phys":"Developed-Medium Intensity","group":"Developed"},{"evt":9085,"hole":749.3,"added":477.9,"proposed":742.8,"two":400.3,"honly":36.5,"name":"East Gulf Coastal Plain Small Stream and River Floodplain Forest","phys":"Riparian","group":"Riparian/wetland"},{"evt":9585,"hole":550.4,"added":460.4,"proposed":510.2,"two":240.6,"honly":57.8,"name":"East Gulf Coastal Plain Small Stream and River Floodplain Shrubland","phys":"Riparian","group":"Riparian/wetland"},{"evt":7295,"hole":1133.8,"added":440.4,"proposed":458.1,"two":240.2,"honly":96.3,"name":"Quarries-Strip Mines-Gravel Pits-Well and Wind Pads","phys":"Quarries-Strip Mines-Gravel Pits-Well and Wind Pads","group":"Developed"},{"evt":7938,"hole":2286.7,"added":260.9,"proposed":445.7,"two":38.9,"honly":193.5,"name":"Eastern Warm Temperate Developed Shrubland","phys":"Developed","group":"Developed"},{"evt":7298,"hole":2016.1,"added":252.9,"proposed":294.2,"two":42.5,"honly":179.3,"name":"Developed-High Intensity","phys":"Developed-High Intensity","group":"Developed"},{"evt":7460,"hole":353.6,"added":222.6,"proposed":349.2,"two":180.6,"honly":20.5,"name":"Southern Coastal Plain Nonriverine Cypress Dome","phys":"Riparian","group":"Riparian/wetland"},{"evt":7347,"hole":218.2,"added":204.2,"proposed":209.5,"two":120.3,"honly":38.7,"name":"Atlantic Coastal Plain Upland Longleaf Pine Woodland","phys":"Conifer","group":"Forest"},{"evt":7571,"hole":232.0,"added":169.2,"proposed":193.7,"two":97.2,"honly":44.9,"name":"Southern Coastal Plain Seepage Swamp and Baygall Shrubland","phys":"Riparian","group":"Riparian/wetland"},{"evt":7915,"hole":1142.0,"added":165.9,"proposed":288.0,"two":69.4,"honly":64.3,"name":"Eastern Warm Temperate Urban Deciduous Forest","phys":"Developed","group":"Developed"},{"evt":7330,"hole":239.5,"added":158.6,"proposed":233.5,"two":120.5,"honly":9.8,"name":"Southern Coastal Plain Dry Upland Hardwood Forest","phys":"Hardwood","group":"Forest"},{"evt":7937,"hole":3175.2,"added":128.5,"proposed":770.4,"two":28.5,"honly":52.5,"name":"Eastern Warm Temperate Developed Mixed Forest","phys":"Developed","group":"Developed"},{"evt":7461,"hole":251.3,"added":122.3,"proposed":250.2,"two":96.3,"honly":3.8,"name":"Southern Coastal Plain Seepage Swamp and Baygall Woodland","phys":"Riparian","group":"Riparian/wetland"},{"evt":7387,"hole":244.6,"added":111.4,"proposed":152.6,"two":58.3,"honly":29.8,"name":"Florida Peninsula Inland Scrub Shrubland","phys":"Shrubland","group":"Other"},{"evt":7935,"hole":1746.1,"added":78.7,"proposed":821.5,"two":17.8,"honly":12.7,"name":"Eastern Warm Temperate Developed Deciduous Forest","phys":"Developed","group":"Developed"},{"evt":9320,"hole":93.9,"added":76.5,"proposed":93.9,"two":73.4,"honly":1.6,"name":"Southeastern Native Ruderal Flooded & Swamp Forest","phys":"Riparian","group":"Riparian/wetland"},{"evt":7917,"hole":2398.8,"added":70.7,"proposed":227.3,"two":15.6,"honly":45.4,"name":"Eastern Warm Temperate Urban Mixed Forest","phys":"Developed","group":"Developed"},{"evt":7994,"hole":57639.6,"added":0.0,"proposed":18447.6,"two":0.0,"honly":0.0,"name":"Eastern Warm Temperate Row Crop","phys":"Agricultural","group":"Cropland"},{"evt":7996,"hole":19073.2,"added":0.0,"proposed":5706.1,"two":0.0,"honly":0.0,"name":"Eastern Warm Temperate Fallow/Idle Cropland","phys":"Agricultural","group":"Cropland"},{"evt":7995,"hole":17514.2,"added":0.0,"proposed":4047.7,"two":0.0,"honly":0.0,"name":"Eastern Warm Temperate Close Grown Crop","phys":"Agricultural","group":"Cropland"},{"evt":7993,"hole":7990.8,"added":0.0,"proposed":2232.5,"two":0.0,"honly":0.0,"name":"Eastern Warm Temperate Row Crop - Close Grown Crop","phys":"Agricultural","group":"Cropland"}],"groups":[{"group":"Ruderal","hole":139453.0,"proposed":113231.3,"added":104385.4,"two":80839.3,"honly":11512.9},{"group":"Pasture/hay","hole":233686.8,"proposed":45415.2,"added":36186.7,"two":12408.8,"honly":17151.5},{"group":"Roads","hole":102345.4,"proposed":25239.5,"added":17901.9,"two":4709.8,"honly":9938.6},{"group":"Developed","hole":99851.8,"proposed":22934.5,"added":11218.6,"two":4176.1,"honly":4896.9},{"group":"Riparian/wetland","hole":21131.4,"proposed":13423.7,"added":10533.4,"two":5642.7,"honly":3476.2},{"group":"Forest","hole":10033.4,"proposed":9868.4,"added":8680.3,"two":5495.1,"honly":266.4},{"group":"Other","hole":252.6,"proposed":159.9,"added":117.2,"two":59.2,"honly":29.8},{"group":"Cropland","hole":103580.5,"proposed":30870.6,"added":0.0,"two":0.0,"honly":0.0}],"scenarios":[{"scenario":"S0 current gate (crops blocked)","added_ac":188978.4,"lost_vs_S0_ac":0.0,"lost_pct":0.0,"pasture_ac":36184.3,"roads_ac":17889.4,"road_adjacent_ac":33761.4,"dev_ac":29100.4,"target_added_ac":103108.2,"target_mmu_casualty_ac":0.0},{"scenario":"S1 + block pasture/hay (7997)","added_ac":146692.6,"lost_vs_S0_ac":42285.8,"lost_pct":0.2,"pasture_ac":0.0,"roads_ac":16766.3,"road_adjacent_ac":29206.0,"dev_ac":26650.0,"target_added_ac":99752.4,"target_mmu_casualty_ac":3355.8},{"scenario":"S2 + block Developed-Roads (7299)","added_ac":123456.0,"lost_vs_S0_ac":65522.4,"lost_pct":0.3,"pasture_ac":0.0,"roads_ac":0.0,"road_adjacent_ac":8867.8,"dev_ac":6501.9,"target_added_ac":97168.6,"target_mmu_casualty_ac":5939.6},{"scenario":"S3 + block all Developed/urban & quarries","added_ac":115234.3,"lost_vs_S0_ac":73744.1,"lost_pct":0.4,"pasture_ac":0.0,"roads_ac":0.0,"road_adjacent_ac":6885.5,"dev_ac":0.0,"target_added_ac":95810.4,"target_mmu_casualty_ac":7297.8},{"scenario":"S4 S3 + 1-px road buffer","added_ac":107282.9,"lost_vs_S0_ac":81695.5,"lost_pct":0.4,"pasture_ac":0.0,"roads_ac":0.0,"road_adjacent_ac":0.0,"dev_ac":0.0,"target_added_ac":88572.1,"target_mmu_casualty_ac":14536.1},{"scenario":"S6 allowlist: ruderal grassland/shrubland only","added_ac":94586.9,"lost_vs_S0_ac":94391.5,"lost_pct":0.5,"pasture_ac":0.0,"roads_ac":0.0,"road_adjacent_ac":6186.7,"dev_ac":0.0,"target_added_ac":94586.9,"target_mmu_casualty_ac":8521.3},{"scenario":"H1 drop Hansen-only proposals","added_ac":133277.0,"lost_vs_S0_ac":55701.4,"lost_pct":0.3,"pasture_ac":17249.3,"roads_ac":6512.8,"road_adjacent_ac":16397.8,"dev_ac":11051.5,"target_added_ac":88926.6,"target_mmu_casualty_ac":14181.6},{"scenario":"H2 pasture/developed need >=2 methods","added_ac":135416.9,"lost_vs_S0_ac":53561.5,"lost_pct":0.3,"pasture_ac":10687.0,"roads_ac":3390.0,"road_adjacent_ac":12663.9,"dev_ac":6057.3,"target_added_ac":98800.3,"target_mmu_casualty_ac":4307.9},{"scenario":"H3 pasture/developed need all 3 methods","added_ac":116879.7,"lost_vs_S0_ac":72098.7,"lost_pct":0.4,"pasture_ac":967.0,"roads_ac":0.4,"road_adjacent_ac":7125.5,"dev_ac":457.5,"target_added_ac":96007.4,"target_mmu_casualty_ac":7100.8},{"scenario":"H4 any-two rule everywhere","added_ac":101996.2,"lost_vs_S0_ac":86982.2,"lost_pct":0.5,"pasture_ac":10205.3,"roads_ac":3226.6,"road_adjacent_ac":9945.3,"dev_ac":5705.2,"target_added_ac":75352.5,"target_mmu_casualty_ac":27755.7},{"scenario":"V2 adopted: block roads + developed low/med/high","added_ac":162069.1,"lost_vs_S0_ac":26909.3,"lost_pct":0.1,"pasture_ac":35086.0,"roads_ac":0.0,"road_adjacent_ac":11645.5,"dev_ac":6237.0,"target_added_ac":100649.8,"target_mmu_casualty_ac":2458.4}],"totals":{"hole":710334.8999999999,"added":189023.5,"proposed":261143.09999999998}};
+const f0 = n => Math.round(n).toLocaleString('en-US');
+const pct = n => (100*n).toFixed(0)+'%';
+const T = D.totals;
+const G = Object.fromEntries(D.groups.map(g=>[g.group,g]));
+
+const figs = [
+  ['good', f0(T.added)+' ac', 'added back, out of '+f0(T.hole)+' ac of holes'],
+  ['good', pct(G['Ruderal'].added/T.added), 'of add-back is ruderal grassland/shrubland'],
+  ['warn', pct(G['Pasture/hay'].added/T.added), 'is pasture/hay ('+f0(G['Pasture/hay'].added)+' ac). The crop gate exempts it'],
+  ['warn', pct(G['Roads'].added/T.added), 'sits on Developed-Roads pixels ('+f0(G['Roads'].added)+' ac)'],
+];
+document.getElementById('figs').innerHTML = figs.map(([c,n,l])=>`<div class="fig ${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+
+const gmax = Math.max(...D.groups.map(g=>g.added));
+const badG = new Set(['Pasture/hay','Roads','Developed','Cropland']);
+document.getElementById('groups').innerHTML =
+ `<thead><tr><th class="l">Group</th><th>Hole ac</th><th>Proposed ac</th><th>Added ac</th><th class="l">Share of add-back</th><th>Coverage</th><th>≥2 methods</th><th>Hansen-only ac</th></tr></thead><tbody>`+
+ D.groups.map(g=>`<tr class="${g.group==='Ruderal'?'hl':badG.has(g.group)&&g.added>0?'bad':''}"><td>${g.group}</td><td>${f0(g.hole)}</td><td>${f0(g.proposed)}</td><td>${f0(g.added)}</td>
+ <td class="l barcell"><span class="bar" style="width:${(g.added/gmax*110).toFixed(1)}px"></span> ${pct(g.added/T.added)}</td>
+ <td>${pct(g.added/g.hole)}</td><td>${g.added?pct(g.two/g.added):'–'}</td><td>${f0(g.honly)}</td></tr>`).join('')+
+ `<tr><td><strong>Total</strong></td><td>${f0(T.hole)}</td><td>${f0(T.proposed)}</td><td><strong>${f0(T.added)}</strong></td><td></td><td>${pct(T.added/T.hole)}</td><td></td><td></td></tr></tbody>`;
+
+const smax = D.scenarios[0].added_ac;
+document.getElementById('scen').innerHTML =
+ `<thead><tr><th class="l">Scenario</th><th class="l">Added ac</th><th>Lost vs now</th><th>Pasture ac</th><th>On-road ac</th><th>Road-adjacent ac</th><th>Other developed ac</th><th>Target added ac</th><th>Target lost to MMU</th></tr></thead><tbody>`+
+ D.scenarios.map((s,i)=>`<tr class="${i===0?'':''}"><td class="name">${s.scenario}</td>
+ <td class="l barcell"><span class="bar" style="width:${(s.added_ac/smax*90).toFixed(1)}px"></span> ${f0(s.added_ac)}</td>
+ <td>${i?'−'+f0(s.lost_vs_S0_ac)+' ('+pct(s.lost_pct)+')':'–'}</td>
+ <td>${f0(s.pasture_ac)}</td><td>${f0(s.roads_ac)}</td><td>${f0(s.road_adjacent_ac)}</td><td>${f0(s.dev_ac-s.roads_ac)}</td>
+ <td>${f0(s.target_added_ac)}</td><td>${f0(s.target_mmu_casualty_ac)}</td></tr>`).join('')+`</tbody>`;
+
+const TG = [
+ ['9823','Southeastern Ruderal Grassland',119136,92135,21438,5564,'22,284 of the 27,002 ac missed are stratum 5'],
+ ['9323','Southeastern Ruderal Shrubland',17825,10986,4732,2107,'5,086 of the 6,839 ac missed are stratum 5'],
+ ['9322','SE N. American Temperate Forest Plantation',8640,7558,135,947,'missed is mostly stratum 3'],
+];
+document.getElementById('target').innerHTML =
+ `<thead><tr><th class="l">Class</th><th>Hole ac</th><th>Added ac</th><th>Coverage</th><th>Never proposed</th><th>Proposed, lost to MMU/donor</th><th class="l">Where the misses are</th></tr></thead><tbody>`+
+ TG.map(([c,n,h,a,np,mm,w])=>`<tr><td class="name"><span class="code">${c}</span> ${n}</td><td>${f0(h)}</td><td>${f0(a)}</td><td>${pct(a/h)}</td><td>${f0(np)}</td><td>${f0(mm)}</td><td class="l name muted">${w}</td></tr>`).join('')+`</tbody>`;
+
+const cols = [['evt','Code','l'],['name','EVT name','l'],['group','Group','l'],['hole','Hole ac'],['proposed','Proposed ac'],['added','Added ac'],['share','Share'],['cov','Coverage'],['twoS','≥2 methods'],['honly','Hansen-only ac']];
+const rows = D.classes.map(r=>({...r, share:r.added/T.added, cov:r.hole?r.added/r.hole:0, twoS:r.added?r.two/r.added:0}));
+let sortKey='added', asc=false, grp='';
+const sel = document.getElementById('grpfilter');
+[...new Set(rows.map(r=>r.group))].sort().forEach(g=>sel.insertAdjacentHTML('beforeend',`<option>${g}</option>`));
+sel.addEventListener('change',e=>{grp=e.target.value;renderClasses()});
+function cell(r,k){
+  if(k==='evt') return `<span class="code">${r.evt}</span>`;
+  if(k==='name') return r.name;
+  if(k==='group') return `<span class="chip ${badG.has(r.group)?'w':''}">${r.group}</span>`;
+  if(['share','cov','twoS'].includes(k)) return r.added||k==='cov'?pct(r[k]):'–';
+  return f0(r[k]);
+}
+function renderClasses(){
+  const rs = rows.filter(r=>!grp||r.group===grp).sort((a,b)=>{const x=a[sortKey],y=b[sortKey];return (typeof x==='string'?x.localeCompare(y):x-y)*(asc?1:-1)});
+  document.getElementById('classes').innerHTML =
+   `<thead><tr>${cols.map(([k,l,c])=>`<th class="sortable ${c||''}" tabindex="0" data-k="${k}">${l}${k===sortKey?(asc?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>`+
+   rs.map(r=>`<tr>${cols.map(([k,,c])=>`<td class="${k==='name'?'name':''} ${c||''}">${cell(r,k)}</td>`).join('')}</tr>`).join('')+`</tbody>`;
+  document.querySelectorAll('#classes th').forEach(th=>{
+    const go=()=>{const k=th.dataset.k; if(k===sortKey) asc=!asc; else {sortKey=k; asc=['name','group','evt'].includes(k)} renderClasses()};
+    th.addEventListener('click',go); th.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}});
+  });
+}
+renderClasses();
+</script>
+</body>
+</html>
