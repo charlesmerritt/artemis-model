@@ -89,20 +89,56 @@ def grid_tiles(transform, rows: int, cols: int,
     return tiles
 
 
+def _download(url: str, timeout_s: float) -> bytes:
+    """Return ``url``'s body, or raise ``TimeoutError`` once ``timeout_s`` has elapsed.
+
+    The socket timeout alone cannot bound a download: it resets on every byte, so
+    a slow drip never trips it, and a read that blocks just before a deadline
+    runs a full socket timeout past it. The read therefore runs in a worker and
+    the caller stops waiting at the deadline. The abandoned worker stops at its
+    next chunk; the socket timeout still bounds a worker blocked in a read.
+    """
+    import threading
+    import urllib.request
+
+    stop = threading.Event()
+    outcome: dict = {}
+
+    def read() -> None:
+        try:
+            chunks = []
+            with urllib.request.urlopen(url, timeout=timeout_s) as response:
+                while not stop.is_set() and (chunk := response.read1(1 << 16)):
+                    chunks.append(chunk)
+            outcome["body"] = b"".join(chunks)
+        except Exception as exc:  # re-raised on the caller's thread
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=read, daemon=True)
+    worker.start()
+    worker.join(timeout_s)
+    if worker.is_alive():
+        stop.set()
+        raise TimeoutError(f"tile download exceeded {timeout_s}s")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["body"]
+
+
 def _fetch(url: str, dest: Path, attempts: int = 5, timeout_s: int = 600) -> None:
-    """Download one tile with a hard timeout and backoff/retry.
+    """Download one tile with a hard per-attempt deadline and backoff/retry.
 
     A bare urlretrieve can hang forever on a stalled connection and EE's
     download service returns transient 5xx/429 under load; both should retry,
-    not stall the whole 300+-tile run.
+    not stall the whole 300+-tile run. ``timeout_s`` bounds each attempt's whole
+    download (see :func:`_download`); every retry gets a fresh deadline.
     """
     import urllib.error
 
     delay = 5.0
     for attempt in range(1, attempts + 1):
         try:
-            with urllib.request.urlopen(url, timeout=timeout_s) as response:
-                dest.write_bytes(response.read())
+            dest.write_bytes(_download(url, timeout_s))
             return
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
             status = getattr(exc, "code", None)
@@ -161,7 +197,9 @@ def score_statewide(model_json: Path, strata_tif: Path, out_tif: Path,
     model = json.loads(model_json.read_text())
 
     origin = (transform.c, transform.f)
-    canvas = None
+    # Zero-filled up front: with no S3/S4 tile the output is still a valid pair of bands.
+    canvas = np.zeros((2, rows, cols), dtype=np.uint16)
+    out_tif.parent.mkdir(parents=True, exist_ok=True)  # the tile scratch file lives here
     tmp = out_tif.parent / ".score_tile.tif"
     for i, (window, bounds) in enumerate(tiles, start=1):
         # Each tile composites only over itself: the statewide mosaic is the
@@ -185,15 +223,12 @@ def score_statewide(model_json: Path, strata_tif: Path, out_tif: Path,
                 raise ValueError(f"tile {i} shape {data.shape} != "
                                  f"{(2, window.height, window.width)}")
         tmp.unlink()
-        if canvas is None:
-            canvas = np.zeros((2, rows, cols), dtype=data.dtype)
         paste_tile(canvas, data, row0, col0)
         print(f"  tile {i}/{len(tiles)} rows {window.row_off}:{window.row_off + window.height}")
     tmp.unlink(missing_ok=True)
 
     profile.update(count=2, dtype="uint16", nodata=None, compress="lzw",
                    tiled=False, blockysize=None, blockxsize=None)
-    out_tif.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(out_tif, "w", **profile) as dst:
         dst.write(canvas)
     print(f"wrote {out_tif} {canvas.shape} "
