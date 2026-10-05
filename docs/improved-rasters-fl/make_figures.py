@@ -1,11 +1,17 @@
 """Figures and numbers for docs/improved-rasters-fl/presentation.html.
 
 Reads the county and AOI outputs of ``pipeline.s1_initial_state.county_improvement``
-from /mnt/d/improved-rasters. Writes small committed files next to the deck:
-``figures/*.png|jpg`` (previews sized to live in git without LFS) and ``data/*.json|csv``.
+(and the ``add_back_stand_age`` pass over them) from ``--run-root``, /mnt/d/improved-rasters
+by default. Writes small committed files next to the deck: ``figures/*.png|jpg`` (previews
+sized to live in git without LFS) and ``data/*.json|csv``.
 
     uv run python docs/improved-rasters-fl/make_figures.py            # everything
     uv run python docs/improved-rasters-fl/make_figures.py --only fia maps
+    uv run python docs/improved-rasters-fl/make_figures.py --run-root <run> --inputs-root <clips>
+
+``--inputs-root`` points the county outlines and TreeMap's VAT at a folder of AOI clips laid
+out as ``tests/test_county_improvement_evt_gate_regression.py`` describes, for a machine
+without /mnt/d.
 
 Network: FIA EVALIDator (forest-area estimates) and Earth Engine (NAIP chips). Both are
 cached, in ``data/`` and ``/mnt/d/improved-rasters/figure_cache/`` respectively.
@@ -43,6 +49,7 @@ from pipeline.s1_initial_state.county_improvement import (  # noqa: E402
     TreeMapProvenance as TP,
     county_dir,
 )
+from pipeline.s1_initial_state.add_back_methods import METHOD_BIT  # noqa: E402
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL  # noqa: E402
 from pipeline.s1_initial_state.statewide_repair import FLGrid  # noqa: E402
 from pipeline.s1_initial_state.young_stand_profiles import (  # noqa: E402
@@ -59,8 +66,11 @@ from pipeline.s1_initial_state.verify_fia_evalidator import (  # noqa: E402
 HERE = Path(__file__).resolve().parent
 FIG = HERE / "figures"
 DATA = HERE / "data"
+# Rebound by main() from --run-root / --inputs-root.
+RUN_ROOT = OUT_ROOT
 AOI = OUT_ROOT / AOI_NAME
 CACHE = OUT_ROOT / "figure_cache"
+INPUTS = Inputs()
 STATES = Path("/mnt/d/tl_2022_us_state/tl_2022_us_state.shp")
 
 # Colours. Maps: provenance on a paper surface (validated: green/violet pass all checks).
@@ -106,7 +116,7 @@ def save_jpg(fig, name: str) -> Path:
 
 def summaries() -> tuple[dict, list[dict]]:
     aoi = json.loads((AOI / "summary.json").read_text())
-    counties = [json.loads((county_dir(OUT_ROOT, f) / "summary.json").read_text()) for f in AOI_COUNTIES]
+    counties = [json.loads((county_dir(RUN_ROOT, f) / "summary.json").read_text()) for f in AOI_COUNTIES]
     return aoi, counties
 
 
@@ -142,7 +152,7 @@ def treemap_florida() -> dict:
     if path.exists():
         return json.loads(path.read_text())
     fl = gpd.read_file(STATES, where="STUSPS = 'FL'").to_crs(5070).geometry.union_all()
-    tif = Inputs().treemap
+    tif = INPUTS.treemap
     mapped = 0
     with rasterio.open(tif) as src:
         window, transform = FLGrid(src.transform.c, src.transform.f).window(fl.bounds)
@@ -254,8 +264,8 @@ def fig_area_vs_fia(fia: dict, counties: list[dict], aoi: dict) -> None:
 # ── AOI maps ────────────────────────────────────────────────────────────────────────────
 
 
-def read(name: str, root: Path = AOI):
-    with rasterio.open(root / name) as src:
+def read(name: str, root: Path | None = None):
+    with rasterio.open((root or AOI) / name) as src:
         return src.read(1), src.transform, src.nodata
 
 
@@ -274,7 +284,7 @@ def priority_reduce(values: np.ndarray, factor: int, priority: list[int]) -> np.
 
 
 def county_shapes():
-    rows = gpd.read_file(Inputs().counties,
+    rows = gpd.read_file(INPUTS.counties,
                          where=f"ADMIN_FIPS IN ({','.join(repr(f) for f in AOI_COUNTIES)})")
     return rows.to_crs(5070).dissolve("ADMIN_FIPS").reset_index()
 
@@ -334,6 +344,57 @@ def fig_aoi_maps(aoi: dict) -> None:
         present = [i for i in range(9) if (own == i).any()]
         draw_map(small, t, pal, [(OWNER_LABELS[i], OWNERS[i]) for i in present], fname,
                  f"{title}: five-county AOI")
+
+
+# ── tables the deck quotes ──────────────────────────────────────────────────────────────
+
+
+def agreement_cells() -> pd.DataFrame:
+    """Added-back acres by which methods proposed them (the any-two rule's input).
+
+    From a union run, the any-two rows are the accepted pixels two methods propose. They
+    are not an any-two run, whose 5 ac minimum would apply to the any-two mask itself (#86).
+    """
+    prov, _, _ = read("treemap2022_provenance.tif")
+    bits, _, _ = read("add_back_method_bits.tif")
+    added = TP.added_back(prov)
+    rows = []
+    for combo in range(1, 8):
+        found = [m for m in METHOD_PRIORITY if combo & METHOD_BIT[m]]
+        px = int((added & (bits == combo)).sum())
+        rows.append({"found_by": " + ".join(str(m) for m in found), "methods": len(found),
+                     "pixels": px, "acres": round(px * ACRES_PER_PIXEL)})
+    table = pd.DataFrame(rows).sort_values(["methods", "acres"], ascending=[False, False])
+    table.to_csv(DATA / "agreement_cells.csv", index=False)
+    return table
+
+
+def ownership_table() -> dict:
+    """Owner class acres on improved forest, before and after the repair."""
+    improved, _, tm_nd = read("treemap2022_improved.tif")
+    prov, _, _ = read("treemap2022_provenance.tif")
+    before, _, _ = read("nwos2022_published.tif")
+    after, _, _ = read("nwos2022_improved.tif")
+    forest = improved != tm_nd
+    added = TP.added_back(prov)
+    rows = [{"owner": OWNER_LABELS[i],
+             "before_acres": round(int((forest & (before == i)).sum()) * ACRES_PER_PIXEL),
+             "after_acres": round(int((forest & (after == i)).sum()) * ACRES_PER_PIXEL)} for i in range(9)]
+    pd.DataFrame(rows).assign(change_acres=lambda d: d.after_acres - d.before_acres).to_csv(
+        DATA / "ownership.csv", index=False)
+    out = {"improved_forest_acres": round(int(forest.sum()) * ACRES_PER_PIXEL),
+           "non_forest_on_added_back_acres": round(int((added & (before == 1)).sum()) * ACRES_PER_PIXEL),
+           "non_forest_on_published_acres": round(int((forest & ~added & (before == 1)).sum()) * ACRES_PER_PIXEL),
+           "water_on_improved_forest_acres": round(int((forest & (before == 2)).sum()) * ACRES_PER_PIXEL)}
+    (DATA / "ownership_summary.json").write_text(json.dumps(out, indent=2))
+    return out
+
+
+def copy_run_tables() -> None:
+    """The EVT gate's rejections and the stand-age table, as the run wrote them."""
+    for name in ("evt2022_gate_rejections.csv", "add_back_stand_age.csv"):
+        if (AOI / name).exists():
+            pd.read_csv(AOI / name).to_csv(DATA / name, index=False)
 
 
 # ── chips: TreeMap, NWOS and NAIP around one place ──────────────────────────────────────
@@ -396,9 +457,19 @@ def outline(ax, mask: np.ndarray, half_m: float, color: str) -> None:
     ax.contour(xs, xs[::-1], mask.astype(float), levels=[0.5], colors=[color], linewidths=1.6)
 
 
+def credited_method(bits: np.ndarray) -> np.ndarray:
+    """Per pixel, the index in ``METHOD_PRIORITY`` of the first method proposing it (-1 none)."""
+    out = np.full(bits.shape, -1, dtype=np.int8)
+    for i, m in reversed(list(enumerate(METHOD_PRIORITY))):
+        out[(bits & METHOD_BIT[m]) > 0] = i
+    return out
+
+
 def added_patches(prov: np.ndarray, strata: np.ndarray, nwos: np.ndarray, t,
-                  min_px: int = 150) -> pd.DataFrame:
-    """Accepted patches in the AOI with centroid, size, modal stratum and interior depth."""
+                  bits: np.ndarray | None = None, min_px: int = 150) -> pd.DataFrame:
+    """Accepted patches in the AOI with centroid, size, modal stratum, interior depth and,
+    given the method bits, the method credited with most of the patch."""
+    credit = credited_method(bits) if bits is not None else None
     labels, n = ndimage.label(TP.added_back(prov), structure=np.ones((3, 3)))
     sizes = np.bincount(labels.ravel())
     depth = ndimage.distance_transform_edt(labels > 0)
@@ -412,6 +483,8 @@ def added_patches(prov: np.ndarray, strata: np.ndarray, nwos: np.ndarray, t,
         rows.append({"pid": pid, "px": int(sizes[pid]), "stratum": int(s[1:].argmax() + 1),
                      "depth": float(depth[sl][m].max()),
                      "nwos_non_forest": float((nwos[sl][m] == 1).mean()),
+                  "method": None if credit is None
+                  else str(METHOD_PRIORITY[np.bincount(credit[sl][m].clip(0), minlength=3).argmax()]),
                      "x": t.c + (sl[1].start + cc.mean() + 0.5) * 30,
                      "y": t.f - (sl[0].start + rr.mean() + 0.5) * 30})
     return pd.DataFrame(rows)
@@ -469,8 +542,31 @@ def fig_holes(sites: pd.DataFrame) -> None:
     save_jpg(fig, "fig01_holes_treemap_nwos.jpg")
 
 
+def pick_method_sites(p: pd.DataFrame, method: AddBackMethod, n: int, seed: int = 20261005,
+                      min_sep_m: float = 8000.0) -> pd.DataFrame:
+    """A reproducible draw of ``n`` interior patches credited to ``method``, spread apart."""
+    pool = p[p.method == str(method)].nlargest(24, "depth").sample(frac=1, random_state=seed)
+    out: list[pd.Series] = []
+    for _, row in pool.iterrows():
+        if len(out) == n:
+            break
+        if all(np.hypot(row.x - o.x, row.y - o.y) >= min_sep_m for o in out):
+            out.append(row)
+    return pd.DataFrame(out)
+
+
 def fig_bookend_chips(sites: pd.DataFrame) -> None:
-    """Slide 4: added-back land (bookends), one site per stratum, next to NAIP."""
+    """Slide 4: added-back land credited to bookends, one site per stratum, next to NAIP."""
+    fig_chips(sites, lambda s: STRATUM_TEXT[s.stratum], "added back (bookends)", "fig04_bookend_chips.jpg")
+
+
+def fig_method_chips(sites: pd.DataFrame, method: AddBackMethod, name: str) -> None:
+    """Slides 5 and 6: added-back land credited to Obata or Hansen, next to NAIP."""
+    fig_chips(sites, lambda s: STRATUM_TEXT.get(s.stratum, "S5 · no bookend evidence"),
+              f"added back ({METHOD_LABEL[method]})", name)
+
+
+def fig_chips(sites: pd.DataFrame, title, added_label: str, name: str) -> None:
     prov, t, _ = read("treemap2022_provenance.tif")
     half = 900.0
     n = len(sites)
@@ -484,16 +580,16 @@ def fig_bookend_chips(sites: pd.DataFrame) -> None:
         axes[1, i].imshow(rgb, extent=(-half, half, -half, half))
         axes[1, i].set_xticks([]), axes[1, i].set_yticks([])
         outline(axes[1, i], cls == TP.ADDED_BACK, half, "#ffffff")
-        axes[0, i].set_title(f"{STRATUM_TEXT[s.stratum]}\n{s.px * ACRES_PER_PIXEL:,.0f} ac patch",
+        axes[0, i].set_title(f"{title(s)}\n{s.px * ACRES_PER_PIXEL:,.0f} ac patch",
                              loc="left", fontsize=9.5, color=INK)
         axes[1, i].set_title(f"NAIP {date}", loc="left", fontsize=9.5, color=INK_SOFT)
     fig.legend(handles=[Patch(color=PUBLISHED, label="TreeMap forest"),
-                        Patch(color=ADDED, label="added back (bookends)"),
+                        Patch(color=ADDED, label=added_label),
                         Patch(color=UNMAPPED, label="still unmapped"),
                         Patch(facecolor="none", edgecolor="#777", label="white line on NAIP: added back")],
                loc="lower center", ncol=4, frameon=False, fontsize=9.5, bbox_to_anchor=(0.5, -0.02))
     fig.subplots_adjust(wspace=0.04, hspace=0.16, bottom=0.07)
-    save_jpg(fig, "fig04_bookend_chips.jpg")
+    save_jpg(fig, name)
 
 
 FOREST_GROUPS = [("Longleaf / slash pine", FTG.LONGLEAF_SLASH), ("Loblolly / shortleaf pine", FTG.LOBLOLLY_SHORTLEAF),
@@ -505,7 +601,7 @@ GROUP_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]
 def forest_group_lut() -> np.ndarray:
     import pyogrio
 
-    vat = pyogrio.read_dataframe(str(Inputs().treemap) + ".vat.dbf", columns=["Value", "FORTYPCD"],
+    vat = pyogrio.read_dataframe(str(INPUTS.vat), columns=["Value", "FORTYPCD"],
                                  read_geometry=False)
     value = vat.Value.to_numpy().astype(np.int64)   # the raster's own cell value
     fortype = vat.FORTYPCD.to_numpy().astype(np.int64)
@@ -553,12 +649,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--only", nargs="*", default=["fia", "maps", "chips"],
                         choices=["fia", "maps", "chips"])
+    parser.add_argument("--run-root", type=Path, default=OUT_ROOT,
+                        help="county_improvement --out-root holding counties/ and aoi_5county/")
+    parser.add_argument("--inputs-root", type=Path, default=None,
+                        help="AOI clips for the county outlines and TreeMap VAT (default: /mnt/d)")
     args = parser.parse_args()
+    global RUN_ROOT, AOI, CACHE, INPUTS
+    RUN_ROOT, AOI, CACHE = args.run_root, args.run_root / AOI_NAME, args.run_root / "figure_cache"
+    if args.inputs_root is not None:
+        INPUTS = Inputs(treemap=args.inputs_root / "TreeMap-2022/Data/TreeMap2022_CONUS.tif",
+                        counties=args.inputs_root / "county/countyp010g.shp")
     FIG.mkdir(exist_ok=True)
     DATA.mkdir(exist_ok=True)
     aoi, counties = summaries()
     pd.json_normalize(counties).to_csv(DATA / "county_summaries.csv", index=False)
     (DATA / "aoi_summary.json").write_text(json.dumps(aoi, indent=2))
+    agreement_cells()
+    ownership_table()
+    copy_run_tables()
     if "fia" in args.only:
         fia = fia_estimates()
         fig_fia_gap(fia, treemap_florida(), counties, aoi)
@@ -569,13 +677,19 @@ def main() -> None:
         prov, t, _ = read("treemap2022_provenance.tif")
         strata, _, _ = read("bookend_strata.tif")
         nwos, _, _ = read("nwos2022_published.tif")
-        patches = added_patches(prov, strata, nwos, t)
-        chips = pick_sites(patches, (1, 2, 3, 4), 1)
+        bits, _, _ = read("add_back_method_bits.tif")
+        patches = added_patches(prov, strata, nwos, t, bits)
+        chips = pick_sites(patches[patches.method == str(AddBackMethod.BOOKENDS)], (1, 2, 3, 4), 1)
+        obata = pick_method_sites(patches, AddBackMethod.OBATA_DISTURBANCE, 4)
+        hansen = pick_method_sites(patches, AddBackMethod.HANSEN_LOSS, 4)
         # Slide 1 shows the defect both rasters share: holes NWOS also calls non-forest.
         holes = pick_sites(patches[patches.nwos_non_forest >= 0.8], (1,), 2, seed=7)
-        chips.assign(use="bookend_chip").pipe(
-            lambda d: pd.concat([d, holes.assign(use="hole_example")])).to_csv(DATA / "chip_sites.csv", index=False)
+        pd.concat([chips.assign(use="bookend_chip"), obata.assign(use="obata_chip"),
+                   hansen.assign(use="hansen_chip"), holes.assign(use="hole_example")]).to_csv(
+            DATA / "chip_sites.csv", index=False)
         fig_bookend_chips(chips)
+        fig_method_chips(obata, AddBackMethod.OBATA_DISTURBANCE, "fig05_obata_chips.jpg")
+        fig_method_chips(hansen, AddBackMethod.HANSEN_LOSS, "fig06_hansen_chips.jpg")
         fig_holes(holes)
         shown = set(chips.pid) | set(holes.pid)
         fig_imputation(pick_sites(patches[~patches.pid.isin(shown) & (patches.nwos_non_forest >= 0.8)],

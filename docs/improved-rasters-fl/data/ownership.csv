@@ -1,0 +1,10 @@
+owner,before_acres,after_acres,change_acres
+Unknown forest,18902,19323,421
+Non-forest,263550,0,-263550
+Water,1267,0,-1267
+Family,592179,772155,179976
+Corporate,199578,264889,65311
+Tribal,0,0,0
+Federal,143912,153676,9764
+State,8784,10453,1669
+Local,28616,36293,7677

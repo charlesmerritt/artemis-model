@@ -3,11 +3,11 @@
   "land_acres": 1805020.7,
   "published_forest_acres": 1094685.8,
   "hole_acres": 710335.1,
-  "rule_accepted_before_mmu_acres": 97798.3,
-  "added_back_acres": 74068.0,
-  "dropped_by_mmu_or_no_donor_acres": 23730.3,
-  "improved_forest_acres": 1168753.9,
-  "patches": 2886,
+  "rule_accepted_before_mmu_acres": 202714.4,
+  "added_back_acres": 162102.8,
+  "dropped_by_mmu_or_no_donor_acres": 40611.6,
+  "improved_forest_acres": 1256788.4,
+  "patches": 5103,
   "counties": [
     "12003 Baker",
     "12023 Columbia",
@@ -15,24 +15,38 @@
     "12121 Suwannee",
     "12125 Union"
   ],
+  "added_back_credit_acres": {
+    "bookends": 77789.6,
+    "obata_disturbance": 50932.8,
+    "hansen_loss": 33380.4
+  },
+  "added_back_acres_by_mode": {
+    "scaled_young": 160585.2,
+    "donor_as_is": 1517.4
+  },
+  "methods": {
+    "bookends": "run",
+    "obata_disturbance": "run",
+    "hansen_loss": "run"
+  },
+  "rule": "union",
+  "evt_gate": {
+    "policy": "evt2022_agriculture_developed_v2",
+    "raw_proposal_acres": 261143.6,
+    "rejected_acres": 58429.1
+  },
   "stitch_overlap_pixels": {
     "add_back_method_bits.tif": 0,
+    "add_back_method_bits_raw.tif": 0,
     "bookend_strata.tif": 0,
+    "evt2022_add_back_eligible.tif": 0,
+    "evt2022_gate_rejected.tif": 0,
     "nwos2022_improved.tif": 0,
     "nwos2022_provenance.tif": 0,
     "nwos2022_published.tif": 0,
     "treemap2022_improved.tif": 0,
     "treemap2022_provenance.tif": 0,
     "treemap2022_published.tif": 0
-  },
-  "added_back_credit_acres": {
-    "bookends": 74068.0,
-    "obata_disturbance": null,
-    "hansen_loss": null
-  },
-  "added_back_acres_by_mode": {
-    "scaled_young": 72468.9,
-    "donor_as_is": 1599.3
   },
   "establishment": {
     "target_age": 5,
@@ -44,65 +58,59 @@
       "S4": "scaled_young",
       "S5": "scaled_young"
     },
-    "donors": 199,
+    "donors": 229,
     "tree_list_rows": {
-      "donor_as_is": 1981,
-      "scaled_young": 684
+      "donor_as_is": 2099,
+      "scaled_young": 799
     },
     "live_effect": {
       "by_mode": {
         "donor_as_is": {
-          "acres": 1599.3,
+          "acres": 1517.4,
           "mature_donor": {
-            "live_tpa": 535.7,
-            "live_ba_ft2_per_ac": 76.1,
-            "live_trees": 856738,
-            "live_ba_ft2": 121662
+            "live_tpa": 502.7,
+            "live_ba_ft2_per_ac": 74.9,
+            "live_trees": 762801,
+            "live_ba_ft2": 113671
           },
           "established": {
-            "live_tpa": 535.7,
-            "live_ba_ft2_per_ac": 76.1,
-            "live_trees": 856738,
-            "live_ba_ft2": 121662
+            "live_tpa": 502.7,
+            "live_ba_ft2_per_ac": 74.9,
+            "live_trees": 762801,
+            "live_ba_ft2": 113671
           }
         },
         "scaled_young": {
-          "acres": 72468.8,
+          "acres": 160585.3,
           "mature_donor": {
-            "live_tpa": 467.1,
-            "live_ba_ft2_per_ac": 80.3,
-            "live_trees": 33847744,
-            "live_ba_ft2": 5818650
+            "live_tpa": 450.0,
+            "live_ba_ft2_per_ac": 78.3,
+            "live_trees": 72261299,
+            "live_ba_ft2": 12579060
           },
           "established": {
-            "live_tpa": 377.3,
-            "live_ba_ft2_per_ac": 17.1,
-            "live_trees": 27339476,
-            "live_ba_ft2": 1242832
+            "live_tpa": 378.3,
+            "live_ba_ft2_per_ac": 17.2,
+            "live_trees": 60747237,
+            "live_ba_ft2": 2754954
           }
         }
       },
       "total": {
-        "acres": 74068.1,
+        "acres": 162102.7,
         "mature_donor": {
-          "live_tpa": 468.5,
-          "live_ba_ft2_per_ac": 80.2,
-          "live_trees": 34704482,
-          "live_ba_ft2": 5940313
+          "live_tpa": 450.5,
+          "live_ba_ft2_per_ac": 78.3,
+          "live_trees": 73024100,
+          "live_ba_ft2": 12692731
         },
         "established": {
-          "live_tpa": 380.7,
-          "live_ba_ft2_per_ac": 18.4,
-          "live_trees": 28196214,
-          "live_ba_ft2": 1364494
+          "live_tpa": 379.5,
+          "live_ba_ft2_per_ac": 17.7,
+          "live_trees": 61510038,
+          "live_ba_ft2": 2868625
         }
       }
     }
-  },
-  "methods": {
-    "bookends": "run",
-    "obata_disturbance": "pending",
-    "hansen_loss": "pending"
-  },
-  "rule": "union"
+  }
 }
