@@ -8,11 +8,11 @@ aged without being rebuilt:
 
     uv run python -m pipeline.s1_initial_state.add_back_stand_age <run>/aoi_5county --obata-tif <lastDist.tif> --hansen-tif <hansen_aoi.tif>
 
-- **Cut year.** The latest year Obata (``lastDist``, 2010-2022) or Hansen (``lossyear``,
-  2001-2022) detects. Hansen's 30% canopy-in-2000 gate decides whether Hansen *proposes*
-  a pixel, not whether its loss *dates* one: ground that was sparse in 2000 and lost
-  canopy later was still cut then (2,185 ac of the gated union run). Where the two
-  detectors disagree by more than 2 years a spectral tie-break is owed (#90); until it
+- **Cut year.** The latest year Obata (``lastDist``) or Hansen (``lossyear``) detects, any
+  year from 2001 to 2022. A run's disturbance window and Hansen's 30% canopy-in-2000 gate
+  decide whether a detector *proposes* a pixel, not whether its year *dates* one: ground
+  that was sparse in 2000 and lost canopy later was still cut then (2,185 ac of the gated
+  union run). Where the two detectors disagree by more than 2 years a spectral tie-break is owed (#90); until it
   lands the latest year stands.
 - **Stand age.** Years since establishment, as of 2022. Establishment is the year after
   the cut year, so a 2022 cut would be -1; it is 0. A pixel neither detector dates is
@@ -52,13 +52,12 @@ from pipeline.s1_initial_state.county_improvement import (
     Grid,
     TreeMapProvenance,
     _write,
-    HANSEN_LOSSYEAR,
-    obata_rule,
     read_on_grid,
 )
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL
 
 VINTAGE = 2022                # TreeMap 2022: stand age is as of this year
+DATED_YEARS = (2001, VINTAGE)  # any detector year in here dates a pixel, whatever the run's window
 ESTABLISHMENT_LAG = 1         # planted the year after the harvest
 HANSEN_BASE_YEAR = 2000       # Hansen stores lossyear as years since 2000
 UNDATED = -1                  # the stand age of a pixel neither detector dates
@@ -83,11 +82,9 @@ def cut_year(obata: np.ndarray | None,
     """
     years: dict[CutYearDetector, np.ndarray] = {}
     if obata is not None:
-        years[CutYearDetector.OBATA] = np.where(obata_rule(obata), obata, 0)
+        years[CutYearDetector.OBATA] = _dated(np.asarray(obata, dtype=np.int32))
     if hansen_lossyear is not None:
-        dated = (hansen_lossyear >= HANSEN_LOSSYEAR[0]) & (hansen_lossyear <= HANSEN_LOSSYEAR[1])
-        years[CutYearDetector.HANSEN] = np.where(
-            dated, hansen_lossyear.astype(np.uint16) + HANSEN_BASE_YEAR, 0)
+        years[CutYearDetector.HANSEN] = _dated(np.asarray(hansen_lossyear, dtype=np.int32) + HANSEN_BASE_YEAR)
     if not years:
         raise ValueError("no detector has run: supply Obata, Hansen or both")
     latest = np.maximum.reduce(list(years.values())).astype(np.uint16)
@@ -95,6 +92,11 @@ def cut_year(obata: np.ndarray | None,
     for flag, year in years.items():
         detector[(year == latest) & (latest > 0)] |= np.uint8(flag)
     return latest, detector
+
+
+def _dated(years: np.ndarray) -> np.ndarray:
+    """``years`` where they fall in :data:`DATED_YEARS`, else 0."""
+    return np.where((years >= DATED_YEARS[0]) & (years <= DATED_YEARS[1]), years, 0)
 
 
 def stand_age(years: np.ndarray) -> np.ndarray:

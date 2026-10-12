@@ -196,11 +196,11 @@ def read_young_plot_library(vat: Path, fia_db: Path, tree_table: Path, *,
     young = library.merge(cond[["PLT_CN", "CONDID", "STDAGE"]], on="PLT_CN")
     seedlings = seedlings.merge(young[["PLT_CN", "CONDID"]], on=["PLT_CN", "CONDID"])
     return YoungPlotLibrary(young[["TM_ID", "PLT_CN", "FORTYPCD", "STDAGE"]].reset_index(drop=True),
-                            _live_trees(tree_table, set(young["TM_ID"])),
+                            live_trees(tree_table, set(young["TM_ID"])),
                             seedlings[["PLT_CN", "SPCD", "TPA_UNADJ"]].reset_index(drop=True))
 
 
-def _live_trees(tree_table: Path, tm_ids: set[str]) -> pd.DataFrame:
+def live_trees(tree_table: Path, tm_ids: set[str]) -> pd.DataFrame:
     """The tree table's live rows (``STATUSCD`` 1) for these plots, IDs as exact strings."""
     chunks = pd.read_csv(tree_table, usecols=TREE_COLUMNS, chunksize=TREE_TABLE_CHUNK_ROWS,
                          dtype={"TM_ID": ID_DTYPE, "PLT_CN": ID_DTYPE})

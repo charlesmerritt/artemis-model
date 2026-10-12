@@ -28,12 +28,20 @@ def test_the_cut_year_is_the_latest_year_either_detector_dates():
     assert detector.tolist() == [D.OBATA, D.HANSEN, D.HANSEN, D.OBATA | D.HANSEN]
 
 
-def test_a_detection_after_2022_or_before_its_detectors_window_does_not_date_the_pixel():
-    obata = np.array([2009, 2023, 0])
-    lossyear = np.array([0, 0, 23])
+def test_a_detection_after_2022_or_before_2001_does_not_date_the_pixel():
+    obata = np.array([2000, 2023, 0, -9999])
+    lossyear = np.array([0, 0, 23, 0])
     year, detector = cut_year(obata, lossyear)
-    assert year.tolist() == [0, 0, 0]
-    assert detector.tolist() == [0, 0, 0]
+    assert year.tolist() == [0, 0, 0, 0]
+    assert detector.tolist() == [0, 0, 0, 0]
+
+
+def test_any_detector_year_from_2001_dates_the_pixel_whatever_the_runs_add_back_window():
+    # A run's disturbance window decides add-back only (ADR 0003 amendment): an Obata year
+    # before the 2010 window still dates its pixel.
+    year, detector = cut_year(np.array([2009, 2001]), np.array([0, 0]))
+    assert year.tolist() == [2009, 2001]
+    assert detector.tolist() == [D.OBATA, D.OBATA]
 
 
 def test_a_detector_that_has_not_run_dates_nothing():
