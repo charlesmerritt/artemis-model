@@ -1,0 +1,25 @@
+{
+  "cooling_factor": 0.98,
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52
+  ],
+  "target_period": "2013_2024",
+  "weights": {
+    "harvest_volume": 6.0,
+    "standing_volume": 1.0
+  },
+  "dimensions": [
+    "county",
+    "owner_group"
+  ]
+}

@@ -1,0 +1,7 @@
+variant,options,options_per_stand,max_options_per_stand,distinct_runs,description
+baseline,53606,4.530977939311977,13,12531,the pre-2026-10-08 menus; reproduces 2026-09-28's setup
+all_owners,124343,10.50993153579579,25,14740,every owner may take every existing prescription
+all_owners_short_natural,145259,12.277829431155439,29,15700,+ a 30-year natural-regeneration clearcut rotation for any type
+repeat_rotations,145259,12.277829431155439,29,18008,+ short rotations repeat inside the 50-year horizon
+repeat_offsets_25,210926,17.828247823514495,43,25784,+ timing offsets out to 25 years
+repeat_offsets_25_any_type,258978,21.88978108359395,49,31234,+ any forest type may take a planted-pine rotation

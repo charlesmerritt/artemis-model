@@ -1,0 +1,67 @@
+{
+  "v": 4,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-12T04:00:00Z"
+  },
+  "lists": "css",
+  "title": "ARTEMIS \u00b7 FL5 open menus",
+  "cover": "cover",
+  "order": [
+    "cover",
+    "menu",
+    "library",
+    "schedule",
+    "owners",
+    "counties",
+    "error",
+    "error-grid",
+    "capacity",
+    "choices",
+    "cut-2022",
+    "cut-2027",
+    "cut-2032",
+    "cut-2037",
+    "cut-2042",
+    "cut-2047",
+    "cut-2052",
+    "cut-2057",
+    "cut-2062",
+    "cut-2067",
+    "cut-2072",
+    "takeaways"
+  ],
+  "sections": {
+    "s1": {
+      "description": "Every owner class may take every regime; forest type still filters.",
+      "start": "cover"
+    },
+    "s2": {
+      "description": "The annealed harvest schedule against TPO, landscape, owner groups and counties.",
+      "start": "schedule"
+    },
+    "s3": {
+      "description": "Total error, where it sits, and why what remains is supply.",
+      "start": "error"
+    },
+    "s4": {
+      "description": "The plan cut by cut, 2022 to 2072.",
+      "start": "cut-2022"
+    },
+    "s5": {
+      "description": "What this says and what comes next.",
+      "start": "takeaways"
+    }
+  },
+  "faces": {
+    "ibm-plex-sans": {
+      "family": "IBM Plex Sans",
+      "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap"
+    },
+    "source-serif-4": {
+      "family": "Source Serif 4",
+      "href": "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600&display=swap"
+    }
+  },
+  "designSystems": []
+}
