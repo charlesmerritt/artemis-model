@@ -86,7 +86,7 @@ MARKDOWN_BUDGET = {
     "weekly-artifact/2026-08-17/README.md": (210, "record"),
     "weekly-artifact/2026-08-24/README.md": (268, "record"),
     "weekly-artifact/2026-08-31/README.md": (420, "record"),
-    "weekly-artifact/2026-10-12/README.md": (244, "record"),
+    "weekly-artifact/2026-10-12/README.md": (265, "record"),
 }
 CHECK_REFERENCES_IN = {"keep", "generated"}
 

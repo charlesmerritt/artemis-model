@@ -2,7 +2,7 @@
 
 ## Artifact
 
-**The converged plan, and the measurement of how much of last month's plan was search error.**
+**The converged plan, and a lower bound on how much of last month's plan was search error.**
 40 annealing searches over the *identical* 13,034-run FVS library `2026-09-14` published, two
 cooling factors × twenty restarts, and the plan that falls out of the best cell.
 
@@ -37,7 +37,8 @@ their outputs and this note.
 how much was a search that had stopped converging — its own seed spread (5.5% of the
 objective) was larger than any plausible gain. This one changes the *search* and nothing else,
 over a library asserted identical, so the difference is attributable to search alone. The
-answer is a number nobody had: **0.8%**.
+answer is a number nobody had: **at least 0.8%**, and the sweep says more about where the
+remaining effort should not go than about where the true optimum is.
 
 **Where the files live.** The drivers write into their own directory,
 `weekly-artifact/2026-09-28/`. The outputs were moved verbatim into this dated folder and not
@@ -61,7 +62,7 @@ in its title. The run date is 2026-10-12.
 | Deviation band across the ten cycles | 17.7 pp | **16.6 pp** | −28.3% … −44.9% |
 | CPU spent searching | 4.3 min | **62 min** | the "before" is this sweep's baseline cell; 4 workers, 956 s wall |
 
-### 1. The search was already close. Search error was 0.8% of the objective.
+### 1. Eight times the search bought 0.8%. That is a floor on the search error, not a ceiling.
 
 | arm | objective (best) | seed spread | % of best | CPU |
 |---|---:|---:|---:|---:|
@@ -72,9 +73,11 @@ in its title. The run date is 2026-10-12.
 
 Both levers work, and they work on different things:
 
-- **Restarts buy the tail.** At the config's cooling factor, the sixth seed (47) found 62.575
-  and no seed in the next fourteen beat it. The curve is flat from restart 6 to restart 20 —
-  `restart_curve.csv`, panel (a).
+- **Restarts buy the tail, and the two arms flatten differently.** At the config's cooling
+  factor the sixth seed (47) found 62.575 and no seed in the next fourteen beat it — flat from
+  restart 6 to restart 20. At cooling 0.98 the best arrived at **restart 17** (seed 58), so that
+  curve had *not* flattened when the sweep stopped: 20 restarts is where this ran out of budget,
+  not where it converged. `restart_curve.csv`, panel (a).
 - **Slower cooling buys consistency, not depth.** It cuts per-search spread by 69% at equal
   restarts (3.483 → 1.070) while barely moving the best (63.077 → 63.033). It is the lever that
   makes a *single* search trustworthy, which matters more for a statewide run than best-of-20
@@ -82,11 +85,19 @@ Both levers work, and they work on different things:
 - **Together they bought 0.8%.** 62.571 against 63.077, for 10× the baseline cell's CPU
   in the winning cell alone (44.0 min against 4.3 min) and 14× across the whole sweep.
 
-The honest reading of `2026-09-14`'s seed spread is therefore the opposite of what it feared.
-That spread was real, but it was variance around a value already within 1% of what 40 searches
-can reach. **The 2026-09-14 plan was not materially search-limited, and neither is this one.**
-What remains between this objective and the relaxation bound (62.571 against 0.195) is the
-decision space and the landscape, not the annealer.
+The honest reading of `2026-09-14`'s seed spread is milder than what it feared, and weaker
+than "the search is solved". That spread was real, but it was variance around a value within 1%
+of what 40 searches reach. **What 40 searches cannot do is bound the error that is left**: this
+grid shows a plan 0.8% better exists, not that none better than 62.571 does, and the 0.98 arm
+still improved at restart 17 of 20. The relaxation bound is no help either — at 0.195 against
+62.571 it is far too loose to say how the remaining gap splits between the decision space and
+the annealer.
+
+What the sweep does establish is the shape of the return: **8× the searches, 14× the CPU, for
+0.8%**, on
+an objective whose seeds spread 1.7–6.4% around their own best. Further tuning is a bad buy
+against that, not a closed question, and §2 is why — the gain is small next to how little the
+objective distinguishes the plans it is choosing between.
 
 ### 2. The objective is a plateau: 59% of the stands that have a choice moved, for 0.8%.
 
@@ -206,11 +217,18 @@ uv run python -m pytest tests/test_weekly_artifact_20260928_convergence.py -q   
 
 ## How to regenerate
 
-Run steps 0–4 above. Output is deterministic: FVS is deterministic, the annealer takes its seed
-from `config/projection.yaml` (`harvest.random_seed: 42`, so seeds 42–61 here), and a search is
-a pure function of (library, cooling factor, seed) — the four forked workers change nothing but
-wall clock. Same library + same seeds + same weights gives the same plan, as §3 above
-demonstrates across two machines.
+Run steps 0–4 above. **The results are deterministic; the recorded timings are not.** FVS is
+deterministic, the annealer takes its seed from `config/projection.yaml`
+(`harvest.random_seed: 42`, so seeds 42–61 here), and a search is a pure function of (library,
+cooling factor, seed) — the four forked workers change nothing but wall clock. Same library +
+same seeds + same weights gives the same plan and the same objective, as §3 demonstrates across
+two machines.
+
+What a re-run will *not* reproduce byte for byte is every measured duration: `seconds` in
+`seed_spread.csv`, `seconds_this_seed` in `restart_curve.csv`, `cpu_seconds_total` in
+`arm_summary.csv`, `wall_seconds` / `cpu_seconds` in `solution_quality.json`, and panel (d) of
+the figure, which plots cumulative CPU minutes. Those move with machine load and hardware. Every
+objective, choice and volume beside them does not.
 
 Intermediates, all gitignored, under `data/interim/timing_library/` (116 MB: the FVS input
 database, 13,035 keyfiles, the raw `FVS_Summary2` cache, `trajectory_cycles`, the expanded
@@ -219,8 +237,11 @@ force the batch to re-run. `FVSSN_BIN` overrides the binary location.
 
 ## What this hands the next run
 
-1. **Stop tuning the search; the 0.8% is spent.** Twenty restarts at cooling 0.98 cost 10× the
-   CPU of the published setting and bought less than one percent. For the statewide runs the
+1. **Spend the next CPU somewhere other than the search.** Twenty restarts at cooling 0.98 cost
+   10× the CPU of the published setting and bought less than one percent, and the 0.98 arm had
+   not flattened at 20 — a third arm, or 50 restarts, would likely find another fraction of a
+   percent for another hour. That is the argument for stopping, not a claim that nothing is left
+   to find. For the statewide runs the
    useful setting out of this sweep is **cooling 0.98 at 5 restarts** — within 0.7% of the best
    anything found, at a quarter of the CPU, and with a third of the per-search variance, which
    is what makes a single search per unit defensible when there are far more units than there
