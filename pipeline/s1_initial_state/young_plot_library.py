@@ -42,7 +42,7 @@ from pipeline.s1_initial_state.young_stand_profiles import (
     states_sql,
 )
 
-LIBRARY_AGES = (0, 21)        # the stand ages the library serves; a young plot's STDAGE is within ±2
+LIBRARY_STAND_AGES = range(0, 22)   # the stand ages the library serves; a young plot's STDAGE is within ±2
 SEEDLING_AGES = range(0, 3)   # stand ages whose tree list carries the plot's seedlings
 SEEDLING_DIA_IN = 0.1         # FIA seedlings are DIA < 1 in and have no recorded size
 SEEDLING_HT_FT = 1.0          # FIA's minimum seedling height is 0.5 ft (softwoods), 1 ft (hardwoods)
@@ -119,7 +119,7 @@ class YoungPlotLibrary:
                 return self._best(level, pool, gap[pool.index], neighbour_mix, stand_age)
         return YoungPlotMatch(MatchLevel.PROFILE, 0, None, None, 0)
 
-    def coverage(self, fortypcds, ages=range(0, 22)) -> pd.DataFrame:
+    def coverage(self, fortypcds, stand_ages=LIBRARY_STAND_AGES) -> pd.DataFrame:
         """For each (forest type, stand age): the fallback level, age gap and candidate count.
 
         Matched without a neighbour plot's species mix, so it shows how deep the library
@@ -127,9 +127,9 @@ class YoungPlotLibrary:
         """
         rows = []
         for fortypcd in fortypcds:
-            for age in ages:
-                m = self.match(fortypcd, age, pd.Series(dtype=float))
-                rows.append({"FORTYPCD": fortypcd, "stand_age": age, "level": m.level,
+            for stand_age in stand_ages:
+                m = self.match(fortypcd, stand_age, pd.Series(dtype=float))
+                rows.append({"FORTYPCD": fortypcd, "stand_age": stand_age, "level": m.level,
                              "age_gap": m.age_gap, "candidates": m.candidates})
         return pd.DataFrame(rows)
 
@@ -138,8 +138,11 @@ class YoungPlotLibrary:
 
         TreeMap tree lists carry no seedlings, and an FIA plot this young has almost no
         tree of 1 in DBH, so without them a young stand would be an empty list. The
-        pixel's stand age decides, not the plot's FIA age.
+        pixel's stand age decides, not the plot's FIA age. A profile match has no plot, so
+        no tree list: the caller must not write one (ADR 0003 amendment).
         """
+        if match.level is MatchLevel.PROFILE:
+            raise ValueError("a profile match has no young plot, so no tree list")
         return self._trees(match.tm_id, match.plt_cn, stand_age)
 
     def _trees(self, tm_id: str, plt_cn: str, stand_age: int) -> pd.DataFrame:
@@ -147,7 +150,7 @@ class YoungPlotLibrary:
         if stand_age not in SEEDLING_AGES:
             return trees.reset_index(drop=True)
         seedlings = self.seedlings[self.seedlings["PLT_CN"] == plt_cn]
-        small = seedlings.assign(TM_ID=tm_id, DIA=SEEDLING_DIA_IN, HT=SEEDLING_HT_FT)
+        small = seedlings.assign(TM_ID=tm_id, STATUSCD=1, DIA=SEEDLING_DIA_IN, HT=SEEDLING_HT_FT)
         return pd.concat([trees, small[trees.columns.intersection(small.columns)]], ignore_index=True)
 
     def _best(self, level: MatchLevel, pool: pd.DataFrame, gap: pd.Series,
@@ -157,8 +160,8 @@ class YoungPlotLibrary:
                     for tm_id, plt_cn in zip(pool["TM_ID"], pool["PLT_CN"])]
         ranked = pool.assign(age_gap=gap, distance=distance)
         best = ranked.sort_values(["age_gap", "distance", "PLT_CN"]).iloc[0]
-        tied = int((ranked["age_gap"] == best["age_gap"]).sum())
-        return YoungPlotMatch(level, int(best["age_gap"]), best["PLT_CN"], best["TM_ID"], tied)
+        candidates = int((ranked["age_gap"] == best["age_gap"]).sum())
+        return YoungPlotMatch(level, int(best["age_gap"]), best["PLT_CN"], best["TM_ID"], candidates)
 
 
 # ── reading the sources ─────────────────────────────────────────────────────────────────
@@ -170,7 +173,7 @@ def read_young_plot_library(vat: Path, fia_db: Path, tree_table: Path, *,
 
     A young plot is a VAT row whose plot passes ``young_stand_profiles``' filters (accessible,
     single-condition, national design, in ``states``) with ``STDAGE`` close enough to serve
-    :data:`LIBRARY_AGES`. Its ``FORTYPCD`` is TreeMap's, the same source as the neighbour
+    :data:`LIBRARY_STAND_AGES`. Its ``FORTYPCD`` is TreeMap's, the same source as the neighbour
     plot's (``county_improvement.donor_forest_types``). The VAT stores ``Value`` and
     ``PLT_CN`` as floats; :func:`as_id_series` restores their exact digits or refuses.
     """
@@ -180,7 +183,7 @@ def read_young_plot_library(vat: Path, fia_db: Path, tree_table: Path, *,
     library = pd.DataFrame({"TM_ID": as_id_series(table["Value"], column="TM_ID"),
                             "PLT_CN": as_id_series(table["PLT_CN"], column="PLT_CN"),
                             "FORTYPCD": table["FORTYPCD"].astype("Int64")})
-    stdage = (max(LIBRARY_AGES[0] - AGE_HALF_WINDOW, 0), LIBRARY_AGES[1] + AGE_HALF_WINDOW)
+    stdage = (max(LIBRARY_STAND_AGES[0] - AGE_HALF_WINDOW, 0), LIBRARY_STAND_AGES[-1] + AGE_HALF_WINDOW)
     con = sqlite3.connect(f"file:{fia_db}?mode=ro", uri=True)
     try:
         cond = pd.read_sql(states_sql(CONDITIONS_SQL, states), con, params=list(stdage))
@@ -212,9 +215,10 @@ def aoi_forest_types(raster: Path, vat: Path) -> list[int]:
 
     with rasterio.open(raster) as src:
         values = pd.unique(src.read(1).ravel())
-        nodata = src.nodata
+        values = values[values != src.nodata]
     table = pyogrio.read_dataframe(vat, columns=["Value", "FORTYPCD"], read_geometry=False)
-    mapped = table[table["Value"].isin([v for v in values if v != nodata])]
+    tm_ids = as_id_series(table["Value"], column="TM_ID")
+    mapped = table[tm_ids.isin(set(as_id_series(pd.Series(values), column="TM_ID")))]
     return sorted(int(c) for c in mapped["FORTYPCD"].dropna().unique())
 
 
@@ -235,8 +239,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     library = read_young_plot_library(args.vat, args.db, args.tree_table)
-    report = library.coverage(aoi_forest_types(args.aoi_raster, args.vat),
-                              ages=range(LIBRARY_AGES[0], LIBRARY_AGES[1] + 1))
+    report = library.coverage(aoi_forest_types(args.aoi_raster, args.vat))
     report.to_csv(args.out, index=False)
     print(f"{len(library.plots)} young plots; (forest type, stand age) cells by fallback:")
     print(report.groupby(["level", "age_gap"]).size().to_string())

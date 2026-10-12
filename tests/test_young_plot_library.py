@@ -4,6 +4,7 @@ import sqlite3
 
 import pandas as pd
 import pyogrio
+import pytest
 
 from pipeline.s1_initial_state.young_plot_library import (
     MatchLevel,
@@ -23,7 +24,7 @@ def _library(plots: list[tuple[str, int, int]], trees: list[tuple[str, int, floa
     tm_id = dict(zip(plot_frame["PLT_CN"], plot_frame["TM_ID"]))
     tree_frame = pd.DataFrame(list(trees), columns=["PLT_CN", "SPCD", "TPA_UNADJ"])
     tree_frame["TM_ID"] = tree_frame["PLT_CN"].map(tm_id)
-    tree_frame["DIA"], tree_frame["HT"] = 2.0, 12.0
+    tree_frame["STATUSCD"], tree_frame["DIA"], tree_frame["HT"] = 1, 2.0, 12.0
     return YoungPlotLibrary(plot_frame, tree_frame,
                             pd.DataFrame(list(seedlings), columns=["PLT_CN", "SPCD", "TPA_UNADJ"]))
 
@@ -77,6 +78,12 @@ def test_with_no_plot_of_the_type_within_two_years_the_forest_type_group_is_sear
     assert (match.level, match.age_gap, match.plt_cn) == (MatchLevel.GROUP, 1, "100000000000002")
 
 
+def test_a_plot_of_the_type_at_two_years_beats_a_plot_of_the_group_at_the_exact_age():
+    library = _library([("100000000000001", LONGLEAF, 0), ("100000000000002", SLASH, 2)])
+    match = library.match(SLASH, 0, NO_MIX)
+    assert (match.level, match.age_gap, match.plt_cn) == (MatchLevel.TYPE, 2, "100000000000002")
+
+
 def test_with_no_plot_in_the_group_within_two_years_the_match_falls_back_to_the_profile():
     library = _library([("100000000000001", SLASH, 10), ("100000000000003", LOBLOLLY, 0)])
     match = library.match(SLASH, 0, NO_MIX)
@@ -92,13 +99,20 @@ def _young_slash_plot() -> YoungPlotLibrary:
                     seedlings=[("100000000000001", SLASH_PINE, 600.0), ("100000000000001", SWEETGUM, 150.0)])
 
 
-def test_at_stand_age_0_to_2_the_young_plots_seedlings_become_small_trees():
+def test_at_stand_age_0_to_2_the_young_plots_seedlings_become_small_live_trees():
     library = _young_slash_plot()
-    trees = library.tree_list(library.match(SLASH, 1, NO_MIX), stand_age=1)
+    trees = library.tree_list(library.match(SLASH, 2, NO_MIX), stand_age=2)   # 2: the last such age
     rows = sorted(zip(trees["SPCD"], trees["TPA_UNADJ"], trees["DIA"], trees["HT"]))
     assert rows == [(SLASH_PINE, 75.0, 2.0, 12.0),       # the plot's own tree row
                     (SLASH_PINE, 600.0, 0.1, 1.0),       # seedlings: DBH 0.1 in, height 1 ft
                     (SWEETGUM, 150.0, 0.1, 1.0)]
+    assert (trees["STATUSCD"] == 1).all()                # a live filter keeps the seedlings
+
+
+def test_a_profile_match_has_no_tree_list():
+    library = _library([("100000000000001", SLASH, 10)])
+    with pytest.raises(ValueError, match="profile"):
+        library.tree_list(library.match(SLASH, 0, NO_MIX), stand_age=0)
 
 
 def test_from_stand_age_3_the_tree_list_is_the_young_plots_trees_only():
@@ -118,7 +132,7 @@ def test_at_stand_age_0_to_2_the_species_mix_counts_the_seedlings():
 def test_coverage_reports_each_forest_type_and_ages_fallback_and_how_many_plots_it_chose_from():
     library = _library([("100000000000001", SLASH, 3), ("100000000000002", SLASH, 3),
                         ("100000000000003", LONGLEAF, 1)])
-    report = library.coverage([SLASH], ages=[0, 3, 9])
+    report = library.coverage([SLASH], stand_ages=[0, 3, 9])
     assert report.to_dict("records") == [
         {"FORTYPCD": SLASH, "stand_age": 0, "level": MatchLevel.GROUP, "age_gap": 1, "candidates": 1},
         {"FORTYPCD": SLASH, "stand_age": 3, "level": MatchLevel.TYPE, "age_gap": 0, "candidates": 2},
