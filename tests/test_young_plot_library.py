@@ -84,10 +84,10 @@ def test_a_plot_of_the_type_at_two_years_beats_a_plot_of_the_group_at_the_exact_
     assert (match.level, match.age_gap, match.plt_cn) == (MatchLevel.TYPE, 2, "100000000000002")
 
 
-def test_with_no_plot_in_the_group_within_two_years_the_match_falls_back_to_the_profile():
+def test_with_no_plot_in_the_group_within_two_years_the_pixel_is_unmatched():
     library = _library([("100000000000001", SLASH, 10), ("100000000000003", LOBLOLLY, 0)])
     match = library.match(SLASH, 0, NO_MIX)
-    assert (match.level, match.plt_cn, match.tm_id) == (MatchLevel.PROFILE, None, None)
+    assert (match.level, match.plt_cn, match.tm_id) == (MatchLevel.UNMATCHED, None, None)
 
 
 SLASH_PINE = 111
@@ -109,9 +109,9 @@ def test_at_stand_age_0_to_2_the_young_plots_seedlings_become_small_live_trees()
     assert (trees["STATUSCD"] == 1).all()                # a live filter keeps the seedlings
 
 
-def test_a_profile_match_has_no_tree_list():
+def test_an_unmatched_pixel_has_no_tree_list():
     library = _library([("100000000000001", SLASH, 10)])
-    with pytest.raises(ValueError, match="profile"):
+    with pytest.raises(ValueError, match="unmatched"):
         library.tree_list(library.match(SLASH, 0, NO_MIX), stand_age=0)
 
 
@@ -136,7 +136,7 @@ def test_coverage_reports_each_forest_type_and_ages_fallback_and_how_many_plots_
     assert report.to_dict("records") == [
         {"FORTYPCD": SLASH, "stand_age": 0, "level": MatchLevel.GROUP, "age_gap": 1, "candidates": 1},
         {"FORTYPCD": SLASH, "stand_age": 3, "level": MatchLevel.TYPE, "age_gap": 0, "candidates": 2},
-        {"FORTYPCD": SLASH, "stand_age": 9, "level": MatchLevel.PROFILE, "age_gap": 0, "candidates": 0},
+        {"FORTYPCD": SLASH, "stand_age": 9, "level": MatchLevel.UNMATCHED, "age_gap": 0, "candidates": 0},
     ]
 
 

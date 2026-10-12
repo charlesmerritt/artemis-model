@@ -44,6 +44,10 @@ _Avoid_: Donor (ambiguous with the young plot)
 A real FIA plot of the neighbour plot's forest type and the pixel's stand age; its trees are the pixel's.
 _Avoid_: Donor, profile stand
 
+**Young-plot library**:
+The young plots a pixel can match: TreeMap's own AL/FL/GA plots, by forest type and FIA-measured `STDAGE`.
+_Avoid_: Library (unqualified; the trajectory library is FVS output)
+
 **Stale stand**:
 A published TreeMap pixel whose plot predates a harvest Landsat dates: trees on cut ground.
 
@@ -80,7 +84,7 @@ _Avoid_: Clearcut (same thing; use it in prose, not as a config name)
 
 **Menu**:
 The prescriptions an owner class may choose among. `no_management` is always on it.
-_Avoid_: Eligible set, library (the library is the FVS output, not the choices)
+_Avoid_: Eligible set, library (the trajectory library is the FVS output, not the choices)
 
 **Offset**:
 Whole years by which a prescription's first entry is delayed, carrying every later entry with

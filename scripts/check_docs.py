@@ -44,7 +44,7 @@ MARKDOWN_BUDGET = {
     ".agents/skills/linear/SKILL.md": (37, "keep"),            # agent skill; linear.py --help is the usage
     "AGENTS.md": (74, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-28 for the regeneration gotcha, 72->74 for its provenance-4 rule (ADR 0002)
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
-    "CONTEXT.md": (96, "keep"),                               # the project vocabulary; raised 64->93 2026-09-28 for the raster-repair terms (ADR 0003), 93->96 2026-10-12 for age source
+    "CONTEXT.md": (100, "keep"),                               # the project vocabulary; raised 64->93 2026-09-28 for the raster-repair terms (ADR 0003), 93->100 2026-10-12 for age source and young-plot library
     "README.md": (119, "keep"),
     "data/index.md": (122, "generated"),                      # scripts/r2_index.py; regrew 2026-09-14 (+6 rows)
     "docs/adr/0001-ruderal-grassland-clean-slate.md": (36, "record"),  # accepted decision, 2026-09-13

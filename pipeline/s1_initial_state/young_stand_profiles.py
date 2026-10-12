@@ -201,20 +201,6 @@ def young_stand_profiles(conditions: pd.DataFrame, trees: pd.DataFrame, seedling
     return pd.DataFrame.from_dict(rows, orient="index")
 
 
-def young_stand_profiles_by_age(conditions: pd.DataFrame, trees: pd.DataFrame, seedlings: pd.DataFrame,
-                                *, ages=range(0, 22), min_plots: int = MIN_PLOTS) -> pd.DataFrame:
-    """:func:`young_stand_profiles` for each stand age, indexed by (stand age, group).
-
-    Each age is measured on the conditions whose ``STDAGE`` is within ±2 years of it, so
-    neighbouring ages share plots. It is the young-plot library's last resort
-    (``young_plot_library.MatchLevel.PROFILE``).
-    """
-    frames = {age: young_stand_profiles(conditions[(conditions["STDAGE"] - age).abs() <= AGE_HALF_WINDOW],
-                                        trees, seedlings, min_plots=min_plots)
-              for age in ages}
-    return pd.concat(frames, names=["stand_age", "group"])
-
-
 # ── reading FIA ─────────────────────────────────────────────────────────────────────────
 
 

@@ -82,8 +82,8 @@ separate age raster is produced.
   pixels in their bookend stratum. Their age source is `stratum_median`.
 - **Young plots** come from TreeMap's library only. The search takes the forest type, then
   the forest type group, within ±2 years. It ranks by age gap, then species mix (total
-  variation of live-TPA shares by `SPCD`), then `PLT_CN`. A pixel that reaches the profile
-  is an error, never a partial VAT row. At stand age 0–2, seedlings become trees of DBH
+  variation of live-TPA shares by `SPCD`), then `PLT_CN`. A pixel with no young plot is an
+  error, never a partial VAT row; the profile fallback is dropped. At stand age 0–2, seedlings become trees of DBH
   0.1 in and height 1 ft.
 - **One new ID per (neighbour plot, young plot, stand age, cut year, age source)**, numbered
   from 1,000,000. LETO creates management units only after add-back.

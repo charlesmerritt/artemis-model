@@ -11,7 +11,6 @@ from pipeline.s1_initial_state.young_stand_profiles import (
     forest_type_group,
     load_young_stand_profiles,
     young_stand_profiles,
-    young_stand_profiles_by_age,
 )
 
 
@@ -94,18 +93,6 @@ def test_trees_join_to_their_plot_by_exact_plt_cn_string():
     out = young_stand_profiles(conditions, trees, pd.DataFrame(columns=["PLT_CN", "TPA_UNADJ"]),
                                min_plots=1)
     assert out.loc[G.LONGLEAF_SLASH, "tpa"] == pytest.approx(200.0)
-
-
-def test_each_stand_age_is_profiled_on_the_plots_within_two_years_of_it():
-    conditions = _plots({"1": 142, "2": 142, "3": 142, "4": 142}).assign(STDAGE=[0, 1, 3, 6])
-    trees = pd.DataFrame({"PLT_CN": ["1", "2", "3", "4"], "TPA_UNADJ": [100.0, 200.0, 300.0, 900.0],
-                          "DIA": [1.0] * 4, "HT": [5.0] * 4})
-    out = young_stand_profiles_by_age(conditions, trees, pd.DataFrame(columns=["PLT_CN", "TPA_UNADJ"]),
-                                      ages=[0, 4], min_plots=1)
-    assert out.loc[(0, G.LONGLEAF_SLASH), "n_plots"] == 2              # ages 0 and 1
-    assert out.loc[(0, G.LONGLEAF_SLASH), "tpa"] == pytest.approx(150.0)
-    assert out.loc[(4, G.LONGLEAF_SLASH), "n_plots"] == 2              # ages 3 and 6
-    assert out.loc[(4, G.LONGLEAF_SLASH), "tpa"] == pytest.approx(600.0)
 
 
 def test_committed_profiles_cover_every_forest_type_group():

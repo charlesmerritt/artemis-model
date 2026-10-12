@@ -7,9 +7,9 @@ whose forest type is the *neighbour plot's* and whose FIA ``STDAGE`` is near the
 
 **The match.** :meth:`YoungPlotLibrary.match` searches the neighbour plot's forest type
 (:attr:`MatchLevel.TYPE`), then its forest type group (:attr:`MatchLevel.GROUP`), each
-within ±2 years of the stand age, and falls back to the age-indexed profile
-(:attr:`MatchLevel.PROFILE`) when both are empty. Within a pool, candidates rank by age
-gap, then species mix, then the ``PLT_CN`` string.
+within ±2 years of the stand age; with both empty the pixel is
+:attr:`MatchLevel.UNMATCHED`, which #88 refuses. Within a pool, candidates rank by age gap,
+then species mix, then the ``PLT_CN`` string.
 
 **Coverage** (#87's acceptance report) for the forest types of an AOI's TreeMap pixels:
 
@@ -55,7 +55,7 @@ class MatchLevel(StrEnum):
 
     TYPE = "type"          # the neighbour plot's FORTYPCD
     GROUP = "group"        # its forest type group
-    PROFILE = "profile"    # no plot: the age-indexed FIA profile
+    UNMATCHED = "unmatched"   # no young plot of the type or group within ±2 years
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class YoungPlotMatch:
 
     level: MatchLevel
     age_gap: int                 # |STDAGE - stand age|
-    plt_cn: str | None           # None at MatchLevel.PROFILE
+    plt_cn: str | None           # None at MatchLevel.UNMATCHED
     tm_id: str | None
     candidates: int              # plots in the pool at that age gap: what the tie-break chose among
 
@@ -117,7 +117,7 @@ class YoungPlotLibrary:
             pool = near[members]
             if len(pool):
                 return self._best(level, pool, gap[pool.index], neighbour_mix, stand_age)
-        return YoungPlotMatch(MatchLevel.PROFILE, 0, None, None, 0)
+        return YoungPlotMatch(MatchLevel.UNMATCHED, 0, None, None, 0)
 
     def coverage(self, fortypcds, stand_ages=LIBRARY_STAND_AGES) -> pd.DataFrame:
         """For each (forest type, stand age): the fallback level, age gap and candidate count.
@@ -138,11 +138,11 @@ class YoungPlotLibrary:
 
         TreeMap tree lists carry no seedlings, and an FIA plot this young has almost no
         tree of 1 in DBH, so without them a young stand would be an empty list. The
-        pixel's stand age decides, not the plot's FIA age. A profile match has no plot, so
+        pixel's stand age decides, not the plot's FIA age. An unmatched pixel has no plot, so
         no tree list: the caller must not write one (ADR 0003 amendment).
         """
-        if match.level is MatchLevel.PROFILE:
-            raise ValueError("a profile match has no young plot, so no tree list")
+        if match.level is MatchLevel.UNMATCHED:
+            raise ValueError("an unmatched pixel has no young plot, so no tree list")
         return self._trees(match.tm_id, match.plt_cn, stand_age)
 
     def _trees(self, tm_id: str, plt_cn: str, stand_age: int) -> pd.DataFrame:
