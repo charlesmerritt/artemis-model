@@ -1,0 +1,130 @@
+{
+  "pixels_in_plan_acres": 925098,
+  "cycles": [
+    {
+      "cycle": 0,
+      "year": 2022,
+      "mean_standing_cuft_ac": 1509.4
+    },
+    {
+      "cycle": 1,
+      "year": 2027,
+      "mean_standing_cuft_ac": 1686.5,
+      "partial_acres_painted": 70615,
+      "partial_acres_plan": 71715,
+      "clearcut_acres_painted": 133549,
+      "clearcut_acres_plan": 136662,
+      "planned_cuft": 349722464.2271188,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -9.8
+    },
+    {
+      "cycle": 2,
+      "year": 2032,
+      "mean_standing_cuft_ac": 1801.0,
+      "partial_acres_painted": 74941,
+      "partial_acres_plan": 76727,
+      "clearcut_acres_painted": 99343,
+      "clearcut_acres_plan": 101461,
+      "planned_cuft": 349374336.5772568,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -9.8
+    },
+    {
+      "cycle": 3,
+      "year": 2037,
+      "mean_standing_cuft_ac": 1829.2,
+      "partial_acres_painted": 82575,
+      "partial_acres_plan": 83797,
+      "clearcut_acres_painted": 84588,
+      "clearcut_acres_plan": 86406,
+      "planned_cuft": 348757339.5098939,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -10.0
+    },
+    {
+      "cycle": 4,
+      "year": 2042,
+      "mean_standing_cuft_ac": 1794.6,
+      "partial_acres_painted": 105072,
+      "partial_acres_plan": 107165,
+      "clearcut_acres_painted": 82464,
+      "clearcut_acres_plan": 84488,
+      "planned_cuft": 348576085.85887355,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -10.1
+    },
+    {
+      "cycle": 5,
+      "year": 2047,
+      "mean_standing_cuft_ac": 1731.8,
+      "partial_acres_painted": 131969,
+      "partial_acres_plan": 134051,
+      "clearcut_acres_painted": 70458,
+      "clearcut_acres_plan": 71752,
+      "planned_cuft": 350936158.316235,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -9.4
+    },
+    {
+      "cycle": 6,
+      "year": 2052,
+      "mean_standing_cuft_ac": 1750.6,
+      "partial_acres_painted": 125128,
+      "partial_acres_plan": 127685,
+      "clearcut_acres_painted": 97733,
+      "clearcut_acres_plan": 100059,
+      "planned_cuft": 353163413.6481102,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -8.9
+    },
+    {
+      "cycle": 7,
+      "year": 2057,
+      "mean_standing_cuft_ac": 1824.0,
+      "partial_acres_painted": 141236,
+      "partial_acres_plan": 143728,
+      "clearcut_acres_painted": 109424,
+      "clearcut_acres_plan": 112044,
+      "planned_cuft": 357335584.4720602,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -7.8
+    },
+    {
+      "cycle": 8,
+      "year": 2062,
+      "mean_standing_cuft_ac": 1846.4,
+      "partial_acres_painted": 98062,
+      "partial_acres_plan": 99824,
+      "clearcut_acres_painted": 122292,
+      "clearcut_acres_plan": 124553,
+      "planned_cuft": 361604880.5459049,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -6.7
+    },
+    {
+      "cycle": 9,
+      "year": 2067,
+      "mean_standing_cuft_ac": 1815.7,
+      "partial_acres_painted": 115967,
+      "partial_acres_plan": 117838,
+      "clearcut_acres_painted": 87493,
+      "clearcut_acres_plan": 89263,
+      "planned_cuft": 370288625.7974767,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -4.4
+    },
+    {
+      "cycle": 10,
+      "year": 2072,
+      "mean_standing_cuft_ac": 1729.6,
+      "partial_acres_painted": 73490,
+      "partial_acres_plan": 74846,
+      "clearcut_acres_painted": 111818,
+      "clearcut_acres_plan": 113844,
+      "planned_cuft": 378386776.1006072,
+      "target_cuft": 387529000.0,
+      "deviation_pct": -2.4
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+owner_group,base_prescription,stands,acres,removed_cuft,variant
+Federal (NF),no_management,703,26866.85383701346,0.0,baseline
+Federal (NF),public_selection_light,214,21315.433758048413,53747204.363015,baseline
+Federal (NF),public_thin_restore,204,92235.59252903628,49996688.8522486,baseline
+Other public,no_management,401,570.887562803592,0.0,baseline
+Other public,pine_plantation_long_rotation,217,5043.915046507778,21812174.599539228,baseline
+Other public,public_selection_light,1072,29243.142737892453,85468960.69115534,baseline
+Other public,public_thin_restore,95,51.15081396370322,35857.147439148684,baseline
+Private,family_light_thin,236,10638.479725076988,770470.8020077568,baseline
+Private,family_uneven_aged_selection,962,314072.4471875941,521874406.06149286,baseline
+Private,hardwood_clearcut_regen,849,72798.50561767239,222609578.4093658,baseline
+Private,no_management,5722,14429.867014004,0.0,baseline
+Private,pine_plantation_long_rotation,928,314078.8966380504,1546687766.0896642,baseline
+Private,pine_plantation_short_rotation,228,23752.65884599721,82094002.35220167,baseline
+Federal (NF),family_light_thin,100,31426.83770445594,4408389.727057311,all_owners
+Federal (NF),family_uneven_aged_selection,83,13192.017316082382,16511061.271758247,all_owners
+Federal (NF),hardwood_clearcut_regen,55,3344.8184435395497,7647244.420560857,all_owners
+Federal (NF),no_management,667,37845.37527752741,0.0,all_owners
+Federal (NF),pine_plantation_long_rotation,26,1296.3395417148956,5312772.072400003,all_owners
+Federal (NF),pine_plantation_short_rotation,27,9099.285014456162,11676225.181447208,all_owners
+Federal (NF),public_selection_light,81,17113.505588351854,46683469.851679906,all_owners
+Federal (NF),public_thin_restore,82,27099.701237969963,10629747.311238473,all_owners
+Other public,family_light_thin,33,9.118188576138401,921.8839380722621,all_owners
+Other public,family_uneven_aged_selection,59,36.0279646179127,32046.001619135117,all_owners
+Other public,hardwood_clearcut_regen,558,9018.55568633084,32711048.72683229,all_owners
+Other public,no_management,397,569.9979834303102,0.0,all_owners
+Other public,pine_plantation_long_rotation,307,13218.259907594194,71595500.18959,all_owners
+Other public,pine_plantation_short_rotation,113,2998.7720673329313,10317345.47953258,all_owners
+Other public,public_selection_light,288,9046.132646902575,21302906.59889536,all_owners
+Other public,public_thin_restore,30,12.231716382624683,6972.746318714292,all_owners
+Private,family_light_thin,225,11943.492665681382,1349659.9383686094,all_owners
+Private,family_uneven_aged_selection,280,32948.01843276781,56639427.07653455,all_owners
+Private,hardwood_clearcut_regen,1089,227914.90572650565,710288281.8367686,all_owners
+Private,no_management,5648,11286.315903669456,0.0,all_owners
+Private,pine_plantation_long_rotation,596,231837.2835781484,1252550100.2949018,all_owners
+Private,pine_plantation_short_rotation,287,68564.99738022432,241989358.49290144,all_owners
+Private,public_selection_light,588,146955.17654350275,436403949.3060237,all_owners
+Private,public_thin_restore,212,18320.66479789525,10945551.891790524,all_owners
+Federal (NF),family_light_thin,84,18071.58257337635,2979323.5384416543,all_owners_short_natural
+Federal (NF),family_uneven_aged_selection,71,18492.79840662528,34290517.54054917,all_owners_short_natural
+Federal (NF),hardwood_clearcut_regen,35,287.33413757001983,723779.050311245,all_owners_short_natural
+Federal (NF),natural_short_rotation,66,7002.768826474292,13330264.48737013,all_owners_short_natural
+Federal (NF),no_management,676,57643.4090196004,0.0,all_owners_short_natural
+Federal (NF),pine_plantation_long_rotation,25,1258.0876286637788,3328634.227840899,all_owners_short_natural
+Federal (NF),pine_plantation_short_rotation,31,2077.6126262996327,7453624.160132045,all_owners_short_natural
+Federal (NF),public_selection_light,74,19643.91411565192,33346232.502877466,all_owners_short_natural
+Federal (NF),public_thin_restore,59,15940.372789836489,7518147.465446369,all_owners_short_natural
+Other public,family_light_thin,21,6.449450456293015,746.5376916888661,all_owners_short_natural
+Other public,family_uneven_aged_selection,50,20.682720428801737,18238.335993880974,all_owners_short_natural
+Other public,hardwood_clearcut_regen,423,7652.828953499963,28692166.747493133,all_owners_short_natural
+Other public,natural_short_rotation,287,4711.657150587028,17105225.1356146,all_owners_short_natural
+Other public,no_management,399,572.4443267068352,0.0,all_owners_short_natural
+Other public,pine_plantation_long_rotation,262,12262.184476159586,64414558.37619997,all_owners_short_natural
+Other public,pine_plantation_short_rotation,78,1224.2836124790706,5160482.572467369,all_owners_short_natural
+Other public,public_selection_light,247,8450.781651333733,20796740.90437553,all_owners_short_natural
+Other public,public_thin_restore,18,7.783819516215708,3698.9553395025955,all_owners_short_natural
+Private,family_light_thin,220,26734.75130008111,4693144.607006733,all_owners_short_natural
+Private,family_uneven_aged_selection,202,20314.879357949714,35222426.94580327,all_owners_short_natural
+Private,hardwood_clearcut_regen,778,171574.50809391975,573675379.8304753,all_owners_short_natural
+Private,natural_short_rotation,663,121554.57190850102,437204550.7046023,all_owners_short_natural
+Private,no_management,5639,18988.07172269992,0.0,all_owners_short_natural
+Private,pine_plantation_long_rotation,493,176043.9772601308,1017864641.3339659,all_owners_short_natural
+Private,pine_plantation_short_rotation,224,67392.75416108224,206053053.1497504,all_owners_short_natural
+Private,public_selection_light,503,135643.06283800813,433018044.57689035,all_owners_short_natural
+Private,public_thin_restore,203,11524.278386022335,4398947.660886459,all_owners_short_natural
+Federal (NF),family_light_thin,73,37263.14557771447,2518326.8471005657,repeat_rotations
+Federal (NF),family_uneven_aged_selection,70,19941.92320570132,23966004.96788463,repeat_rotations
+Federal (NF),hardwood_clearcut_regen,57,4656.725624286877,13498357.316996502,repeat_rotations
+Federal (NF),natural_short_rotation,65,853.329013820562,3887513.3468347536,repeat_rotations
+Federal (NF),no_management,642,36597.073021969736,0.0,repeat_rotations
+Federal (NF),pine_plantation_long_rotation,33,3012.3381527754786,17352370.05552913,repeat_rotations
+Federal (NF),pine_plantation_short_rotation,16,1932.6111884547,7509946.074552847,repeat_rotations
+Federal (NF),public_selection_light,80,4595.344647530434,12172624.502998615,repeat_rotations
+Federal (NF),public_thin_restore,85,31565.38969184458,20138467.241493646,repeat_rotations
+Other public,family_light_thin,46,20.237930742160838,2217.7222110080124,repeat_rotations
+Other public,family_uneven_aged_selection,70,40.03107179768078,37597.15381858914,repeat_rotations
+Other public,hardwood_clearcut_regen,288,5709.765207409202,20480958.91922856,repeat_rotations
+Other public,natural_short_rotation,522,12638.921340744426,57403851.50463737,repeat_rotations
+Other public,no_management,397,570.6651679602716,0.0,repeat_rotations
+Other public,pine_plantation_long_rotation,221,12986.302086010966,89503268.63093619,repeat_rotations
+Other public,pine_plantation_short_rotation,111,2857.1065521378055,21108981.531023487,repeat_rotations
+Other public,public_selection_light,79,64.7168994062506,99343.74512668166,repeat_rotations
+Other public,public_thin_restore,51,21.349904958763084,12239.202459404782,repeat_rotations
+Private,family_light_thin,315,32676.0295393869,5098940.007747034,repeat_rotations
+Private,family_uneven_aged_selection,342,48831.68053755758,83370567.62003797,repeat_rotations
+Private,hardwood_clearcut_regen,417,100173.08688198643,331117371.94276065,repeat_rotations
+Private,natural_short_rotation,873,263817.4396527856,1148148516.742669,repeat_rotations
+Private,no_management,5670,14548.848255180439,0.0,repeat_rotations
+Private,pine_plantation_long_rotation,326,124481.28804659813,1015308782.6730914,repeat_rotations
+Private,pine_plantation_short_rotation,227,61689.88319381597,411024845.2914172,repeat_rotations
+Private,public_selection_light,410,75296.66689269099,248807469.77778295,repeat_rotations
+Private,public_thin_restore,345,28255.93202839298,18067908.12735741,repeat_rotations
+Federal (NF),family_light_thin,78,45967.01256074688,6364945.621471471,repeat_offsets_25
+Federal (NF),family_uneven_aged_selection,81,19947.038287097694,27023512.86626446,repeat_offsets_25
+Federal (NF),hardwood_clearcut_regen,48,2875.120534446762,6406656.793701948,repeat_offsets_25
+Federal (NF),natural_short_rotation,80,2498.8284595485625,12273622.940405255,repeat_offsets_25
+Federal (NF),no_management,635,21902.111354727756,0.0,repeat_offsets_25
+Federal (NF),pine_plantation_long_rotation,23,830.4223449585558,5154306.328358989,repeat_offsets_25
+Federal (NF),pine_plantation_short_rotation,20,4022.0107414503163,14899109.855357453,repeat_offsets_25
+Federal (NF),public_selection_light,70,7001.656852257689,16530857.777803235,repeat_offsets_25
+Federal (NF),public_thin_restore,86,35373.67898886394,12463685.01052127,repeat_offsets_25
+Other public,family_light_thin,53,27.3545657284152,2733.857943571807,repeat_offsets_25
+Other public,family_uneven_aged_selection,51,22.01708948872443,19936.009473969534,repeat_offsets_25
+Other public,hardwood_clearcut_regen,259,3380.179223627501,10824203.71124392,repeat_offsets_25
+Other public,natural_short_rotation,556,15084.597432739401,71406514.74679548,repeat_offsets_25
+Other public,no_management,396,571.7771421768738,0.0,repeat_offsets_25
+Other public,pine_plantation_long_rotation,187,11653.489789991516,86296356.35676795,repeat_offsets_25
+Other public,pine_plantation_short_rotation,147,4083.836507893401,24070781.807009768,repeat_offsets_25
+Other public,public_selection_light,91,64.93929424957105,101786.3794168636,repeat_offsets_25
+Other public,public_thin_restore,45,20.905115272122185,11410.752068865859,repeat_offsets_25
+Private,family_light_thin,327,27628.77857022931,3188549.6749241543,repeat_offsets_25
+Private,family_uneven_aged_selection,329,23668.371200378762,35980755.45019705,repeat_offsets_25
+Private,hardwood_clearcut_regen,438,84159.54618869751,267303355.60957944,repeat_offsets_25
+Private,natural_short_rotation,853,250735.28538930355,1077295587.7464936,repeat_offsets_25
+Private,no_management,5652,22189.22309745446,0.0,repeat_offsets_25
+Private,pine_plantation_long_rotation,321,151128.86056809762,1143800591.7617218,repeat_offsets_25
+Private,pine_plantation_short_rotation,268,86987.0742266737,526972409.7706666,repeat_offsets_25
+Private,public_selection_light,404,68736.90859411104,200802312.28870872,repeat_offsets_25
+Private,public_thin_restore,333,34536.807193449094,18951681.936640866,repeat_offsets_25
+Federal (NF),family_light_thin,76,39816.23837903323,2684603.209838096,repeat_offsets_25_any_type
+Federal (NF),family_uneven_aged_selection,51,13033.227397951581,10082244.11275215,repeat_offsets_25_any_type
+Federal (NF),hardwood_clearcut_regen,52,6604.014872400726,17769706.82527893,repeat_offsets_25_any_type
+Federal (NF),natural_short_rotation,68,4221.054126222119,13278130.703232048,repeat_offsets_25_any_type
+Federal (NF),no_management,630,16069.361798962349,0.0,repeat_offsets_25_any_type
+Federal (NF),pine_plantation_long_rotation,59,2786.607386805223,14257004.173916591,repeat_offsets_25_any_type
+Federal (NF),pine_plantation_short_rotation,49,2415.652788146715,10291549.398150856,repeat_offsets_25_any_type
+Federal (NF),public_selection_light,59,4554.423996359471,12306578.67093706,repeat_offsets_25_any_type
+Federal (NF),public_thin_restore,77,50917.29937821675,20460157.379674822,repeat_offsets_25_any_type
+Other public,family_light_thin,28,11.342137009342888,1018.1212080617996,repeat_offsets_25_any_type
+Other public,family_uneven_aged_selection,47,25.130617295210712,19876.04233384568,repeat_offsets_25_any_type
+Other public,hardwood_clearcut_regen,193,1941.7293770308384,6923086.669172401,repeat_offsets_25_any_type
+Other public,natural_short_rotation,353,11295.434092245594,53933542.71464604,repeat_offsets_25_any_type
+Other public,no_management,392,569.7755885869898,0.0,repeat_offsets_25_any_type
+Other public,pine_plantation_long_rotation,387,16843.07345887419,108301550.67489482,repeat_offsets_25_any_type
+Other public,pine_plantation_short_rotation,299,4175.685578184746,25308182.43225491,repeat_offsets_25_any_type
+Other public,public_selection_light,40,21.349904958763084,37611.951800084666,repeat_offsets_25_any_type
+Other public,public_thin_restore,46,25.57540698185161,10506.87794197706,repeat_offsets_25_any_type
+Private,family_light_thin,267,7799.83194493478,961970.9258369904,repeat_offsets_25_any_type
+Private,family_uneven_aged_selection,297,31852.7238294146,47585653.89958844,repeat_offsets_25_any_type
+Private,hardwood_clearcut_regen,364,67310.46806905368,231920614.24742183,repeat_offsets_25_any_type
+Private,natural_short_rotation,594,171043.87399775715,754315363.9942441,repeat_offsets_25_any_type
+Private,no_management,5628,20401.390952001366,0.0,repeat_offsets_25_any_type
+Private,pine_plantation_long_rotation,639,231568.408212574,1438106991.877544,repeat_offsets_25_any_type
+Private,pine_plantation_short_rotation,538,113406.91442861306,595401168.6848743,repeat_offsets_25_any_type
+Private,public_selection_light,312,63360.7356516825,192424528.24681354,repeat_offsets_25_any_type
+Private,public_thin_restore,286,43026.50794236391,18835810.745831694,repeat_offsets_25_any_type
