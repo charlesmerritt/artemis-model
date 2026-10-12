@@ -55,6 +55,9 @@ _Avoid_: Disturbance year (detectors also date burns, thins and site prep)
 Years since establishment, as of 2022. Establishment is the year after the cut year.
 _Avoid_: Age (unqualified), years since cut
 
+**Age source**:
+What set a pixel's stand age: a detector's cut year, or its bookend stratum's median.
+
 ### Management
 
 **Prescription**:

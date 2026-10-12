@@ -73,3 +73,19 @@ separate age raster is produced.
   Under union, about 3,600 ac have no cut year and need another age source.
 - Stale stands (published pixels harvested after their plot was measured) could reuse this
   representation. Whether they should is waiting on a NAIP review of the evidence.
+
+## Amendment, 2026-10-12 (#87, #88)
+
+- **Cut year.** Any detector year from 2001 to 2022 dates a pixel. A run's disturbance
+  window decides add-back only.
+- **Undated pixels** (bookends only) take the median stand age of the run's dated add-back
+  pixels in their bookend stratum. Their age source is `stratum_median`.
+- **Young plots** come from TreeMap's library only. The search takes the forest type, then
+  the forest type group, within ±2 years. It ranks by age gap, then species mix (total
+  variation of live-TPA shares by `SPCD`), then `PLT_CN`. A pixel that reaches the profile
+  is an error, never a partial VAT row. At stand age 0–2, seedlings become trees of DBH
+  0.1 in and height 1 ft.
+- **One new ID per (neighbour plot, young plot, stand age, cut year, age source)**, numbered
+  from 1,000,000. LETO creates management units only after add-back.
+- **Provenance 4 is redefined:** an add-back pixel carrying a young plot under a new ID.
+  Rasters written before this keep the old meaning. Regenerate them; don't reinterpret them.
