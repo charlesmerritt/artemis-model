@@ -181,6 +181,28 @@ prescriptions:
       hardwood sprout and seedling establishment is slower to reach a measurable list
       than planted pine.
 
+  natural_short_rotation:
+    label: "Natural-regeneration clearcut — short rotation"
+    template: clearcut
+    # RECONSTRUCTED 2026-10-12 (experiments/2026-10-12_raster-set-schedules): the 2026-10-08
+    # open-menu config was never committed. Pinned by tests/test_permissive_menus_experiment.py
+    # (age 10 -> clearcuts in 2042 and 2072, natural regeneration from the stand's own SDI
+    # mix, repeating) and by the deck's menu slide ("Natural-regen rotation", any type).
+    forest_types: [any]
+    schedule:
+      mode: age_based
+      rotation_years: 30
+      offsets:
+        year: 30
+    entries_per_horizon: 2
+    regen:
+      treelist_slot: hardwood_regen
+      delay_years: 3
+    repeats: true
+    rationale: >
+      A 30-year stand-replacing harvest that regenerates naturally, for any forest type: the
+      short rotation open to every owner where planting pine is not the right guess.
+
   family_light_thin:
     label: "Family forest — single light thin from below"
     template: thin_from_below
@@ -269,9 +291,14 @@ prescriptions:
 # Eligibility and defaults, by owner class
 # ---------------------------------------------------------------------------------------
 # `default` — one prescription per forest-type branch; what regime_assignment.py assigns.
-# `eligible` — the menu the landscape scheduler may choose from. Two or three per class
-#              beyond `no_management`, which is universally eligible (`no_management` is
-#              always a legal choice: any owner may decline to harvest).
+# `eligible` — the menu the landscape scheduler may choose from. Since 2026-10-08 every class
+#              may take all eight cutting prescriptions (forest type still filters), plus
+#              `no_management`, which is universally eligible (any owner may decline to
+#              harvest). The rationales below explain each class's *default*. This open menu
+#              was reconstructed on 2026-10-12 (experiments/2026-10-12_raster-set-schedules):
+#              the 2026-10-08 file was never committed; replace it with that original if it
+#              differs. The owner-specific menus it replaced are
+#              experiments/2026-10-08_permissive-menus/baseline_management_regimes.yaml.
 
 no_management_universally_eligible: true
 
@@ -283,8 +310,13 @@ owner_classes:
       hardwood: hardwood_clearcut_regen
       other: hardwood_clearcut_regen     # unknown/mixed type: harvest, but do not plant pine
     eligible:
+      - family_light_thin
+      - public_thin_restore
+      - family_uneven_aged_selection
+      - public_selection_light
       - pine_plantation_short_rotation
       - pine_plantation_long_rotation
+      - natural_short_rotation
       - hardwood_clearcut_regen
     rationale: >
       Harris corporate forest (value 4). Rotation forestry, with the pulpwood and sawtimber
@@ -299,8 +331,13 @@ owner_classes:
       other: family_light_thin
     eligible:
       - family_light_thin
+      - public_thin_restore
       - family_uneven_aged_selection
+      - public_selection_light
+      - pine_plantation_short_rotation
       - pine_plantation_long_rotation
+      - natural_short_rotation
+      - hardwood_clearcut_regen
     rationale: >
       Harris family forest (value 3). Light entries by default.
       `pine_plantation_long_rotation` stays eligible because a real minority of family
@@ -313,8 +350,14 @@ owner_classes:
       hardwood: public_selection_light
       other: public_selection_light
     eligible:
-      - public_selection_light
       - family_light_thin
+      - public_thin_restore
+      - family_uneven_aged_selection
+      - public_selection_light
+      - pine_plantation_short_rotation
+      - pine_plantation_long_rotation
+      - natural_short_rotation
+      - hardwood_clearcut_regen
     rationale: >
       Conservative by default. Pilot-scale tribal area is too small to support a
       class-specific behaviour estimate (config/projection.yaml flags the same 500-event
@@ -326,8 +369,14 @@ owner_classes:
       hardwood: public_selection_light
       other: public_selection_light
     eligible:
-      - public_selection_light
+      - family_light_thin
       - public_thin_restore
+      - family_uneven_aged_selection
+      - public_selection_light
+      - pine_plantation_short_rotation
+      - pine_plantation_long_rotation
+      - natural_short_rotation
+      - hardwood_clearcut_regen
     rationale: >
       National Forest land under a conservative selection default, with restoration
       thinning as the alternative — the pilot's federal land is Osceola NF, where
@@ -339,9 +388,14 @@ owner_classes:
       hardwood: public_selection_light
       other: public_selection_light
     eligible:
+      - family_light_thin
       - public_thin_restore
+      - family_uneven_aged_selection
       - public_selection_light
+      - pine_plantation_short_rotation
       - pine_plantation_long_rotation
+      - natural_short_rotation
+      - hardwood_clearcut_regen
     rationale: >
       State forests carry an active timber program alongside conservation objectives, so
       the pine default is the thinning regime rather than light selection, and a
@@ -353,8 +407,14 @@ owner_classes:
       hardwood: no_management
       other: no_management
     eligible:
-      - public_selection_light
+      - family_light_thin
       - public_thin_restore
+      - family_uneven_aged_selection
+      - public_selection_light
+      - pine_plantation_short_rotation
+      - pine_plantation_long_rotation
+      - natural_short_rotation
+      - hardwood_clearcut_regen
     rationale: >
       County and municipal forest is predominantly parks, watershed, and school land
       where commercial harvest is the exception. Default to no entry — which stays on the
@@ -369,6 +429,13 @@ owner_classes:
       other: family_light_thin
     eligible:
       - family_light_thin
+      - public_thin_restore
+      - family_uneven_aged_selection
+      - public_selection_light
+      - pine_plantation_short_rotation
+      - pine_plantation_long_rotation
+      - natural_short_rotation
+      - hardwood_clearcut_regen
     rationale: >
       Harris `unknown`, which is not an owner type — it is missing information.
       One light entry or nothing: with no owner known, letting the scheduler place a

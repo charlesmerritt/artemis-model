@@ -45,8 +45,8 @@ Usage (a doctest; ``scripts/check_docs.py`` runs it):
     ('corporate', 'pine_plantation_short_rotation', 'planted_pine_regen')
     >>> p.params  # a 22-year-old stand on a 25-year rotation is cut at the next cycle
     {'year': 2027}
-    >>> eligible_prescriptions("federal")
-    ['public_selection_light', 'public_thin_restore', 'no_management']
+    >>> eligible_prescriptions("federal", "hardwood")  # open menu; no planted pine on hardwood
+    ['family_light_thin', 'public_thin_restore', 'family_uneven_aged_selection', 'public_selection_light', 'natural_short_rotation', 'hardwood_clearcut_regen', 'no_management']
 """
 
 from __future__ import annotations
