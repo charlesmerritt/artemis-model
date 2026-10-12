@@ -22,7 +22,7 @@ their outputs and this note.
 
 | File | What it is |
 |---|---|
-| `convergence.png` | The four-panel figure: where the restarts stop paying, how wide the seeds are, the plan beside `2026-09-14`'s, and what the extra search cost in CPU. |
+| `convergence.png` | The four-panel figure: where the restarts stop paying, how wide the seeds are, the plan beside `2026-09-14`'s, and what the extra search cost in CPU. **Its own title reads `(2026-09-28)`** — that is the driver's label, not the run date; this sweep ran on 2026-10-12. |
 | `annealed_plan.csv` | **The plan.** One row per stand: `stand_id → trajectory_id`, `base_prescription`, `timing_offset_years`, county, owner class, acres and removed volume in each of the ten cycles. 11,831 rows. |
 | `arm_summary.csv` | **The 2×2.** Cooling factor {0.95 config, 0.98} × restarts {5 config, 20}, from one set of 40 searches — the cells nest, so best-of-5 is the first five seeds of best-of-20. |
 | `restart_curve.csv` | Best-of-first-R against R, every seed's own objective and its wall time. The table behind panel (a). |
