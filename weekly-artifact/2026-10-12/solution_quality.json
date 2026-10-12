@@ -1,0 +1,152 @@
+{
+  "objective_best": 62.57084876111148,
+  "objective_greedy_baseline": 363.59357609419476,
+  "objective_random_baseline_mean": 276.3691475906933,
+  "objective_random_baseline_all": [
+    298.575130155261,
+    273.3714636141761,
+    286.86255374354164,
+    270.1355158687794,
+    252.90107457170825
+  ],
+  "relaxation_bound": 0.1954592094908063,
+  "relaxation_bound_strategy": "per-cycle per-dimension interval relaxation",
+  "gap_to_bound_absolute": 62.37538955162067,
+  "beats_greedy": true,
+  "beats_random": true,
+  "seed_spread": {
+    "min": 62.570848761110945,
+    "max": 64.87951391057751,
+    "range": 2.30866514946657
+  },
+  "target_period": "2013_2024",
+  "random_seed": 42,
+  "search": {
+    "what_changed": "restarts and cooling_factor only; library, landscape, weights, caps, greedy start and move mixture are 2026-09-14's",
+    "code_source": "weekly-artifact/2026-09-14/make_annealed_plan.py, imported",
+    "cooling_factor": 0.98,
+    "restarts": 20,
+    "config_cooling_factor": 0.95,
+    "config_restarts": 5,
+    "coolings_swept": [
+      0.95,
+      0.98
+    ],
+    "restarts_swept": 20,
+    "searches_run": 40,
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61
+    ],
+    "best_seed": 58,
+    "wall_seconds": 956.0804434939998,
+    "cpu_seconds": 3697.544240743,
+    "workers": 4,
+    "parallelism_changes_results": false
+  },
+  "reproduction_of_20260914": {
+    "published_20260914": 63.076986320415,
+    "reproduced_here": 63.07698632041486,
+    "abs_diff": 1.4210854715202004e-13,
+    "exact": true,
+    "tolerance": 1e-06,
+    "published_seed_spread": 3.4831916026574277,
+    "reproduced_seed_spread": 3.4831916026574277,
+    "note": "same library, same search code, same seeds, different machine and a freshly compiled FVSsn; `exact` false would mean the cross-week objective comparison needs a caveat, not that the sweep is invalid",
+    "plan": {
+      "compared": true,
+      "stands_published": 11831,
+      "stands_here": 11831,
+      "stands_matched_by_id": 11831,
+      "stands_only_published": 0,
+      "stands_only_here": 0,
+      "stands_choosing_the_same_trajectory": 11831,
+      "stands_choosing_differently": 0,
+      "identical": true,
+      "baseline_seed": 43
+    }
+  },
+  "library_identical_to_20260914": {
+    "published_runs": 13034,
+    "rebuilt_runs": 13034,
+    "runs_only_in_published": 0,
+    "runs_only_in_rebuild": 0,
+    "runs_compared": 13034,
+    "max_abs_diff_harvest_cuft_per_ac": 0.0,
+    "cycles_compared": [
+      "cuft_cycle_0",
+      "cuft_cycle_1",
+      "cuft_cycle_2",
+      "cuft_cycle_3",
+      "cuft_cycle_4",
+      "cuft_cycle_5",
+      "cuft_cycle_6",
+      "cuft_cycle_7",
+      "cuft_cycle_8",
+      "cuft_cycle_9",
+      "cuft_cycle_10",
+      "cuft_cycle_11"
+    ]
+  },
+  "cooling": {
+    "cooling_factor": 0.98,
+    "iterations_per_temperature": 10,
+    "min_temperature": 0.0001,
+    "stall_temperature_levels": 20,
+    "initial_accept_rate": 0.8,
+    "cooling_factor_source": "overridden by --coolings; config says 0.95"
+  },
+  "objective_weights": {
+    "harvest_volume": 6.0,
+    "standing_volume": 1.0
+  },
+  "move_weights_declared": {
+    "single_stand": 0.7,
+    "block": 0.2,
+    "period_swap": 0.1
+  },
+  "move_probabilities_effective": {
+    "single_stand": 0.875,
+    "period_swap": 0.12500000000000003,
+    "block": "unavailable \u2014 no adjacency components on a pixel-class landscape"
+  },
+  "spatial_penalties": {
+    "available": false,
+    "reason": "no polygon adjacency: stands are pixel classes (TreeMap plot x county x ownership), not contiguous units",
+    "declared": {
+      "adjacency_greenup": 1.0,
+      "max_opening_size": 1.0,
+      "treatment_budget": 0.0
+    }
+  },
+  "riparian_structural": {
+    "riparian_stands": 6602,
+    "with_a_cutting_option": 0,
+    "structurally_enforced": true
+  },
+  "stands": 11831,
+  "stands_with_a_choice": 5229,
+  "targets_unreachable_from_library": 3,
+  "targets_total": 80,
+  "targets_unreachable_is_a_proof": true,
+  "objective_evenflow_term": 10.529368446835125,
+  "objective_comparability_note": "the library is identical to 2026-09-14's (asserted above), so the total objective and the even-flow term are both exactly comparable this week \u2014 unlike the 2026-08-31 to 2026-09-14 step, where the standing-volume denominator moved"
+}
