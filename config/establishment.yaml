@@ -12,6 +12,12 @@
 #                 measured on FIA plots), the species shares from the donor. Raster
 #                 provenance 4 (ADDED_BACK_YOUNG).
 #   donor_as_is   the donor's own tree rows, verbatim. Raster provenance 2 (ADDED_BACK).
+#
+# Superseded by ADR 0003 (docs/adr/0003-dated-stand-age-and-young-plots.md). A dated cut
+# wins over the bookend stratum: pipeline/s1_initial_state/add_back_ids.py gives every
+# add-back pixel, of either mode, a young plot under a new TM_ID in <run>/young_plots/.
+# These modes still set a run's own provenance (2 or 4) and establishment_tree_lists.csv
+# until a follow-up ticket retires them; neither gives an add-back pixel its trees any more.
 
 target_age: 5              # years; the profiles are measured on FIA STDAGE target_age ± 2
 

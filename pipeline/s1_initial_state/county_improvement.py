@@ -41,11 +41,12 @@ rejections for the AOI under ``aoi_5county/``, a ``manifest.json`` naming the ga
 donors vs. as established.
 
 Dating and aging the add-back pixels (ADR 0003) is a second pass over a run folder:
-:mod:`pipeline.s1_initial_state.add_back_stand_age`.
+:mod:`pipeline.s1_initial_state.add_back_stand_age`, then
+:mod:`pipeline.s1_initial_state.add_back_ids`, which gives each a young plot under a new ID.
 
-A consumer joining ``treemap2022_improved.tif`` to TreeMap's tree table must check the
-provenance first: a provenance-4 pixel's ``TM_ID`` names its donor for forest type and
-species mix only, and its trees are the ``scaled_young`` rows of the establishment list.
+A consumer must not join this module's ``treemap2022_improved.tif`` to TreeMap's tree table
+on add-back pixels: on provenance 2 and 4 the ``TM_ID`` names the neighbour plot, for
+forest type and species mix only. ``<run>/young_plots/`` holds the IDs that join.
 """
 
 from __future__ import annotations
@@ -121,10 +122,11 @@ class Stage(StrEnum):
 class TreeMapProvenance(IntEnum):
     WATER = 0             # LANDFIRE 2022 water; never a hole
     PUBLISHED = 1         # TreeMap 2022 as published
-    ADDED_BACK = 2        # accepted hole, donor_as_is: the donor plot's own tree rows
+    ADDED_BACK = 2        # accepted hole, donor_as_is (ADR 0002, retiring): the neighbour plot's TM_ID
     UNMAPPED_LAND = 3     # land TreeMap does not map and no accepted method adds back
-    ADDED_BACK_YOUNG = 4  # accepted hole, scaled_young: the TM_ID gives type and species mix only;
-                          # initialize from the scaled establishment list, never the donor's rows
+    ADDED_BACK_YOUNG = 4  # accepted hole carrying a young plot under a new TM_ID (ADR 0003, add_back_ids).
+                          # A run's own raster still holds the neighbour plot's TM_ID on 2 and 4, for
+                          # forest type and species mix only: never join it to trees
 
     @classmethod
     def added_back(cls, provenance: np.ndarray) -> np.ndarray:
@@ -135,7 +137,8 @@ class TreeMapProvenance(IntEnum):
 PROVENANCE_BY_MODE = {EstablishmentMode.SCALED_YOUNG: TreeMapProvenance.ADDED_BACK_YOUNG,
                       EstablishmentMode.DONOR_AS_IS: TreeMapProvenance.ADDED_BACK}
 PROVENANCE_DESCRIPTION = ("0 water, 1 published, 2 added back (donor as is), 3 unmapped land, "
-                          "4 added back young (scaled establishment list, not the donor's trees)")
+                          "4 added back young; on 2 and 4 the TM_ID is the neighbour plot's, "
+                          "add_back_ids gives them young plots")
 
 
 @dataclass(frozen=True)
@@ -403,8 +406,8 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
         "treemap2022_published.tif": (county(tm_published, tm_nodata), tm_nodata,
                                       "TreeMap 2022 TM_ID as published"),
         "treemap2022_improved.tif": (county(tm_improved, tm_nodata), tm_nodata,
-                                     "TreeMap 2022 TM_ID with accepted holes donor-filled; "
-                                     "on provenance 4 the TM_ID gives forest type and species mix only"),
+                                     "TreeMap 2022 TM_ID with accepted holes neighbour-filled; on "
+                                     "provenance 2 and 4 the neighbour plot's, for type and mix only"),
         "treemap2022_provenance.tif": (county(r.provenance, OUTSIDE), OUTSIDE, PROVENANCE_DESCRIPTION),
         "add_back_method_bits.tif": (county(r.method_bits, OUTSIDE), OUTSIDE,
                                      "bit 1 bookends, 2 obata, 4 hansen "

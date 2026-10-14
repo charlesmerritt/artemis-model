@@ -223,7 +223,8 @@ WHERE STATECD IN ({states}) AND TPA_UNADJ > 0
 """.strip()
 
 
-def _sql(template: str, states: tuple[int, ...]) -> str:
+def states_sql(template: str, states: tuple[int, ...]) -> str:
+    """A query template with its ``{states}`` placeholder filled with ``STATECD`` codes."""
     return template.format(states=", ".join(str(int(s)) for s in states))
 
 
@@ -235,11 +236,11 @@ def read_fia(db: Path, states: tuple[int, ...], stdage: tuple[int, int]):
     """
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
-        cond = pd.read_sql(_sql(CONDITIONS_SQL, states), con, params=list(stdage))
-        plots = pd.read_sql(_sql(PLOTS_SQL, states), con)
+        cond = pd.read_sql(states_sql(CONDITIONS_SQL, states), con, params=list(stdage))
+        plots = pd.read_sql(states_sql(PLOTS_SQL, states), con)
         logger.info("scanning TREE (about four minutes)")
-        trees = pd.read_sql(_sql(TREES_SQL, states), con)
-        seedlings = pd.read_sql(_sql(SEEDLINGS_SQL, states), con)
+        trees = pd.read_sql(states_sql(TREES_SQL, states), con)
+        seedlings = pd.read_sql(states_sql(SEEDLINGS_SQL, states), con)
     finally:
         con.close()
     for frame in (cond, plots, trees, seedlings):
@@ -328,10 +329,10 @@ def main() -> None:
         "inventory_years": [int(cond["INVYR"].min()), int(cond["INVYR"].max())],
         "filters": ("COND_STATUS_CD = 1; CONDPROP_UNADJ >= 0.999 (single-condition plots); "
                     "PLOT.DESIGNCD = 1; live trees STATUSCD = 1; joined on (PLT_CN, CONDID)"),
-        "conditions_sql": _sql(CONDITIONS_SQL, states),
-        "plots_sql": _sql(PLOTS_SQL, states),
-        "trees_sql": _sql(TREES_SQL, states),
-        "seedlings_sql": _sql(SEEDLINGS_SQL, states),
+        "conditions_sql": states_sql(CONDITIONS_SQL, states),
+        "plots_sql": states_sql(PLOTS_SQL, states),
+        "trees_sql": states_sql(TREES_SQL, states),
+        "seedlings_sql": states_sql(SEEDLINGS_SQL, states),
     }
     args.out.write_text(to_yaml(profiles, source, age))
     print(profiles.to_string())
