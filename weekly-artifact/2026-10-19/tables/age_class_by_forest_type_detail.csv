@@ -1,0 +1,942 @@
+Year,forest_type_label,fia_forest_type_label,age_class,age_class_label,age_class_sort,acres,cases,share,weight_basis
+2026,Hardwood,Elm/ash/cottonwood,10,10-19,10.0,11423.4336,2,0.32630394362446946,sampling_weight
+2026,Hardwood,Elm/ash/cottonwood,20,20-29,20.0,5707.68115,2,0.16303669574409282,sampling_weight
+2026,Hardwood,Elm/ash/cottonwood,30,30-39,30.0,5968.86426,1,0.17049724410330974,sampling_weight
+2026,Hardwood,Elm/ash/cottonwood,60,60-69,60.0,6210.77783,1,0.17740736891090472,sampling_weight
+2026,Hardwood,Elm/ash/cottonwood,90,90-99,90.0,5697.81055,1,0.16275474761722317,sampling_weight
+2026,Hardwood,Maple/beech/birch,80,80-89,80.0,5846.896,1,1.0,sampling_weight
+2026,Hardwood,Oak/gum/cypress,0,0-9,0.0,11856.57324,2,0.012593214807795237,sampling_weight
+2026,Hardwood,Oak/gum/cypress,10,10-19,10.0,69254.67308,12,0.07355742311764897,sampling_weight
+2026,Hardwood,Oak/gum/cypress,20,20-29,20.0,95467.04832,16,0.1013983570315235,sampling_weight
+2026,Hardwood,Oak/gum/cypress,30,30-39,30.0,47119.55126,9,0.050047059858932624,sampling_weight
+2026,Hardwood,Oak/gum/cypress,40,40-49,40.0,81685.03172,14,0.08676007225773504,sampling_weight
+2026,Hardwood,Oak/gum/cypress,50,50-59,50.0,115881.21215,22,0.12308084024390857,sampling_weight
+2026,Hardwood,Oak/gum/cypress,60,60-69,60.0,137006.82715,25,0.14551897664779428,sampling_weight
+2026,Hardwood,Oak/gum/cypress,70,70-79,70.0,88801.26636,17,0.09431843415793896,sampling_weight
+2026,Hardwood,Oak/gum/cypress,80,80-89,80.0,56564.227790000004,11,0.060078528304737304,sampling_weight
+2026,Hardwood,Oak/gum/cypress,90,90-99,90.0,87395.38745,15,0.09282520886012272,sampling_weight
+2026,Hardwood,Oak/gum/cypress,100,100-109,100.0,60445.09276,10,0.06420050901686908,sampling_weight
+2026,Hardwood,Oak/gum/cypress,110,110-119,110.0,36425.47022,6,0.03868856217307932,sampling_weight
+2026,Hardwood,Oak/gum/cypress,120,120-129,120.0,12360.147949999999,2,0.013128076303308015,sampling_weight
+2026,Hardwood,Oak/gum/cypress,130,130-139,130.0,11873.17724,2,0.012610850404053625,sampling_weight
+2026,Hardwood,Oak/gum/cypress,140,140+,140.0,29369.19677,5,0.03119388681455284,sampling_weight
+2026,Hardwood,Oak/hickory,0,0-9,0.0,5686.11279,1,0.09639843553508218,sampling_weight
+2026,Hardwood,Oak/hickory,10,10-19,10.0,11326.74023,2,0.19202574380946758,sampling_weight
+2026,Hardwood,Oak/hickory,20,20-29,20.0,24635.839350000002,4,0.4176590333575877,sampling_weight
+2026,Hardwood,Oak/hickory,30,30-39,30.0,5810.33594,1,0.09850442916544065,sampling_weight
+2026,Hardwood,Oak/hickory,70,70-79,70.0,5785.80811,1,0.09808860124812802,sampling_weight
+2026,Hardwood,Oak/hickory,80,80-89,80.0,5740.69336,1,0.09732375688429394,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,0,0-9,0.0,5726.6748,1,0.014193671702430456,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,10,10-19,10.0,30064.78662,5,0.07451614173864103,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,20,20-29,20.0,59041.43554,10,0.14633531362649924,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,30,30-39,30.0,41961.17773,8,0.10400157189770162,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,64956.894530000005,11,0.16099689051109045,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,41263.294930000004,7,0.10227185619078337,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,35882.88086,6,0.08893639825056338,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,47099.226070000004,8,0.11673632179639987,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,41762.73144,8,0.1035097190181169,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,23783.46094,4,0.05894775734950727,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,6197.52637,1,0.015360686215836026,sampling_weight
+2026,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,5726.6748,1,0.014193671702430456,sampling_weight
+2026,Hardwood,Oak/hickory — scrub and chestnut oak,10,10-19,10.0,14703.46021,3,0.09671159773764143,sampling_weight
+2026,Hardwood,Oak/hickory — scrub and chestnut oak,20,20-29,20.0,23720.56739,4,0.1560213676757585,sampling_weight
+2026,Hardwood,Oak/hickory — scrub and chestnut oak,30,30-39,30.0,30710.13623,5,0.20199506096694012,sampling_weight
+2026,Hardwood,Oak/hickory — scrub and chestnut oak,40,40-49,40.0,22425.19384,5,0.14750108442961635,sampling_weight
+2026,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,23121.12255,4,0.15207853602905833,sampling_weight
+2026,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,5588.28906,1,0.03675681478328579,sampling_weight
+2026,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,20097.55102,4,0.13219107897038102,sampling_weight
+2026,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,11667.77441,2,0.07674445940731843,sampling_weight
+2026,Hardwood,Other and exotic hardwoods,10,10-19,10.0,6343.25195,1,0.05591921585037665,sampling_weight
+2026,Hardwood,Other and exotic hardwoods,20,20-29,20.0,23777.83349,4,0.20961453428972263,sampling_weight
+2026,Hardwood,Other and exotic hardwoods,30,30-39,30.0,17661.65918,3,0.15569713133690147,sampling_weight
+2026,Hardwood,Other and exotic hardwoods,40,40-49,40.0,11993.478019999999,2,0.10572903165183718,sampling_weight
+2026,Hardwood,Other and exotic hardwoods,50,50-59,50.0,35780.29785,6,0.31542278541607005,sampling_weight
+2026,Hardwood,Other and exotic hardwoods,70,70-79,70.0,5876.48779,1,0.05180443592046078,sampling_weight
+2026,Hardwood,Other and exotic hardwoods,100,100-109,100.0,6129.40479,1,0.05403403682969625,sampling_weight
+2026,Hardwood,Other and exotic hardwoods,110,110-119,110.0,5873.58301,1,0.05177882870493502,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,10,10-19,10.0,52183.78759,10,0.11160185154970591,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,20,20-29,20.0,82656.25098,14,0.17677119805870328,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,30,30-39,30.0,54866.05151,10,0.11733822358480778,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,40,40-49,40.0,73171.49195,13,0.1564868009664992,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,50,50-59,50.0,40896.09057,8,0.08746163587464632,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,60,60-69,60.0,68536.82788,13,0.14657496598076092,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,70,70-79,70.0,38451.71166,7,0.08223401203123393,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,80,80-89,80.0,27058.924310000002,5,0.05786904694740937,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,90,90-99,90.0,17836.52808,4,0.038145747000698324,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,100,100-109,100.0,11927.24072,2,0.02550796348263013,sampling_weight
+2026,Oak/pine (mixed),Oak/pine,110,110-119,110.0,4.0,1,8.554522904818217e-06,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,0,0-9,0.0,5928.28662,1,0.014292931737077505,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,10,10-19,10.0,116363.2998,20,0.2805486318983822,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,20,20-29,20.0,93840.60446999999,17,0.22624704907668586,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,30,30-39,30.0,59049.97997,10,0.14236783524258886,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,65252.95311,11,0.15732302842738555,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,29509.03515,5,0.07114545096437504,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,23748.853020000002,5,0.05725781440856633,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,6171.51465,1,0.01487934765320503,sampling_weight
+2026,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,14905.98559,3,0.035937910591733666,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,0,0-9,0.0,5697.83643,1,0.004751163413679366,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,10,10-19,10.0,203941.57492,35,0.17005748781876728,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,20,20-29,20.0,274262.75168,48,0.22869507882960496,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,30,30-39,30.0,250735.65987,44,0.20907692039153494,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,184070.76046,39,0.15348813069133513,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,42080.49217,8,0.0350889846144153,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,54837.23607,10,0.045726245904725356,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,41833.910390000005,10,0.03488337142316125,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,69776.35322,19,0.05818328774994905,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,45225.11548,10,0.03771114118275949,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,14822.99805,2,0.012360215475016818,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,5972.86426,2,0.004980496456088172,sampling_weight
+2026,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,5993.22705,1,0.004997476048962942,sampling_weight
+2026,Pine (softwood),Other eastern softwoods,30,30-39,30.0,5829.09717,1,1.0,sampling_weight
+2031,Hardwood,Elm/ash/cottonwood,10,10-19,10.0,5711.7168,1,0.19496009587971208,sampling_weight
+2031,Hardwood,Elm/ash/cottonwood,20,20-29,20.0,4.0,1,0.00013653344709227327,sampling_weight
+2031,Hardwood,Elm/ash/cottonwood,30,30-39,30.0,11672.54541,2,0.39842321529209807,sampling_weight
+2031,Hardwood,Elm/ash/cottonwood,70,70-79,70.0,6210.77783,1,0.21199472656354218,sampling_weight
+2031,Hardwood,Elm/ash/cottonwood,90,90-99,90.0,5697.81055,1,0.19448542881755537,sampling_weight
+2031,Hardwood,Maple/beech/birch,80,80-89,80.0,5846.896,1,1.0,sampling_weight
+2031,Hardwood,Oak/gum/cypress,10,10-19,10.0,42332.52979,7,0.045260736821031204,sampling_weight
+2031,Hardwood,Oak/gum/cypress,20,20-29,20.0,85598.78194,15,0.09151978303225282,sampling_weight
+2031,Hardwood,Oak/gum/cypress,30,30-39,30.0,54284.13672,9,0.05803905502054797,sampling_weight
+2031,Hardwood,Oak/gum/cypress,40,40-49,40.0,92756.28513999999,17,0.09917238187852857,sampling_weight
+2031,Hardwood,Oak/gum/cypress,50,50-59,50.0,81459.74388,14,0.08709444126186457,sampling_weight
+2031,Hardwood,Oak/gum/cypress,60,60-69,60.0,136724.1709,27,0.1461815947895561,sampling_weight
+2031,Hardwood,Oak/gum/cypress,70,70-79,70.0,108854.89209,19,0.1163845545496099,sampling_weight
+2031,Hardwood,Oak/gum/cypress,80,80-89,80.0,62518.5171,13,0.06684302031891959,sampling_weight
+2031,Hardwood,Oak/gum/cypress,90,90-99,90.0,75462.30957,13,0.08068215507786108,sampling_weight
+2031,Hardwood,Oak/gum/cypress,100,100-109,100.0,56966.24634,10,0.060906690341143724,sampling_weight
+2031,Hardwood,Oak/gum/cypress,110,110-119,110.0,60564.03368,10,0.06475334223607121,sampling_weight
+2031,Hardwood,Oak/gum/cypress,120,120-129,120.0,30302.44727,5,0.03239851475270516,sampling_weight
+2031,Hardwood,Oak/gum/cypress,130,130-139,130.0,12383.62744,2,0.013240222241193405,sampling_weight
+2031,Hardwood,Oak/gum/cypress,140,140+,140.0,35095.87157,6,0.037523507678714645,sampling_weight
+2031,Hardwood,Oak/hickory,10,10-19,10.0,11084.5664,2,0.15652162177161646,sampling_weight
+2031,Hardwood,Oak/hickory,20,20-29,20.0,24541.448239999998,4,0.34654195216413536,sampling_weight
+2031,Hardwood,Oak/hickory,30,30-39,30.0,11833.01367,2,0.16709020662045088,sampling_weight
+2031,Hardwood,Oak/hickory,50,50-59,50.0,5697.83643,1,0.0804573283636063,sampling_weight
+2031,Hardwood,Oak/hickory,70,70-79,70.0,11920.55811,2,0.16832639369637364,sampling_weight
+2031,Hardwood,Oak/hickory,80,80-89,80.0,5740.69336,1,0.08106249738381739,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,10,10-19,10.0,24077.94385,4,0.05874776785812993,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,20,20-29,20.0,23938.579579999998,4,0.05840773301824978,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,30,30-39,30.0,70330.37206,12,0.17159905334511305,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,59870.75146,11,0.1460786282323635,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,52732.62451,9,0.128662314463509,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,30093.38428,5,0.07342483912914916,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,35643.18604,6,0.08696579875121095,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,71731.73535,13,0.17501823920910142,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,11412.78759,2,0.027846056961025187,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,24294.874519999998,4,0.05927705693371968,sampling_weight
+2031,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,5726.6748,1,0.013972512098428314,sampling_weight
+2031,Hardwood,Oak/hickory — scrub and chestnut oak,20,20-29,20.0,20444.15357,4,0.14034715725912772,sampling_weight
+2031,Hardwood,Oak/hickory — scrub and chestnut oak,30,30-39,30.0,23921.679689999997,4,0.1642200411897469,sampling_weight
+2031,Hardwood,Oak/hickory — scrub and chestnut oak,40,40-49,40.0,29376.340819999998,6,0.20166576770447692,sampling_weight
+2031,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,17438.05077,3,0.11971054929371887,sampling_weight
+2031,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,17223.59228,3,0.11823831228872236,sampling_weight
+2031,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,17090.26806,3,0.11732305428076803,sampling_weight
+2031,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,8506.59546,2,0.058396963546405306,sampling_weight
+2031,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,11667.77441,2,0.08009815443703382,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,20,20-29,20.0,12298.84228,2,0.1143941022731879,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,30,30-39,30.0,17762.71484,3,0.16521472280043192,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,40,40-49,40.0,11856.07959,2,0.11027587396441639,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,50,50-59,50.0,24091.2412,4,0.224077669017871,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,60,60-69,60.0,17501.52881,3,0.16278537695243006,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,80,80-89,80.0,5876.48779,1,0.054658441010302955,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,100,100-109,100.0,6123.02295,1,0.056951516054678325,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,110,110-119,110.0,6129.40479,1,0.05701087488220295,sampling_weight
+2031,Hardwood,Other and exotic hardwoods,120,120-129,120.0,5873.58301,1,0.05463142304447852,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,10,10-19,10.0,20338.02709,4,0.038977354044245974,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,20,20-29,20.0,85199.51978,15,0.16328289032998816,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,30,30-39,30.0,61582.33667,11,0.11802111033861061,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,40,40-49,40.0,90742.98073,16,0.17390680380608145,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,50,50-59,50.0,46442.53661,9,0.08900603702366419,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,60,60-69,60.0,81294.84717,15,0.15579967644334364,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,70,70-79,70.0,51124.093980000005,9,0.09797813241332272,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,80,80-89,80.0,43651.17747,8,0.08365646240745583,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,90,90-99,90.0,17716.1018,5,0.03395249544544212,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,100,100-109,100.0,23695.23877,4,0.045411371841241534,sampling_weight
+2031,Oak/pine (mixed),Oak/pine,110,110-119,110.0,4.0,1,7.665906603774904e-06,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,10,10-19,10.0,83062.49022,14,0.20473750599872584,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,20,20-29,20.0,112403.99144,20,0.27706023273290353,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,30,30-39,30.0,64825.657210000005,11,0.1597862446304071,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,53589.85595,9,0.13209155450280669,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,47156.37304,8,0.116233912354225,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,12143.90771,2,0.02993304644537898,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,17614.103020000002,4,0.04341631840278126,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,11890.729490000002,2,0.029308997284335225,sampling_weight
+2031,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,3015.2561,1,0.007432187648436296,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,10,10-19,10.0,116228.67943,20,0.10018850266850557,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,20,20-29,20.0,222703.2324,38,0.19196900027613276,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,30,30-39,30.0,321763.25215,56,0.2773582097357682,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,195844.23628,37,0.16881668866389715,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,67619.50438,17,0.0582876526537393,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,53709.38622,11,0.046297204881064404,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,36551.76098,7,0.03150742330070804,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,32325.0825,9,0.027864048961008768,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,70739.72018,17,0.06097726205597712,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,30649.02906,7,0.026419299821902095,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,5968.86426,1,0.005145129203684333,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,4.0,1,3.447978697162956e-06,sampling_weight
+2031,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,5993.22705,1,0.005166129798915197,sampling_weight
+2031,Pine (softwood),Other eastern softwoods,30,30-39,30.0,5829.09717,1,1.0,sampling_weight
+2036,Hardwood,Elm/ash/cottonwood,20,20-29,20.0,5711.7168,1,0.19496009587971208,sampling_weight
+2036,Hardwood,Elm/ash/cottonwood,30,30-39,30.0,5707.68115,2,0.1948223455782726,sampling_weight
+2036,Hardwood,Elm/ash/cottonwood,40,40-49,40.0,5968.86426,1,0.2037374031609177,sampling_weight
+2036,Hardwood,Elm/ash/cottonwood,70,70-79,70.0,6210.77783,1,0.21199472656354218,sampling_weight
+2036,Hardwood,Elm/ash/cottonwood,100,100-109,100.0,5697.81055,1,0.19448542881755537,sampling_weight
+2036,Hardwood,Maple/beech/birch,90,90-99,90.0,5846.896,1,1.0,sampling_weight
+2036,Hardwood,Oak/gum/cypress,10,10-19,10.0,11856.57324,2,0.012850805728774558,sampling_weight
+2036,Hardwood,Oak/gum/cypress,20,20-29,20.0,63061.398180000004,11,0.06834940927637517,sampling_weight
+2036,Hardwood,Oak/gum/cypress,30,30-39,30.0,89755.36717,15,0.09728179999978644,sampling_weight
+2036,Hardwood,Oak/gum/cypress,40,40-49,40.0,47119.55126,9,0.05107075940175228,sampling_weight
+2036,Hardwood,Oak/gum/cypress,50,50-59,50.0,81288.6826,14,0.08810514192384113,sampling_weight
+2036,Hardwood,Oak/gum/cypress,60,60-69,60.0,115881.21215,22,0.12559842669639343,sampling_weight
+2036,Hardwood,Oak/gum/cypress,70,70-79,70.0,128402.01246,23,0.1391691582303379,sampling_weight
+2036,Hardwood,Oak/gum/cypress,80,80-89,80.0,90835.17578,18,0.09845215591886042,sampling_weight
+2036,Hardwood,Oak/gum/cypress,90,90-99,90.0,56564.227790000004,11,0.06130741891553829,sampling_weight
+2036,Hardwood,Oak/gum/cypress,100,100-109,100.0,87395.38745,15,0.09472392427197895,sampling_weight
+2036,Hardwood,Oak/gum/cypress,110,110-119,110.0,60445.09276,10,0.0655137136669446,sampling_weight
+2036,Hardwood,Oak/gum/cypress,120,120-129,120.0,36425.47022,6,0.03947992661128141,sampling_weight
+2036,Hardwood,Oak/gum/cypress,130,130-139,130.0,12360.147949999999,2,0.013396607676533114,sampling_weight
+2036,Hardwood,Oak/gum/cypress,140,140+,140.0,41242.37401,7,0.04470075168160231,sampling_weight
+2036,Hardwood,Oak/hickory,10,10-19,10.0,5686.11279,1,0.09601163543516526,sampling_weight
+2036,Hardwood,Oak/hickory,20,20-29,20.0,11326.74023,2,0.19125523776878506,sampling_weight
+2036,Hardwood,Oak/hickory,30,30-39,30.0,18738.723140000002,3,0.31640868218482443,sampling_weight
+2036,Hardwood,Oak/hickory,40,40-49,40.0,5810.33594,1,0.09810917873599166,sampling_weight
+2036,Hardwood,Oak/hickory,80,80-89,80.0,11920.55811,2,0.20128202195599124,sampling_weight
+2036,Hardwood,Oak/hickory,90,90-99,90.0,5740.69336,1,0.09693324391924239,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,10,10-19,10.0,5726.6748,1,0.013575943359754206,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,20,20-29,20.0,30064.78662,5,0.07127309556257955,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,30,30-39,30.0,70803.65966,12,0.16785071734952958,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,41961.17773,8,0.09947527877278095,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,64906.91699,11,0.15387160254193374,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,41263.294930000004,7,0.09782084270028969,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,36331.49854,6,0.08612927808543147,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,53296.78076,9,0.12634802955023702,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,41762.73144,8,0.09900483201491837,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,23783.46094,4,0.056382268925130256,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,6197.52637,1,0.014692167777660971,sampling_weight
+2036,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,5726.6748,1,0.013575943359754206,sampling_weight
+2036,Hardwood,Oak/hickory — scrub and chestnut oak,20,20-29,20.0,14703.46021,3,0.11492227794727865,sampling_weight
+2036,Hardwood,Oak/hickory — scrub and chestnut oak,30,30-39,30.0,11504.71973,2,0.08992091518820798,sampling_weight
+2036,Hardwood,Oak/hickory — scrub and chestnut oak,40,40-49,40.0,24680.53906,4,0.19290314859443464,sampling_weight
+2036,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,16486.19433,4,0.12885613182375588,sampling_weight
+2036,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,28891.3828,5,0.22581511270147653,sampling_weight
+2036,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,13989.59936,3,0.1093427399441367,sampling_weight
+2036,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,6018.9751,1,0.04704432286826648,sampling_weight
+2036,Hardwood,Oak/hickory — scrub and chestnut oak,100,100-109,100.0,11667.77441,2,0.09119535093244321,sampling_weight
+2036,Hardwood,Other and exotic hardwoods,20,20-29,20.0,6343.25195,1,0.05597485460908261,sampling_weight
+2036,Hardwood,Other and exotic hardwoods,30,30-39,30.0,17912.72558,3,0.15806753663519466,sampling_weight
+2036,Hardwood,Other and exotic hardwoods,40,40-49,40.0,23471.99512,4,0.2071242833460362,sampling_weight
+2036,Hardwood,Other and exotic hardwoods,50,50-59,50.0,11993.478019999999,2,0.10583423041027527,sampling_weight
+2036,Hardwood,Other and exotic hardwoods,60,60-69,60.0,29599.291989999998,5,0.261193482259842,sampling_weight
+2036,Hardwood,Other and exotic hardwoods,80,80-89,80.0,5876.48779,1,0.051855980536497405,sampling_weight
+2036,Hardwood,Other and exotic hardwoods,110,110-119,110.0,12252.42774,2,0.10811928436088537,sampling_weight
+2036,Hardwood,Other and exotic hardwoods,120,120-129,120.0,5873.58301,1,0.05183034784218651,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,20,20-29,20.0,46860.87304,9,0.08200473763566621,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,30,30-39,30.0,100475.34082,17,0.17582800806474783,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,40,40-49,40.0,55512.60718,10,0.09714494186614711,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,50,50-59,50.0,97492.64039,17,0.17060839625770458,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,60,60-69,60.0,59781.503169999996,11,0.10461534676780315,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,70,70-79,70.0,100871.49656,19,0.17652126547576175,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,80,80-89,80.0,36364.96386,6,0.06363729753656727,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,90,90-99,90.0,32711.73973,7,0.0572442948699457,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,100,100-109,100.0,23866.12525,5,0.04176480745110332,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,110,110-119,110.0,11530.891599999999,2,0.020178619795584316,sampling_weight
+2036,Oak/pine (mixed),Oak/pine,120,120-129,120.0,5972.86426,2,0.01045228427896886,sampling_weight
+2036,Pine (softwood),Loblolly/shortleaf pine,10,10-19,10.0,5928.28662,1,0.014317157641982213,sampling_weight
+2036,Pine (softwood),Loblolly/shortleaf pine,20,20-29,20.0,122151.8413,21,0.29500381480382837,sampling_weight
+2036,Pine (softwood),Loblolly/shortleaf pine,30,30-39,30.0,99719.30369,18,0.24082792928092747,sampling_weight
+2036,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,52852.42528,9,0.12764168688167205,sampling_weight
+2036,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,65252.95311,11,0.15758968419795188,sampling_weight
+2036,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,29509.03515,5,0.07126603944553278,sampling_weight
+2036,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,23748.853020000002,5,0.057354863942729775,sampling_weight
+2036,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,14905.98559,3,0.03599882380537553,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,10,10-19,10.0,5697.83643,1,0.005058931131541227,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,20,20-29,20.0,215380.93967,37,0.19123001409802945,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,30,30-39,30.0,268492.49143,47,0.238386103245911,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,256505.92012,45,0.22774360069155147,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,166134.93819000002,36,0.14750602639642088,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,23605.82518,5,0.02095887541805439,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,36247.053459999996,7,0.032182627463637654,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,41833.910390000005,10,0.03714302336089999,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,58104.5627,16,0.0515892277250962,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,39195.51831,9,0.03480047737968378,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,9096.32422,1,0.008076342370388205,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,4.0,1,3.5514751563629755e-06,sampling_weight
+2036,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,5993.22705,1,0.005321199243629391,sampling_weight
+2036,Pine (softwood),Other eastern softwoods,40,40-49,40.0,5829.09717,1,1.0,sampling_weight
+2041,Hardwood,Elm/ash/cottonwood,20,20-29,20.0,11423.4336,2,0.27975636882624405,sampling_weight
+2041,Hardwood,Elm/ash/cottonwood,30,30-39,30.0,4.0,1,9.795876743267245e-05,sampling_weight
+2041,Hardwood,Elm/ash/cottonwood,40,40-49,40.0,11672.54541,2,0.2858570402913746,sampling_weight
+2041,Hardwood,Elm/ash/cottonwood,80,80-89,80.0,12035.71728,2,0.2947510074792293,sampling_weight
+2041,Hardwood,Elm/ash/cottonwood,100,100-109,100.0,5697.81055,1,0.1395376246357194,sampling_weight
+2041,Hardwood,Maple/beech/birch,90,90-99,90.0,5846.896,1,1.0,sampling_weight
+2041,Hardwood,Oak/gum/cypress,20,20-29,20.0,36620.81299,6,0.04044914856168209,sampling_weight
+2041,Hardwood,Oak/gum/cypress,30,30-39,30.0,79464.03438,14,0.08777119538075097,sampling_weight
+2041,Hardwood,Oak/gum/cypress,40,40-49,40.0,54284.13672,9,0.05995899411980646,sampling_weight
+2041,Hardwood,Oak/gum/cypress,50,50-59,50.0,86633.26219,16,0.09568989344019656,sampling_weight
+2041,Hardwood,Oak/gum/cypress,60,60-69,60.0,87730.82054,15,0.09690219041367958,sampling_weight
+2041,Hardwood,Oak/gum/cypress,70,70-79,70.0,122574.1858,24,0.1353880770644088,sampling_weight
+2041,Hardwood,Oak/gum/cypress,80,80-89,80.0,108854.89209,19,0.12023456997026877,sampling_weight
+2041,Hardwood,Oak/gum/cypress,90,90-99,90.0,64552.42652,14,0.07130072975271068,sampling_weight
+2041,Hardwood,Oak/gum/cypress,100,100-109,100.0,69327.56201,12,0.07657505735679511,sampling_weight
+2041,Hardwood,Oak/gum/cypress,110,110-119,110.0,56966.24634,10,0.06292149117053336,sampling_weight
+2041,Hardwood,Oak/gum/cypress,120,120-129,120.0,60564.03368,10,0.06689539078463363,sampling_weight
+2041,Hardwood,Oak/gum/cypress,130,130-139,130.0,30302.44727,5,0.03347026161711567,sampling_weight
+2041,Hardwood,Oak/gum/cypress,140,140+,140.0,47479.49901,8,0.05244300036741832,sampling_weight
+2041,Hardwood,Oak/hickory,20,20-29,20.0,11084.5664,2,0.16963828434238998,sampling_weight
+2041,Hardwood,Oak/hickory,30,30-39,30.0,18644.332029999998,3,0.28533299221150127,sampling_weight
+2041,Hardwood,Oak/hickory,40,40-49,40.0,11833.01367,2,0.18109252677478188,sampling_weight
+2041,Hardwood,Oak/hickory,50,50-59,50.0,5770.26025,1,0.08830810459298528,sampling_weight
+2041,Hardwood,Oak/hickory,80,80-89,80.0,6134.75,1,0.09388625836275175,sampling_weight
+2041,Hardwood,Oak/hickory,90,90-99,90.0,5740.69336,1,0.08785561269461566,sampling_weight
+2041,Hardwood,Oak/hickory,100,100-109,100.0,6134.74756,1,0.09388622102097409,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,20,20-29,20.0,24077.94385,4,0.05704531362931136,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,30,30-39,30.0,29835.695789999998,5,0.07068654343129363,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,70330.37206,12,0.1666262765966562,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,60130.08838,11,0.14245982844566318,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,52610.22315,9,0.12464381088337022,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,30093.38428,5,0.07129705738640088,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,35643.18604,6,0.0844456129255278,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,77929.29004,14,0.18462958543868233,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,11412.78759,2,0.02703910481360569,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,24294.874519999998,4,0.05755926441277772,sampling_weight
+2041,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,5726.6748,1,0.013567602036711033,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,30,30-39,30.0,20444.15357,4,0.14618129323290532,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,40,40-49,40.0,23921.679689999997,4,0.1710465567290065,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,23346.74365,5,0.16693560669306404,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,17438.05077,3,0.12468683549512494,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,17223.59228,3,0.1231533985980856,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,11501.979,2,0.08224229774056228,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,8506.59546,2,0.06082448564545592,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,100,100-109,100.0,11667.77441,2,0.08342778029736739,sampling_weight
+2041,Hardwood,Oak/hickory — scrub and chestnut oak,110,110-119,110.0,5804.21777,1,0.04150174556842805,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,30,30-39,30.0,12298.84228,2,0.1035132141913587,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,40,40-49,40.0,23573.05078,4,0.19840259749504777,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,50,50-59,50.0,11856.07959,2,0.09978670171786821,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,60,60-69,60.0,17820.164539999998,3,0.1499834266477214,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,70,70-79,70.0,23477.78076,4,0.19760075730864973,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,80,80-89,80.0,5785.80811,1,0.04869625778797533,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,90,90-99,90.0,5876.48779,1,0.04945946337472458,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,110,110-119,110.0,6123.02295,1,0.05153442671206895,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,120,120-129,120.0,6129.40479,1,0.05158813947265368,sampling_weight
+2041,Hardwood,Other and exotic hardwoods,130,130-139,130.0,5873.58301,1,0.04943501529193164,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,20,20-29,20.0,11715.656729999999,2,0.02041804788443921,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,30,30-39,30.0,85621.55982,15,0.14922126421376777,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,40,40-49,40.0,53175.941399999996,9,0.0926750367331165,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,50,50-59,50.0,102409.82057,18,0.17847984696245772,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,60,60-69,60.0,66770.22581,13,0.11636715715239286,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,70,70-79,70.0,114044.59106,21,0.19875692629860522,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,80,80-89,80.0,50887.44359,9,0.0886866424889968,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,90,90-99,90.0,35419.71336,6,0.06172948048108195,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,100,100-109,100.0,14531.54125,4,0.025325571746860464,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,110,110-119,110.0,33239.90919,6,0.057930517525143554,sampling_weight
+2041,Oak/pine (mixed),Oak/pine,120,120-129,120.0,5972.86426,2,0.010409508513137837,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,20,20-29,20.0,89197.24022,15,0.21817320271976096,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,30,30-39,30.0,112403.99144,20,0.27493607145763094,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,73191.97679,13,0.17902491097571213,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,59724.60351,10,0.14608420615711934,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,35664.17773,6,0.08723328051999762,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,6134.75,1,0.01500537518967931,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,17614.103020000002,4,0.043083454818006184,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,11890.729490000002,2,0.029084291499479872,sampling_weight
+2041,Pine (softwood),Loblolly/shortleaf pine,100,100-109,100.0,3015.2561,1,0.0073752066626136675,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,20,20-29,20.0,118716.29979,21,0.10684225952056849,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,30,30-39,30.0,228415.93992,39,0.20556970841187652,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,315992.9919,55,0.2843872771218613,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,184165.67183,35,0.16574536554160832,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,64604.24828,16,0.05814251179554052,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,35142.53319,8,0.03162756637410331,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,36551.76098,7,0.03289584277362986,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,32325.0825,9,0.029091917955647955,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,73924.28073,18,0.06653035177644008,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,15300.140870000001,4,0.013769816145090926,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,4.0,1,3.599918788222484e-06,sampling_weight
+2041,Pine (softwood),Longleaf/slash pine,140,140+,140.0,5993.22705,1,0.005393782664844553,sampling_weight
+2041,Pine (softwood),Other eastern softwoods,40,40-49,40.0,5829.09717,1,1.0,sampling_weight
+2046,Hardwood,Elm/ash/cottonwood,30,30-39,30.0,5711.7168,1,0.1626260163133758,sampling_weight
+2046,Hardwood,Elm/ash/cottonwood,40,40-49,40.0,5707.68115,2,0.16251111186245223,sampling_weight
+2046,Hardwood,Elm/ash/cottonwood,50,50-59,50.0,5968.86426,1,0.16994760953818402,sampling_weight
+2046,Hardwood,Elm/ash/cottonwood,80,80-89,80.0,12035.71728,2,0.3426851896299304,sampling_weight
+2046,Hardwood,Elm/ash/cottonwood,110,110-119,110.0,5697.81055,1,0.1622300726560576,sampling_weight
+2046,Hardwood,Maple/beech/birch,100,100-109,100.0,5846.896,1,1.0,sampling_weight
+2046,Hardwood,Oak/gum/cypress,20,20-29,20.0,11856.57324,2,0.012926231127070914,sampling_weight
+2046,Hardwood,Oak/gum/cypress,30,30-39,30.0,69196.14574,12,0.0754387760133065,sampling_weight
+2046,Hardwood,Oak/gum/cypress,40,40-49,40.0,89755.36717,15,0.09785277731178026,sampling_weight
+2046,Hardwood,Oak/gum/cypress,50,50-59,50.0,47119.55126,9,0.051370509662589964,sampling_weight
+2046,Hardwood,Oak/gum/cypress,60,60-69,60.0,81288.6826,14,0.0886222585593127,sampling_weight
+2046,Hardwood,Oak/gum/cypress,70,70-79,70.0,122152.28881,23,0.1331724340496528,sampling_weight
+2046,Hardwood,Oak/gum/cypress,80,80-89,80.0,116739.6736,21,0.1272715119374929,sampling_weight
+2046,Hardwood,Oak/gum/cypress,90,90-99,90.0,96977.5664,19,0.1057265376810734,sampling_weight
+2046,Hardwood,Oak/gum/cypress,100,100-109,100.0,56564.227790000004,11,0.06166725133288408,sampling_weight
+2046,Hardwood,Oak/gum/cypress,110,110-119,110.0,81260.63989,14,0.08859168593570958,sampling_weight
+2046,Hardwood,Oak/gum/cypress,120,120-129,120.0,54310.34276,9,0.059210028808138374,sampling_weight
+2046,Hardwood,Oak/gum/cypress,130,130-139,130.0,36425.47022,6,0.0397116466490919,sampling_weight
+2046,Hardwood,Oak/gum/cypress,140,140+,140.0,53602.52196,9,0.058438350931896595,sampling_weight
+2046,Hardwood,Oak/hickory,20,20-29,20.0,5686.11279,1,0.09678598451664908,sampling_weight
+2046,Hardwood,Oak/hickory,30,30-39,30.0,11326.74023,2,0.19279774162286467,sampling_weight
+2046,Hardwood,Oak/hickory,40,40-49,40.0,12145.70068,2,0.2067376503726255,sampling_weight
+2046,Hardwood,Oak/hickory,50,50-59,50.0,5810.33594,1,0.09890044483717841,sampling_weight
+2046,Hardwood,Oak/hickory,60,60-69,60.0,5770.26025,1,0.09821829777905895,sampling_weight
+2046,Hardwood,Oak/hickory,90,90-99,90.0,6134.75,1,0.104422448242275,sampling_weight
+2046,Hardwood,Oak/hickory,100,100-109,100.0,5740.69336,1,0.09771502591945423,sampling_weight
+2046,Hardwood,Oak/hickory,110,110-119,110.0,6134.74756,1,0.10442240670989411,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,20,20-29,20.0,5726.6748,1,0.01302726551403408,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,30,30-39,30.0,30064.78662,5,0.06839256140780323,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,70803.65966,12,0.16106695525230874,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,47990.774900000004,9,0.1091713059813598,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,59136.65674,10,0.1345263972321727,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,41263.294930000004,7,0.09386736942649622,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,47703.69824,8,0.1085182526819648,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,53296.78076,9,0.12124161721279915,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,41762.73144,8,0.09500350728142952,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,23783.46094,4,0.05410355421405081,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,12332.27637,2,0.02805394828154698,sampling_weight
+2046,Hardwood,Oak/hickory — mixed upland hardwoods,130,130-139,130.0,5726.6748,1,0.01302726551403408,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,30,30-39,30.0,14703.46021,3,0.1051337645814977,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,40,40-49,40.0,17612.64356,3,0.12593522172661914,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,24680.53906,4,0.17647260891104888,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,16486.19433,4,0.11788080144265867,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,28891.3828,5,0.206581294086362,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,13989.59936,3,0.10002946413276355,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,100,100-109,100.0,6018.9751,1,0.043037319253254644,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,110,110-119,110.0,11667.77441,2,0.08342778029736739,sampling_weight
+2046,Hardwood,Oak/hickory — scrub and chestnut oak,120,120-129,120.0,5804.21777,1,0.04150174556842805,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,30,30-39,30.0,6343.25195,1,0.05303859347701187,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,40,40-49,40.0,24505.74804,4,0.20490285083877843,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,50,50-59,50.0,17661.65918,3,0.14767654962492147,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,60,60-69,60.0,11993.478019999999,2,0.10028250652699633,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,70,70-79,70.0,23328.21533,4,0.19505700533179457,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,80,80-89,80.0,5976.25195,1,0.04996995235105701,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,90,90-99,90.0,11662.295900000001,2,0.09751335373786034,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,120,120-129,120.0,12252.42774,2,0.1024476938848887,sampling_weight
+2046,Hardwood,Other and exotic hardwoods,130,130-139,130.0,5873.58301,1,0.049111494226691366,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,30,30-39,30.0,38238.50512,7,0.0667922971409574,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,40,40-49,40.0,96855.03735,17,0.1691794805779721,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,50,50-59,50.0,66479.34547,12,0.116121385562381,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,60,60-69,60.0,117543.90869,21,0.20531732743458367,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,70,70-79,70.0,65790.66088,12,0.11491844037330196,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,80,80-89,80.0,83125.86766,16,0.1451983448469761,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,90,90-99,90.0,30222.57324,5,0.05279063828137504,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,100,100-109,100.0,32542.43528,7,0.05684280805672184,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,110,110-119,110.0,30000.85572,6,0.05240335790964705,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,120,120-129,120.0,5726.67383,1,0.010002945954146246,sampling_weight
+2046,Oak/pine (mixed),Oak/pine,130,130-139,130.0,5972.86426,2,0.010432973861937535,sampling_weight
+2046,Pine (softwood),Loblolly/shortleaf pine,20,20-29,20.0,5928.28662,1,0.01481277475709977,sampling_weight
+2046,Pine (softwood),Loblolly/shortleaf pine,30,30-39,30.0,122151.8413,21,0.305215963283148,sampling_weight
+2046,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,97231.68333,17,0.24294895249530676,sampling_weight
+2046,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,52852.42528,9,0.13206025977183367,sampling_weight
+2046,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,59895.505359999996,10,0.14965852475269523,sampling_weight
+2046,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,23499.87744,4,0.05871821213296371,sampling_weight
+2046,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,23748.853020000002,5,0.05934031754435124,sampling_weight
+2046,Pine (softwood),Loblolly/shortleaf pine,100,100-109,100.0,14905.98559,3,0.03724499526260168,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,20,20-29,20.0,5697.83643,1,0.005164969154709898,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,30,30-39,30.0,217868.56003,38,0.1974932776959362,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,268492.49143,47,0.24338280916694577,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,245319.9206,43,0.2223773599858993,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,151441.11764,33,0.13727819514913542,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,23605.82518,5,0.021398185157479894,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,42481.63012,8,0.038508706226864246,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,41833.910390000005,10,0.03792156188401637,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,58273.867150000005,16,0.05282403769449949,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,33060.78784,8,0.029968910396399016,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,9096.32422,1,0.008245627019086009,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,4.0,1,3.625916060008692e-06,sampling_weight
+2046,Pine (softwood),Longleaf/slash pine,140,140+,140.0,5993.22705,1,0.005432734552968379,sampling_weight
+2046,Pine (softwood),Other eastern softwoods,50,50-59,50.0,5829.09717,1,1.0,sampling_weight
+2051,Hardwood,Elm/ash/cottonwood,30,30-39,30.0,5711.7168,1,0.1626260163133758,sampling_weight
+2051,Hardwood,Elm/ash/cottonwood,40,40-49,40.0,4.0,1,0.00011388941154321644,sampling_weight
+2051,Hardwood,Elm/ash/cottonwood,50,50-59,50.0,11672.54541,2,0.33234483198909304,sampling_weight
+2051,Hardwood,Elm/ash/cottonwood,90,90-99,90.0,12035.71728,2,0.3426851896299304,sampling_weight
+2051,Hardwood,Elm/ash/cottonwood,110,110-119,110.0,5697.81055,1,0.1622300726560576,sampling_weight
+2051,Hardwood,Maple/beech/birch,100,100-109,100.0,5846.896,1,1.0,sampling_weight
+2051,Hardwood,Oak/gum/cypress,30,30-39,30.0,42332.52979,7,0.04616888088679659,sampling_weight
+2051,Hardwood,Oak/gum/cypress,40,40-49,40.0,91369.02608,16,0.09964926978747732,sampling_weight
+2051,Hardwood,Oak/gum/cypress,50,50-59,50.0,54284.13672,9,0.05920359247843243,sampling_weight
+2051,Hardwood,Oak/gum/cypress,60,60-69,60.0,86633.26219,16,0.09448433114501868,sampling_weight
+2051,Hardwood,Oak/gum/cypress,70,70-79,70.0,87344.3264,15,0.09525983497097028,sampling_weight
+2051,Hardwood,Oak/gum/cypress,80,80-89,80.0,116888.09889,23,0.12748098782443473,sampling_weight
+2051,Hardwood,Oak/gum/cypress,90,90-99,90.0,108854.89209,19,0.1187197781890064,sampling_weight
+2051,Hardwood,Oak/gum/cypress,100,100-109,100.0,70694.81714,15,0.07710147746997016,sampling_weight
+2051,Hardwood,Oak/gum/cypress,110,110-119,110.0,69327.56201,12,0.07561031595536247,sampling_weight
+2051,Hardwood,Oak/gum/cypress,120,120-129,120.0,56966.24634,10,0.062128766102248385,sampling_weight
+2051,Hardwood,Oak/gum/cypress,130,130-139,130.0,54429.28368,9,0.059361893263681124,sampling_weight
+2051,Hardwood,Oak/gum/cypress,140,140+,140.0,77781.94628,13,0.08483087192660146,sampling_weight
+2051,Hardwood,Oak/hickory,30,30-39,30.0,11084.5664,2,0.18941860111428066,sampling_weight
+2051,Hardwood,Oak/hickory,40,40-49,40.0,6123.02295,1,0.10463327115615781,sampling_weight
+2051,Hardwood,Oak/hickory,50,50-59,50.0,11833.01367,2,0.2022084414901029,sampling_weight
+2051,Hardwood,Oak/hickory,60,60-69,60.0,5770.26025,1,0.09860508613312466,sampling_weight
+2051,Hardwood,Oak/hickory,70,70-79,70.0,5697.83643,1,0.09736747176223212,sampling_weight
+2051,Hardwood,Oak/hickory,90,90-99,90.0,6134.75,1,0.10483366883758605,sampling_weight
+2051,Hardwood,Oak/hickory,100,100-109,100.0,5740.69336,1,0.09809983236486722,sampling_weight
+2051,Hardwood,Oak/hickory,110,110-119,110.0,6134.74756,1,0.10483362714164864,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,30,30-39,30.0,24077.94385,4,0.05407050684091306,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,35562.36962,6,0.07986044663100618,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,70330.37206,12,0.15793702681943045,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,60130.08838,11,0.13503081389964686,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,46912.38672,8,0.10534855230453238,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,41465.583979999996,7,0.09311696863405737,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,41329.29883,7,0.0928109206101357,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,77929.29004,14,0.1750014966587489,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,11412.78759,2,0.02562906589131292,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,24294.874519999998,4,0.054557656048889916,sampling_weight
+2051,Hardwood,Oak/hickory — mixed upland hardwoods,130,130-139,130.0,11861.4248,2,0.026636545661326304,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,40,40-49,40.0,20444.15357,4,0.15261699239073986,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,23921.679689999997,4,0.17857696063190187,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,20859.12329,4,0.15571476948299184,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,11540.5205,2,0.08615076791040156,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,17223.59228,3,0.1285752840261983,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,11501.979,2,0.08586305300001959,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,100,100-109,100.0,8506.59546,2,0.06350231180492558,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,110,110-119,110.0,14155.394769999999,3,0.1056709816087049,sampling_weight
+2051,Hardwood,Oak/hickory — scrub and chestnut oak,120,120-129,120.0,5804.21777,1,0.04332887914411646,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,40,40-49,40.0,18891.86474,3,0.16605280341513892,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,50,50-59,50.0,17762.71484,3,0.15612797550898042,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,60,60-69,60.0,11856.07959,2,0.10421074258826768,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,70,70-79,70.0,11993.478019999999,2,0.10541842614943733,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,80,80-89,80.0,23477.78076,4,0.20636138183381947,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,90,90-99,90.0,5785.80811,1,0.05085520513246838,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,100,100-109,100.0,5876.48779,1,0.051652247419400804,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,120,120-129,120.0,6123.02295,1,0.05381920420327622,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,130,130-139,130.0,6129.40479,1,0.05387529831772873,sampling_weight
+2051,Hardwood,Other and exotic hardwoods,140,140+,140.0,5873.58301,1,0.05162671543148206,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,30,30-39,30.0,17850.40673,3,0.03128124350833644,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,40,40-49,40.0,79630.88842999999,14,0.13954601984377313,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,50,50-59,50.0,58486.587400000004,10,0.10249252076459561,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,60,60-69,60.0,104488.10011,19,0.1831060632232634,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,70,70-79,70.0,73177.25559,14,0.12823660468954282,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,80,80-89,80.0,102123.90161,19,0.17896301650734445,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,90,90-99,90.0,45201.3308,8,0.07921129512860509,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,100,100-109,100.0,29277.32274,5,0.05130589323563811,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,110,110-119,110.0,21193.92455,5,0.03714045986591701,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,120,120-129,120.0,33239.90919,6,0.05824997207597972,sampling_weight
+2051,Oak/pine (mixed),Oak/pine,130,130-139,130.0,5972.86426,2,0.010466911157004197,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,30,30-39,30.0,89422.47997,15,0.21232571010813764,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,112403.99144,20,0.2668932611743023,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,79389.50316000001,14,0.1885033007274495,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,65622.10742,11,0.1558138463775373,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,35664.17773,6,0.08468141192780072,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,6134.75,1,0.014566417197587115,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,17614.103020000002,4,0.04182311800001617,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,100,100-109,100.0,11890.729490000002,2,0.028233477572026943,sampling_weight
+2051,Pine (softwood),Loblolly/shortleaf pine,110,110-119,110.0,3015.2561,1,0.007159456915142338,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,30,30-39,30.0,112356.31004,20,0.10301626474201994,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,222703.2324,38,0.2041901797918994,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,310295.15547,54,0.28450069135132444,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,178677.50874,34,0.16382426173707065,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,70307.92943,17,0.06446331558099054,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,41377.10985,9,0.03793748033421302,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,36551.76098,7,0.03351325692844651,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,32325.0825,9,0.02963793716118052,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,64774.277070000004,16,0.05938966910483697,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,15300.140870000001,4,0.014028258509851285,sampling_weight
+2051,Pine (softwood),Longleaf/slash pine,140,140+,140.0,5997.22705,2,0.0054986847581667275,sampling_weight
+2051,Pine (softwood),Other eastern softwoods,50,50-59,50.0,5829.09717,1,1.0,sampling_weight
+2056,Hardwood,Elm/ash/cottonwood,40,40-49,40.0,5711.7168,1,0.1626260163133758,sampling_weight
+2056,Hardwood,Elm/ash/cottonwood,50,50-59,50.0,5707.68115,2,0.16251111186245223,sampling_weight
+2056,Hardwood,Elm/ash/cottonwood,60,60-69,60.0,5968.86426,1,0.16994760953818402,sampling_weight
+2056,Hardwood,Elm/ash/cottonwood,90,90-99,90.0,12035.71728,2,0.3426851896299304,sampling_weight
+2056,Hardwood,Elm/ash/cottonwood,120,120-129,120.0,5697.81055,1,0.1622300726560576,sampling_weight
+2056,Hardwood,Maple/beech/birch,110,110-119,110.0,5846.896,1,1.0,sampling_weight
+2056,Hardwood,Oak/gum/cypress,30,30-39,30.0,11856.57324,2,0.01297613372326302,sampling_weight
+2056,Hardwood,Oak/gum/cypress,40,40-49,40.0,74966.38988,13,0.0820451137223483,sampling_weight
+2056,Hardwood,Oak/gum/cypress,50,50-59,50.0,89755.36717,15,0.09823054462728487,sampling_weight
+2056,Hardwood,Oak/gum/cypress,60,60-69,60.0,47119.55126,9,0.051568829016056125,sampling_weight
+2056,Hardwood,Oak/gum/cypress,70,70-79,70.0,69348.82811,12,0.07589711199784581,sampling_weight
+2056,Hardwood,Oak/gum/cypress,80,80-89,80.0,127978.97533,24,0.1400634284487631,sampling_weight
+2056,Hardwood,Oak/gum/cypress,90,90-99,90.0,113555.11305,20,0.12427758864812188,sampling_weight
+2056,Hardwood,Oak/gum/cypress,100,100-109,100.0,96977.5664,19,0.1061347021850825,sampling_weight
+2056,Hardwood,Oak/gum/cypress,110,110-119,110.0,56564.227790000004,11,0.06190532195929407,sampling_weight
+2056,Hardwood,Oak/gum/cypress,120,120-129,120.0,81260.63989,14,0.08893370017681106,sampling_weight
+2056,Hardwood,Oak/gum/cypress,130,130-139,130.0,54310.34276,9,0.059438613159531216,sampling_weight
+2056,Hardwood,Oak/gum/cypress,140,140+,140.0,90027.99218,15,0.09852891233559803,sampling_weight
+2056,Hardwood,Oak/hickory,30,30-39,30.0,5686.11279,1,0.09716713235258527,sampling_weight
+2056,Hardwood,Oak/hickory,40,40-49,40.0,5398.45361,1,0.09225146876169539,sampling_weight
+2056,Hardwood,Oak/hickory,50,50-59,50.0,12145.70068,2,0.20755179312727717,sampling_weight
+2056,Hardwood,Oak/hickory,60,60-69,60.0,5810.33594,1,0.09928991951898353,sampling_weight
+2056,Hardwood,Oak/hickory,70,70-79,70.0,5770.26025,1,0.09860508613312466,sampling_weight
+2056,Hardwood,Oak/hickory,80,80-89,80.0,5697.83643,1,0.09736747176223212,sampling_weight
+2056,Hardwood,Oak/hickory,100,100-109,100.0,6134.75,1,0.10483366883758605,sampling_weight
+2056,Hardwood,Oak/hickory,110,110-119,110.0,5740.69336,1,0.09809983236486722,sampling_weight
+2056,Hardwood,Oak/hickory,120,120-129,120.0,6134.74756,1,0.10483362714164864,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,30,30-39,30.0,5726.6748,1,0.012468512437900555,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,32552.371339999998,6,0.07087527424046282,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,76530.33349,13,0.16662713499930928,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,47990.774900000004,9,0.10448883420883893,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,64906.91699,11,0.14131982870680798,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,46978.24609,8,0.10228428645606315,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,47703.69824,8,0.1038637910501387,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,53296.78076,9,0.11604143713662929,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,41762.73144,8,0.09092870724915979,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,23783.46094,4,0.05178299604976907,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,130,130-139,130.0,12332.27637,2,0.02685068502701989,sampling_weight
+2056,Hardwood,Oak/hickory — mixed upland hardwoods,140,140+,140.0,5726.6748,1,0.012468512437900555,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,40,40-49,40.0,12215.875489999999,2,0.11336517571780823,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,11504.71973,2,0.10676554249781285,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,18572.5874,3,0.1723564255266776,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,8228.31372,2,0.07635999822465876,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,17267.17773,3,0.1602420259697715,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,100,100-109,100.0,13989.59936,3,0.1298256020181602,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,110,110-119,110.0,6018.9751,1,0.05585700103207358,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,120,120-129,120.0,14155.394769999999,3,0.13136420854728223,sampling_weight
+2056,Hardwood,Oak/hickory — scrub and chestnut oak,130,130-139,130.0,5804.21777,1,0.053864020465755016,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,40,40-49,40.0,6343.25195,1,0.055754939153033894,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,50,50-59,50.0,24505.74804,4,0.215396850328447,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,60,60-69,60.0,17661.65918,3,0.15523973203090607,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,70,70-79,70.0,11993.478019999999,2,0.10541842614943733,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,80,80-89,80.0,17501.52881,3,0.15383224276415816,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,90,90-99,90.0,5976.25195,1,0.052529139069661286,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,100,100-109,100.0,11662.295900000001,2,0.10250745255186919,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,130,130-139,130.0,12252.42774,2,0.10769450252100495,sampling_weight
+2056,Hardwood,Other and exotic hardwoods,140,140+,140.0,5873.58301,1,0.05162671543148206,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,40,40-49,40.0,44109.25512,8,0.07605445865178474,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,50,50-59,50.0,82881.89306,14,0.14290736698147657,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,60,60-69,60.0,66389.74244,12,0.11447112193504705,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,70,70-79,70.0,126073.87963,23,0.21738024456101765,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,80,80-89,80.0,60298.39721,11,0.10396824759113812,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,90,90-99,90.0,86310.42821,17,0.14881894685496289,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,100,100-109,100.0,30222.57324,5,0.05211063847210386,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,110,110-119,110.0,38335.66233,8,0.06609946229275084,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,120,120-129,120.0,33647.98292,6,0.05801682931944962,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,130,130-139,130.0,5726.67383,1,0.009874097325631572,sampling_weight
+2056,Oak/pine (mixed),Oak/pine,140,140+,140.0,5972.86426,2,0.010298586014637122,sampling_weight
+2056,Pine (softwood),Loblolly/shortleaf pine,30,30-39,30.0,5928.28662,1,0.01368862206514697,sampling_weight
+2056,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,134238.50585,23,0.30996142578050156,sampling_weight
+2056,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,105916.83006,19,0.2445656814463768,sampling_weight
+2056,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,59049.97997,10,0.1363484781651513,sampling_weight
+2056,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,65793.00927,11,0.15191836970017167,sampling_weight
+2056,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,23499.87744,4,0.05426204255512759,sampling_weight
+2056,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,23748.853020000002,5,0.05483693591581176,sampling_weight
+2056,Pine (softwood),Loblolly/shortleaf pine,110,110-119,110.0,14905.98559,3,0.034418444371712376,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,30,30-39,30.0,5697.83643,1,0.005252357322892526,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,200069.18796,35,0.18442699740098842,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,274161.73899,48,0.25272670339556863,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,245319.9206,43,0.22613985101970063,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,151441.11764,33,0.13960085955354154,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,29309.50633,6,0.02701797464599038,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,42481.63012,8,0.039160250349481104,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,41833.910390000005,10,0.03856317187788177,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,52480.640100000004,15,0.04837749867440862,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,26926.04028,7,0.02482085728128863,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,9096.32422,1,0.00838513806341781,sampling_weight
+2056,Pine (softwood),Longleaf/slash pine,140,140+,140.0,5997.22705,2,0.005528340414839995,sampling_weight
+2056,Pine (softwood),Other eastern softwoods,60,60-69,60.0,5829.09717,1,1.0,sampling_weight
+2061,Hardwood,Elm/ash/cottonwood,40,40-49,40.0,5711.7168,1,0.1626260163133758,sampling_weight
+2061,Hardwood,Elm/ash/cottonwood,50,50-59,50.0,4.0,1,0.00011388941154321644,sampling_weight
+2061,Hardwood,Elm/ash/cottonwood,60,60-69,60.0,11672.54541,2,0.33234483198909304,sampling_weight
+2061,Hardwood,Elm/ash/cottonwood,100,100-109,100.0,12035.71728,2,0.3426851896299304,sampling_weight
+2061,Hardwood,Elm/ash/cottonwood,120,120-129,120.0,5697.81055,1,0.1622300726560576,sampling_weight
+2061,Hardwood,Maple/beech/birch,110,110-119,110.0,5846.896,1,1.0,sampling_weight
+2061,Hardwood,Oak/gum/cypress,40,40-49,40.0,42332.52979,7,0.046351658929849174,sampling_weight
+2061,Hardwood,Oak/gum/cypress,50,50-59,50.0,85234.27852,15,0.09332657950491954,sampling_weight
+2061,Hardwood,Oak/gum/cypress,60,60-69,60.0,54284.13672,9,0.0594379736582887,sampling_weight
+2061,Hardwood,Oak/gum/cypress,70,70-79,70.0,86633.26219,16,0.09485838528742173,sampling_weight
+2061,Hardwood,Oak/gum/cypress,80,80-89,80.0,87344.3264,15,0.09563695925648627,sampling_weight
+2061,Hardwood,Oak/gum/cypress,90,90-99,90.0,119407.21949,23,0.13074396307091382,sampling_weight
+2061,Hardwood,Oak/gum/cypress,100,100-109,100.0,108854.89209,19,0.11918977807447535,sampling_weight
+2061,Hardwood,Oak/gum/cypress,110,110-119,110.0,70694.81714,15,0.07740671461017676,sampling_weight
+2061,Hardwood,Oak/gum/cypress,120,120-129,120.0,69327.56201,12,0.07590964973429452,sampling_weight
+2061,Hardwood,Oak/gum/cypress,130,130-139,130.0,56966.24634,10,0.06237472775579777,sampling_weight
+2061,Hardwood,Oak/gum/cypress,140,140+,140.0,132211.22996,22,0.1447636101173763,sampling_weight
+2061,Hardwood,Oak/hickory,40,40-49,40.0,5398.45361,1,0.11560345433816087,sampling_weight
+2061,Hardwood,Oak/hickory,50,50-59,50.0,6123.02295,1,0.13111951220635498,sampling_weight
+2061,Hardwood,Oak/hickory,60,60-69,60.0,11833.01367,2,0.25339427812230075,sampling_weight
+2061,Hardwood,Oak/hickory,70,70-79,70.0,5770.26025,1,0.12356538844652215,sampling_weight
+2061,Hardwood,Oak/hickory,80,80-89,80.0,5697.83643,1,0.12201449176884094,sampling_weight
+2061,Hardwood,Oak/hickory,100,100-109,100.0,6134.75,1,0.1313706373594331,sampling_weight
+2061,Hardwood,Oak/hickory,110,110-119,110.0,5740.69336,1,0.12293223775838714,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,29764.05664,5,0.0631710109956812,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,38049.95434,7,0.08075693824500488,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,70330.37206,12,0.14926865515911777,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,65870.78174,12,0.13980365404894138,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,52682.64697,9,0.11181325554094433,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,47192.25878,8,0.10016049674814799,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,35643.18604,6,0.07564883122242139,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,77929.29004,14,0.16539654179352045,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,17547.53515,3,0.03724275723955054,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,130,130-139,130.0,24294.874519999998,4,0.05156325980710185,sampling_weight
+2061,Hardwood,Oak/hickory — mixed upland hardwoods,140,140+,140.0,11861.4248,2,0.025174599199568173,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,11848.64502,2,0.12354146568281425,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,17813.755859999997,3,0.1857374834460372,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,9010.47827,2,0.09394894438140139,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,5770.26025,1,0.06016438229459948,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,11496.91748,2,0.11987413192952315,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,100,100-109,100.0,11501.979,2,0.11992690653778657,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,110,110-119,110.0,8506.59546,2,0.08869514356496214,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,120,120-129,120.0,14155.394769999999,3,0.1475930972911064,sampling_weight
+2061,Hardwood,Oak/hickory — scrub and chestnut oak,130,130-139,130.0,5804.21777,1,0.06051844487176946,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,50,50-59,50.0,18891.86474,3,0.16605280341513892,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,60,60-69,60.0,17762.71484,3,0.15612797550898042,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,70,70-79,70.0,11856.07959,2,0.10421074258826768,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,80,80-89,80.0,11993.478019999999,2,0.10541842614943733,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,90,90-99,90.0,23477.78076,4,0.20636138183381947,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,100,100-109,100.0,5785.80811,1,0.05085520513246838,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,110,110-119,110.0,5876.48779,1,0.051652247419400804,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,130,130-139,130.0,6123.02295,1,0.05381920420327622,sampling_weight
+2061,Hardwood,Other and exotic hardwoods,140,140+,140.0,12002.987799999999,2,0.10550201374921078,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,40,40-49,40.0,17850.40673,3,0.028593278985032795,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,50,50-59,50.0,86204.31226,15,0.13808446986367706,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,60,60-69,60.0,58396.95654,10,0.09354187248959427,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,70,70-79,70.0,125046.49293,23,0.2003029573795835,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,80,80-89,80.0,84584.58567,16,0.13548994667057188,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,90,90-99,90.0,105839.35767,20,0.1695364328236223,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,100,100-109,100.0,50887.44359,9,0.0815129253586475,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,110,110-119,110.0,29277.32274,5,0.04689723151421238,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,120,120-129,120.0,26987.1516,6,0.04322877155584982,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,130,130-139,130.0,33239.90919,6,0.053244612925793286,sampling_weight
+2061,Oak/pine (mixed),Oak/pine,140,140+,140.0,5972.86426,2,0.009567500433415137,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,95149.15477,16,0.22270947209163072,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,112403.99144,20,0.26309675220034096,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,85587.05785,15,0.2003280903306479,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,59775.21142,10,0.1399119709648874,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,35664.17773,6,0.08347683396694448,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,6134.75,1,0.014359212514464795,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,100,100-109,100.0,17614.103020000002,4,0.04122819161593482,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,110,110-119,110.0,11890.729490000002,2,0.027831861395969455,sampling_weight
+2061,Pine (softwood),Loblolly/shortleaf pine,120,120-129,120.0,3015.2561,1,0.007057614919179479,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,106629.63524,19,0.1007299212053784,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,228372.47996,39,0.21573685270582432,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,310295.15547,54,0.2931268262388153,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,170073.96358,32,0.1606639365495385,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,58900.599350000004,15,0.05564168646100174,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,35142.53319,8,0.03319813100005963,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,36551.76098,7,0.03452938758672644,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,32325.0825,9,0.030536567117139434,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,58981.05002,15,0.05571768587365827,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,15300.140870000001,4,0.014453598953024888,sampling_weight
+2061,Pine (softwood),Longleaf/slash pine,140,140+,140.0,5997.22705,2,0.005665406308833059,sampling_weight
+2061,Pine (softwood),Other eastern softwoods,60,60-69,60.0,5829.09717,1,1.0,sampling_weight
+2066,Hardwood,Elm/ash/cottonwood,50,50-59,50.0,5711.7168,1,0.1626260163133758,sampling_weight
+2066,Hardwood,Elm/ash/cottonwood,60,60-69,60.0,5707.68115,2,0.16251111186245223,sampling_weight
+2066,Hardwood,Elm/ash/cottonwood,70,70-79,70.0,5968.86426,1,0.16994760953818402,sampling_weight
+2066,Hardwood,Elm/ash/cottonwood,100,100-109,100.0,12035.71728,2,0.3426851896299304,sampling_weight
+2066,Hardwood,Elm/ash/cottonwood,130,130-139,130.0,5697.81055,1,0.1622300726560576,sampling_weight
+2066,Hardwood,Maple/beech/birch,120,120-129,120.0,5846.896,1,1.0,sampling_weight
+2066,Hardwood,Oak/gum/cypress,40,40-49,40.0,11856.57324,2,0.01305799249320161,sampling_weight
+2066,Hardwood,Oak/gum/cypress,50,50-59,50.0,68831.64232,12,0.07580631018050357,sampling_weight
+2066,Hardwood,Oak/gum/cypress,60,60-69,60.0,83746.05028,14,0.09223198589979144,sampling_weight
+2066,Hardwood,Oak/gum/cypress,70,70-79,70.0,52860.24462,10,0.0582165406028193,sampling_weight
+2066,Hardwood,Oak/gum/cypress,80,80-89,80.0,69348.82811,12,0.0763759020876009,sampling_weight
+2066,Hardwood,Oak/gum/cypress,90,90-99,90.0,127978.97533,24,0.14094700596196663,sampling_weight
+2066,Hardwood,Oak/gum/cypress,100,100-109,100.0,119258.7942,21,0.13134321425672532,sampling_weight
+2066,Hardwood,Oak/gum/cypress,110,110-119,110.0,91949.26074,18,0.10126642261591239,sampling_weight
+2066,Hardwood,Oak/gum/cypress,120,120-129,120.0,56564.227790000004,11,0.06229584610279572,sampling_weight
+2066,Hardwood,Oak/gum/cypress,130,130-139,130.0,81260.63989,14,0.08949473040798923,sampling_weight
+2066,Hardwood,Oak/gum/cypress,140,140+,140.0,144338.33494,24,0.15896404939069392,sampling_weight
+2066,Hardwood,Oak/hickory,50,50-59,50.0,5398.45361,1,0.13304874026083105,sampling_weight
+2066,Hardwood,Oak/hickory,60,60-69,60.0,6022.67773,1,0.14843318899492436,sampling_weight
+2066,Hardwood,Oak/hickory,70,70-79,70.0,5810.33594,1,0.1431998741041755,sampling_weight
+2066,Hardwood,Oak/hickory,80,80-89,80.0,5770.26025,1,0.14221218013572004,sampling_weight
+2066,Hardwood,Oak/hickory,90,90-99,90.0,5697.83643,1,0.1404272434275435,sampling_weight
+2066,Hardwood,Oak/hickory,110,110-119,110.0,6134.75,1,0.15119529003698032,sampling_weight
+2066,Hardwood,Oak/hickory,120,120-129,120.0,5740.69336,1,0.1414834830398251,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,40,40-49,40.0,11412.78759,2,0.02363006801199541,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,32552.371339999998,6,0.06739937483721539,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,82800.35595,14,0.17143734842049477,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,41851.01416,8,0.08665212623761649,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,70647.61035,12,0.14627520439600603,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,46978.24609,8,0.09726801111795312,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,42017.58545,7,0.08699701050716994,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,59173.26855,10,0.12251768897843555,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,41762.73144,8,0.08646933770664342,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,130,130-139,130.0,29918.2085,5,0.06194536576423387,sampling_weight
+2066,Hardwood,Oak/hickory — mixed upland hardwoods,140,140+,140.0,23863.16894,4,0.04940846402223599,sampling_weight
+2066,Hardwood,Oak/hickory — scrub and chestnut oak,50,50-59,50.0,6107.95166,1,0.06979053172315493,sampling_weight
+2066,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,11504.71973,2,0.1314549544556434,sampling_weight
+2066,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,18572.5874,3,0.2122136556203144,sampling_weight
+2066,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,2487.62036,1,0.02842398848483128,sampling_weight
+2066,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,17267.17773,3,0.19729781475299354,sampling_weight
+2066,Hardwood,Oak/hickory — scrub and chestnut oak,110,110-119,110.0,13989.59936,3,0.15984762687665213,sampling_weight
+2066,Hardwood,Oak/hickory — scrub and chestnut oak,120,120-129,120.0,6018.9751,1,0.06877386987332995,sampling_weight
+2066,Hardwood,Oak/hickory — scrub and chestnut oak,130,130-139,130.0,11569.71118,3,0.1321975582130803,sampling_weight
+2066,Hardwood,Other and exotic hardwoods,50,50-59,50.0,6343.25195,1,0.05617372668126519,sampling_weight
+2066,Hardwood,Other and exotic hardwoods,60,60-69,60.0,24505.74804,4,0.21701474312697133,sampling_weight
+2066,Hardwood,Other and exotic hardwoods,70,70-79,70.0,17661.65918,3,0.1564057715719424,sampling_weight
+2066,Hardwood,Other and exotic hardwoods,80,80-89,80.0,11993.478019999999,2,0.10621024697800968,sampling_weight
+2066,Hardwood,Other and exotic hardwoods,90,90-99,90.0,17501.52881,3,0.15498771034583111,sampling_weight
+2066,Hardwood,Other and exotic hardwoods,100,100-109,100.0,5976.25195,1,0.05292369690875642,sampling_weight
+2066,Hardwood,Other and exotic hardwoods,110,110-119,110.0,10814.11377,2,0.09576618996129994,sampling_weight
+2066,Hardwood,Other and exotic hardwoods,140,140+,140.0,18126.01075,3,0.16051791442592386,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,50,50-59,50.0,56351.92651,10,0.08895032438837337,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,60,60-69,60.0,94941.73681,16,0.14986352393376354,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,70,70-79,70.0,72635.70582,13,0.11465392569535171,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,80,80-89,80.0,134574.9912,25,0.2124237779107384,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,90,90-99,90.0,66002.07836,12,0.10418288502323003,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,100,100-109,100.0,92527.43651,18,0.1460526019625717,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,110,110-119,110.0,30222.57324,5,0.04770569277826404,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,120,120-129,120.0,38335.66233,8,0.06051203234891225,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,130,130-139,130.0,36233.66651,6,0.05719407639546627,sampling_weight
+2066,Oak/pine (mixed),Oak/pine,140,140+,140.0,11695.53809,2,0.018461159563328597,sampling_weight
+2066,Pine (softwood),Loblolly/shortleaf pine,40,40-49,40.0,5928.28662,1,0.013888682225269823,sampling_weight
+2066,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,134238.50585,23,0.31449153349904563,sampling_weight
+2066,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,99719.30369,18,0.23362057360775623,sampling_weight
+2066,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,53203.08397,9,0.12464321886374596,sampling_weight
+2066,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,71599.09179,12,0.1677410518807263,sampling_weight
+2066,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,23499.87744,4,0.05505508606750652,sampling_weight
+2066,Pine (softwood),Loblolly/shortleaf pine,100,100-109,100.0,23748.853020000002,5,0.055638381534498,sampling_weight
+2066,Pine (softwood),Loblolly/shortleaf pine,120,120-129,120.0,14905.98559,3,0.03492147232145147,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,40,40-49,40.0,5697.83643,1,0.005382560341725859,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,200069.18796,35,0.18899884016410642,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,274161.73899,48,0.2589916579100833,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,245319.9206,43,0.23174573224049128,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,137133.92355,30,0.1295459473913848,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,23605.82518,5,0.022299653562989644,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,36247.053459999996,7,0.03424140985005655,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,41833.910390000005,10,0.03951913147575691,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,52480.640100000004,15,0.04957674997887713,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,26926.04028,7,0.025436152538138242,sampling_weight
+2066,Pine (softwood),Longleaf/slash pine,140,140+,140.0,15097.55127,4,0.014262164546389913,sampling_weight
+2066,Pine (softwood),Other eastern softwoods,70,70-79,70.0,5829.09717,1,1.0,sampling_weight
+2071,Hardwood,Elm/ash/cottonwood,50,50-59,50.0,5711.7168,1,0.1626260163133758,sampling_weight
+2071,Hardwood,Elm/ash/cottonwood,60,60-69,60.0,4.0,1,0.00011388941154321644,sampling_weight
+2071,Hardwood,Elm/ash/cottonwood,70,70-79,70.0,11672.54541,2,0.33234483198909304,sampling_weight
+2071,Hardwood,Elm/ash/cottonwood,110,110-119,110.0,12035.71728,2,0.3426851896299304,sampling_weight
+2071,Hardwood,Elm/ash/cottonwood,130,130-139,130.0,5697.81055,1,0.1622300726560576,sampling_weight
+2071,Hardwood,Maple/beech/birch,120,120-129,120.0,5846.896,1,1.0,sampling_weight
+2071,Hardwood,Oak/gum/cypress,50,50-59,50.0,42332.52979,7,0.046865333194950266,sampling_weight
+2071,Hardwood,Oak/gum/cypress,60,60-69,60.0,79305.9919,14,0.08779777048966972,sampling_weight
+2071,Hardwood,Oak/gum/cypress,70,70-79,70.0,48274.81983,8,0.05344390064761925,sampling_weight
+2071,Hardwood,Oak/gum/cypress,80,80-89,80.0,92373.95555,17,0.1022650010963655,sampling_weight
+2071,Hardwood,Oak/gum/cypress,90,90-99,90.0,87344.3264,15,0.09669681872854807,sampling_weight
+2071,Hardwood,Oak/gum/cypress,100,100-109,100.0,120622.18263,23,0.13353793897270158,sampling_weight
+2071,Hardwood,Oak/gum/cypress,110,110-119,110.0,103826.58643,18,0.11494393535360344,sampling_weight
+2071,Hardwood,Oak/gum/cypress,120,120-129,120.0,70694.81714,15,0.07826454447342825,sampling_weight
+2071,Hardwood,Oak/gum/cypress,130,130-139,130.0,69327.56201,12,0.07675088895726082,sampling_weight
+2071,Hardwood,Oak/gum/cypress,140,140+,140.0,189177.4763,32,0.20943386808585313,sampling_weight
+2071,Hardwood,Oak/hickory,50,50-59,50.0,5398.45361,1,0.13304874026083105,sampling_weight
+2071,Hardwood,Oak/hickory,70,70-79,70.0,11833.01367,2,0.29163306309909987,sampling_weight
+2071,Hardwood,Oak/hickory,80,80-89,80.0,5770.26025,1,0.14221218013572004,sampling_weight
+2071,Hardwood,Oak/hickory,90,90-99,90.0,5697.83643,1,0.1404272434275435,sampling_weight
+2071,Hardwood,Oak/hickory,110,110-119,110.0,6134.75,1,0.15119529003698032,sampling_weight
+2071,Hardwood,Oak/hickory,120,120-129,120.0,5740.69336,1,0.1414834830398251,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,29764.05664,5,0.06020852087072398,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,44172.977289999995,8,0.08935575070478637,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,64337.61083,11,0.13014598215838405,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,71556.89453,13,0.14474958268839325,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,52682.64697,9,0.1065696214727479,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,47192.25878,8,0.09546333458705032,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,41329.29883,7,0.08360338717519801,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,83805.77783,15,0.16952735927748902,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,130,130-139,130.0,17547.53515,3,0.03549620769397036,sampling_weight
+2071,Hardwood,Oak/hickory — mixed upland hardwoods,140,140+,140.0,41960.51709,7,0.0848802533712567,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,11848.64502,2,0.13538470540952377,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,17813.755859999997,3,0.20354311275866696,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,9010.47827,2,0.10295531211575325,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,5770.26025,1,0.06593201018039573,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,100,100-109,100.0,11496.91748,2,0.13136580457259783,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,110,110-119,110.0,11501.979,2,0.13142363839182084,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,120,120-129,120.0,8506.59546,2,0.09719785835816123,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,130,130-139,130.0,8385.15063,2,0.09581020833528463,sampling_weight
+2071,Hardwood,Oak/hickory — scrub and chestnut oak,140,140+,140.0,3184.56055,1,0.03638734987779565,sampling_weight
+2071,Hardwood,Other and exotic hardwoods,60,60-69,60.0,18891.86474,3,0.16730006229757138,sampling_weight
+2071,Hardwood,Other and exotic hardwoods,70,70-79,70.0,17762.71484,3,0.15730068684082668,sampling_weight
+2071,Hardwood,Other and exotic hardwoods,80,80-89,80.0,11856.07959,2,0.10499349224178091,sampling_weight
+2071,Hardwood,Other and exotic hardwoods,90,90-99,90.0,11993.478019999999,2,0.10621024697800968,sampling_weight
+2071,Hardwood,Other and exotic hardwoods,100,100-109,100.0,23477.78076,4,0.20791140725458754,sampling_weight
+2071,Hardwood,Other and exotic hardwoods,110,110-119,110.0,10814.11377,2,0.09576618996129994,sampling_weight
+2071,Hardwood,Other and exotic hardwoods,140,140+,140.0,18126.01075,3,0.16051791442592386,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,50,50-59,50.0,17850.40673,3,0.028216068307691536,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,60,60-69,60.0,92132.59888,16,0.14563363976430943,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,70,70-79,70.0,76596.56103,13,0.1210758853199948,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,80,80-89,80.0,119389.94703,22,0.18871922369077324,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,90,90-99,90.0,78778.50315,15,0.12452487272025835,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,100,100-109,100.0,104624.39453,20,0.16537937243457695,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,110,110-119,110.0,45201.3308,8,0.07144956732598559,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,120,120-129,120.0,29277.32274,5,0.046278549883673754,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,130,130-139,130.0,32757.39574,7,0.05177948770369132,sampling_weight
+2071,Oak/pine (mixed),Oak/pine,140,140+,140.0,36024.2129,6,0.05694333284904498,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,95149.15477,16,0.2229137117198875,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,112403.99144,20,0.26333802969231423,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,79389.53148,14,0.18599235249843152,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,59775.21142,10,0.14004027969226288,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,41470.26025,7,0.09715577254115434,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,100,100-109,100.0,6134.75,1,0.014372380882197298,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,110,110-119,110.0,17614.103020000002,4,0.041266000652300704,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,120,120-129,120.0,11890.729490000002,2,0.027857385092702337,sampling_weight
+2071,Pine (softwood),Loblolly/shortleaf pine,130,130-139,130.0,3015.2561,1,0.00706408722874914,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,106629.63524,19,0.1012816243612656,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,228372.47996,39,0.21691845496516,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,310295.15547,54,0.29473229751463836,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,164303.70333,31,0.15606304874230087,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,58900.599350000004,15,0.055946438948168205,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,35142.53319,8,0.0333799589358221,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,36551.76098,7,0.03471850688588293,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,32325.0825,9,0.030703817525428126,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,58981.05002,15,0.05602285461366507,sampling_weight
+2071,Pine (softwood),Longleaf/slash pine,140,140+,140.0,21301.36792,7,0.020232997507668802,sampling_weight
+2071,Pine (softwood),Other eastern softwoods,70,70-79,70.0,5829.09717,1,1.0,sampling_weight
+2076,Hardwood,Elm/ash/cottonwood,60,60-69,60.0,5711.7168,1,0.13886664695199008,sampling_weight
+2076,Hardwood,Elm/ash/cottonwood,70,70-79,70.0,11716.83886,3,0.28486673662899004,sampling_weight
+2076,Hardwood,Elm/ash/cottonwood,80,80-89,80.0,5968.86426,1,0.14511856853578095,sampling_weight
+2076,Hardwood,Elm/ash/cottonwood,110,110-119,110.0,12035.71728,2,0.2926194979302416,sampling_weight
+2076,Hardwood,Elm/ash/cottonwood,140,140+,140.0,5697.81055,1,0.13852854995299738,sampling_weight
+2076,Hardwood,Maple/beech/birch,130,130-139,130.0,5846.896,1,1.0,sampling_weight
+2076,Hardwood,Oak/gum/cypress,50,50-59,50.0,11856.57324,2,0.013300421528450419,sampling_weight
+2076,Hardwood,Oak/gum/cypress,60,60-69,60.0,63061.398180000004,11,0.07074077484191006,sampling_weight
+2076,Hardwood,Oak/gum/cypress,70,70-79,70.0,66081.93115,11,0.07412913680184363,sampling_weight
+2076,Hardwood,Oak/gum/cypress,80,80-89,80.0,52860.24462,10,0.05929736369114719,sampling_weight
+2076,Hardwood,Oak/gum/cypress,90,90-99,90.0,75018.07567,13,0.08415349093429887,sampling_weight
+2076,Hardwood,Oak/gum/cypress,100,100-109,100.0,126009.37792,23,0.1413543195785811,sampling_weight
+2076,Hardwood,Oak/gum/cypress,110,110-119,110.0,122443.35475,22,0.13735403970165935,sampling_weight
+2076,Hardwood,Oak/gum/cypress,120,120-129,120.0,91949.26074,18,0.10314649117550569,sampling_weight
+2076,Hardwood,Oak/gum/cypress,130,130-139,130.0,56564.227790000004,11,0.06345240381092518,sampling_weight
+2076,Hardwood,Oak/gum/cypress,140,140+,140.0,225598.97483,38,0.25307155793567854,sampling_weight
+2076,Hardwood,Oak/hickory,60,60-69,60.0,5398.45361,1,0.11541931095244884,sampling_weight
+2076,Hardwood,Oak/hickory,70,70-79,70.0,6022.67773,1,0.12876526574158312,sampling_weight
+2076,Hardwood,Oak/hickory,80,80-89,80.0,12007.86231,2,0.25672892534721264,sampling_weight
+2076,Hardwood,Oak/hickory,90,90-99,90.0,5770.26025,1,0.12336856258940887,sampling_weight
+2076,Hardwood,Oak/hickory,100,100-109,100.0,5697.83643,1,0.12182013631684445,sampling_weight
+2076,Hardwood,Oak/hickory,120,120-129,120.0,6134.75,1,0.13116137861292756,sampling_weight
+2076,Hardwood,Oak/hickory,130,130-139,130.0,5740.69336,1,0.12273642043957443,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,50,50-59,50.0,11412.78759,2,0.022037565897095313,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,60,60-69,60.0,38322.61548,7,0.07399920110048634,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,70,70-79,70.0,94424.56102,16,0.1823294676583521,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,80,80-89,80.0,41851.01416,8,0.08081237604206291,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,90,90-99,90.0,82468.47314,14,0.1592428139859549,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,100,100-109,100.0,46978.24609,8,0.09071282416974652,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,110,110-119,110.0,47703.69824,8,0.09211363877658478,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,120,120-129,120.0,59173.26855,10,0.11426084948428823,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,130,130-139,130.0,41762.73144,8,0.08064190618583959,sampling_weight
+2076,Hardwood,Oak/hickory — mixed upland hardwoods,140,140+,140.0,53781.37744,9,0.10384935669958921,sampling_weight
+2076,Hardwood,Oak/hickory — scrub and chestnut oak,60,60-69,60.0,6107.95166,1,0.08084588640333219,sampling_weight
+2076,Hardwood,Oak/hickory — scrub and chestnut oak,70,70-79,70.0,11504.71973,2,0.15227842592221086,sampling_weight
+2076,Hardwood,Oak/hickory — scrub and chestnut oak,80,80-89,80.0,12375.06103,2,0.16379841130990275,sampling_weight
+2076,Hardwood,Oak/hickory — scrub and chestnut oak,90,90-99,90.0,2487.62036,1,0.032926565931462586,sampling_weight
+2076,Hardwood,Oak/hickory — scrub and chestnut oak,100,100-109,100.0,11496.91748,2,0.15217515401498188,sampling_weight
+2076,Hardwood,Oak/hickory — scrub and chestnut oak,120,120-129,120.0,13989.59936,3,0.18516871508552327,sampling_weight
+2076,Hardwood,Oak/hickory — scrub and chestnut oak,130,130-139,130.0,6018.9751,1,0.07966817753090813,sampling_weight
+2076,Hardwood,Oak/hickory — scrub and chestnut oak,140,140+,140.0,11569.71118,3,0.15313866380167826,sampling_weight
+2076,Hardwood,Other and exotic hardwoods,60,60-69,60.0,6343.25195,1,0.05344282488952962,sampling_weight
+2076,Hardwood,Other and exotic hardwoods,70,70-79,70.0,24505.74804,4,0.2064645093103473,sampling_weight
+2076,Hardwood,Other and exotic hardwoods,80,80-89,80.0,17661.65918,3,0.1488020602453436,sampling_weight
+2076,Hardwood,Other and exotic hardwoods,90,90-99,90.0,11993.478019999999,2,0.10104680543853889,sampling_weight
+2076,Hardwood,Other and exotic hardwoods,100,100-109,100.0,23271.78906,4,0.19606822453263126,sampling_weight
+2076,Hardwood,Other and exotic hardwoods,110,110-119,110.0,5976.25195,1,0.05035079624411891,sampling_weight
+2076,Hardwood,Other and exotic hardwoods,120,120-129,120.0,10814.11377,2,0.09111048924133638,sampling_weight
+2076,Hardwood,Other and exotic hardwoods,140,140+,140.0,18126.01075,3,0.15271429009815407,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,60,60-69,60.0,56351.92651,10,0.09337252849228786,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,70,70-79,70.0,83152.88818,14,0.13778047888789163,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,80,80-89,80.0,78405.96607,14,0.12991504912502466,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,90,90-99,90.0,126298.96556,24,0.20927152789008674,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,100,100-109,100.0,67971.67577,13,0.11262591406483004,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,110,110-119,110.0,83656.76317,16,0.1386153763754155,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,120,120-129,120.0,27207.37012,4,0.045081350347074785,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,130,130-139,130.0,32542.43528,7,0.053921305864334926,sampling_weight
+2076,Oak/pine (mixed),Oak/pine,140,140+,140.0,47929.2046,8,0.07941646895305397,sampling_weight
+2076,Pine (softwood),Loblolly/shortleaf pine,50,50-59,50.0,5928.28662,1,0.013899033444290438,sampling_weight
+2076,Pine (softwood),Loblolly/shortleaf pine,60,60-69,60.0,134238.50585,23,0.31472592368024327,sampling_weight
+2076,Pine (softwood),Loblolly/shortleaf pine,70,70-79,70.0,105430.98484,19,0.24718588662901697,sampling_weight
+2076,Pine (softwood),Loblolly/shortleaf pine,80,80-89,80.0,53203.08397,9,0.12473611531259304,sampling_weight
+2076,Pine (softwood),Loblolly/shortleaf pine,90,90-99,90.0,65569.52197,11,0.1537295743617684,sampling_weight
+2076,Pine (softwood),Loblolly/shortleaf pine,100,100-109,100.0,23499.87744,4,0.055096118560355026,sampling_weight
+2076,Pine (softwood),Loblolly/shortleaf pine,110,110-119,110.0,23748.853020000002,5,0.05567984875679274,sampling_weight
+2076,Pine (softwood),Loblolly/shortleaf pine,130,130-139,130.0,14905.98559,3,0.0349474992549401,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,50,50-59,50.0,5697.83643,1,0.005352417085088789,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,60,60-69,60.0,200069.18796,35,0.18794041439988202,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,70,70-79,70.0,280269.66282,49,0.26327890421906025,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,80,80-89,80.0,239549.66035,42,0.2250274662209909,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,90,90-99,90.0,133949.40866000002,29,0.12582900759917467,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,100,100-109,100.0,23605.82518,5,0.022174771696816004,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,110,110-119,110.0,36247.053459999996,7,0.03404965211039424,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,120,120-129,120.0,44849.11351,11,0.04213023036921586,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,130,130-139,130.0,58273.867150000005,16,0.054741136566437795,sampling_weight
+2076,Pine (softwood),Longleaf/slash pine,140,140+,140.0,42023.59155,11,0.039475999732939485,sampling_weight
+2076,Pine (softwood),Other eastern softwoods,80,80-89,80.0,5829.09717,1,1.0,sampling_weight
