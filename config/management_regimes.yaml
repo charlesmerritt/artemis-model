@@ -181,6 +181,29 @@ prescriptions:
       hardwood sprout and seedling establishment is slower to reach a measurable list
       than planted pine.
 
+  natural_short_rotation:
+    label: "Short clearcut rotation with natural regeneration — any forest type"
+    template: clearcut
+    # The short stand-replacing rotation for stands that are not offered a planted-pine
+    # rotation (hardwood and `other`), and a natural-regeneration alternative for pine.
+    # Same type-agnostic logic as `hardwood_clearcut_regen`, on a pulpwood-length rotation.
+    forest_types: [any]
+    schedule:
+      mode: age_based
+      rotation_years: 30
+      offsets:
+        year: 30
+    entries_per_horizon: 2
+    regen:
+      treelist_slot: hardwood_regen
+      delay_years: 1
+    repeats: true
+    rationale: >
+      Added 2026-10-08 so that every owner class and every forest type has both a short
+      and a long rotation ending in a clearcut
+      (experiments/2026-10-08_permissive-menus). 30 years is a short hardwood/mixed
+      pulpwood rotation; regeneration follows the stand's own composition (Diaz et al.).
+
   family_light_thin:
     label: "Family forest — single light thin from below"
     template: thin_from_below
@@ -269,9 +292,17 @@ prescriptions:
 # Eligibility and defaults, by owner class
 # ---------------------------------------------------------------------------------------
 # `default` — one prescription per forest-type branch; what regime_assignment.py assigns.
-# `eligible` — the menu the landscape scheduler may choose from. Two or three per class
-#              beyond `no_management`, which is universally eligible (`no_management` is
-#              always a legal choice: any owner may decline to harvest).
+# `eligible` — the menu the landscape scheduler may choose from, before the forest-type
+#              filter. Since 2026-10-08 it is the SAME permissive menu for every class
+#              (`&all_cutting_prescriptions`): every owner may run a short or long rotation
+#              ending in a clearcut, a thin, or a selection regime, and `no_management` is
+#              universally eligible on top. Owner class now sets only the DEFAULT; the
+#              scheduler decides the rest against the per-owner-group TPO targets. The
+#              forest-type filter still applies, so hardwood/other stands are never offered a
+#              planted-pine rotation. Why: the narrower 2-3 option menus left every plan
+#              ~30% under TPO removals (weekly-artifact/2026-09-28); the comparison of menu
+#              variants is experiments/2026-10-08_permissive-menus. Individual rationales below
+#              describe the defaults.
 
 no_management_universally_eligible: true
 
@@ -282,10 +313,15 @@ owner_classes:
       pine: pine_plantation_short_rotation
       hardwood: hardwood_clearcut_regen
       other: hardwood_clearcut_regen     # unknown/mixed type: harvest, but do not plant pine
-    eligible:
+    eligible: &all_cutting_prescriptions
       - pine_plantation_short_rotation
       - pine_plantation_long_rotation
+      - natural_short_rotation
       - hardwood_clearcut_regen
+      - family_light_thin
+      - family_uneven_aged_selection
+      - public_selection_light
+      - public_thin_restore
     rationale: >
       Harris corporate forest (value 4). Rotation forestry, with the pulpwood and sawtimber
       rotations as the real economic choice the scheduler makes per stand, and a hardwood
@@ -297,10 +333,7 @@ owner_classes:
       pine: family_light_thin
       hardwood: family_light_thin
       other: family_light_thin
-    eligible:
-      - family_light_thin
-      - family_uneven_aged_selection
-      - pine_plantation_long_rotation
+    eligible: *all_cutting_prescriptions
     rationale: >
       Harris family forest (value 3). Light entries by default.
       `pine_plantation_long_rotation` stays eligible because a real minority of family
@@ -312,9 +345,7 @@ owner_classes:
       pine: public_selection_light
       hardwood: public_selection_light
       other: public_selection_light
-    eligible:
-      - public_selection_light
-      - family_light_thin
+    eligible: *all_cutting_prescriptions
     rationale: >
       Conservative by default. Pilot-scale tribal area is too small to support a
       class-specific behaviour estimate (config/projection.yaml flags the same 500-event
@@ -325,9 +356,7 @@ owner_classes:
       pine: public_selection_light
       hardwood: public_selection_light
       other: public_selection_light
-    eligible:
-      - public_selection_light
-      - public_thin_restore
+    eligible: *all_cutting_prescriptions
     rationale: >
       National Forest land under a conservative selection default, with restoration
       thinning as the alternative — the pilot's federal land is Osceola NF, where
@@ -338,10 +367,7 @@ owner_classes:
       pine: public_thin_restore
       hardwood: public_selection_light
       other: public_selection_light
-    eligible:
-      - public_thin_restore
-      - public_selection_light
-      - pine_plantation_long_rotation
+    eligible: *all_cutting_prescriptions
     rationale: >
       State forests carry an active timber program alongside conservation objectives, so
       the pine default is the thinning regime rather than light selection, and a
@@ -352,9 +378,7 @@ owner_classes:
       pine: no_management
       hardwood: no_management
       other: no_management
-    eligible:
-      - public_selection_light
-      - public_thin_restore
+    eligible: *all_cutting_prescriptions
     rationale: >
       County and municipal forest is predominantly parks, watershed, and school land
       where commercial harvest is the exception. Default to no entry — which stays on the
@@ -362,19 +386,18 @@ owner_classes:
       light selection or a density-reduction thin where a county does manage its forest.
 
   unknown:
-    menu_policy: minimal      # deliberately narrower than the 2-3 every real owner gets
     default:
       pine: family_light_thin
       hardwood: family_light_thin
       other: family_light_thin
-    eligible:
-      - family_light_thin
+    eligible: *all_cutting_prescriptions
     rationale: >
       Harris `unknown`, which is not an owner type — it is missing information.
-      One light entry or nothing: with no owner known, letting the scheduler place a
-      rotation clearcut here would be inventing behaviour to hit a volume target. The
-      shortfall lands on known private units instead, where it is attributable. Every
-      unit here carries the `unknown_ownership` flag so the area stays reportable.
+      Defaults to one light entry. It carries the same permissive menu as every other
+      class (2026-10-08), so a rotation clearcut chosen here is the scheduler's choice
+      against the targets, not observed behaviour. Every unit here carries the
+      `unknown_ownership` flag so the area, and any harvest placed on it, stays reportable.
+      The pilot landscape has no unknown-ownership units.
 
 # ---------------------------------------------------------------------------------------
 # Deliberate changes from the pre-config behaviour
@@ -392,9 +415,12 @@ owner_classes:
 # ---------------------------------------------------------------------------------------
 # Trajectory-library cost
 # ---------------------------------------------------------------------------------------
-# 8 prescriptions. Five-county pilot: 693 unique FIA plots (docs/architecture/presentation.html#vocabulary). With
-# site-index binning at `si_bins` the upper bound on FVS runs is
-# 693 × 8 × si_bins, before deduplication for plots that are never eligible for a given
-# prescription. Any addition to `prescriptions` must state its cost here.
+# 9 prescriptions (`natural_short_rotation` added 2026-10-08). Five-county pilot: 693 unique
+# FIA plots (docs/architecture/presentation.html#vocabulary). With site-index binning at
+# `si_bins` the upper bound on FVS runs is 693 × 9 × si_bins, before timing offsets and
+# before deduplication for plots never eligible for a prescription by forest type. With the
+# permissive menu every plot is eligible for every prescription its forest type admits, so
+# the bound is now close to the realised count. Any addition to `prescriptions` must state
+# its cost here.
 si_bins: 3
-estimated_max_runs_pilot: 16632      # 693 × 8 × 3
+estimated_max_runs_pilot: 18711      # 693 × 9 × 3
