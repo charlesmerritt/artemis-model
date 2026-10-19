@@ -43,7 +43,9 @@ def bar_chart(planned, target, left, top, width, height, ymax, ticks, label_dev=
     n = len(planned)
     slot = width / n
     bw = slot * 0.62
-    y = lambda v: height - height * v / ymax
+    def y(v):
+        return height - height * v / ymax
+
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" aria-label="Planned harvest per period against target" '
              f'viewBox="0 0 {width:.0f} {height:.0f}" style="position:absolute; top:{top:.0f}px; left:{left:.0f}px; '
              f'width:{width:.0f}px; height:{height:.0f}px">']
@@ -83,5 +85,5 @@ def dev_color(d):
     """Diverging fill for a deviation %: blue under, orange over, pale near zero."""
     a = min(abs(d) / 40, 1)
     lo, hi = (0xf6, 0xf4, 0xee), ((0x2b, 0x5c, 0x8a) if d < 0 else (0xd9, 0x60, 0x1a))
-    c = [round(l + (h - l) * a) for l, h in zip(lo, hi)]
+    c = [round(low + (high - low) * a) for low, high in zip(lo, hi)]
     return "#%02x%02x%02x" % tuple(c), (BG if a > 0.55 else INK)
