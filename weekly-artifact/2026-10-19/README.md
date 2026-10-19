@@ -2,28 +2,33 @@
 
 ## Artifact
 
-The canonical FVS output set for the five-county Florida pilot: **10 age-class tables**
-(`tables/*.csv`), **8 figures** (`figures/*.png`), and `run_summary.json` carrying the run's
-identity, the reporting grid, crosswalk coverage, and the acreage each table foots to.
+The canonical FVS output set for the no-management run behind the five-county Florida pilot:
+**10 age-class tables** (`tables/*.csv`), **8 figures** (`figures/*.png`), and
+`run_summary.json` carrying the run's identity, the reporting grid, crosswalk coverage, and
+the acreage each table foots to.
 
 Produced by `pipeline/s6_outputs/run_pipeline.py`, which its own module docstring calls
 "the canonical FVS output pipeline: a real FVS output database in, figures out."
 
+**Read the acreage correctly.** These tables describe the run's 693 FVS stands, which are FIA
+donor plots, expanded by each plot's FIA `SamplingWt` and cut by the geography its `StandID`
+encodes. They are *not* a five-county landscape total. See "What the acreage is" below — it
+is the main finding of this run.
+
 ## Why this one
 
-Three reasons.
-
-1. **It is the step-4 deliverable.** `AGENTS.md` step 4 asks for "a final output table with
-   the trajectory for each management unit and its vegetation data from FVS for a 50 year
-   time horizon." This run reports 2026–2076 on a balanced 5-year grid — eleven reporting
-   years, a 50-year horizon exactly.
-2. **The repo calls it canonical, and it had never been run here.** No previous weekly
+1. **The repo calls it canonical, and it had never been run here.** No previous weekly
    artifact touches `s6_outputs` or age-class output; `grep -rl 's6_outputs\|age_class'
    weekly-artifact/` returns nothing before this directory. The last six weeks
    (08-31 → 10-12) all worked the annealing/scheduling side.
-3. **It is the baseline the annealed plans are measured against.** This is the
-   `NoManagement_5countyFL_1` counterfactual: what the landscape does if nobody cuts. The
-   harvest schedules and annealed plans of recent weeks only mean something against it.
+2. **It is the no-management counterfactual** — `NoManagement_5countyFL_1`, what these stands
+   do if nobody cuts. The harvest schedules and annealed plans of recent weeks only mean
+   something against a baseline.
+3. **It reports on a 50-year horizon**, 2026–2076 on a balanced 5-year grid, which is the
+   horizon `AGENTS.md` step 4 asks for.
+
+It is *not* yet the step-4 deliverable, which asks for a table "for each management unit."
+This pipeline is keyed and weighted by donor plot, not by management unit; see below.
 
 Every number in every figure is written to a CSV beside it, so a figure can be redrawn or
 restyled without recomputing anything — stage 5 reads only stage-4 tables.
@@ -66,20 +71,39 @@ rasterio, geopandas, matplotlib, duckdb on Python 3.14). `rclone` was already on
 | FVS span | 1997–2076 |
 | Reporting years | 2026, 2031, … 2076 (11 balanced years) |
 | Excluded | 28 unbalanced years before 2026 — not every case reports in them |
-| Whole-run weight | 3,797,722 sampling-weight acres |
+| Whole-run weight | 3,797,722 FIA sampling-weight acres |
 | Owner-attributed | 375 of 693 cases (54.1%), 1,052,306 acres |
 | Age classes | width 10, max 140 |
 
-Tables split by weight basis. `age_class_overall`, `*_by_forest_type`, `*_by_state`,
-`*_by_county` and `mean_age_by_forest_type` foot to the full 3,797,722 acres on
-`sampling_weight`. The four owner tables foot to 1,052,306 acres on `owner_acres`, because
-only crosswalked plots carry an owner class.
+## What the acreage is — the finding
+
+`fvs_out_db.py` decodes each case's FVS `StandID` as FIA `STATECD(2) + INVYR(2) +
+COUNTYCD(3) + PLOT(5)` and weights it by that plot's FIA `SamplingWt`. Both the geography
+and the acreage therefore belong to the **donor plot**, not to the pilot landscape. The
+consequence is visible in `tables/age_class_by_state.csv`, which spans seven states:
+
+| State | 2026 acres |
+|---|---|
+| Florida | 2,739,440 |
+| Georgia | 804,084 |
+| Texas | 85,500 |
+| Alabama | 76,710 |
+| Mississippi | 56,362 |
+| South Carolina | 22,847 |
+| Louisiana | 12,778 |
+
+So the 3,797,722 acres is the FIA expansion of the 693 donor plots across the Southeast — not
+five-county acreage. A pilot-landscape total would have to come through the TM_ID →
+management-unit crosswalk on pixel or unit acres, the way `paint_fvs_to_raster.py` maps
+`TM_ID → PLT_CN`. **That re-weighting is a design change to `s6_outputs`, not a correction to
+this run**, so it is flagged here rather than patched: the artifact is the pipeline's real
+output, read for what it is.
 
 ### Reading the result
 
-Under no management the landscape ages almost exactly one year per year, which is the
-correctness check as much as the finding — mean stand age climbs ~5 years per 5-year cycle
-in every forest type:
+Treat the tables as "what the donor plots do, FIA-weighted." On that basis the aging check
+holds: under no management mean stand age climbs ~5 years per 5-year cycle in every forest
+type, which is the correctness check as much as the finding.
 
 | Forest type | Mean age 2026 | Mean age 2076 |
 |---|---|---|
@@ -88,17 +112,22 @@ in every forest type:
 | Hardwood | 58.4 | 109.8 |
 
 `age_class_over_time.png` shows the consequence: the young classes drain and never refill,
-and by 2076 pine has essentially no 0–9 acres left. Corporate and NGO land starts youngest
-(~32 and ~39 years), Federal and Unknown oldest (~57 and ~64) — the plantation signature,
+and by 2076 pine has essentially no 0–9 acres left. By owner class in 2026, NGO is youngest
+at 32.2 years and Corporate next at 38.6, against Federal at 57.4 — the plantation signature,
 visible before any management is applied.
 
 ## Caveats
 
+- **The acreage is donor-plot FIA expansion, not pilot acreage.** See above. This is the
+  biggest caveat and it conditions every geographic cut in the set.
 - **54.1% owner coverage.** 318 of 693 cases are `Unattributed`. The owner tables are honest
   about this — they foot to 1.05 M acres, not 3.80 M — but the owner cut is a little over
   half the landscape, not all of it.
-- **`Unknown` is the oldest owner class.** Plausible (unattributed land skews toward
-  unmanaged remnants) but it is a residual bucket, not a real owner.
+- **`Unknown` is not the unattributed remainder.** They are two separate rows:
+  `Unattributed` carries 0 acres and no mean age, while `Unknown` is the crosswalk's own
+  unknown-ownership `OWN_TYPE`, with 2,468 acres (0.2% of attributed) and a mean age of 64.3.
+  `Unknown` being the oldest class says nothing about the uncovered 318 cases, and at 2,468
+  acres it is too thin to read much into at all.
 - **This is the no-management run.** It is the counterfactual, not a prediction. The
   managed trajectories live in the annealed plans of 08-31 → 10-12.
 
