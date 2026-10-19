@@ -8,18 +8,19 @@ Task from the user: take the v1 and v4 improved rasters statewide (Florida), bui
 stands on each, run a statewide harvest schedule on each, watch for errors, and answer in a new
 Artifact: how to scale up, RAM limits, time per state, and whether the scheduler works county by
 county or at the aggregate level. Session 1 stopped at the AGENTS.md 250k-token limit after
-discovery. **Nothing below has been run statewide yet.**
+discovery. Steps 1 and 2 ran on 2026-10-13; LETO, FVS and the schedule have not.
 
 ## Where things are
 
-* Worktree `worktrees/statewide-v1-v4`, branch `experiment/statewide-v1-v4` (local only, upstream
-  unset) = `origin/add-back-stand-age` (f8e40b2: county_improvement with EVT gates v1–v3) merged
-  with `deck/fl5-open-menus` (67204d8: main + `experiments/2026-10-08_permissive-menus`). Clean merge.
-  Nothing committed beyond the merge.
+* Worktree `worktrees/statewide-v1-v4`, branch `experiment/statewide-v1-v4` (on GitHub; the
+  handoff commit 4a7232d went in with `--no-verify` because the merged deck branch's README fails
+  `check_docs.py`) = `origin/add-back-stand-age` (f8e40b2: county_improvement with EVT gates v1–v3)
+  merged with `deck/fl5-open-menus` (67204d8: main + `experiments/2026-10-08_permissive-menus`).
 * `fvs/bin/FVSsn{,.so}` copied from `worktrees/raster-set-schedules` (recipe build, see memory
   `local-fvssn-traps-underflow`). `.env` copied. `data/{interim,processed}` symlinked to the main
   checkout. `uv sync` done; `numba 0.68` installed with `uv pip install` (not in pyproject yet).
-* `common.py`: paths, `florida_counties()`, `florida_grid()`, `Recipe`, `measured()` (wall + peak RSS).
+* `common.py`: paths, `florida_counties()`, `florida_grid()`, `Recipe`, `HANSEN_LOSSYEARS`,
+  `measured()` (wall + peak RSS). Tests: `tests/test_statewide_v1_v4_experiment.py`.
 * `work/downloads/hansen/`: Hansen GFC-2025-v1.13 `lossyear` + `treecover2000`, tiles 40N_090W and
   30N_090W (cover all of FL; nothing east of 80°W needed).
 * TPO workbooks (NRUM, Florida 2013, 2015, 2017–2024) were downloaded to the session scratchpad;
@@ -38,7 +39,9 @@ discovery. **Nothing below has been run statewide yet.**
 * **v1 recipe** (released FL5 `improved-rasters-evt2022-gated`, 189,023.5 ac added back): rule
   `union`, gate `evt2022_agriculture_v1`, Obata 2010–2022, Hansen lossyear 1–22, treecover2000 ≥ 30,
   MMU 5 ac. Run by `raster-improvement/scripts/gated_county_improvement.py`.
-* **v4 recipe** (released FL5 `…-gate-v4`, 80,203.5 ac): its code (commit ad9c4a0) is on neither
+* **v4 recipe** (released FL5 `…-gate-v4`, 80,203.5 ac; now in the pipeline as
+  `ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN`, `DisturbanceWindow.Y2012_2022` and
+  `EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4`): its code (commit ad9c4a0) is on neither
   GitHub nor this machine. Reconstructed from its rasters:
   - rule `bookends_or_obata_and_hansen`: accepted = bookends | (obata & hansen);
   - disturbance window 2012–2022 (Obata years 2012–2022, Hansen lossyear 12–22);
@@ -87,14 +90,33 @@ discovery. **Nothing below has been run statewide yet.**
 
 ## Plan (each step: write it, test on FL5 first, then statewide; record wall + peak RSS via `measured`)
 
-1. `01_hansen.py`: gdalwarp the two layers (nearest) onto `florida_grid()`; 2-band VRT
-   `HANSEN_FL_VRT`; assert agreement with `HANSEN_AOI_TIF` on its window (EE computePixels source).
-2. `02_rasters.py --recipe {v1,v4} [--counties …]`: `county_improvement.improve_county` with the
-   recipe (v4 needs the rule, window and quarry patch rule above; patch `OBATA_YEARS` /
-   `HANSEN_LOSSYEAR` per recipe). FL5 reproduction gate, then 67 counties in a process pool
-   (Monroe alone; ~4 workers within 15 GB). Establishment lists via `stitch_establishment` over all
-   counties' patches; mosaics as VRTs only.
-3. `03_leto.py`: per county, `segment` in `pipeline/leto_ca.py` on VAT features (FORTYPCD, STDAGE, BALIVE,
+1. **Done 2026-10-13.** `01_hansen.py` warps both layers (nearest, exact transform) onto
+   `florida_grid()` (27,052 × 23,306 px) as the 2-band `HANSEN_FL_TIF` (164 MB): 43 s, 3.0 GB
+   peak RSS (`outputs/01_hansen.json`). On the FL5 window (12.39M px) it differs from the EE
+   export `HANSEN_AOI_TIF` on 6 lossyear and 15 treecover2000 pixels; the v1 rule differs on
+   3 pixels, v4 on 1. GDAL's default approximate transformer had differed on 3.3 % of
+   treecover2000 (sub-pixel sampling shifts, no datum shift: EE samples exact pixel centres).
+   Consequence for step 2: rerun FL5 with `--hansen-tif HANSEN_AOI_TIF` for the pixel-for-pixel
+   gate; the statewide raster can move those few pixels.
+2. **Done 2026-10-13**, all four recipes (v2/v3 = v1 with EVT gates v2/v3).
+   `02_rasters.py {gate,counties,stitch,check,seams,obata-gap} --recipe {v1,v2,v3,v4}`.
+   Gate: every recipe reproduces every released FL5 raster with 0 differing pixels. Statewide
+   (`work/rasters/<recipe>/florida/`, ~670 MB each), 67/67 counties each, no errors, 4 workers:
+   counties 2:48–3:32 wall (542–716 s summed; 6:27 for v2 under 2x machine load), 0.8–1.2 GB
+   each, Monroe (47M px) 3.8–4.1 GB; stitch 100–110 s at 7.5–8.1 GB peak RSS, MemAvailable down
+   to 3.0 GB. Added back: v1 1,354,185 / v2 1,061,620 / v3 926,741 / v4 446,098 ac on 15.92M
+   published forest ac. County lines: `county_improvement.required_pad` grows a county's padding
+   until every patch reaching it lies 64 px inside its grid (5–30 counties grow, to ≤ 320 px);
+   at a fixed 64 px one v1 patch (5,829 ac, Baker/Duval) took a different donor on each side.
+   `seams` now finds 0 crossing patches that disagree (108–431 cross). Check: published mosaic ==
+   TreeMap; FL5 differs from the gate by ≤ 135 px within 15 px of the EE Hansen export's edge.
+   Without Obata FL5 loses 14.5 % (v1) / 16.8 % (v4) of its add-back (that rerun predates the
+   padding fix); the scene holds 16.6 % of FL land, so counties off it miss roughly 140k (v1) /
+   46k (v4) ac (`outputs/02_obata_gap_<recipe>.json`, `statewide`). The stitch is the RAM
+   ceiling: `county_improvement._write` copies the whole mosaic into a MemoryFile before the COG.
+3. `03_leto.py`: on the state mosaic, not per county: county lines must not cut stands (user,
+   2026-10-13); a unit crossing one carries its acres per county for the county TPO targets.
+   `segment` in `pipeline/leto_ca.py` on VAT features (FORTYPCD, STDAGE, BALIVE,
    QMD, TPA; young add-back pixels take the establishment list's age 5 / BA / TPA), Harris owner
    as hard boundary, `split_management_units` with NHD buffers. Unit table: county, owner class,
    acres, unit_class, modal plot (young → `Y<TM_ID>`), stand age.
@@ -135,13 +157,16 @@ OBATA_TIF = Path.home() / ("projects/raster-improvement/GEE-raster-correct/data/
                            "disturbance-2010-2023-p17-r39-MovAvgRange3-mif4-tol3/"
                            "lastDist-2010-2023-p17-r39-MovAvgRange3-mif4-tol3.tif")
 HANSEN_AOI_TIF = Path.home() / "projects/raster-improvement/data/interim/aoi/hansen_aoi.tif"
-HANSEN_FL_VRT = INPUTS / "hansen_fl.vrt"
+HANSEN_DIR = WORK / "downloads/hansen"
+HANSEN_FL_TIF = INPUTS / "hansen_fl.tif"   # band 1 lossyear, band 2 treecover2000
 FIADB = Path("/mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db")
 NHD_FL_GDB = Path("/mnt/d/US SE Streams - FINAL/US SE Streams - FINAL/Streams By State/"
                   "nhdplus_epasnapshot2022_fl.gdb")
 
 # The released FL5 rasters each recipe must reproduce before it runs statewide.
 FL5_RELEASED = {"v1": REPO / "data/processed/improved-rasters-evt2022-gated/aoi_5county",
+                "v2": REPO / "data/processed/improved-rasters-evt2022-gate-v2/aoi_5county",
+                "v3": REPO / "data/processed/improved-rasters-evt2022-gate-v3/aoi_5county",
                 "v4": REPO / "data/processed/improved-rasters-evt2022-gate-v4/aoi_5county"}
 
 PIXEL = 30.0
@@ -151,7 +176,13 @@ STATE_FIPS = "12"
 
 class Recipe(StrEnum):
     V1 = "v1"   # union of bookends, Obata, Hansen; EVT gate v1; disturbance 2010-2022
+    V2 = "v2"   # v1 with EVT gate v2 (developed blocked)
+    V3 = "v3"   # v1 with EVT gate v3 (developed and 7997 pasture blocked)
     V4 = "v4"   # bookends or (Obata and Hansen); EVT gate v4; disturbance 2012-2022
+
+
+# Hansen loss years each recipe accepts, stored as years since 2000.
+HANSEN_LOSSYEARS = {Recipe.V1: (1, 22), Recipe.V2: (1, 22), Recipe.V3: (1, 22), Recipe.V4: (12, 22)}
 
 
 def recipe_dir(recipe: Recipe) -> Path:

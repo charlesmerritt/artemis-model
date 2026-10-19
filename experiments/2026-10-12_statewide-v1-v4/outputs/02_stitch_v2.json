@@ -1,0 +1,27 @@
+{
+  "stitch": {
+    "seconds": 100.9,
+    "peak_rss_gb": 8.089
+  },
+  "min_available_gb": 5.14,
+  "summary": {
+    "added_back_acres": 1061619.9,
+    "improved_forest_acres": 16983999.0,
+    "published_forest_acres": 15922379.4,
+    "patches": 38557,
+    "stitch_overlap_pixels": {
+      "add_back_method_bits.tif": 0,
+      "add_back_method_bits_raw.tif": 0,
+      "bookend_strata.tif": 0,
+      "evt2022_add_back_eligible.tif": 0,
+      "evt2022_gate_rejected.tif": 0,
+      "evt2022_patch_rejected.tif": 0,
+      "nwos2022_improved.tif": 0,
+      "nwos2022_provenance.tif": 0,
+      "nwos2022_published.tif": 0,
+      "treemap2022_improved.tif": 0,
+      "treemap2022_provenance.tif": 0,
+      "treemap2022_published.tif": 0
+    }
+  }
+}

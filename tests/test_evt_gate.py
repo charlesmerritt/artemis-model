@@ -8,6 +8,7 @@ import pandas as pd
 from pipeline.s1_initial_state.evt_gate import (
     DEVELOPED_BLOCKED,
     PASTURE_BLOCKED,
+    QUARRY,
     EvtGatePolicy,
     eligibility,
 )
@@ -85,3 +86,20 @@ def test_v3_is_v2_with_eastern_warm_temperate_pasture_and_hay_blocked():
 def test_v3_eligibility_rejects_7997_and_keeps_forest():
     evt = np.array([7997, 7296, 9001])
     assert eligibility(evt, LEGEND, EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3).tolist() == [False, False, True]
+
+
+def test_v4_lets_the_same_pixels_through_as_v3():
+    published = pd.read_csv(PUBLISHED_V1)
+    v3 = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3.eligible_codes(published)
+    v4 = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4.eligible_codes(published)
+    assert sorted(v4) == sorted(v3)
+    assert EvtGatePolicy("evt2022_agriculture_developed_pasture_quarry_v4") is \
+        EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4
+
+
+def test_only_v4_vetoes_patches_at_quarries():
+    evt = np.array([[QUARRY[0], 9001]])
+    assert QUARRY == (7295,)
+    assert EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4.patch_veto(evt).tolist() == [[True, False]]
+    for policy in set(EvtGatePolicy) - {EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4}:
+        assert policy.patch_veto(evt) is None

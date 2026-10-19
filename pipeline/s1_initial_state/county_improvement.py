@@ -9,8 +9,10 @@ Per county:
 
 1. **Grid.** The county's bounding box on TreeMap 2022's own 30 m EPSG:5070 grid, padded
    by ``PAD_PX``. The padding lets a patch that crosses the county line keep its full
-   area for the minimum-patch-area test and its full ring for the donor search. Outputs
-   are cropped back to the unpadded box and masked to the county.
+   area for the minimum-patch-area test and its full ring for the donor search. A patch
+   reaching from the county to within ``PAD_PX`` of the grid edge grows the padding and
+   the county is decided again (:func:`required_pad`), so both counties a patch crosses
+   see all of it. Outputs are cropped back to the unpadded box and masked to the county.
 2. **Holes.** Land (LANDFIRE EVT 2022 is not water) where TreeMap has no plot.
 3. **Methods.** Each method in :mod:`add_back_methods` proposes hole pixels. Bookends
    (LANDFIRE 2016/2024 strata plus the AlphaEarth gate) always runs. Obata and Hansen
@@ -19,7 +21,8 @@ Per county:
 4. **Decision.** The EVT 2022 gate (:mod:`evt_gate`, ``--evt-gate``, default
    ``evt2022_agriculture_developed_pasture_v3``) limits every method's proposals to eligible
    LANDFIRE 2022 classes. ``ConsensusRule`` then combines them, and the 5 ac minimum patch
-   area applies.
+   area applies. A gate with a patch veto (v4: quarries) then rejects whole patches.
+   ``--disturbance-window`` sets the years Obata and Hansen cuts must fall in.
 5. **Vegetation.** Each accepted patch takes the modal TreeMap plot (``TM_ID``) in the
    nearest ring that has any (:func:`impute_establishment.donor_assignments`). Its
    bookend stratum sets the establishment mode (``config/establishment.yaml``): a cut
@@ -61,6 +64,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 from rasterio import features
+from scipy import ndimage
 from rasterio.transform import Affine
 from rasterio.windows import Window
 
@@ -111,6 +115,21 @@ PIXEL = 30.0
 OBATA_YEARS = (2010, 2022)   # cut dated inside the run's window, capped at the TreeMap vintage
 HANSEN_LOSSYEAR = (1, 22)    # 2001-2022, stored as years since 2000
 HANSEN_TREECOVER_MIN = 30    # only ground that carried canopy in 2000
+
+
+class DisturbanceWindow(StrEnum):
+    """The years an Obata cut or Hansen loss must fall in for the method to propose a pixel."""
+    PUBLISHED = "obata2010_hansen2001_2022"  # v1-v3: OBATA_YEARS and HANSEN_LOSSYEAR
+    Y2012_2022 = "2012_2022"                 # v4: both detectors 2012-2022
+
+    @property
+    def obata_years(self) -> tuple[int, int]:
+        return OBATA_YEARS if self is DisturbanceWindow.PUBLISHED else (2012, 2022)
+
+    @property
+    def hansen_lossyear(self) -> tuple[int, int]:
+        """Years since 2000, as Hansen stores them."""
+        return HANSEN_LOSSYEAR if self is DisturbanceWindow.PUBLISHED else (12, 22)
 
 
 class Stage(StrEnum):
@@ -200,12 +219,16 @@ def read_on_grid(path: Path, grid: Grid, *, fill, indexes: int | list[int] = 1) 
     return out[0] if isinstance(indexes, int) else out
 
 
-def obata_rule(last_disturbance_year: np.ndarray) -> np.ndarray:
-    return (last_disturbance_year >= OBATA_YEARS[0]) & (last_disturbance_year <= OBATA_YEARS[1])
+def obata_rule(last_disturbance_year: np.ndarray,
+               window: DisturbanceWindow = DisturbanceWindow.PUBLISHED) -> np.ndarray:
+    first, last = window.obata_years
+    return (last_disturbance_year >= first) & (last_disturbance_year <= last)
 
 
-def hansen_rule(lossyear: np.ndarray, treecover2000: np.ndarray) -> np.ndarray:
-    return ((lossyear >= HANSEN_LOSSYEAR[0]) & (lossyear <= HANSEN_LOSSYEAR[1])
+def hansen_rule(lossyear: np.ndarray, treecover2000: np.ndarray,
+                window: DisturbanceWindow = DisturbanceWindow.PUBLISHED) -> np.ndarray:
+    first, last = window.hansen_lossyear
+    return ((lossyear >= first) & (lossyear <= last)
             & (treecover2000 >= HANSEN_TREECOVER_MIN))
 
 
@@ -249,6 +272,7 @@ class BlockResult:
     assignments: pd.DataFrame          # patch -> donor
     labels: np.ndarray                 # accepted-patch labels, indexing ``assignments``
     masks: MethodMasks = field(repr=False)
+    patch_rejected: np.ndarray | None = field(default=None, repr=False)  # bool: patches vetoed whole
 
     @property
     def gate_rejected(self) -> np.ndarray:
@@ -265,19 +289,24 @@ def improve_block(tm_ids: np.ndarray, land: np.ndarray, masks: MethodMasks, stra
                   stratum_modes: Mapping[int, EstablishmentMode],
                   scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
                   reach: float = MAX_DISTANCE_PX,
-                  eligible: np.ndarray | None = None) -> BlockResult:
+                  eligible: np.ndarray | None = None,
+                  patch_veto: np.ndarray | None = None) -> BlockResult:
     """Decide, fill and re-own the holes of one block. ``tm_ids`` is 0 where TreeMap has no plot.
 
     ``stratum_modes`` maps a patch's bookend stratum to its establishment mode; a stratum
     it does not list is ``scaled_young`` (:func:`impute_establishment.mode_for_stratum`).
     ``eligible`` is the EVT gate (:func:`evt_gate.eligibility`): every method's proposals
     are limited to it before the rule and the minimum patch area. ``None`` gates nothing.
+    ``patch_veto`` (:meth:`evt_gate.EvtGatePolicy.patch_veto`) rejects whole every patch
+    left after the minimum patch area that contains or 8-touches one of its pixels.
     """
     hole = (tm_ids == 0) & land
     raw_bits = method_bits(masks) * hole
     if eligible is not None:
         masks = masks.restricted_to(eligible)
     accepted = apply_mmu(masks.combine(rule) & hole, min_acres) & hole
+    patch_rejected = vetoed_patches(accepted, patch_veto)
+    accepted &= ~patch_rejected
     labels, n_patches = label_patches(accepted)
     improved = tm_ids.copy()
     if n_patches:
@@ -296,7 +325,17 @@ def improve_block(tm_ids: np.ndarray, land: np.ndarray, masks: MethodMasks, stra
     ownership, ownership_provenance = repair_ownership(
         nwos, improved > 0, added_back, scope=scope, max_distance_px=reach)
     return BlockResult(improved, provenance, method_bits(masks) * hole, raw_bits, added_back,
-                       ownership, ownership_provenance, assignments, labels, masks)
+                       ownership, ownership_provenance, assignments, labels, masks, patch_rejected)
+
+
+def vetoed_patches(accepted: np.ndarray, veto: np.ndarray | None) -> np.ndarray:
+    """The 8-connected patches of ``accepted`` that contain or 8-touch a ``veto`` pixel."""
+    if veto is None or not veto.any():
+        return np.zeros(accepted.shape, dtype=bool)
+    labels, _ = label_patches(accepted)
+    near = ndimage.binary_dilation(veto, structure=np.ones((3, 3), dtype=bool))
+    hit = np.unique(labels[near & accepted])
+    return np.isin(labels, hit[hit > 0])
 
 
 # ── one county ──────────────────────────────────────────────────────────────────────────
@@ -315,15 +354,17 @@ def county_dir(out_root: Path, fips: str) -> Path:
     return out_root / "counties" / f"{fips}_{AOI_COUNTIES.get(fips, fips).lower()}"
 
 
-def _method_masks(inputs: Inputs, grid: Grid, strata, hole, scored, gate) -> MethodMasks:
+def _method_masks(inputs: Inputs, grid: Grid, strata, hole, scored, gate,
+                  window: DisturbanceWindow) -> MethodMasks:
     masks: dict[AddBackMethod, np.ndarray | None] = {
         AddBackMethod.BOOKENDS: scored_add_back(strata, hole, scored, gate, min_acres=0.0),
     }
     if inputs.obata is not None:
-        masks[AddBackMethod.OBATA_DISTURBANCE] = obata_rule(read_on_grid(inputs.obata, grid, fill=0)) & hole
+        masks[AddBackMethod.OBATA_DISTURBANCE] = obata_rule(
+            read_on_grid(inputs.obata, grid, fill=0), window) & hole
     if inputs.hansen is not None:
         loss, cover = read_on_grid(inputs.hansen, grid, fill=0, indexes=[1, 2])
-        masks[AddBackMethod.HANSEN_LOSS] = hansen_rule(loss, cover) & hole
+        masks[AddBackMethod.HANSEN_LOSS] = hansen_rule(loss, cover, window) & hole
     return MethodMasks(masks)
 
 
@@ -348,19 +389,39 @@ def _write(path: Path, values: np.ndarray, transform: Affine, nodata, descriptio
                      overview_resampling="NEAREST", resampling="NEAREST")
 
 
-def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_ROOT, *,
-                   rule: ConsensusRule = ConsensusRule.UNION, min_acres: float = 5.0,
-                   scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
-                   reach: float = MAX_DISTANCE_PX,
-                   stratum_modes: Mapping[int, EstablishmentMode] | None = None,
-                   evt_gate: EvtGatePolicy = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3) -> dict:
-    if stratum_modes is None:
-        stratum_modes = load_establishment_policy().stratum_modes
-    geom = load_county(inputs.counties, fips)
-    with rasterio.open(inputs.treemap) as src:
-        tm_transform, tm_nodata = src.transform, src.nodata
-    grid = county_grid(geom.bounds, tm_transform)
+def required_pad(patches: np.ndarray, inside: np.ndarray, pad: int, margin: int = PAD_PX) -> int:
+    """The padding at which every patch reaching the county lies ``margin`` px inside the grid.
 
+    ``pad`` when none comes closer to the edge; otherwise grown by the shortfall and one
+    more margin, since a patch cut off at the edge may run on past it.
+    """
+    labels, _ = label_patches(patches)
+    ids = np.unique(labels[inside & patches])
+    rows, cols = labels.shape
+    objects = ndimage.find_objects(labels)
+    closest = margin
+    for patch_id in ids:
+        r, c = objects[patch_id - 1]
+        closest = min(closest, r.start, rows - r.stop, c.start, cols - c.stop)
+    return pad if closest >= margin else pad + (margin - closest) + margin
+
+
+@dataclass
+class GridDecision:
+    result: BlockResult
+    tm_ids: np.ndarray
+    land: np.ndarray
+    strata: np.ndarray
+    nwos: np.ndarray
+    evt2022: np.ndarray
+    legend2022: pd.DataFrame
+    eligible: np.ndarray
+
+
+def decide_on_grid(inputs: Inputs, grid: Grid, tm_nodata, *, rule: ConsensusRule, min_acres: float,
+                   stratum_modes: Mapping[int, EstablishmentMode], scope: OwnershipRepairScope,
+                   reach: float, evt_gate: EvtGatePolicy, window: DisturbanceWindow) -> GridDecision:
+    """Read every input onto ``grid`` and decide its holes."""
     tm = read_on_grid(inputs.treemap, grid, fill=tm_nodata)
     tm_ids = np.where(tm == tm_nodata, 0, tm).astype(np.uint32)
     legends = {y: pd.read_csv(inputs.evt(y)[1]) for y in (2016, 2022, 2024)}
@@ -375,18 +436,45 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     strata[~hole] = 0
     scored = read_on_grid(inputs.scored, grid, fill=0, indexes=[1, 2])
     gate = GatedScores.from_model_json(inputs.model)
-    masks = _method_masks(inputs, grid, strata, hole, scored, gate)
+    masks = _method_masks(inputs, grid, strata, hole, scored, gate, window)
     nwos = read_on_grid(inputs.ownership, grid, fill=NWOS_NODATA)
     eligible = eligibility(evt[2022], legends[2022], evt_gate)
-
     r = improve_block(tm_ids, land, masks, strata, nwos, rule=rule, min_acres=min_acres,
-                      stratum_modes=stratum_modes, scope=scope, reach=reach, eligible=eligible)
+                      stratum_modes=stratum_modes, scope=scope, reach=reach, eligible=eligible,
+                      patch_veto=evt_gate.patch_veto(evt[2022]))
+    return GridDecision(r, tm_ids, land, strata, nwos, evt[2022], legends[2022], eligible)
+
+
+def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_ROOT, *,
+                   rule: ConsensusRule = ConsensusRule.UNION, min_acres: float = 5.0,
+                   scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
+                   reach: float = MAX_DISTANCE_PX,
+                   stratum_modes: Mapping[int, EstablishmentMode] | None = None,
+                   evt_gate: EvtGatePolicy = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3,
+                   window: DisturbanceWindow = DisturbanceWindow.PUBLISHED) -> dict:
+    if stratum_modes is None:
+        stratum_modes = load_establishment_policy().stratum_modes
+    geom = load_county(inputs.counties, fips)
+    with rasterio.open(inputs.treemap) as src:
+        tm_transform, tm_nodata = src.transform, src.nodata
+    pad = PAD_PX
+    while True:
+        grid = county_grid(geom.bounds, tm_transform, pad)
+        d = decide_on_grid(inputs, grid, tm_nodata, rule=rule, min_acres=min_acres,
+                           stratum_modes=stratum_modes, scope=scope, reach=reach,
+                           evt_gate=evt_gate, window=window)
+        inside = features.rasterize([(geom, 1)], out_shape=grid.shape, transform=grid.transform,
+                                    fill=0, dtype="uint8").astype(bool)
+        grown = required_pad((d.result.labels > 0) | d.result.patch_rejected, inside, pad)
+        if grown == pad:
+            break
+        pad = grown
+    r, tm_ids, land, strata, nwos = d.result, d.tm_ids, d.land, d.strata, d.nwos
+    eligible = d.eligible
 
     # Crop the padding away and mask to the county.
-    crop = (slice(PAD_PX, -PAD_PX), slice(PAD_PX, -PAD_PX))
-    out_transform = grid.transform * Affine.translation(PAD_PX, PAD_PX)
-    inside = features.rasterize([(geom, 1)], out_shape=grid.shape, transform=grid.transform,
-                                fill=0, dtype="uint8").astype(bool)
+    crop = (slice(pad, -pad), slice(pad, -pad))
+    out_transform = grid.transform * Affine.translation(pad, pad)
     outside = ~inside[crop]
 
     def county(values: np.ndarray, nodata):
@@ -415,6 +503,8 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
                                           f"1 EVT 2022 class eligible under {evt_gate}"),
         "evt2022_gate_rejected.tif": (county(rejected.astype(np.uint8), OUTSIDE), OUTSIDE,
                                       f"1 a method proposed the pixel and {evt_gate} rejected it"),
+        "evt2022_patch_rejected.tif": (county(r.patch_rejected.astype(np.uint8), OUTSIDE), OUTSIDE,
+                                       f"1 an accepted patch {evt_gate}'s patch veto rejected whole"),
         "bookend_strata.tif": (county(strata, OUTSIDE), OUTSIDE,
                                "LANDFIRE 2016/2024 strata S1-S5 over holes; 0 not a hole"),
         "nwos2022_published.tif": (county(nwos, NWOS_NODATA), NWOS_NODATA,
@@ -436,17 +526,19 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     patches = patches[patches["county_pixels"] > 0]
     patches.insert(0, "county_fips", fips)
     patches.reset_index().to_csv(out_dir / "establishment_patches.csv", index=False)
-    gate_rejections(county(evt[2022], 0), county(rejected, False), legends[2022]).to_csv(
+    gate_rejections(county(d.evt2022, 0), county(rejected, False), d.legend2022).to_csv(
         out_dir / GATE_REJECTIONS_CSV, index=False)
 
     summary = county_summary(fips, r, strata, land, crop, outside, rule, min_acres, scope, reach,
-                             patches, evt_gate=evt_gate)
+                             patches, evt_gate=evt_gate, window=window)
+    summary["pad_px"] = pad
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary
 
 
 def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_acres,
-                   scope, reach, patches: pd.DataFrame, *, evt_gate: EvtGatePolicy) -> dict:
+                   scope, reach, patches: pd.DataFrame, *, evt_gate: EvtGatePolicy,
+                   window: DisturbanceWindow = DisturbanceWindow.PUBLISHED) -> dict:
     inside = ~outside
 
     def c(a):  # crop to the county
@@ -461,12 +553,14 @@ def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_
                                  for m, mk in proposals.masks.items()})
     credited = priority_attribution(accepted_only, ConsensusRule.UNION)
     combined = c(r.masks.combine(rule))
+    patch_rejected = c(r.patch_rejected)
     oprov = r.ownership_provenance
     improved_forest = c(r.improved > 0)
     return {
         "county_fips": fips,
         "county": AOI_COUNTIES.get(fips, fips),
         "rule": str(rule),
+        "disturbance_window": str(window),
         "min_acres": min_acres,
         "county_acres": _acres(inside),
         "land_acres": _acres(c(land)),
@@ -485,7 +579,8 @@ def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_
                                      for m, code in PROVENANCE_BY_MODE.items()},
         "added_back_credit_acres": {str(m): None if v is None else round(v * ACRES_PER_PIXEL, 1)
                                     for m, v in credited.items()},
-        "dropped_by_mmu_or_no_donor_acres": round(_acres(combined) - _acres(added), 1),
+        "dropped_by_mmu_or_no_donor_acres": round(
+            _acres(combined) - _acres(added) - _acres(patch_rejected), 1),
         "improved_forest_acres": _acres(improved_forest),
         "patches": int(len(patches)),
         "unique_donors": int(patches["donor_tm_id"].dropna().nunique()),
@@ -501,6 +596,7 @@ def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_
             "policy": str(evt_gate),
             "raw_proposal_acres": _acres(c(r.method_bits_raw > 0)),
             "rejected_acres": _acres(c(r.gate_rejected)),
+            "patch_rejected_acres": _acres(patch_rejected),
         },
     }
 
@@ -539,7 +635,8 @@ def stitch_rasters(paths: list[Path], out: Path) -> int:
     """Mosaic same-grid county rasters: each pixel from the first county with data there.
 
     Returns how many pixels a later county also claimed (county polygons share borders,
-    so this should be ~0).
+    so this should be ~0). Each county is pasted into its own window of the mosaic, so
+    memory is the mosaic plus one county, whatever the number of counties.
     """
     with rasterio.open(paths[0]) as first:
         nodata, dtype = first.nodata, first.dtypes[0]
@@ -555,12 +652,17 @@ def stitch_rasters(paths: list[Path], out: Path) -> int:
                 (round((north - south) / PIXEL), round((east - west) / PIXEL)))
     mosaic = np.full(grid.shape, nodata, dtype=dtype)
     overlap = 0
-    for p in paths:
-        values = read_on_grid(p, grid, fill=nodata)
+    for p, (w, n, _, _) in zip(paths, boxes):
+        col, row = (w - west) / PIXEL, (north - n) / PIXEL
+        if abs(col - round(col)) > 1e-6 or abs(row - round(row)) > 1e-6:
+            raise ValueError(f"{p.name} is off the grid by ({col % 1:.3f}, {row % 1:.3f}) px")
+        with rasterio.open(p) as s:
+            values = s.read(1)
+        window = mosaic[round(row):round(row) + values.shape[0], round(col):round(col) + values.shape[1]]
         has = values != nodata
-        free = mosaic == nodata
+        free = window == nodata
         overlap += int((has & ~free).sum())
-        mosaic[has & free] = values[has & free]
+        window[has & free] = values[has & free]
     _write(out, mosaic, grid.transform, nodata, tags.get("description", ""))
     return overlap
 
@@ -629,15 +731,18 @@ def sum_county_summaries(summaries: list[dict]) -> dict:
         for m in first["added_back_acres_by_mode"]}
     total["methods"] = {m: first["methods"][m]["status"] for m in first["methods"]}
     total["rule"] = first["rule"]
+    if "disturbance_window" in first:
+        total["disturbance_window"] = first["disturbance_window"]
     total["evt_gate"] = {"policy": first["evt_gate"]["policy"], **{
         k: round(sum(s["evt_gate"][k] for s in summaries), 1)
-        for k in ("raw_proposal_acres", "rejected_acres")}}
+        for k in first["evt_gate"] if k != "policy"}}
     return total
 
 
-def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inputs()) -> dict:
+def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inputs(),
+           name: str = AOI_NAME) -> dict:
     dirs = [county_dir(out_root, f) for f in fips_list]
-    out_dir = out_root / AOI_NAME
+    out_dir = out_root / name
     out_dir.mkdir(parents=True, exist_ok=True)
     overlaps = {}
     for tif in sorted(p.name for p in dirs[0].glob("*.tif")):
@@ -664,6 +769,7 @@ def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inp
 def run_manifest(total: dict, inputs: Inputs) -> dict:
     """What produced the AOI outputs: the decision settings and the input paths."""
     return {"counties": total["counties"], "rule": total["rule"],
+            "disturbance_window": total.get("disturbance_window"),
             "evt_gate": total["evt_gate"]["policy"], "methods": total["methods"],
             "inputs": {k: None if v is None else str(v) for k, v in vars(inputs).items()}}
 
@@ -686,6 +792,11 @@ def main() -> None:
     parser.add_argument("--evt-gate", type=EvtGatePolicy,
                         default=EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3, choices=list(EvtGatePolicy),
                         help="EVT 2022 classes an add-back proposal may land on (default: v3)")
+    parser.add_argument("--disturbance-window", type=DisturbanceWindow,
+                        default=DisturbanceWindow.PUBLISHED, choices=list(DisturbanceWindow),
+                        help="years Obata cuts and Hansen loss must fall in (default: v1-v3's)")
+    parser.add_argument("--stitch-name", default=AOI_NAME,
+                        help="folder under --out-root the stitched rasters go in")
     parser.add_argument("--stage", type=Stage, default=Stage.ALL, choices=list(Stage))
     args = parser.parse_args()
 
@@ -694,12 +805,12 @@ def main() -> None:
         for fips in args.counties:
             s = improve_county(fips, inputs, args.out_root, rule=args.rule,
                                min_acres=args.min_acres, scope=args.ownership_scope,
-                               evt_gate=args.evt_gate)
+                               evt_gate=args.evt_gate, window=args.disturbance_window)
             young = s["added_back_acres_by_mode"][str(EstablishmentMode.SCALED_YOUNG)]
             print(f"{fips} {s['county']:<9} holes {s['hole_acres']:>10,.0f} ac   "
                   f"added back {s['added_back_acres']:>9,.0f} ac ({young:,.0f} scaled young)   "
                   f"forest {s['published_forest_acres']:>10,.0f} -> {s['improved_forest_acres']:>10,.0f} ac")
-    total = stitch(args.counties, args.out_root, inputs)
+    total = stitch(args.counties, args.out_root, inputs, args.stitch_name)
     print(json.dumps(total, indent=2))
 
 

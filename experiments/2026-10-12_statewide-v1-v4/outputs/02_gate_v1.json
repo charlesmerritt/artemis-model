@@ -1,0 +1,88 @@
+{
+  "counties": {
+    "seconds": 20.5,
+    "peak_rss_gb": 0.187
+  },
+  "stitch": {
+    "seconds": 12.8,
+    "peak_rss_gb": 0.711
+  },
+  "min_available_gb": 7.35,
+  "county_runs": [
+    {
+      "fips": "12121",
+      "recipe": "v1",
+      "status": "ok",
+      "added_back_acres": 51702.9,
+      "patches": 1319,
+      "pad_px": 64,
+      "seconds": 9.2,
+      "peak_rss_gb": 1.015,
+      "grid_px": 3858736,
+      "available_gb": 7.13
+    },
+    {
+      "fips": "12125",
+      "recipe": "v1",
+      "status": "ok",
+      "added_back_acres": 13773.2,
+      "patches": 506,
+      "pad_px": 137,
+      "seconds": 9.6,
+      "peak_rss_gb": 0.978,
+      "grid_px": 1556972,
+      "available_gb": 7.44
+    },
+    {
+      "fips": "12047",
+      "recipe": "v1",
+      "status": "ok",
+      "added_back_acres": 40429.7,
+      "patches": 830,
+      "pad_px": 179,
+      "seconds": 12.3,
+      "peak_rss_gb": 1.097,
+      "grid_px": 2775318,
+      "available_gb": 7.61
+    },
+    {
+      "fips": "12003",
+      "recipe": "v1",
+      "status": "ok",
+      "added_back_acres": 36589.0,
+      "patches": 926,
+      "pad_px": 192,
+      "seconds": 14.2,
+      "peak_rss_gb": 1.106,
+      "grid_px": 3033312,
+      "available_gb": 8.62
+    },
+    {
+      "fips": "12023",
+      "recipe": "v1",
+      "status": "ok",
+      "added_back_acres": 46528.7,
+      "patches": 1350,
+      "pad_px": 150,
+      "seconds": 18.2,
+      "peak_rss_gb": 1.137,
+      "grid_px": 3970044,
+      "available_gb": 9.38
+    }
+  ],
+  "differing_pixels": {
+    "add_back_cut_year.tif": "missing from the rerun",
+    "add_back_cut_year_detector.tif": "missing from the rerun",
+    "add_back_method_bits.tif": 0,
+    "add_back_method_bits_raw.tif": 0,
+    "bookend_strata.tif": 0,
+    "evt2022_add_back_eligible.tif": 0,
+    "evt2022_agriculture_rejected.tif": "missing from the rerun",
+    "nwos2022_improved.tif": 0,
+    "nwos2022_provenance.tif": 0,
+    "nwos2022_published.tif": 0,
+    "treemap2022_improved.tif": 0,
+    "treemap2022_provenance.tif": 0,
+    "treemap2022_published.tif": 0
+  }
+}

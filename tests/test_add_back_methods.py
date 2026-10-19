@@ -92,3 +92,13 @@ def test_priority_attribution_reports_pending_methods_as_none():
     credited = priority_attribution(masks(bookends=[T, T, F]), ConsensusRule.UNION)
     assert credited == {AddBackMethod.BOOKENDS: 2, AddBackMethod.OBATA_DISTURBANCE: None,
                         AddBackMethod.HANSEN_LOSS: None}
+
+
+def test_bookends_or_obata_and_hansen_takes_bookends_alone_or_both_disturbance_methods():
+    m = masks(bookends=[T, F, F, F], obata=[F, T, T, F], hansen=[F, T, F, T])
+    assert m.combine(ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN).tolist() == [T, T, F, F]
+
+
+def test_bookends_or_obata_and_hansen_needs_both_disturbance_methods_to_have_run():
+    with pytest.raises(ValueError, match="obata_disturbance and hansen_loss"):
+        masks(bookends=[T], hansen=[T]).combine(ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN)
