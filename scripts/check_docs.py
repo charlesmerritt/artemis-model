@@ -55,6 +55,7 @@ MARKDOWN_BUDGET = {
     "docs/superpowers/plans/2026-07-20-s1-segmentation-strategies.md": (570, "record"),
     "docs/superpowers/specs/2026-07-19-leto-initial-state-design.md": (232, "record"),
     "docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md": (433, "record"),
+    "docs/superpowers/specs/2026-09-27-fvsjl-engine-integration-design.md": (253, "record"),  # FVSjl evaluation design
     "docs/references/README.md": (145, "convert"),            # -> docs/architecture#references
     "docs/treemap_holes/README.md": (712, "convert"),         # -> docs/treemap-raster-correction
     "experiments/2026-07-28_16-33-pr9-validation-audit/report.md": (106, "record"),
