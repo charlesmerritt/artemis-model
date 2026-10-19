@@ -110,9 +110,9 @@ discovery. Steps 1 and 2 ran on 2026-10-13; LETO, FVS and the schedule have not.
    at a fixed 64 px one v1 patch (5,829 ac, Baker/Duval) took a different donor on each side.
    `seams` now finds 0 crossing patches that disagree (108–431 cross). Check: published mosaic ==
    TreeMap; FL5 differs from the gate by ≤ 135 px within 15 px of the EE Hansen export's edge.
-   Without Obata FL5 loses 14.5 % (v1) / 16.8 % (v4) of its add-back (that rerun predates the
-   padding fix); the scene holds 16.6 % of FL land, so counties off it miss roughly 140k (v1) /
-   46k (v4) ac (`outputs/02_obata_gap_<recipe>.json`, `statewide`). The stitch is the RAM
+   Without Obata FL5 loses 14.5 % (v1) / 16.8 % (v4) of its add-back (the same at a fixed 64 px
+   and with the grown padding); the scene holds 16.6 % of FL land, so counties off it miss
+   roughly 140k (v1) / 46k (v4) ac (`outputs/02_obata_gap_<recipe>.json`, `statewide`). The stitch is the RAM
    ceiling: `county_improvement._write` copies the whole mosaic into a MemoryFile before the COG.
 3. `03_leto.py`: on the state mosaic, not per county: county lines must not cut stands (user,
    2026-10-13); a unit crossing one carries its acres per county for the county TPO targets.
