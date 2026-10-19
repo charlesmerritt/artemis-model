@@ -59,6 +59,7 @@ MARKDOWN_BUDGET = {
     "docs/treemap_holes/README.md": (712, "convert"),         # -> docs/treemap-raster-correction
     "experiments/2026-07-28_16-33-pr9-validation-audit/report.md": (106, "record"),
     "experiments/2026-08-24_leto-ca-forest-viz/README.md": (211, "record"),
+    "experiments/2026-10-05_fl5-harvest-deck/README.md": (41, "record"),   # landed with 67204d8 unbudgeted
     "gee/README.md": (44, "keep"),
     "notes/2026-09-14_statewide_repair_blockers.md": (111, "record"),  # diagnosis, not prose docs
     "notes/2026-09-16_timing-offsets-evidence.md": (509, "record"),    # research note, issue #51
