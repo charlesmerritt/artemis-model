@@ -1,0 +1,584 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvest Scheduler Comparison</title>
+<!-- Deck conventions, component classes and the navigation script come from
+     docs/_template/presentation.html. Copy that file to start a new deck; cite a slide
+     from code as path/to/presentation.html#slide-id (scripts/check_docs.py verifies the id). -->
+<style>
+  :root {
+    --paper:#f6f5ef; --card:#ffffff; --ink:#1b221c; --ink-soft:#4b564c; --ink-faint:#79847a;
+    --line:#e4e4da; --line-strong:#d0d0c3; --accent:#2f6b3f; --accent-soft:#e7f0e5;
+    --amber:#b06a11; --amber-soft:#f6ecd9; --slate:#5a6472; --slate-soft:#e9ebee;
+    --pass:#2f6b3f; --pass-bg:#e7f0e5; --fail:#a4562a; --fail-bg:#f6e7dc;
+    --band-a:#edf3ea; --band-b:#f6efe2; --band-c:#ecedf0;
+    --shadow:0 1px 2px rgba(27,34,28,.06), 0 6px 24px rgba(27,34,28,.08);
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#101310; --card:#1a1f1a; --ink:#eef0ea; --ink-soft:#b7beb5; --ink-faint:#828c81;
+      --line:#282e28; --line-strong:#39413a; --accent:#7bbd84; --accent-soft:#20301f;
+      --amber:#e2a24e; --amber-soft:#2c2413; --slate:#9aa6b4; --slate-soft:#20262d;
+      --pass:#7bbd84; --pass-bg:#1d2b1c; --fail:#e08a55; --fail-bg:#2c1d12;
+      --band-a:#161f15; --band-b:#211d12; --band-c:#181c21;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="light"]{--paper:#f6f5ef;--card:#fff;--ink:#1b221c;--ink-soft:#4b564c;--ink-faint:#79847a;--line:#e4e4da;--line-strong:#d0d0c3;--accent:#2f6b3f;--accent-soft:#e7f0e5;--amber:#b06a11;--amber-soft:#f6ecd9;--slate:#5a6472;--slate-soft:#e9ebee;--pass:#2f6b3f;--pass-bg:#e7f0e5;--fail:#a4562a;--fail-bg:#f6e7dc;--band-a:#edf3ea;--band-b:#f6efe2;--band-c:#ecedf0;--shadow:0 1px 2px rgba(27,34,28,.06),0 6px 24px rgba(27,34,28,.08);}
+  :root[data-theme="dark"]{--paper:#101310;--card:#1a1f1a;--ink:#eef0ea;--ink-soft:#b7beb5;--ink-faint:#828c81;--line:#282e28;--line-strong:#39413a;--accent:#7bbd84;--accent-soft:#20301f;--amber:#e2a24e;--amber-soft:#2c2413;--slate:#9aa6b4;--slate-soft:#20262d;--pass:#7bbd84;--pass-bg:#1d2b1c;--fail:#e08a55;--fail-bg:#2c1d12;--band-a:#161f15;--band-b:#211d12;--band-c:#181c21;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 30px rgba(0,0,0,.45);}
+
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:var(--paper); color:var(--ink); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  .deck { display:flex; height:100vh; width:100vw; transition:transform .42s cubic-bezier(.4,0,.2,1); will-change:transform; }
+  @media (prefers-reduced-motion: reduce) { .deck { transition:none; } }
+  /* Vertical centring is done with auto margins on .inner, NOT justify-content:center.
+     On a scrollable flex container, centred content that overflows spills past the
+     scroll origin in both directions, and scrollTop cannot go negative — so the top
+     of the slide (eyebrow, heading) becomes unreachable. Auto margins absorb only
+     positive free space: they centre when the content fits and collapse to zero when
+     it does not, leaving the slide scrollable from its true top. */
+  .slide { flex:0 0 100vw; height:100vh; overflow-y:auto; overflow-x:hidden;
+           display:flex; flex-direction:column;
+           padding:clamp(28px,5vh,64px) clamp(24px,6vw,90px); }
+  .inner { width:100%; max-width:1160px; margin:auto; }
+
+  .eyebrow { font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 14px; }
+  h1 { font-size:clamp(30px,5.2vw,54px); line-height:1.06; margin:0 0 16px; letter-spacing:-.02em; text-wrap:balance; font-weight:800; }
+  h2 { font-size:clamp(22px,3.4vw,34px); line-height:1.12; margin:0 0 8px; letter-spacing:-.015em; text-wrap:balance; font-weight:800; }
+  .kicker { font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; margin:0 0 10px; display:flex; gap:10px; align-items:center; }
+  .kicker .rule { height:1px; flex:1; background:var(--line-strong); }
+  .lede { font-size:clamp(15px,1.7vw,18px); color:var(--ink-soft); max-width:74ch; margin:0; }
+  .lede b { color:var(--ink); font-weight:650; }
+  p.sub { font-size:14.5px; color:var(--ink-faint); margin:2px 0 0; }
+  code, .mono { font-family:var(--mono); font-size:.92em; }
+
+  /* title slide */
+  .title-slide .meta { margin-top:26px; display:flex; flex-wrap:wrap; gap:10px; }
+  .chip { font-family:var(--mono); font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:8px;
+          background:var(--card); border:1px solid var(--line); color:var(--ink-soft); box-shadow:var(--shadow); }
+  .chip b { color:var(--accent); }
+
+  /* stat tiles */
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+  .tiles.three { grid-template-columns:repeat(3,1fr); }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+  .tile .n { font-size:clamp(20px,2.6vw,28px); font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .tile .n.good { color:var(--pass); }
+  .tile .n.warn { color:var(--amber); }
+  .tile .l { font-size:12px; color:var(--ink-faint); margin-top:3px; line-height:1.35; }
+  @media (max-width:760px){ .tiles, .tiles.three { grid-template-columns:repeat(2,1fr);} }
+
+  /* tables */
+  .tbl-wrap { overflow-x:auto; margin-top:16px; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); background:var(--card); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; min-width:520px; }
+  thead th { text-align:left; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; padding:11px 14px; background:transparent; border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+  tbody td { padding:11px 14px; border-bottom:1px solid var(--line); color:var(--ink-soft); vertical-align:top; }
+  tbody tr:last-child td { border-bottom:none; }
+  td.name { color:var(--ink); font-weight:600; }
+  td.num, th.num { text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.num b { color:var(--ink); }
+  tr.failrow td { background:var(--fail-bg); }
+  tr.goodrow td { background:var(--pass-bg); }
+  .res { display:inline-flex; font-weight:700; font-size:11.5px; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .res.pass { color:var(--pass); background:var(--pass-bg); }
+  .res.fail { color:var(--fail); background:var(--fail-bg); }
+  .res.open { color:var(--slate); background:var(--slate-soft); }
+  .res.warn { color:var(--amber); background:var(--amber-soft); }
+
+  /* pipeline bands */
+  .bands { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; }
+  .bcol { border-radius:14px; padding:14px; }
+  .bcol.a { background:var(--band-a); } .bcol.b { background:var(--band-b); } .bcol.c { background:var(--band-c); }
+  .bcol h3 { margin:2px 4px 12px; font-size:13px; letter-spacing:.02em; display:flex; align-items:center; gap:8px; }
+  .stage { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:11px 13px; margin-bottom:9px; box-shadow:var(--shadow); }
+  .stage:last-child { margin-bottom:0; }
+  .stage .st { display:flex; align-items:center; gap:8px; }
+  .stage .st b { font-size:14px; }
+  .stage p { margin:5px 0 0; font-size:12px; color:var(--ink-faint); line-height:1.4; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .dot.done{background:var(--accent);} .dot.prog{background:var(--amber);} .dot.plan{background:var(--slate);}
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:16px; font-size:12.5px; color:var(--ink-soft); }
+  .legend span { display:flex; align-items:center; gap:7px; }
+  @media (max-width:760px){ .bands{ grid-template-columns:1fr;} }
+
+  /* cards */
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:18px; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .tcard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:15px 17px; box-shadow:var(--shadow); }
+  .tcard h4 { margin:0 0 6px; font-size:15.5px; display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+  .tcard h4 .tag { font-family:var(--mono); font-size:11px; font-weight:600; color:var(--accent); background:var(--accent-soft); padding:2px 7px; border-radius:6px; letter-spacing:.02em; }
+  .tcard h4 .tag.warn { color:var(--amber); background:var(--amber-soft); }
+  .tcard h4 .tag.open { color:var(--slate); background:var(--slate-soft); }
+  .tcard p { margin:0 0 8px; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .tcard p:last-child { margin-bottom:0; }
+  .tcard .say { font-size:12.5px; color:var(--ink); border-left:3px solid var(--accent); background:var(--accent-soft); padding:8px 11px; border-radius:0 8px 8px 0; }
+  .tcard .say b { color:var(--accent); }
+  @media (max-width:860px){ .cards, .cards.three { grid-template-columns:1fr;} }
+
+  ul.take { margin:16px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
+  ul.take li { position:relative; padding-left:26px; font-size:15px; color:var(--ink-soft); }
+  ul.take li b { color:var(--ink); }
+  ul.take li::before { content:""; position:absolute; left:4px; top:9px; width:8px; height:8px; border-radius:2px; background:var(--accent); }
+  .caveat { margin-top:16px; border-left:3px solid var(--amber); background:var(--amber-soft); border-radius:0 10px 10px 0; padding:12px 15px; font-size:13.5px; color:var(--ink-soft); }
+  .caveat b { color:var(--ink); }
+  .caveat code { color:var(--ink); }
+  .srcline { margin-top:14px; font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); }
+
+  pre.ascii { margin:18px 0 0; padding:16px 18px; background:var(--card); border:1px solid var(--line);
+              border-radius:12px; box-shadow:var(--shadow); overflow-x:auto;
+              font-family:var(--mono); font-size:12.5px; line-height:1.45; color:var(--ink-soft); }
+  pre.ascii b { color:var(--accent); }
+
+  .flow { display:flex; align-items:stretch; gap:10px; margin-top:20px; flex-wrap:wrap; }
+  .fstep { flex:1 1 150px; background:var(--card); border:1px solid var(--line); border-radius:12px;
+           padding:12px 14px; box-shadow:var(--shadow); }
+  .fstep .t { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); font-weight:700; }
+  .fstep .v { font-size:14px; font-weight:700; margin-top:5px; }
+  .fstep .d { font-size:12px; color:var(--ink-faint); margin-top:5px; line-height:1.4; }
+
+  /* HUD */
+  .progress { position:fixed; top:0; left:0; height:3px; background:var(--accent); z-index:50; transition:width .42s cubic-bezier(.4,0,.2,1); }
+  .hud { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:50;
+         display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line);
+         border-radius:999px; padding:5px 6px; box-shadow:var(--shadow); }
+  .hud button { border:none; background:transparent; color:var(--ink-soft); font:inherit; cursor:pointer;
+                width:34px; height:34px; border-radius:999px; display:grid; place-items:center; font-size:16px; }
+  .hud button:hover { background:var(--accent-soft); color:var(--accent); }
+  .hud button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .hud .count { font-family:var(--mono); font-size:13px; color:var(--ink-soft); min-width:56px; text-align:center; font-variant-numeric:tabular-nums; }
+  .hud .sep { width:1px; height:20px; background:var(--line); margin:0 2px; }
+  .hint { position:fixed; bottom:22px; right:22px; z-index:40; font-size:12px; color:var(--ink-faint); font-family:var(--mono); }
+  @media (max-width:600px){ .hint{ display:none; } }
+
+  /* figures */
+  figure.fig { margin:16px 0 0; }
+  figure.fig img { display:block; width:100%; max-height:46vh; object-fit:contain; border-radius:12px;
+                   border:1px solid var(--line); background:#fff; box-shadow:var(--shadow); padding:6px; }
+  figcaption { margin-top:10px; font-size:12.5px; color:var(--ink-faint); line-height:1.45; }
+  figcaption b { color:var(--ink-soft); }
+
+  /* Additions over docs/treemap-raster-correction/presentation.html. */
+  pre.run { margin:16px 0 0; padding:14px 16px; background:var(--card); border:1px solid var(--line);
+            border-radius:12px; box-shadow:var(--shadow); overflow-x:auto;
+            font-family:var(--mono); font-size:12.5px; line-height:1.5; color:var(--ink-faint); }
+  pre.run .cmd { color:var(--ink); font-weight:600; }
+  pre.run .cmd::before { content:"$ "; color:var(--accent); }
+  pre.run .note { color:var(--accent); }
+  .tcard pre.run { box-shadow:none; margin-top:10px; }
+  a { color:var(--accent); }
+</style>
+
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+  <section class="slide title-slide" id="title">
+    <div class="inner">
+      <p class="eyebrow">ARTEMIS · scheduler comparison · 2026-10-19</p>
+      <h1>Ecotrust's harvest-scheduler, read against ARTEMIS's annealer</h1>
+      <p class="lede">The repository Diaz et al. (2015) cite as their scheduler holds <b>three</b> schedulers in its
+        history, not one. All three were read line by line, with the BLM and climate drivers and the
+        <span class="mono">growth-yield-batch</span> keyfiles that fed them. ARTEMIS's side is the annealer on
+        <span class="mono">main</span>: <span class="mono">weekly-artifact/2026-09-14/make_annealed_plan.py</span>,
+        which <span class="mono">2026-09-28</span> imports unchanged. Each finding is a probe, and the probe fails if
+        the code it describes changes.</p>
+      <div class="meta">
+        <span class="chip">Ecotrust <b>bf4861f</b></span>
+        <span class="chip">ARTEMIS <b>066aee6</b></span>
+        <span class="chip"><b>17</b> probes, all holding</span>
+        <span class="chip">E = Ecotrust · H = its history · A = ARTEMIS</span>
+      </div>
+      <p class="sub" style="margin-top:22px">Use ← → or space to move through the deck. Swipe on a phone.</p>
+    </div>
+  </section>
+
+  <section class="slide" id="lineage">
+    <div class="inner">
+      <p class="kicker">The precedent <span class="rule"></span> 01</p>
+      <h2>The cited repository holds three schedulers, and Diaz et al. ran the Python one</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Scheduler</th><th>Lifetime</th><th>Decides per unit</th><th>Objective</th><th>Constraints</th></tr></thead>
+          <tbody>
+            <tr><td class="name">C <span class="mono">alt_c/schedule.c</span></td><td>2013; deleted in <span class="mono">6979128</span>. "Adapted from work led by John Sessions at OSU"</td><td>Offset only. The prescription is fixed per polygon by an alt/bus scenario file</td><td>Σ<sub>t</sub> 10·(T<sub>t</sub> − V<sub>t</sub>)², one ownership per run</td><td>Hard adjacency rejection; a minimum advanced-age share, set to 0</td></tr>
+            <tr><td class="name">Python <span class="mono">harvestscheduler/_scheduler.py</span></td><td>2013–2015, still on <span class="mono">master</span></td><td>A (prescription, offset) pair</td><td>Weighted sum of per-variable strategies, each scaled to 0–100</td><td>Per-stand valid managements only. Adjacency is a commented-out TODO</td></tr>
+            <tr class="goodrow"><td class="name">Graph variant <span class="mono">scheduler/scheduler_graph.py</span></td><td>2014; deleted in <span class="mono">8df4969</span></td><td>Same as Python</td><td>Same code, plus live plotting</td><td>Same. <b>This is what the BLM driver imports</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede" style="margin-top:14px">The report's scheduling setup (502 mmbf, timber at 6×, carbon, fire, owl habitat, a cost proxy)
+        matches the BLM driver, and that driver runs the graph variant. The two things ARTEMIS most needs from the
+        precedent, <b>per-ownership targets and an adjacency check</b>, existed only in the C scheduler. Neither survived
+        the rewrite.</p>
+      <p class="srcline">git -C harvest-scheduler log --diff-filter=D · fcc2e80^:examples/example_schedule_blm.py:9 · 6979128^:alt_c/schedule.c:9 · Diaz et al. pp. 27–28</p>
+    </div>
+  </section>
+
+  <section class="slide" id="architecture">
+    <div class="inner">
+      <p class="kicker">Structure <span class="rule"></span> 02</p>
+      <h2>Same two stages. The decision unit and the offset mechanism differ</h2>
+      <div class="flow">
+        <div class="fstep"><div class="t">1 · inventory</div><div class="v">Imputed plots</div><div class="d">GNN to 40-acre cells · TreeMap 2022 to pixels</div></div>
+        <div class="fstep"><div class="t">2 · batch FVS</div><div class="v">unit × rx × offset</div><div class="d">growth-yield-batch to SQLite · trajectory library</div></div>
+        <div class="fstep"><div class="t">3 · anneal</div><div class="v">one trajectory per unit</div><div class="d">FVS never re-run; scheduling is arithmetic</div></div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Aspect</th><th>Ecotrust (Diaz et al.)</th><th>ARTEMIS</th></tr></thead>
+          <tbody>
+            <tr><td class="name">Decision unit</td><td>40-acre grid cell. FVS runs once per <span class="mono">cond</span>; results are scaled by acres</td><td>Pixel class (TreeMap plot × county × owner) today; LETO polygons planned. FVS runs once per (PLT_CN, prescription); results are scaled by acres</td></tr>
+            <tr><td class="name">Who may do what</td><td>Land class (protected, riparian, critical habitat) restricts <span class="mono">valid_mgmts</span></td><td>Owner class sets the menu. Riparian gets <span class="mono">{no_management}</span>; <span class="mono">harvest_eligibility</span> screens before FVS</td></tr>
+            <tr><td class="name">How an offset is applied</td><td>Inside the keyfile. The event monitor computes <span class="mono">REGENYR = (40 + OFFSET − AGE) + YEAR</span></td><td>In Python, before rendering. Resolved entry years shift; entries past 2072 drop; a variant that loses every entry collapses</td></tr>
+            <tr><td class="name">Offset grid</td><td>The report says 5, 10, 15. The committed BLMClimate config says <span class="mono">[0, 10]</span>. Grow-only gets none</td><td>0, 5, 10, 15. <span class="mono">no_management</span> gets none. AGENTS.md lists 5–25</td></tr>
+            <tr><td class="name">Horizon</td><td><span class="mono">NUMCYCLE 20</span> × 5 years = 100 years from 2013</td><td>10 scored cycles (11 simulated) × 5 years = 50 years from 2022</td></tr>
+            <tr><td class="name">Library in memory</td><td>Dense float32 [stands, mgmts, periods, vars]. Missing combinations are zero-filled</td><td>Ragged per-stand option lists</td></tr>
+            <tr class="failrow"><td class="name">Shared limit</td><td colspan="2">Offsets are ≥ 0 in both, so no entry can come earlier than its base timing. This caused 2 of the 3 targets that 2026-09-14 proved unreachable</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="srcline">growth-yield-batch: projects/BLMClimate/config.json, rx/varPN_rx2.key:24-50, rx/include/inputs_formats.txt:3-4 · bf4861f:harvestscheduler/prep_data.py:410-413 · weekly-artifact/2026-09-14/make_timing_library.py</p>
+    </div>
+  </section>
+
+  <section class="slide" id="diaz-run">
+    <div class="inner">
+      <p class="kicker">The reference run <span class="rule"></span> 03</p>
+      <h2>The committed BLM driver does not configure what the report describes</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Item</th><th>Report (p. 28, p. 21)</th><th>Committed driver <span class="mono">example_schedule_blm.py</span></th></tr></thead>
+          <tbody>
+            <tr class="failrow"><td class="name">Timber</td><td>evenflow-target, 502 mmbf/yr, 6×</td><td><span class="mono">within_bounds</span> [0.99 T, 1.05 T] at weight 6; the <span class="mono">evenflow_target</span> line is commented out. T = 502 × 1000 × <b>0.0477</b> × 5, a 4.77% subset</td></tr>
+            <tr class="failrow"><td class="name">High fire hazard</td><td>minimize</td><td><span class="mono">within_bounds</span> [0, 15000]; <span class="mono">cumulative_minimize</span> is commented out</td></tr>
+            <tr><td class="name">Offsets</td><td>5, 10, 15 years</td><td>The committed <span class="mono">config.json</span> lists [0, 10]</td></tr>
+            <tr><td class="name">Search</td><td>not stated</td><td>A 5,000-step run, then 255,000 steps <span class="mono">starting_mgmts=best_mgmts</span>. E1 shows that start is discarded</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="caveat"><b>What this does and does not show.</b> The committed driver may not be the final run behind the
+        report. It is, though, the closest code to that run, and it uses a band rather than a target, and a warm
+        start that does nothing. The report says outcomes for the selected practices were "pulled out of the
+        database" (p. 17), so its figures do not inherit the E3 totals defect.
+        <span class="mono">docs/references/README.md</span> repeats the report's version (evenflow-target timber,
+        minimize fire), not the driver's.</div>
+      <p class="srcline">H1 · fcc2e80^:examples/example_schedule_blm.py:139-199 · growth-yield-batch: projects/BLMClimate/config.json · Diaz et al. pp. 17, 21, 28</p>
+    </div>
+  </section>
+
+  <section class="slide" id="objective">
+    <div class="inner">
+      <p class="kicker">Objective <span class="rule"></span> 04</p>
+      <h2>The objective forms share names, not formulas</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Form</th><th>Ecotrust Python</th><th>Ecotrust C</th><th>ARTEMIS</th></tr></thead>
+          <tbody>
+            <tr><td class="name">Harvest target</td><td><span class="mono">evenflow_target</span>: mean(V − T), ×10 below target, divided by half the per-period range, ×100. <span class="mono">within_bounds</span>: the sum outside a band. <b>Both linear</b></td><td>Σ<sub>t</sub> 10·(T − V)². <b>Quadratic</b>, absolute</td><td>6 · Σ<sub>key</sub> Σ<sub>t</sub> ((V − T)/T)² over 5 counties and 3 owner groups. <b>Quadratic</b>, symmetric, relative</td></tr>
+            <tr><td class="name">evenflow</td><td>Variance across periods divided by the per-period range, ×100. The README and the report say standard deviation</td><td>—</td><td>Not implemented</td></tr>
+            <tr><td class="name">maximize</td><td>100·(max − Σ<sub>t</sub>V)/(max − min): the area under the curve, every period counted</td><td>A carbon ratio at weight 0</td><td>−1 × ending standing volume ÷ Σ per-stand max: the final cycle only</td></tr>
+            <tr><td class="name">minimize</td><td>Mirror of maximize</td><td>—</td><td>Not implemented</td></tr>
+            <tr><td class="name">Weights</td><td>Exchange rates between terms that each span 0–100</td><td>One term</td><td>6 and 1 on terms whose ranges differ by orders of magnitude (see <a href="#weights">#weights</a>)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede" style="margin-top:14px"><b>Linear against quadratic is the difference that matters.</b> E8: below target,
+        Ecotrust's two target forms score a (5, 5) split and a (2, 8) split identically. They price the total
+        shortfall, not how it is spread, so under scarcity they cannot produce even flow unless the
+        <span class="mono">evenflow</span> term sits beside them, as it does in the climate driver. ARTEMIS's quadratic
+        scores the uneven split 36% worse (A5: 15.0 against 20.4). That convexity is why the 2026-09-14 plan settled
+        into a near-constant 27–45% shortfall. The C scheduler made the same quadratic choice.</p>
+      <p class="srcline">E8 · A5 · bf4861f:harvestscheduler/_scheduler.py:186-241 · 6979128^:alt_c/schedule.c:1378,1417-1459 · weekly-artifact/2026-09-14/make_annealed_plan.py:350-404</p>
+    </div>
+  </section>
+
+  <section class="slide" id="ecotrust-defects">
+    <div class="inner">
+      <p class="kicker">Ecotrust's code <span class="rule"></span> 05</p>
+      <h2>Eight defects in Ecotrust's Python scheduler, each reproduced against its code</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Probe</th><th>Defect</th><th>Consequence</th><th>ARTEMIS</th></tr></thead>
+          <tbody>
+            <tr class="failrow"><td class="name">E1</td><td>Each stand's first valid management overwrites <span class="mono">starting_mgmts</span> (47-55)</td><td>19 of 20 stands come back at their first option. The BLM driver's 5,000-step warm start does nothing, so its 255,000-step run starts from rx 1 (grow-only) everywhere</td><td><span class="res pass">kept · A0</span></td></tr>
+            <tr><td class="name">E2</td><td><span class="mono">targets</span> gains an extra <span class="mono">None</span> for each <span class="mono">evenflow_target</span> and no entry for each <span class="mono">within_bounds</span> (88-114)</td><td>An <span class="mono">evenflow_target</span> placed after a <span class="mono">within_bounds</span> raises <span class="mono">TypeError</span>. Variable order decides whether it runs</td><td><span class="res open">one form</span></td></tr>
+            <tr class="failrow"><td class="name">E3</td><td><span class="mono">best_vars_over_time = vars_over_time[:]</span> is a numpy view, and <span class="mono">+=</span> keeps mutating it (170, 299)</td><td>The returned per-period totals belong to a later state than <span class="mono">best_mgmts</span>, on 10 of 10 seeds. The BLM driver writes them to <span class="mono">results.csv</span></td><td><span class="res pass">recomputed · A0</span></td></tr>
+            <tr><td class="name">E4</td><td><span class="mono">evenflow</span> divides a variance (units²) by a range (units) (193-203)</td><td>Rescaling the data ×10 rescales that term ×10, which silently re-weights it. The other forms are unit-free</td><td><span class="res pass">unit-free</span></td></tr>
+            <tr><td class="name">E5</td><td>The theoretical min and max include zero-filled options a stand may not take (73-79)</td><td>The 0–100 scale is compressed: 57.1 instead of 100 for an identical feasible set. Every grow-only-restricted stand does this to the carbon term</td><td><span class="res pass">own options only</span></td></tr>
+            <tr><td class="name">E6</td><td>The move loop redraws until some stand changes (133-146)</td><td>With no stand holding two options, it never returns</td><td><span class="res pass">raises</span></td></tr>
+            <tr><td class="name">E7</td><td>No seed parameter. It draws from the global <span class="mono">random</span> and <span class="mono">np.random</span></td><td>A run is not reproducible unless the caller seeds both. Neither driver does</td><td><span class="res pass">seed 42 + r</span></td></tr>
+            <tr><td class="name">E8</td><td><span class="mono">evenflow_target</span> and <span class="mono">within_bounds</span> are linear</td><td>Neither can tell how a shortfall is spread across periods (<a href="#objective">#objective</a>)</td><td><span class="res pass">quadratic · A5</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="srcline">research/harvest_scheduler_comparison/probe.py E1–E8 · bf4861f:harvestscheduler/_scheduler.py (line numbers above) · E1 is also run against 8df4969^:scheduler/scheduler_graph.py</p>
+    </div>
+  </section>
+
+  <section class="slide" id="weights">
+    <div class="inner">
+      <p class="kicker">ARTEMIS · weights <span class="rule"></span> 06</p>
+      <h2>ARTEMIS's 6 : 1 is a priority order; Diaz's 6 : 1 was an exchange rate</h2>
+      <div class="tiles">
+        <div class="tile"><div class="n">63.68</div><div class="l">weighted even-flow term of the best 2026-09-14 plan</div></div>
+        <div class="tile"><div class="n warn">−0.606</div><div class="l">its standing-volume term. The whole term can never span more than 1</div></div>
+        <div class="tile"><div class="n">300.5</div><div class="l">greedy minus best: how far even flow moves</div></div>
+        <div class="tile"><div class="n warn">40.8%</div><div class="l">a single target miss worth as much as the entire standing range</div></div>
+      </div>
+      <p class="lede" style="margin-top:16px">Ecotrust scales every term to 0–100, so weights of 6 and 1 trade six points of timber
+        for one point of carbon. ARTEMIS's standing term is a fraction of the landscape's own maximum, so its whole
+        range is at most <span class="mono">w_standing</span> = 1. Even flow is a sum over 80 squared relative
+        deviations. The scheduler will therefore never give up more than <b>1/6 of a unit of Σ r²</b> for standing
+        volume. That is less than closing one of the 80 targets from a 41% miss to zero. Standing volume acts as a
+        tie-break.</p>
+      <div class="caveat"><b>Decision for the architect.</b> <span class="mono">config/projection.yaml</span> says the weights "set
+        relative priority" after Diaz et al. Either keep them as a priority order and say so (and stop citing the 6×
+        as Diaz's), or normalise each term over its attainable range so that the weights trade. A carbon term built like the
+        standing term would inherit the same position.</div>
+      <p class="srcline">A3 · weekly-artifact/2026-09-14/solution_quality.json · config/projection.yaml:141-174 · weekly-artifact/2026-09-14/make_annealed_plan.py:364-367</p>
+    </div>
+  </section>
+
+  <section class="slide" id="keys">
+    <div class="inner">
+      <p class="kicker">ARTEMIS · target keys <span class="rule"></span> 07</p>
+      <h2>Relative deviation prices a Federal cubic foot at 35 Private ones</h2>
+      <div class="tiles">
+        <div class="tile"><div class="n">10.1 M</div><div class="l">ft³ per cycle: the Federal (NF) target</div></div>
+        <div class="tile"><div class="n">355.0 M</div><div class="l">ft³ per cycle: the Private target</div></div>
+        <div class="tile"><div class="n warn">1,231×</div><div class="l">the cost of the same absolute shortfall, Federal against Private</div></div>
+        <div class="tile"><div class="n warn">35×</div><div class="l">marginal cost per ft³ at the same percentage miss</div></div>
+      </div>
+      <p class="lede" style="margin-top:16px">Each of the 80 targets is scored as ((V − T)/T)², so every key counts equally in
+        percentage terms. Federal (NF) and Other public supply <b>8.4%</b> of the five-county volume, yet they are 2 of
+        the 8 keys, so at equal percentage misses they carry <b>25%</b> of the even-flow cost. Diaz's single absolute
+        global target had no such effect; instead it let harvest move between districts. The C scheduler ran each
+        ownership on its own, so the question never came up there.</p>
+      <div class="caveat"><b>Equal-percent weighting is a choice.</b> It should be a stated one. The alternative is to score
+        absolute deviations scaled by one landscape constant. Under that scheme a Private miss dominates, and the
+        public groups become nearly free to miss.</div>
+      <p class="srcline">A1 · config/tpo_targets.yaml · weekly-artifact/2026-09-14/make_annealed_plan.py:350-362</p>
+    </div>
+  </section>
+
+  <section class="slide" id="forms">
+    <div class="inner">
+      <p class="kicker">ARTEMIS · records against code <span class="rule"></span> 08</p>
+      <h2>ARTEMIS's records claim four objective forms and spatial-penalty functions. The code has two forms and no penalties</h2>
+      <div class="cards">
+        <div class="tcard">
+          <h4>Configured forms are not read <span class="tag warn">A2</span></h4>
+          <p><span class="mono">Objective</span> looks weights up by metric name and reads nothing else. Setting
+            <span class="mono">standing_volume</span> to <span class="mono">form: minimize</span> and adding a
+            weight-100 <span class="mono">carbon_storage</span> objective leaves the total at <b>217.02</b>. Only
+            <span class="mono">harvest_volume</span>'s form is checked, in <span class="mono">load_config</span>.</p>
+          <p class="say"><b>Rule for the promotion into pipeline/:</b> raise on any (metric, form) pair the objective does not implement.</p>
+        </div>
+        <div class="tcard">
+          <h4>What the drivers say <span class="tag warn">A2</span></h4>
+          <p>The docstrings of 2026-08-31 and 2026-09-14 both say "All four objective forms are implemented".
+            2026-08-31 adds that the spatial penalties "are implemented as functions". Neither driver defines one;
+            <span class="mono">spatial_penalties_available</span> returns <span class="mono">False</span>.
+            <span class="mono">config/projection.yaml</span> describes <span class="mono">evenflow_target</span> as
+            "a value or a range, and it may vary over time"; the code takes one constant per key.</p>
+        </div>
+      </div>
+      <div class="caveat"><b>Where the fix goes.</b> <span class="mono">weekly-artifact/</span> is a dated record and is not
+        rewritten. The correction belongs to the promotion of the annealer into <span class="mono">pipeline/</span>,
+        which the module docstring of <span class="mono">pipeline/s3_management/harvest_scheduler.py</span> says has
+        not happened.</div>
+      <p class="srcline">A2 · weekly-artifact/2026-09-14/make_annealed_plan.py:150-167,305-310,527-538 · weekly-artifact/2026-08-31/make_annealed_plan.py:17-25 · config/projection.yaml:141-146</p>
+    </div>
+  </section>
+
+  <section class="slide" id="adjacency">
+    <div class="inner">
+      <p class="kicker">Spatial constraints <span class="rule"></span> 09</p>
+      <h2>Ecotrust's history holds the adjacency check ARTEMIS says Ecotrust lacks</h2>
+      <p class="lede"><span class="mono">config/projection.yaml</span> says "the Diaz et al. scheduler carried no adjacency
+        constraint at all, so its code cannot supply them". That is true of the Python scheduler, where adjacency is a
+        commented-out TODO (a harvest clump over 75 adds 1000). It is not true of the repository, whose C scheduler
+        has a working unit-restriction check:</p>
+<pre class="ascii">propose polygon p (owner own[p], prescription fixed), offset o drawn at random
+if acres[p] &gt;= <b>20</b>:
+    for q in adj[p] with own[q] == own[p], acres[q] &gt;= 20, a forest stratum:
+        for each period t:
+            if cut[p, o, t] &gt; <b>80 bd ft/ac</b> and cut[q, offset[q], t] &gt; 80:
+                <b>reject and draw another polygon</b>        <span style="color:var(--ink-faint)"># a hard URM, never priced</span></pre>
+      <div class="cards">
+        <div class="tcard"><h4>Worth taking <span class="tag">H2</span></h4>
+          <p>A neighbour list (<span class="mono">adj.txt</span> pairs), a size floor so slivers and riparian strips do
+            not block, same-owner scoping, and a decision unit that is a polygon linked to an FVS plot and scaled by
+            acres. ARTEMIS's <span class="mono">Landscape</span> already has that last structure, so LETO polygons can
+            carry adjacency without a new trajectory library.</p></div>
+        <div class="tcard"><h4>Missing from it <span class="tag open">gap</span></h4>
+          <p>Green-up spans a single 5-year period. There is no opening-size (ARM) aggregation. "Cut" is a board-foot
+            threshold per period rather than a regeneration-harvest flag. Moves are single-polygon only, which is the
+            stall the declared <span class="mono">block</span> move exists to fix.</p></div>
+      </div>
+      <p class="srcline">H2 · 6979128^:alt_c/schedule.c:1812-1868 · 6979128^:alt_c/schedule.h:21-22 · bf4861f:harvestscheduler/_scheduler.py:150-160 · config/projection.yaml:176-186</p>
+    </div>
+  </section>
+
+  <section class="slide" id="ownership">
+    <div class="inner">
+      <p class="kicker">Targets per owner <span class="rule"></span> 10</p>
+      <h2>The C scheduler had per-ownership targets. TPO's two marginals couple ARTEMIS's</h2>
+      <p class="lede">The C scheduler's <span class="mono">harvest(ownership, target)</span> ran one anneal per owner type
+        (PI, STATE, FED, PNI), each against that owner's own per-period volume, with an optional boost over chosen
+        periods. That is the per-owner-group even flow AGENTS.md asks for, decomposed. The Python rewrite went global,
+        and Diaz et al. document the result: harvest moved between BLM districts.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>System</th><th>Target structure</th><th>Separable into independent runs?</th></tr></thead>
+          <tbody>
+            <tr><td class="name">Ecotrust C</td><td>One target series per ownership</td><td><span class="res pass">yes</span> one anneal per owner</td></tr>
+            <tr><td class="name">Ecotrust Python</td><td>One global target</td><td><span class="res open">n/a</span> one problem</td></tr>
+            <tr class="failrow"><td class="name">ARTEMIS</td><td>County <b>and</b> owner-group targets on the same volume</td><td><span class="res fail">no</span> a stand counts toward both</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="caveat"><b>Consequence for scaling.</b> TPO publishes only the <span class="mono">ByCounty</span> and
+        <span class="mono">ByOwnerGroup</span> marginals. County-first or state-by-state runs, the route AGENTS.md
+        sketches, are therefore not independent problems. Decomposing them needs either county × owner cell targets,
+        which TPO does not publish, or a coordinating step that reconciles owner-group totals across counties.</div>
+      <p class="srcline">H2 · 6979128^:alt_c/schedule.c:1472,1787,2153 · config/tpo_targets.yaml · pipeline/s3_management/tpo_targets.py · AGENTS.md</p>
+    </div>
+  </section>
+
+  <section class="slide" id="search">
+    <div class="inner">
+      <p class="kicker">Search <span class="rule"></span> 11</p>
+      <h2>As a search, ARTEMIS's annealer is the most disciplined of the three designs</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Element</th><th>Ecotrust C</th><th>Ecotrust Python (BLM driver)</th><th>ARTEMIS 2026-09-14</th></tr></thead>
+          <tbody>
+            <tr><td class="name">Moves</td><td>One polygon gets a new offset</td><td>One stand gets a new (rx, offset)</td><td>Single stand 0.875, period swap 0.125 (block 0.20 declared, then dropped)</td></tr>
+            <tr><td class="name">Cooling</td><td>T from 10 to 0.05, ×0.997 per 1,000 proposals</td><td>T from 20 to 5×10⁻⁵, geometric per step over a fixed step count</td><td>T₀ calibrated to 80% acceptance (0.046–0.098), ×0.95 per level of 10 × N proposals, stop below 10⁻⁴</td></tr>
+            <tr><td class="name">Proposals</td><td class="num">1,764,000</td><td class="num">255,000 at any N</td><td class="num">14.2–16.0 M per restart</td></tr>
+            <tr><td class="name">Start</td><td>Offset 0 everywhere</td><td>First valid option, whatever is passed (E1)</td><td>Greedy oldest-first allocator, kept (A0)</td></tr>
+            <tr><td class="name">Best solution</td><td>Not kept; returns the final state</td><td>Kept, but its totals alias a later state (E3)</td><td>Kept, and recomputed every level (A0)</td></tr>
+            <tr class="goodrow"><td class="name">Quality report</td><td>None; <span class="mono">srand(1)</span></td><td>None in the drivers. The deleted <span class="mono">8df4969^:tests/test_multischeduler.py</span> ran cpu − 1 searches in parallel and printed their mean ± sd</td><td>5 seeds (20 in the 2026-09-28 sweep), greedy and random baselines, a relaxation bound, the attainable envelope, and an 80-row violation vector</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="caveat"><b>A4.</b> Each level runs 10 × all 11,831 stands = <b>118,310</b> proposals, although 6,602 of
+        those stands are riparian with nothing to choose. That makes 22.6 proposals per decision stand per level. The
+        effort tracks the size of the landscape rather than the size of the decision space. It is harmless today and
+        wasteful as the riparian share grows. Base it on <span class="mono">decision_stands</span> at promotion.</div>
+      <p class="srcline">H1 · H2 · A0 · A4 · weekly-artifact/2026-09-14/seed_spread.csv · weekly-artifact/2026-09-14/make_annealed_plan.py:754-866</p>
+    </div>
+  </section>
+
+  <section class="slide" id="take">
+    <div class="inner">
+      <p class="kicker">What follows <span class="rule"></span> 12</p>
+      <h2>Take, leave, decide</h2>
+      <div class="cards three">
+        <div class="tcard"><h4>Take <span class="tag">from Ecotrust</span></h4>
+          <p><b>The C adjacency check</b> as the starting design for <span class="mono">adjacency_greenup</span>, extended to
+            a multi-period green-up window and an ARM opening-size sum.</p>
+          <p><b>Polygon → plot × acres</b> as the decision unit, so LETO units reuse the library.</p>
+          <p><b>Independent parallel restarts reporting spread</b>, which Ecotrust tested in 2013 and 2026-09-28 now does.</p></div>
+        <div class="tcard"><h4>Leave <span class="tag warn">already avoided</span></h4>
+          <p><b>Global targets</b>, which caused the district shift. <b>Linear target forms</b> with no evenflow term beside
+            them (E8). <b>0–100 normalisation over zero-filled options</b> (E5).</p>
+          <p>The warm-start and totals bugs (E1, E3) are absent from ARTEMIS (A0).</p></div>
+        <div class="tcard"><h4>Decide <span class="tag open">architect</span></h4>
+          <p>Are 6 : 1 a priority order or an exchange rate (<a href="#weights">#weights</a>)? Should a Federal ft³ cost 35
+            Private ones (<a href="#keys">#keys</a>)? How should runs decompose under coupled marginals
+            (<a href="#ownership">#ownership</a>)? Are negative offsets admissible? Raise on unsupported forms when the
+            annealer is promoted (<a href="#forms">#forms</a>).</p></div>
+      </div>
+      <p class="srcline">docs/architecture/presentation.html#search · config/projection.yaml · AGENTS.md</p>
+    </div>
+  </section>
+
+  <section class="slide" id="close">
+    <div class="inner">
+      <p class="kicker">Closing <span class="rule"></span> 13</p>
+      <h2>The claims, and what they rest on</h2>
+      <ul class="take">
+        <li><b>Diaz et al. ran the Python scheduler, which has no adjacency and no per-owner targets.</b> The repository's
+          deleted C scheduler had both (H2).</li>
+        <li><b>The committed BLM driver uses a band, not a target, and its warm start is discarded</b> (H1, E1).</li>
+        <li><b>Ecotrust's Python scheduler has eight reproduced defects</b> (E1–E8). ARTEMIS avoids every one that applies to it (A0, A5).</li>
+        <li><b>ARTEMIS's 6 : 1 behaves as a priority order</b> (A3), and <b>a Federal ft³ is priced at 35 Private ones</b> (A1).</li>
+        <li><b>ARTEMIS reads two of its four documented forms and silently ignores the rest</b> (A2).</li>
+        <li><b>The limits.</b> The C scheduler was read, not compiled. Whether E1 touched Diaz's published numbers cannot be
+          settled from the repository. ARTEMIS's numbers come from committed 2026-09-14 outputs, with no FVS re-run. The
+          LAMPS PDF is not in the repository, so that half of the lineage is not compared here.</li>
+      </ul>
+<pre class="run"><span class="cmd">uv run python research/harvest_scheduler_comparison/probe.py --ecotrust ~/projects/harvest-scheduler</span>
+<span class="note"># 17 lines of "ok"; exits 1 when a claim stops holding</span>
+<span class="cmd">uv run pytest tests/test_harvest_scheduler_comparison.py</span>
+<span class="note"># the A probes always run; the E and H probes skip without the Ecotrust clone</span></pre>
+      <p class="srcline">research/harvest_scheduler_comparison/probe.py · tests/test_harvest_scheduler_comparison.py</p>
+    </div>
+  </section>
+</div>
+
+<nav class="hud" aria-label="slide navigation">
+  <button id="prev" aria-label="previous slide">‹</button>
+  <span class="count" id="count">1 / 1</span>
+  <button id="next" aria-label="next slide">›</button>
+  <span class="sep"></span>
+  <button id="theme" aria-label="toggle light/dark">◐</button>
+</nav>
+<div class="hint">← → / space</div>
+
+<script>
+  (function(){
+    var deck = document.getElementById('deck');
+    var slides = deck.querySelectorAll('.slide');
+    var n = slides.length, i = 0;
+    var count = document.getElementById('count');
+    var progress = document.getElementById('progress');
+    function render(){
+      deck.style.transform = 'translateX(' + (-i*100) + 'vw)';
+      count.textContent = (i+1) + ' / ' + n;
+      progress.style.width = ((i+1)/n*100) + '%';
+      // Keep the address bar citable: #slide-id is how code and other decks link here.
+      try { history.replaceState(null, '', slides[i].id ? '#' + slides[i].id : location.pathname + location.search); } catch (e) {}
+    }
+    function to(x){ i = Math.max(0, Math.min(n-1, x)); render(); }
+    function go(d){ to(i+d); }
+    function fromHash(){
+      var id = decodeURIComponent(location.hash.slice(1));
+      for (var k = 0; k < n; k++) if (id && slides[k].id === id) i = k;
+      // The browser's own jump to #id scrolls the page and the slide under the transform;
+      // undo it so the deck, not native anchor scrolling, decides what is on screen.
+      requestAnimationFrame(function(){
+        window.scrollTo(0, 0); document.body.scrollLeft = 0; document.body.scrollTop = 0;
+        deck.scrollLeft = 0; slides[i].scrollTop = 0;
+      });
+    }
+    document.getElementById('next').onclick = function(){ go(1); };
+    document.getElementById('prev').onclick = function(){ go(-1); };
+    document.addEventListener('keydown', function(e){
+      if (e.key==='ArrowRight' || e.key===' ' || e.key==='PageDown'){ e.preventDefault(); go(1); }
+      else if (e.key==='ArrowLeft' || e.key==='PageUp'){ e.preventDefault(); go(-1); }
+      else if (e.key==='Home'){ e.preventDefault(); to(0); }
+      else if (e.key==='End'){ e.preventDefault(); to(n-1); }
+    });
+    window.addEventListener('hashchange', function(){ fromHash(); render(); });
+    var x0 = null, y0 = null;
+    deck.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive:true});
+    deck.addEventListener('touchend', function(e){
+      if (x0 === null) return;
+      var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+      x0 = null;
+    }, {passive:true});
+    var root = document.documentElement, modes=['','light','dark'], m=0;
+    document.getElementById('theme').onclick = function(){
+      m=(m+1)%3; if(modes[m]) root.setAttribute('data-theme',modes[m]); else root.removeAttribute('data-theme');
+    };
+    fromHash();
+    render();
+  })();
+</script>
