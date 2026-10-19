@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from charts import (AXIS, BAR, BG, CLEARCUT, FAINT, GRID, INK, KICK, MUTED, PARTIAL, SANS, SERIF,
+from charts import (AXIS, BAR, BG, CLEARCUT, GRID, INK, KICK, MUTED, PARTIAL, SANS, SERIF,
                     TARGET, TARGET_TXT, YEARS, bar_chart, dev_color, footer, header, p)
 
 EXP = Path(__file__).resolve().parents[1]
@@ -70,7 +70,7 @@ section("cover", [
     f'<p style="font-size:24px; font-weight:600; letter-spacing:2px; color:#9cc47a">ARTEMIS · FL5 HARVEST SCHEDULING</p>'
     f'<h1 style="font-family:{SERIF}; font-size:120px; font-weight:600; line-height:1.05; color:#f6f4ee">Every owner,<br>every regime</h1>'
     f'<p style="font-size:40px; line-height:1.3; color:#c9d3c4; width:1300px">What simulated annealing does with the five-county pilot when any owner class may thin, clearcut, or run a short or long rotation.</p></div>',
-    f'<div style="position:absolute; left:128px; top:690px; width:1664px; display:flex; flex-direction:row; gap:64px">'
+    '<div style="position:absolute; left:128px; top:690px; width:1664px; display:flex; flex-direction:row; gap:64px">'
     + "".join(
         f'<div style="flex:1; display:flex; flex-direction:column; gap:8px; padding:0 0 0 32px; border-left:2px solid #4f8a4a">'
         f'<p style="font-family:{SERIF}; font-size:72px; font-weight:600; line-height:1; color:#f6f4ee">{a}</p>'
@@ -79,7 +79,7 @@ section("cover", [
                      (f'{summary["owner_mean_abs_dev_pct"]:.1f}%', "mean |miss| per owner group and period (80 targets in all)"),
                      ("10 periods", "of cuts, stepped through stand by stand, 2027 to 2072")])
     + "</div>",
-    f'<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#9aa39b">Five-county north Florida pilot: Baker, Columbia, Hamilton, Suwannee, Union · run 2026-10-12</p>',
+    '<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#9aa39b">Five-county north Florida pilot: Baker, Columbia, Hamilton, Suwannee, Union · run 2026-10-12</p>',
 ], bg=DARK, notes=(
     "This deck asks one question: what happens to the harvest schedule if we stop assigning management by owner class and let every owner do everything? "
     "Every owner class may now take every cutting prescription we have defined: thin, select, clearcut, short pine rotation, long pine rotation, natural-regeneration rotation. "
@@ -378,7 +378,7 @@ for k, fr in enumerate(frames):
                  f"By acres the busiest regimes this period are {', '.join(f'{PRESC[x].lower()} ({a / 1000:.0f}k ac)' for x, a in top3.items())}. "
                  f"Mean standing volume across the plan's pixels is {fr['mean_standing_cuft_ac']:,.0f} cubic feet per acre. "
                  "Clearcuts are read from the operations rendered into each stand's FVS keyfile, not inferred from volume; the volume removed is FVS's.")
-    section(sid, imgs + [f'<div style="position:absolute; left:1469px; top:90px; width:355px; height:900px; display:flex; flex-direction:column; gap:24px">'
+    section(sid, imgs + ['<div style="position:absolute; left:1469px; top:90px; width:355px; height:900px; display:flex; flex-direction:column; gap:24px">'
                          + "".join(side) + "</div>"], notes=notes)
 
 # ---------------------------------------------------------------- takeaways
