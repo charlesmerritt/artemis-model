@@ -14,12 +14,17 @@ The rule is deliberately minimal and deterministic:
   ``docs/treemap-raster-correction/presentation.html``. If the first ring holds
   no TreeMap plot at all, the radius doubles (7, 15, 31, ...) up to a limit;
   patches that never reach a donor are reported unresolved, never guessed.
-- **Establishment list** = the donor plot's own tree rows, taken verbatim, as
-  an age-0 planting prescription: species mix and planting density (TPA) are
-  the donor's, which is exactly the "pattern of nearby, similar units" the
-  landscape should be re-seeded with. Downstream stages may clearcut-and-
-  regenerate the donor in FVS; this module only fixes the *identity* of the
-  tree list and its density.
+- **Establishment list** depends on the patch's bookend stratum, per
+  ``config/establishment.yaml`` (:class:`EstablishmentPolicy`). The donor always gives
+  the forest type (TreeMap VAT ``FORTYPCD``) and the species mix (live TPA share by
+  ``SPCD``). Under :attr:`EstablishmentMode.SCALED_YOUNG` (S1, S3, S4: cut or regrowing)
+  density and tree size come from the donor forest type group's age-5 FIA profile
+  (:mod:`pipeline.s1_initial_state.young_stand_profiles`), so a mature neighbour never
+  puts mature biomass on cut ground. Under :attr:`EstablishmentMode.DONOR_AS_IS` (S2:
+  tree at both bookends) the donor's own rows are used verbatim. Decision record:
+  ``docs/adr/0002-scaled-nearest-neighbour-establishment.md``.
+  :func:`establishment_tree_lists` (every patch gets the donor's verbatim rows) is
+  what ``statewide_repair`` still writes; it has not adopted the modes.
 
 Provenance stays explicit: nothing here rewrites measured plots. The repaired
 raster carries the donor ``TM_ID`` on recovered pixels plus a provenance band,
@@ -33,11 +38,27 @@ Identifiers never touch a float: ``TM_ID``/``PLT_CN`` are coerced with
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import yaml
 from scipy import ndimage
 
 from pipeline.ids import as_id_series, report_key_overlap
+from pipeline.s1_initial_state.young_stand_profiles import (
+    BA_FACTOR,
+    ESTABLISHMENT_PATH,
+    PARENT,
+    PROFILES_PATH,
+    ForestTypeGroup,
+    YoungStandProfile,
+    forest_type_group,
+    load_young_stand_profiles,
+)
 
 ACRES_PER_PIXEL = 0.2224  # 30 m pixel = 900 m²
 
@@ -170,3 +191,177 @@ def establishment_tree_lists(
         "stratum": resolved["stratum"],
     }).reset_index(drop=True)
     return lists.merge(keys, on="TM_ID", how="inner")
+
+
+
+# ── scaled nearest-neighbour establishment ──────────────────────────────────────────────
+
+
+class EstablishmentMode(StrEnum):
+    """What an added-back patch takes from its donor plot."""
+
+    SCALED_YOUNG = "scaled_young"   # type and species mix from the donor; density and size at target age
+    DONOR_AS_IS = "donor_as_is"     # the donor's tree rows verbatim
+
+
+class EstablishmentDensity(StrEnum):
+    """Where a scaled list's TPA comes from."""
+
+    FOREST_TYPE_PROFILE = "forest_type_profile"   # the age-5 profile's TPA, split by species share
+    DONOR = "donor"                               # the donor's own live TPA by species
+
+
+# Without evidence of standing forest, never add mature biomass.
+UNLISTED_STRATUM_MODE = EstablishmentMode.SCALED_YOUNG
+
+
+def mode_for_stratum(stratum, stratum_modes: Mapping[int, EstablishmentMode]) -> EstablishmentMode:
+    """The configured mode of a bookend stratum; :data:`UNLISTED_STRATUM_MODE` if unlisted."""
+    return stratum_modes.get(int(stratum), UNLISTED_STRATUM_MODE)
+
+
+@dataclass(frozen=True)
+class EstablishmentPolicy:
+    target_age: int
+    density: EstablishmentDensity
+    stratum_modes: Mapping[int, EstablishmentMode]
+    profiles: Mapping[ForestTypeGroup, YoungStandProfile]
+
+    def mode_for(self, stratum: int) -> EstablishmentMode:
+        return mode_for_stratum(stratum, self.stratum_modes)
+
+    def profile_for(self, group: ForestTypeGroup) -> YoungStandProfile:
+        """The group's profile, or the nearest pool's up :data:`PARENT` when it has none."""
+        while group not in self.profiles:
+            if group not in PARENT:
+                raise KeyError(f"no young-stand profile for {group} or any pool above it")
+            group = PARENT[group]
+        return self.profiles[group]
+
+    @classmethod
+    def from_config(cls, config: dict, profiles: Mapping[ForestTypeGroup, YoungStandProfile]):
+        return cls(int(config["target_age"]), EstablishmentDensity(config["density"]),
+                   {int(s): EstablishmentMode(m) for s, m in config["stratum_modes"].items()},
+                   dict(profiles))
+
+
+def load_establishment_policy(path: Path = ESTABLISHMENT_PATH,
+                              profiles_path: Path = PROFILES_PATH) -> EstablishmentPolicy:
+    """``config/establishment.yaml`` with the committed ``config/young_stand_profiles.yaml``."""
+    return EstablishmentPolicy.from_config(yaml.safe_load(Path(path).read_text()),
+                                           load_young_stand_profiles(profiles_path))
+
+
+def _live_species_tpa(rows: pd.DataFrame) -> pd.Series:
+    """Live TPA by species for one donor, ordered by ``SPCD``."""
+    live = rows[rows["STATUSCD"] == 1]
+    return live.groupby("SPCD")["TPA_UNADJ"].sum().sort_index()
+
+
+def _scaled_rows(rows: pd.DataFrame, fortypcd, policy: EstablishmentPolicy) -> pd.DataFrame:
+    """One donor's scaled list: a row per live species, at the profile's size."""
+    group = forest_type_group(fortypcd)
+    profile = policy.profile_for(group)
+    species = _live_species_tpa(rows)
+    if policy.density is EstablishmentDensity.FOREST_TYPE_PROFILE:
+        tpa = profile.tpa * species / species.sum()
+    else:
+        tpa = species
+    return pd.DataFrame({
+        "TM_ID": rows["TM_ID"].iloc[0],
+        "PLT_CN": rows["PLT_CN"].iloc[0],
+        "STATUSCD": 1,
+        "TPA_UNADJ": tpa.to_numpy(float),
+        "SPCD": species.index.to_numpy(),
+        "DIA": profile.dbh_in,
+        "HT": profile.ht_ft,
+        "CR": pd.NA,                       # left to FVS: no measured crown for a scaled tree
+        "establishment_mode": str(EstablishmentMode.SCALED_YOUNG),
+        "establishment_age": policy.target_age,
+        "forest_type_group": str(group),
+    })
+
+
+def scaled_establishment_lists(donor_modes: pd.DataFrame, tree_table: pd.DataFrame,
+                               fortypcd: pd.Series, policy: EstablishmentPolicy) -> pd.DataFrame:
+    """Establishment tree lists keyed by ``(TM_ID, establishment_mode)``.
+
+    ``donor_modes`` lists each ``(TM_ID, establishment_mode)`` pair in use. ``tree_table`` is
+    the TreeMap tree table (``TM_ID``, ``PLT_CN``, ``STATUSCD``, ``TPA_UNADJ``, ``SPCD``,
+    ``DIA``, ``HT``, ...); ``fortypcd`` maps ``TM_ID`` to the TreeMap VAT ``FORTYPCD``.
+
+    ``SCALED_YOUNG`` rows: one per live donor species, ``TPA_UNADJ`` = profile TPA x the
+    species' share of donor live TPA (or the donor's own TPA under
+    ``EstablishmentDensity.DONOR``), ``DIA``/``HT`` from the profile, ``CR`` empty, and
+    ``establishment_age`` = the target age. ``DONOR_AS_IS`` rows: the donor's rows verbatim,
+    ``establishment_age`` empty. Both carry the donor's ``PLT_CN`` as an exact string and
+    its ``forest_type_group``. The list depends only on the donor and the mode, so patches
+    sharing both share rows.
+    """
+    table = tree_table.copy()
+    table["TM_ID"] = as_id_series(table["TM_ID"], column="TM_ID")
+    table["PLT_CN"] = as_id_series(table["PLT_CN"], column="PLT_CN")
+    fortypcd = fortypcd.set_axis(as_id_series(pd.Series(fortypcd.index), column="TM_ID"))
+    keys = donor_modes.assign(TM_ID=as_id_series(donor_modes["TM_ID"], column="TM_ID"))
+    report_key_overlap(keys["TM_ID"], table["TM_ID"], left_name="patch donor", right_name="tree table")
+
+    by_donor = dict(tuple(table.groupby("TM_ID", sort=False)))
+    parts = []
+    for tm_id, mode in keys[["TM_ID", "establishment_mode"]].drop_duplicates().itertuples(index=False):
+        rows = by_donor.get(tm_id)
+        if rows is None:
+            continue
+        code = fortypcd.get(tm_id)
+        if EstablishmentMode(mode) is EstablishmentMode.SCALED_YOUNG:
+            parts.append(_scaled_rows(rows, code, policy))
+        else:
+            parts.append(rows.assign(establishment_mode=str(EstablishmentMode.DONOR_AS_IS),
+                                     establishment_age=pd.NA,
+                                     forest_type_group=str(forest_type_group(code))))
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+
+
+def live_stand_metrics(rows: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+    """Live TPA and live basal area (ft²/ac) per stand, indexed by ``keys``."""
+    live = rows[rows["STATUSCD"] == 1]
+    ba = live["TPA_UNADJ"] * BA_FACTOR * live["DIA"].astype(float) ** 2
+    return pd.DataFrame({"live_tpa": live["TPA_UNADJ"], "live_ba_ft2_per_ac": ba,
+                         **{k: live[k] for k in keys}}).groupby(keys).sum()
+
+
+def _totals(acres: pd.Series, metrics: pd.DataFrame) -> dict:
+    """Acre-weighted TPA and BA per acre, and landscape totals, over matched stands."""
+    a = acres.to_numpy(float)
+    total_acres = a.sum()
+    trees = (a * metrics["live_tpa"].to_numpy(float)).sum()
+    ba = (a * metrics["live_ba_ft2_per_ac"].to_numpy(float)).sum()
+    return {"live_tpa": round(trees / total_acres, 1) if total_acres else None,
+            "live_ba_ft2_per_ac": round(ba / total_acres, 1) if total_acres else None,
+            "live_trees": round(trees), "live_ba_ft2": round(ba)}
+
+
+def establishment_effect(patch_acres: pd.DataFrame, donor_rows: pd.DataFrame,
+                         established: pd.DataFrame) -> dict:
+    """Live TPA and basal area the added-back acres carry: mature donors vs. what is established.
+
+    ``patch_acres`` has ``TM_ID``, ``establishment_mode`` and ``acres`` (one row per patch,
+    or per patch and county). ``donor_rows`` are the donors' TreeMap tree rows; the
+    ``mature_donor`` figures are what the verbatim lists would have put on every acre.
+    ``established`` is :func:`scaled_establishment_lists` output.
+    """
+    acres = patch_acres.assign(TM_ID=as_id_series(patch_acres["TM_ID"], column="TM_ID"),
+                               establishment_mode=patch_acres["establishment_mode"].map(str))
+    acres = acres.groupby(["TM_ID", "establishment_mode"], as_index=False)["acres"].sum()
+    donors = donor_rows.assign(TM_ID=as_id_series(donor_rows["TM_ID"], column="TM_ID"))
+    mature = live_stand_metrics(donors, ["TM_ID"])
+    after = live_stand_metrics(established, ["TM_ID", "establishment_mode"])
+
+    def summarize(frame: pd.DataFrame) -> dict:
+        before = mature.reindex(frame["TM_ID"]).fillna(0.0)
+        est = after.reindex(pd.MultiIndex.from_frame(frame[["TM_ID", "establishment_mode"]])).fillna(0.0)
+        return {"acres": round(float(frame["acres"].sum()), 1),
+                "mature_donor": _totals(frame["acres"], before),
+                "established": _totals(frame["acres"], est)}
+
+    return {"by_mode": {m: summarize(f) for m, f in acres.groupby("establishment_mode")},
+            "total": summarize(acres)}

@@ -1,0 +1,116 @@
+{
+  "county_acres": 1824689.2,
+  "land_acres": 1805020.7,
+  "published_forest_acres": 1094685.8,
+  "hole_acres": 710335.1,
+  "rule_accepted_before_mmu_acres": 157299.3,
+  "added_back_acres": 121883.0,
+  "dropped_by_mmu_or_no_donor_acres": 35416.3,
+  "improved_forest_acres": 1216568.6,
+  "patches": 4116,
+  "counties": [
+    "12003 Baker",
+    "12023 Columbia",
+    "12047 Hamilton",
+    "12121 Suwannee",
+    "12125 Union"
+  ],
+  "added_back_credit_acres": {
+    "bookends": 71401.7,
+    "obata_disturbance": 36038.6,
+    "hansen_loss": 14442.6
+  },
+  "added_back_acres_by_mode": {
+    "scaled_young": 120429.9,
+    "donor_as_is": 1453.2
+  },
+  "methods": {
+    "bookends": "run",
+    "obata_disturbance": "run",
+    "hansen_loss": "run"
+  },
+  "rule": "union",
+  "evt_gate": {
+    "policy": "evt2022_agriculture_developed_pasture_v3",
+    "raw_proposal_acres": 261143.6,
+    "rejected_acres": 103844.3
+  },
+  "stitch_overlap_pixels": {
+    "add_back_method_bits.tif": 0,
+    "add_back_method_bits_raw.tif": 0,
+    "bookend_strata.tif": 0,
+    "evt2022_add_back_eligible.tif": 0,
+    "evt2022_gate_rejected.tif": 0,
+    "nwos2022_improved.tif": 0,
+    "nwos2022_provenance.tif": 0,
+    "nwos2022_published.tif": 0,
+    "treemap2022_improved.tif": 0,
+    "treemap2022_provenance.tif": 0,
+    "treemap2022_published.tif": 0
+  },
+  "establishment": {
+    "target_age": 5,
+    "density": "forest_type_profile",
+    "stratum_modes": {
+      "S1": "scaled_young",
+      "S2": "donor_as_is",
+      "S3": "scaled_young",
+      "S4": "scaled_young",
+      "S5": "scaled_young"
+    },
+    "donors": 221,
+    "tree_list_rows": {
+      "donor_as_is": 1875,
+      "scaled_young": 773
+    },
+    "live_effect": {
+      "by_mode": {
+        "donor_as_is": {
+          "acres": 1453.2,
+          "mature_donor": {
+            "live_tpa": 499.3,
+            "live_ba_ft2_per_ac": 75.0,
+            "live_trees": 725590,
+            "live_ba_ft2": 108995
+          },
+          "established": {
+            "live_tpa": 499.3,
+            "live_ba_ft2_per_ac": 75.0,
+            "live_trees": 725590,
+            "live_ba_ft2": 108995
+          }
+        },
+        "scaled_young": {
+          "acres": 120429.8,
+          "mature_donor": {
+            "live_tpa": 457.9,
+            "live_ba_ft2_per_ac": 79.9,
+            "live_trees": 55140694,
+            "live_ba_ft2": 9616669
+          },
+          "established": {
+            "live_tpa": 378.2,
+            "live_ba_ft2_per_ac": 17.1,
+            "live_trees": 45547721,
+            "live_ba_ft2": 2062188
+          }
+        }
+      },
+      "total": {
+        "acres": 121883.0,
+        "mature_donor": {
+          "live_tpa": 458.4,
+          "live_ba_ft2_per_ac": 79.8,
+          "live_trees": 55866284,
+          "live_ba_ft2": 9725664
+        },
+        "established": {
+          "live_tpa": 379.7,
+          "live_ba_ft2_per_ac": 17.8,
+          "live_trees": 46273310,
+          "live_ba_ft2": 2171183
+        }
+      }
+    }
+  }
+}

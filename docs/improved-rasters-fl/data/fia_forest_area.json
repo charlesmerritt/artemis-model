@@ -1,0 +1,41 @@
+{
+  "source": "USFS FIADB-API EVALIDator fullreport, attribute 2 (forest land area), evaluation group 122022 (EVALID 122201, EXPCURR)",
+  "retrieved": "2026-09-28",
+  "florida": {
+    "acres": 16816373,
+    "se_pct": 0.887,
+    "plots": 3234
+  },
+  "aoi_5county": {
+    "acres": 1255424,
+    "se_pct": 6.046,
+    "plots": 262
+  },
+  "counties": {
+    "12003": {
+      "acres": 282210,
+      "se_pct": 12.492,
+      "plots": 73
+    },
+    "12023": {
+      "acres": 366897,
+      "se_pct": 11.556,
+      "plots": 80
+    },
+    "12047": {
+      "acres": 219170,
+      "se_pct": 16.267,
+      "plots": 38
+    },
+    "12121": {
+      "acres": 240362,
+      "se_pct": 15.181,
+      "plots": 46
+    },
+    "12125": {
+      "acres": 146785,
+      "se_pct": 20.121,
+      "plots": 25
+    }
+  }
+}

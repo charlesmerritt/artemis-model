@@ -1,0 +1,42 @@
+# Age-5 stand profiles by forest type group, measured on FIA plots. GENERATED; do not edit.
+# Regenerate: uv run python -m pipeline.s1_initial_state.young_stand_profiles
+# What they are for and why: docs/adr/0002-scaled-nearest-neighbour-establishment.md.
+# Method and definitions: the module docstring of pipeline/s1_initial_state/young_stand_profiles.py.
+#   tpa           median plot live TPA (TREE, STATUSCD 1, DIA >= 1 in); the establishment density
+#   dbh_in        TPA-weighted quadratic mean diameter of those trees
+#   ht_ft         TPA-weighted mean height of those trees
+#   seedling_tpa  median plot SEEDLING TPA (DIA < 1 in): recorded, NOT added to the density
+#   profile_from  the group whose plots gave the numbers (a pool when n_plots < min_plots)
+source:
+  database: /mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db
+  states: [1, 12, 13]
+  stdage: [3, 7]
+  target_age: 5
+  min_plots: 10
+  plots: 3188
+  inventory_years: [1997, 2024]
+  filters: COND_STATUS_CD = 1; CONDPROP_UNADJ >= 0.999 (single-condition plots); PLOT.DESIGNCD = 1; live trees STATUSCD = 1; joined on (PLT_CN, CONDID)
+  conditions_sql: |-
+    SELECT PLT_CN, CONDID, STATECD, INVYR, FORTYPCD, STDAGE, STDORGCD, CONDPROP_UNADJ
+    FROM COND
+    WHERE STATECD IN (1, 12, 13) AND COND_STATUS_CD = 1
+      AND STDAGE BETWEEN ? AND ? AND CONDPROP_UNADJ >= 0.999
+  plots_sql: SELECT CN AS PLT_CN, DESIGNCD FROM PLOT WHERE STATECD IN (1, 12, 13)
+  trees_sql: |-
+    SELECT PLT_CN, CONDID, SPCD, DIA, HT, TPA_UNADJ
+    FROM TREE
+    WHERE STATECD IN (1, 12, 13) AND STATUSCD = 1 AND TPA_UNADJ > 0
+  seedlings_sql: |-
+    SELECT PLT_CN, CONDID, SPCD, TPA_UNADJ
+    FROM SEEDLING
+    WHERE STATECD IN (1, 12, 13) AND TPA_UNADJ > 0
+profiles:
+  longleaf_slash: {n_plots: 532, tpa: 380.8, dbh_in: 2.94, ht_ft: 15.7, seedling_tpa: 299.9, planted_share: 0.92, profile_from: longleaf_slash}
+  loblolly_shortleaf: {n_plots: 1203, tpa: 471.1, dbh_in: 2.75, ht_ft: 16.7, seedling_tpa: 749.7, planted_share: 0.82, profile_from: loblolly_shortleaf}
+  oak_pine: {n_plots: 452, tpa: 331.6, dbh_in: 2.74, ht_ft: 17.8, seedling_tpa: 1124.5, planted_share: 0.58, profile_from: oak_pine}
+  oak_gum_cypress: {n_plots: 174, tpa: 236.9, dbh_in: 2.96, ht_ft: 20.0, seedling_tpa: 974.5, planted_share: 0.06, profile_from: oak_gum_cypress}
+  other_hardwood: {n_plots: 824, tpa: 279.1, dbh_in: 3.0, ht_ft: 20.1, seedling_tpa: 1199.4, planted_share: 0.13, profile_from: other_hardwood}
+  other: {n_plots: 3, tpa: 374.8, dbh_in: 2.84, ht_ft: 17.7, seedling_tpa: 824.6, planted_share: 0.58, profile_from: all}
+  softwood: {n_plots: 1735, tpa: 449.8, dbh_in: 2.8, ht_ft: 16.5, seedling_tpa: 599.7, planted_share: 0.85, profile_from: softwood}
+  hardwood: {n_plots: 1450, tpa: 299.9, dbh_in: 2.91, ht_ft: 19.3, seedling_tpa: 1199.4, planted_share: 0.26, profile_from: hardwood}
+  all: {n_plots: 3188, tpa: 374.8, dbh_in: 2.84, ht_ft: 17.7, seedling_tpa: 824.6, planted_share: 0.58, profile_from: all}
