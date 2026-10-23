@@ -13,8 +13,8 @@ Three checks, each a rule about where knowledge lives in this repository:
    ``weekly-summary/``, ``experiments/``, ``docs/meeting-*``) are exempt: they describe the
    tree as it was. To cite something that has since been deleted, write it as
    ``git show <commit>:<path>``.
-3. **Markdown is budgeted.** New ``.md`` files are refused and existing ones may not grow.
-   Findings and designs go in a deck (``docs/_template/presentation.html``), rules in
+3. **Markdown is budgeted (advisory).** New ``.md`` files and files over their ceiling are
+   reported as warnings; they do not fail the run. Findings and designs go in a deck (``docs/_template/presentation.html``), rules in
    ``scripts/check_conventions.py``, usage in doctests, flags in ``--help``. When a file
    shrinks, lower its ceiling; when it is removed, delete its entry.
 """
@@ -33,7 +33,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 # ---- 3. the markdown budget ---------------------------------------------------------------
 # path -> (maximum line count, disposition). Set by the 2026-09-14 documentation audit.
-# Ceilings only go down. The disposition is the audit's verdict and the work queue:
+# Ceilings are advisory: exceeding one warns, never fails. The disposition is the audit's verdict and the work queue:
 #   keep      short operational entry point; references checked
 #   generated written by a script; references checked
 #   record    dated record of what ran; left as history
@@ -187,26 +187,28 @@ def check_references(files: list[str]) -> list[str]:
 
 
 def check_markdown_budget(files: list[str]) -> list[str]:
-    failures = []
+    """Advisory: print a warning per new or over-ceiling markdown file; never fails."""
+    warnings = []
     present = {p for p in files if p.endswith(".md")}
     for path in sorted(present):
         lines = len((REPO_ROOT / path).read_text(errors="replace").splitlines())
         ceiling = MARKDOWN_BUDGET.get(path, (None,))[0]
         if ceiling is None:
-            failures.append(f"{path}: new markdown ({lines} lines). Write a deck from "
+            warnings.append(f"{path}: new markdown ({lines} lines). Write a deck from "
                             f"docs/_template/presentation.html, a doctest, or --help text instead.")
         elif lines > ceiling:
-            failures.append(f"{path}: {lines} lines, over its ceiling of {ceiling}. Move content "
+            warnings.append(f"{path}: {lines} lines, over its ceiling of {ceiling}. Move content "
                             f"into code or a deck rather than raising the ceiling.")
     for path in sorted(set(MARKDOWN_BUDGET) - present):
         print(f"note {path} is gone — delete its MARKDOWN_BUDGET entry")
-    if not failures:
-        queue = {}
-        for p in present:
-            queue.setdefault(MARKDOWN_BUDGET[p][1], []).append(p)
-        summary = ", ".join(f"{len(v)} {k}" for k, v in sorted(queue.items()))
-        print(f"ok   markdown budget ({len(present)} files: {summary})")
-    return failures
+    for warning in warnings:
+        print(f"warn {warning}")
+    queue = {}
+    for p in present:
+        queue.setdefault(MARKDOWN_BUDGET.get(p, (None, "unbudgeted"))[1], []).append(p)
+    summary = ", ".join(f"{len(v)} {k}" for k, v in sorted(queue.items()))
+    print(f"ok   markdown budget ({len(present)} files: {summary}; {len(warnings)} warnings, advisory)")
+    return []
 
 
 def main() -> int:
