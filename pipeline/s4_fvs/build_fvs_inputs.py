@@ -1,51 +1,33 @@
 """
-Build FVS StandInit / TreeInit tables for management units (LETO CSV-pipeline port).
+Build FVS input databases for management units: LETO v1 Stages 4 and 5.
 
-Given management units, their area-weighted PLT_CN table (from
-``pipeline.s3_management.assign_plt_cn``), and Chaz's FVS-ready per-plot tables
-(``FL_FVS_TREEINIT_PLOT.csv`` / ``FL_FVS_STANDINIT_PLOT.csv``, keyed by ``STAND_CN`` =
-PLT_CN), this assembles the per-unit FVS input tables. Follows the LETO ArcGIS prototype
-(`scripts/LETO_CSV_PIPELINE.txt`) but in the geopandas/pandas stack — and because the FIA
-tree lists are already FVS-ready per plot, it joins those directly rather than re-reading
-raw FIA ``TREE.csv`` and re-running a species crosswalk.
+The production path (:func:`build_leto_fvs_inputs` and the CLI) follows
+aauslander480/Leto `LETO_v1_project` exactly; see `research/leto_parity/README.md`:
 
-Steps:
-    1. Filter the weighted PLT_CN table to plots contributing at least ``min_weight`` of a
-       unit, then renormalise (LETO ``MIN_PLT_WEIGHT = 0.05``).
-    2. Join to the per-plot TreeInit on PLT_CN; the unit's tree list is the union of its
-       donor plots' trees, with each tree's TPA (``TREE_COUNT``) scaled by the plot weight.
-    3. Build the per-unit StandInit for units that received live trees.
-    4. Give every remaining unit a tree list by walking the **initialization ladder** in
-       `config/fallback_treelists.yaml`.
+    1. Filter each unit's donor plots at 5%, keeping its largest donor (`leto_donors`).
+    2. Build the tree list from raw FIA TREE rows: live trees, ``TREE_COUNT = TPA_UNADJ x
+       WEIGHT``, species through the FVS crosswalk (`leto_inventory.build_tree_list`).
+    3. Give every tree-less unit the full list of the nearest runnable unit, at any distance
+       and of any owner or type (`leto_inventory.impute_missing_tree_lists`).
+    4. Write one database per DB_GROUP (owner type, or Riparian) under LETO's one-acre plot
+       design (`leto_database.build_databases`).
 
-Step 4 is LETO's ``GenerateNearTable`` nearest-runnable step, bounded. LETO takes the
-nearest runnable unit at any distance and with no forest-type test, which lets a bottomland
-hardwood unit inherit a pine plantation from 40 km away with nothing in the output
-recording it. The ladder keeps that behaviour where it is defensible and replaces it where
-it is not:
+Retired from production, kept for the dated experiments that import them:
 
-    1. nearest runnable unit of the same forest-type group, within 5 km
-    2. nearest runnable unit of any type, within 2 km
-    3. a pinned fixed tree list chosen by forest type
-    4. the default fixed tree list
-
-Every tree row carries the rung that produced it (``TREE_SOURCE``, ``FALLBACK_SLOT``,
-``NEAR_DIST``), and :func:`summarize_tree_sources` produces the three reporting cuts the
-config requires. A landscape where 8% of the acres came from a fixed list is a different
-result from one where 0.3% did.
-
-:func:`ladder_decisions` is the measurement tool: it reports which rung every unit lands on
-using geometry and config alone, with no resolved lock file needed — which is how to answer
-the open "hole prevalence is unmeasured" question before committing to donor plots.
-
-The reshaping functions are pure and unit-tested; ``build_fvs_inputs`` wires them together.
+- ``build_tree_init`` / ``build_stand_init``, which read the per-plot ``FVS_TREEINIT_PLOT``
+  tables under the subplot design.
+- The bounded initialization ladder (``ladder_decisions``, ``impute_nearest_runnable``,
+  `config/fallback_treelists.yaml`). It replaced LETO's unbounded nearest stand with a
+  same-type 5 km / any-type 2 km / fixed-list ladder. ``--ladder-report`` still reports
+  which rung each LETO-imputed unit would have taken, as a comparison.
 
 Usage:
     uv run python -m pipeline.s4_fvs.build_fvs_inputs \\
-        --units .../management_units_state0.gpkg \\
-        --weights .../MU_PLT_CN_Weights.csv \\
-        --tree-init .../FL_FVS_TREEINIT_PLOT.csv \\
-        --out-dir data/interim/fvs_inputs/12125
+        --units .../management_units.gpkg \\
+        --weights .../mu_donor_weights.csv \\
+        --fiadb .../FIA_5county_consolidated.db \\
+        --species-crosswalk .../FVS_SpeciesCrosswalk.xls \\
+        --out-dir data/interim/fvs_inputs/fl5
 """
 
 import argparse
@@ -64,6 +46,8 @@ from pipeline.s4_fvs.fallback_treelists import (
     plt_cn_for_slot,
     resolve_initialization,
 )
+from pipeline import leto_database, leto_inventory
+from pipeline.leto_donors import filter_weights
 from pipeline.spatial_ref import assert_project_crs, to_project_crs
 
 logger = logging.getLogger(__name__)
@@ -78,16 +62,16 @@ _FOREST_TYPE_FIELDS = ("FORTYPCD", "forest_type_code", "FOREST_TYPE", "fortypcd"
 
 
 def filter_and_renormalize_weights(weights: pd.DataFrame, min_weight: float = MIN_PLT_WEIGHT) -> pd.DataFrame:
-    """Drop PLT_CNs below ``min_weight`` within a unit, then renormalise weights to sum to 1."""
+    """Drop PLT_CNs below ``min_weight`` within a unit, then renormalise weights to sum to 1.
+
+    A unit whose donors all fall below ``min_weight`` keeps its largest one (LETO v1
+    ``pipeline._filter_weights``, via ``pipeline.leto_donors.filter_weights``).
+    """
     w = weights.copy()
     # Both are join keys; see ``pipeline.ids`` for why ``.astype(str)`` is wrong here.
     w["MU_ID"] = as_id_series(w["MU_ID"], column="MU_ID")
     w["PLT_CN"] = as_id_series(w["PLT_CN"], column="PLT_CN")
-    w["WEIGHT"] = pd.to_numeric(w["WEIGHT"], errors="coerce")
-    w = w[w["WEIGHT"] >= min_weight].copy()
-    totals = w.groupby("MU_ID")["WEIGHT"].transform("sum")
-    w["WEIGHT"] = w["WEIGHT"] / totals
-    return w.reset_index(drop=True)
+    return filter_weights(w, min_weight, key="MU_ID").drop(columns="WEIGHT_ORIGINAL")
 
 
 def build_tree_init(
@@ -503,65 +487,68 @@ def build_fvs_inputs(
     return stand_final, tree_final
 
 
+def with_database_groups(units, owner_field: str = "OWN_TYPE",
+                         riparian_field: str = "RIPARIAN"):
+    """Add LETO's DB_GROUP (owner type, or Riparian) unless the units already carry one."""
+    if "DB_GROUP" in units.columns:
+        return units
+    units = units.copy()
+    units["DB_GROUP"] = leto_database.database_groups(units[owner_field], units[riparian_field])
+    return units
+
+
+def build_leto_fvs_inputs(units_gdf, weights: pd.DataFrame, fia_trees: pd.DataFrame,
+                          species_lookup, out_dir: Path, *, owner_field: str = "OWN_TYPE",
+                          riparian_field: str = "RIPARIAN"):
+    """LETO Stage 4 then Stage 5; writes the inventory CSVs and databases into ``out_dir``."""
+    units = with_database_groups(to_project_crs(units_gdf), owner_field, riparian_field)
+    inventory = leto_inventory.build_inventory(units, weights, fia_trees, species_lookup)
+    leto_inventory.write_inventory(inventory, out_dir)
+    summary = leto_database.build_databases(inventory.final_stands, inventory.trees, out_dir)
+    summary.to_csv(Path(out_dir) / "FVS_Database_Group_Summary.csv", index=False)
+    return inventory, summary
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-    parser = argparse.ArgumentParser(description="Build FVS StandInit/TreeInit for management units")
-    parser.add_argument("--units", type=Path, required=True)
-    parser.add_argument("--weights", type=Path, required=True, help="MU_PLT_CN_Weights.csv")
-    parser.add_argument("--tree-init", type=Path, required=True, help="FL_FVS_TREEINIT_PLOT.csv")
+    parser = argparse.ArgumentParser(description="Build LETO FVS input databases for management units")
+    parser.add_argument("--units", type=Path, required=True,
+                        help="Units with MU_ID, Acres, STDAGE_MEAN and DB_GROUP or owner/riparian fields")
+    parser.add_argument("--weights", type=Path, required=True,
+                        help="Unfiltered MU_ID x PLT_CN donor weights")
+    parser.add_argument("--fiadb", type=Path, required=True, help="SQLite FIADB with a TREE table")
+    parser.add_argument("--species-crosswalk", type=Path, required=True,
+                        help="FVS_SpeciesCrosswalk.xls")
     parser.add_argument("--out-dir", type=Path, required=True)
-    parser.add_argument("--min-weight", type=float, default=MIN_PLT_WEIGHT)
-    parser.add_argument("--no-impute", action="store_true")
-    parser.add_argument("--id-field", type=str, default="MU_ID")
+    parser.add_argument("--owner-field", default="OWN_TYPE")
+    parser.add_argument("--riparian-field", default="RIPARIAN")
     parser.add_argument("--ladder-report", action="store_true",
-                        help="Report which initialization rung each gap unit lands on, then "
-                             "exit. Needs no resolved fallback slots — use this to measure "
-                             "how much area depends on fixed tree lists.")
-    parser.add_argument("--allow-unresolved-fallback", action="store_true",
-                        help="Leave units without trees when their fixed list is unavailable, "
-                             "instead of failing. Those units are absent from the run.")
+                        help="Also report which rung of the retired initialization ladder each "
+                             "LETO-imputed unit would have taken.")
     args = parser.parse_args()
 
     import geopandas as gpd
 
-    # Reproject rather than assert: a units file in another CRS is a common, recoverable
-    # input, and the ladder's distance bounds are only meaningful in metres.
+    from pipeline.s1_initial_state.data_sources import (
+        SPECIES_CROSSWALK_SHEET,
+        load_fia_trees_sqlite,
+    )
+    from pipeline.s1_initial_state.leto_initial_state import load_species_lookup
+
     units = to_project_crs(gpd.read_file(args.units))
-    # read_id_csv pins every identifier column to text and validates it at the read, so a
-    # control number that a producing step wrote from a double fails here rather than
-    # quietly dropping stands out of the join.
     weights = read_id_csv(args.weights)
-    tree_init = read_id_csv(args.tree_init, low_memory=False)
+    fia_trees = load_fia_trees_sqlite(args.fiadb, weights["PLT_CN"].dropna().unique())
+    species_lookup = load_species_lookup(args.species_crosswalk, SPECIES_CROSSWALK_SHEET)
+    inventory, summary = build_leto_fvs_inputs(
+        units, weights, fia_trees, species_lookup, args.out_dir,
+        owner_field=args.owner_field, riparian_field=args.riparian_field)
+    print(summary.to_string(index=False))
 
     if args.ladder_report:
-        _, runnable = build_tree_init(weights, tree_init, min_weight=args.min_weight)
-        decisions = ladder_decisions(units, runnable, id_field=args.id_field)
-        args.out_dir.mkdir(parents=True, exist_ok=True)
-        out = args.out_dir / "initialization_ladder.csv"
-        decisions.to_csv(out, index=False)
-        total = units[args.id_field].nunique()
-        print(f"{len(decisions)} of {total} units need initialization from elsewhere\n")
+        runnable = set(inventory.tree_list.trees["MU_ID"])
+        decisions = ladder_decisions(units, runnable)
+        decisions.to_csv(args.out_dir / "initialization_ladder.csv", index=False)
         print(decisions.groupby(["rung", "tree_source"]).size().to_string())
-        logger.info("Wrote %s", out)
-        return
-
-    stand_final, tree_final = build_fvs_inputs(
-        units, weights, tree_init, id_field=args.id_field,
-        min_weight=args.min_weight, impute=not args.no_impute,
-        on_missing_fallback="skip" if args.allow_unresolved_fallback else "raise",
-    )
-
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    stand_final.to_csv(args.out_dir / "FVS_StandInit.csv", index=False)
-    tree_final.to_csv(args.out_dir / "FVS_TreeInit.csv", index=False)
-
-    # Provenance is not optional: an FVS result without these cuts is not reportable.
-    for name, table in summarize_tree_sources(tree_final, units, id_field=args.id_field).items():
-        table.to_csv(args.out_dir / f"provenance_{name}.csv", index=False)
-        print(f"\n-- {name} --\n{table.to_string(index=False)}")
-
-    logger.info("Wrote FVS_StandInit.csv (%d) and FVS_TreeInit.csv (%d) to %s",
-                len(stand_final), len(tree_final), args.out_dir)
 
 
 if __name__ == "__main__":

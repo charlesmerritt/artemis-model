@@ -1,0 +1,28 @@
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+___ test_configured_mutation_workspace_contains_fixtures_and_collects_suite ____
+
+mutation_workspace = PosixPath('/tmp/pytest-of-chazm/pytest-27/test_configured_mutation_works0')
+
+    def test_configured_mutation_workspace_contains_fixtures_and_collects_suite(mutation_workspace):
+        # These are inputs the tests read directly, independent of mutmut's configuration.
+        for relative in [
+            "weekly-artifact/2026-09-07/make_offset_library.py",
+            "weekly-artifact/2026-09-14/make_timing_library.py",
+            "weekly-artifact/2026-09-28/make_converged_plan.py",
+            "research/restart_fidelity/outputs/arm_d_vs_a.txt",
+            "research/fia_treemap_fortype/outputs/FL_state_level_scaling_comparison.csv",
+            "notebooks/LETO_Initial_State_Walkthrough.ipynb",
+            "docs/research/leto-vs-boundary-overlay.md",
+            "docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md",
+        ]:
+>           assert (mutation_workspace / relative).is_file(), relative
+E           AssertionError: weekly-artifact/2026-09-07/make_offset_library.py
+E           assert False
+E            +  where False = is_file()
+E            +    where is_file = (PosixPath('/tmp/pytest-of-chazm/pytest-27/test_configured_mutation_works0') / 'weekly-artifact/2026-09-07/make_offset_library.py').is_file
+
+tests/test_quality_workflow.py:51: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_quality_workflow.py::test_configured_mutation_workspace_contains_fixtures_and_collects_suite
+1 failed, 1 passed in 0.85s

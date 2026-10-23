@@ -26,6 +26,42 @@ Streamside area a management unit falls in, which may only grow. Structural, nev
 weighted preference.
 _Avoid_: SMZ, buffer (both name the same thing in source data)
 
+### Raster repair
+
+**Hole**:
+A TreeMap 2022 land pixel with no plot, because LANDFIRE did not call it forest.
+_Avoid_: Gap, missing pixel
+
+**Add-back**:
+Holes accepted as forest by agreement among the hole methods (bookends, Obata, Hansen).
+_Avoid_: Recovered forest
+
+**Neighbour plot**:
+The most common TreeMap plot around an add-back patch; it gives the patch its forest type.
+_Avoid_: Donor (ambiguous with the young plot)
+
+**Young plot**:
+A real FIA plot of the neighbour plot's forest type and the pixel's stand age; its trees are the pixel's.
+_Avoid_: Donor, profile stand
+
+**Young-plot library**:
+The young plots a pixel can match: TreeMap's own AL/FL/GA plots, by forest type and FIA-measured `STDAGE`.
+_Avoid_: Library (unqualified; the trajectory library is FVS output)
+
+**Stale stand**:
+A published TreeMap pixel whose plot predates a harvest Landsat dates: trees on cut ground.
+
+**Cut year**:
+The year a Landsat detector dates a pixel's harvest.
+_Avoid_: Disturbance year (detectors also date burns, thins and site prep)
+
+**Stand age**:
+Years since establishment, as of 2022. Establishment is the year after the cut year.
+_Avoid_: Age (unqualified), years since cut
+
+**Age source**:
+What set a pixel's stand age: a detector's cut year, or its bookend stratum's median.
+
 ### Management
 
 **Prescription**:
@@ -48,7 +84,7 @@ _Avoid_: Clearcut (same thing; use it in prose, not as a config name)
 
 **Menu**:
 The prescriptions an owner class may choose among. `no_management` is always on it.
-_Avoid_: Eligible set, library (the library is the FVS output, not the choices)
+_Avoid_: Eligible set, library (the trajectory library is the FVS output, not the choices)
 
 **Offset**:
 Whole years by which a prescription's first entry is delayed, carrying every later entry with

@@ -99,8 +99,8 @@ def test_arms_nest_so_best_of_5_is_the_first_five_seeds(drv):
     arms = drv.arm_table(_runs({0.95: objs}), [0.95], [42 + i for i in range(len(objs))])
     five = arms[arms["restarts"] == 5].iloc[0]
     seven = arms[arms["restarts"] == len(objs)].iloc[0]
-    assert five["objective_best"] == min(objs[:5]) == 63.0
-    assert seven["objective_best"] == min(objs) == 61.0
+    assert five["objective_best"] == 63.0
+    assert seven["objective_best"] == 61.0
     # More restarts can only help: the best of a superset is no worse.
     assert seven["objective_best"] <= five["objective_best"]
 
@@ -111,17 +111,17 @@ def test_the_baseline_cell_is_the_published_setting_and_is_unique(drv):
     arms = drv.arm_table(_runs({0.95: objs, 0.98: objs[::-1]}), [0.95, 0.98], seeds)
     flagged = arms[arms["is_20260914_setting"]]
     assert len(flagged) == 1
-    assert float(flagged.iloc[0]["cooling_factor"]) == drv.CONFIG_COOLING
-    assert int(flagged.iloc[0]["restarts"]) == drv.PREV_RESTARTS
+    assert float(flagged.iloc[0]["cooling_factor"]) == 0.95
+    assert int(flagged.iloc[0]["restarts"]) == 5
 
 
 def test_seed_spread_is_reported_per_arm(drv):
     objs = [70.0, 63.0, 68.0, 66.0, 69.0]
     arms = drv.arm_table(_runs({0.95: objs}), [0.95], [42 + i for i in range(len(objs))])
     row = arms.iloc[0]
-    assert row["seed_spread"] == pytest.approx(max(objs) - min(objs))
-    assert row["seed_spread_pct_of_best"] == pytest.approx(
-        100.0 * (max(objs) - min(objs)) / min(objs))
+    # The worked arm spans 63 to 70, a spread of 7 or 11.111111% of its best objective.
+    assert row["seed_spread"] == pytest.approx(7.0)
+    assert row["seed_spread_pct_of_best"] == pytest.approx(11.1111111111)
     assert row["best_seed"] == 43
 
 

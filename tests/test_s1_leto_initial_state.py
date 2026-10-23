@@ -190,7 +190,7 @@ def test_imputation_requires_a_runnable_donor():
     crosswalk = pd.DataFrame({"MU_ID": ["1"]})
     trees = pd.DataFrame(columns=["STAND_ID", "MU_ID"])
 
-    with pytest.raises(ValueError, match="No runnable management unit"):
+    with pytest.raises(ValueError, match="No runnable stands"):
         impute_missing_tree_rows(units, crosswalk, trees)
 
 

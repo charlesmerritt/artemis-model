@@ -1,0 +1,62 @@
+[
+  {
+    "fault": "eligible alternative replaces corporate default",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "wrong Florida evaluation group",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "invented FIA attribute name",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "swapped FIA attribute numbers",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "empty shipped prescription library",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "prescription without any owner",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "self-consistent changed masked label",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "self-consistent changed sampling-weight label",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "empty overall distribution",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "empty forest-type shares",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "missing owner plot shares",
+    "original": "survived",
+    "replacement": "rejected"
+  },
+  {
+    "fault": "self-consistent changed owner-acre label",
+    "original": "survived",
+    "replacement": "rejected"
+  }
+]

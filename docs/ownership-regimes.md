@@ -15,8 +15,8 @@ Reading the tables:
 - **Roles.** *Always available* is `no_management`, eligible for every owner class
   everywhere (any owner may decline to harvest). *Default* is what
   `pipeline/s3_management/regime_assignment.py` assigns deterministically today.
-  *Optimizer option* is the rest of the eligible menu, which the landscape scheduler
-  chooses from once the trajectory library exists.
+  *Optimizer option* below is the pre-2026-10-08 menu. Since then every class may take
+  every cutting prescription its forest type admits (`config/management_regimes.yaml`).
 - **Entry years.** `+N` is an offset from the 2022 inventory year, snapped up to a
   5-year cycle boundary. `age N` is a target stand age; entry lands
   `N − stand_age` years out, also snapped, and falls back to the offsets when the

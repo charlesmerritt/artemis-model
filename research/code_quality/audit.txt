@@ -1,0 +1,329 @@
+Test-integrity audit
+
+Branch: code-quality/test-integrity-audit
+Reference commit: 066aee62e9f1aedf29177eda01b9655295a60443
+
+Scope and standard
+
+The final suite contains 30 Python test files with 337 test functions. This audit changes 47 existing functions, adds two mutation-workspace regression tests, and changes one viewer assertion. Some changes clarify existing checks rather than replace tautologies.
+
+Every tracked test suite, pipeline doctest and quality-script doctest was inspected with its source behavior. Audit inventories are split between this file, spatial_audit.txt and management_audit.txt in this directory. Helpers/fixtures in tests/conftest.py and tests/arcpy_reference/leto_segmentation_fixture.py were also read. The transient unrelated FVSjl differential test was reviewed without editing; it is absent from the final branch.
+
+A self-comparison or expected result drawn from the same production algorithm/constant cannot independently establish correctness. Replacements use worked literal outcomes. Valid preservation, determinism, rejection and independent-path parity properties remain. A legitimate property can be weaker than a complete specification without being a tautology.
+
+Coverage and CRAP are distinct from assertion quality. Tests can execute code yet miss incorrect behavior; therefore in-process fault proofs and a fresh mutmut run supplement suite passes. See hardening.txt for measured scope, survivors and limitations.
+
+Parent audit inventory
+
+tests/test_conventions.py: 3 test functions
+  test_lossy_id_casts_are_caught: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: lossy_id_casts(source) == [1]
+  test_legitimate_code_is_not_flagged: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: lossy_id_casts(source) == []
+  test_crs_literal_is_caught_but_docstring_mention_is_not: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: hardcoded_crs(source) == [2]
+
+tests/test_executable_notes.py: 7 test functions
+  test_checked_in_notes_run_without_external_data: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: result.returncode == 0; 'no_management' in result.stdout; 'archived evidence' in result.stdout
+  test_failed_doctest_fails_command: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: check.main([]) == 1
+  test_policy_without_unmanaged_choice_fails_command: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: any((spec['default']['pine'] != 'no_management' for spec in config['owner_classes'].values())); check.main([]) == 1
+  test_empty_keyfile_fails_command: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: check.main([]) == 1; 'keyfile' in capsys.readouterr().err
+  test_managed_example_without_harvest_fails_command: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: check.main([]) == 1; 'harvest' in capsys.readouterr().err
+  test_missing_restart_evidence_fails_command: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: check.main([]) == 1; 'restart evidence' in capsys.readouterr().err
+  test_riparian_management_fails_command: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: check.main([]) == 1
+
+tests/test_weekly_artifact_20260907_offsets.py: 40 test functions
+  test_offset_zero_keeps_the_base_name: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: mol.variant_name('family_light_thin', 0) == 'family_light_thin'; mol.variant_name('family_light_thin', 5) == 'family_light_thin@+5y'; plan.split_variant('family_light_thin') == ('family_light_thin', 0)
+  test_variant_name_round_trips: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: plan.split_variant(mol.variant_name(base, offset)) == (base, offset)
+  test_split_variant_rejects_a_malformed_delay: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_params_round_trip: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: mol.parse_params(mol.format_params(params)) == params
+  test_shift_moves_years_and_only_years: Replaced expected-year algorithm and production YEAR_PARAMS oracle with literal worked schedules for all 15 template/offset combinations.
+    Assertions: mol.shift_params(template, dict(CASES[template]), offset) == expected
+  test_zero_offset_is_the_identity: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: mol.shift_params(template, CASES[template], 0) == CASES[template]
+  test_every_template_in_the_library_has_a_year_mapping: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: set(lib['template'].unique()) <= set(mol.YEAR_PARAMS)
+  test_unknown_template_raises_rather_than_passing_through: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_entries_past_the_horizon_are_dropped: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: [t.year for t in thins] == [2047, 2057, 2067]
+  test_the_cutoff_is_the_last_executable_year_not_the_last_reported_one: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: mol.LAST_SIMULATED_ENTRY_YEAR == mol.LAST_CYCLE_YEAR - mol.CYCLE_YEARS; [t.year for t in thins] == [2042, 2052, 2062]
+  test_a_delayed_variant_that_only_reaches_2072_is_not_published: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: mol.resolve_variant('clearcut', {'year': 2067}, 5) is None
+  test_offset_zero_keeps_an_inert_2072_entry: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: [t.year for t in thins] == [2072]
+  test_a_variant_with_nothing_left_in_the_horizon_is_not_published: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: mol.resolve_variant('clearcut', {'year': 2072}, offset) is None
+  test_regeneration_follows_its_harvest_out_of_the_horizon: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: [t.year for t in thins] == [2057]; regen == []
+  test_regeneration_is_kept_when_its_harvest_survives: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: [t.year for t in thins] == [2037, 2047]; [r.year for r in regen] == [2048]
+  test_a_delay_never_adds_an_entry: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: len(later) <= len(base); later == [y + offset for y in [t.year for t in base]][:len(later)]
+  test_offset_zero_renders_byte_identically_to_the_params_path: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: render_keyfile(**kwargs) == render_keyfile(thins=thins, regen=regen, **kwargs)
+  test_expansion_keeps_no_management_once_per_stand: Pinned all three fixture unit IDs and their counts; missing units can no longer disappear from the oracle.
+    Assertions: per_stand.to_dict() == {'R1': 1, 'U1': 1, 'U2': 1}
+  test_expansion_leaves_riparian_libraries_structural: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: list(out[out['unit_id'] == 'R1']['prescription']) == ['no_management']
+  test_expansion_grows_the_delayable_stand_and_not_the_other: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: sorted(out[out['unit_id'] == 'U1']['prescription']) == ['family_light_thin', 'family_light_thin@+10y', 'family_light_thin@+15y', 'family_light_thin@+5y', 'no_management']; sorted(out[out['unit_id'] == 'U2']['prescription']) == ['hardwood_clearcut_regen', 'no_management']
+  test_expansion_preserves_every_offset_zero_row: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: before == after
+  test_expansion_records_the_entry_years_it_resolved: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: row['entry_years'] == '2042'; row['n_entries'] == 1; row['params'] == 'max_dbh=8.0;proportion=0.35;year=2042'
+  test_envelope_delta_classifies_each_target: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: prev_unreachable == 2; list(delta['change']) == ['recovered', 'unchanged', 'still unreachable', 'lost']; delta['ceiling_ratio'].iloc[0] == pytest.approx(3.0)
+  test_planning_refuses_without_a_batch_marker: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_library_driver_takes_its_grid_from_config: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: (mol.INV_YEAR, mol.CYCLE_YEARS, mol.NUM_CYCLE) == (cfg['base_year'], cfg['cycle_years'], cfg['n_cycles']); mol.LAST_CYCLE_YEAR == mol.INV_YEAR + mol.CYCLE_YEARS * mol.NUM_CYCLE; mol.LAST_SIMULATED_ENTRY_YEAR == mol.LAST_CYCLE_YEAR - mol.CYCLE_YEARS
+  test_planning_refuses_a_library_from_a_different_horizon: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_planning_accepts_a_matching_horizon: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_planning_refuses_a_manifest_that_cannot_state_its_grid: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_the_two_drivers_agree_on_the_grid_today: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_planner_uses_the_grid_it_validates: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: (plan.BASE_YEAR, plan.CYCLE_YEARS) == (cfg['base_year'], cfg['cycle_years'])
+  test_no_calendar_year_is_hard_coded_in_the_planner: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: offenders == []
+  test_control_gate_rejects_a_non_finite_metric: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_control_gate_passes_on_identical_finite_trajectories: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_the_committed_control_carries_no_non_finite_values: Added nonempty control guard before finite-value all() assertions.
+    Assertions: not frame.empty; np.isfinite(frame[col]).all()
+  test_planning_refuses_a_marker_that_does_not_match_the_tables: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_envelope_delta_refuses_a_changed_target_amount: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_envelope_delta_refuses_a_changed_calendar_year: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_attribute_lookup_survives_a_reused_frame_id: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: plan._attr_lookup(first, 'county') == {'U1': 'Baker'}; plan._attr_lookup(second, 'county') == {'U1': 'Union'}
+  test_attribute_lookup_still_caches: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: plan._attr_lookup(stands, 'county') is plan._attr_lookup(stands, 'county')
+  test_envelope_delta_refuses_a_changed_target_set: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+
+tests/test_weekly_artifact_20260914_timing.py: 25 test functions
+  test_offsets_are_whole_cycles_starting_at_zero: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: m.OFFSETS[0] == 0; all((o % m.CYCLE_YEARS == 0 for o in m.OFFSETS)); len(set(m.OFFSETS)) == len(m.OFFSETS); m.LAST_ENTRY_YEAR == m.INV_YEAR + m.HORIZON_YEARS; m.NUM_CYCLE == m.N_OBJECTIVE_CYCLES + 1
+  test_variant_id_round_trips: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: m.variant_id('family_light_thin', 10) == 'family_light_thin@+10'; m.base_of('family_light_thin@+10') == ('family_light_thin', 10); m.base_of('family_light_thin@+0') == ('family_light_thin', 0); m.base_of('no_management') == ('no_management', 0)
+  test_offset_shifts_every_entry_and_changes_nothing_else: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: base.entry_years == (2032, 2042, 2052, 2062); moved.entry_years == (2042, 2052, 2062, 2072); moved.dropped_entries == 0; after.year == before.year + 10; (after.proportion, after.min_dbh, after.max_dbh, after.species) == (before.proportion, before.min_dbh, before.max_dbh, before.species)
+  test_offset_zero_is_the_identity: Replaced shared harvest/regeneration builder oracles with literal operation records and explicit establishment parameters.
+    Assertions: [(t.year, t.proportion, t.min_dbh, t.max_dbh, t.species) for t in v.thins] == expected_thins; [(r.year, r.species, r.trees_per_acre, r.natural, r.survival_pct, r.age, r.height_ft) for r in v.regen] == expected_regen; v.dropped_entries == 0
+  test_entry_past_the_horizon_is_dropped_and_counted: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: v.entry_years == (2047, 2062); v.dropped_entries == 1; all((t.year <= m.LAST_ENTRY_YEAR for t in v.thins))
+  test_entry_in_the_final_year_is_kept: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: v.entry_years == (m.LAST_ENTRY_YEAR,); v.dropped_entries == 0
+  test_variant_with_no_surviving_entry_collapses: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: v.collapsed; v.entry_years == (); v.thins == ()
+  test_collapsed_variant_still_reports_what_it_dropped: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: v.collapsed; v.dropped_entries == 1; multi.collapsed; multi.dropped_entries == 3; len(collapsed) == 2; (collapsed['entries_dropped'] > 0).all(); (collapsed['entries_kept'] == 0).all()
+  test_collapsed_variant_carries_no_regeneration: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: v.collapsed; v.regen == ()
+  test_delayed_rotation_keeps_the_thin_when_the_clearcut_falls_out: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: v.entry_years == (2057,); v.dropped_entries == 1; v.thins[0].proportion == 0.35; v.thins[0].max_dbh == 9.0
+  test_regeneration_moves_with_its_harvest: Replaced two-output comparison with one exact harvest year and a full independent nonempty establishment record.
+    Assertions: moved.entry_years == (2052,); [(r.year, r.species, r.trees_per_acre, r.natural, r.survival_pct, r.age, r.height_ft) for r in moved.regen] == [(2054, 'SA', 400.0, False, 90.0, 0.0, 1.0)]
+  test_regeneration_is_dropped_with_the_harvest_that_created_it: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: v.entry_years == (2057,); v.regen == (); kept.entry_years == (2072,); [r.year for r in kept.regen] == [2073]; all((r.year <= m.LAST_ENTRY_YEAR + m.CYCLE_YEARS for r in kept.regen))
+  test_regeneration_parent_is_resolved_before_the_shift: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: [t.year for t in v[0]] == [2047]; v[1] == []; [t.year for t in thins_kept] == [2037, 2067]; [r.year for r in regen_kept] == [2068]
+  test_with_regen_false_skips_the_records: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: v.regen == (); v.entry_years == (2047,)
+  test_expansion_multiplies_cutting_menus_and_leaves_riparian_alone: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: list(rip['prescription']) == ['no_management']; sorted(u1['prescription']) == sorted(['no_management', 'family_light_thin@+0', 'family_light_thin@+5', 'family_light_thin@+10', 'family_light_thin@+15', 'hardwood_clearcut_regen@+0', 'hardwood_clearcut_regen@+5']); u1['base_prescription'].map(lambda b: b in {'no_management', 'family_light_thin', 'hardwood_clearcut_regen'}).all(); set(zip(collapsed['base_prescription'], collapsed['offset_years'])) == {('hardwood_clearcut_regen', 10), ('hardwood_clearcut_regen', 15)}
+  test_expansion_preserves_stand_attributes: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: expanded.groupby('unit_id')['acres'].nunique().eq(1).all(); set(expanded[col].dropna()) == set(lib[col].dropna())
+  test_run_ledger_reconciles_or_refuses: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_non_positive_cli_sizes_are_refused_before_anything_runs: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_parse_params_round_trips_the_20260817_form: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: m.parse_params('max_dbh=8.0;proportion=0.35;year=2032') == {'max_dbh': 8.0, 'proportion': 0.35, 'year': 2032}; m.parse_params(None) == {}; m.parse_params('') == {}; isinstance(m.parse_params('year=2032')['year'], int)
+  test_greedy_baseline_takes_the_deterministic_timing: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: plan.default_variant('family_light_thin', options) == 'family_light_thin@+0'; plan.default_variant('no_management', options) == 'no_management'; plan.default_variant('hardwood_clearcut_regen', options) is None
+  test_owner_group_resolves_under_either_vocabulary: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: plan.owner_group(legacy) == group; plan.owner_group(legacy) == group
+  test_legacy_names_map_onto_the_harris_classes: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: plan.owner_class_in_policy('private_family') == 'family'; plan.owner_class_in_policy('private_industrial') == 'corporate'; plan.owner_class_in_policy('private_corporate_other') == 'corporate'; plan.owner_class_in_policy('family') == 'family'; plan.owner_class_in_policy('corporate') == 'corporate'; plan.owner_class_in_policy(same) == same
+  test_owner_class_comparison_survives_the_rename: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: same; not drifted
+  test_unresolvable_owner_class_stops_the_run: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_plan_driver_decodes_variants_the_same_way: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: plan.OFFSET_SEP == m.OFFSET_SEP; plan.base_of(presc) == expected == m.base_of(presc)
+
+tests/test_weekly_artifact_20260928_convergence.py: 20 test functions
+  test_the_search_is_the_previous_artifacts_search: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: drv.AP.__file__.endswith('weekly-artifact/2026-09-14/make_annealed_plan.py'); hasattr(drv.AP, attr)
+  test_the_driver_defines_no_search_of_its_own: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: 'anneal' not in vars(drv); 'Objective' not in vars(drv); 'Landscape' not in vars(drv)
+  test_arms_nest_so_best_of_5_is_the_first_five_seeds: Kept already independent literal minima and removed redundant expected-side min() recomputation.
+    Assertions: five['objective_best'] == 63.0; seven['objective_best'] == 61.0; seven['objective_best'] <= five['objective_best']
+  test_the_baseline_cell_is_the_published_setting_and_is_unique: Pinned published 0.95 cooling and five restarts instead of implementation constants.
+    Assertions: len(flagged) == 1; float(flagged.iloc[0]['cooling_factor']) == 0.95; int(flagged.iloc[0]['restarts']) == 5
+  test_seed_spread_is_reported_per_arm: Pinned worked spread 7 and percentage 11.1111111111 instead of repeating implementation arithmetic.
+    Assertions: row['seed_spread'] == pytest.approx(7.0); row['seed_spread_pct_of_best'] == pytest.approx(11.1111111111); row['best_seed'] == 43
+  test_an_arm_short_of_its_restart_count_is_not_reported: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: list(arms['restarts']) == [3]
+  test_restart_curve_is_monotone_non_increasing: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: best == [70.0, 63.0, 63.0, 63.0, 61.0, 61.0]; all((b <= a for a, b in zip(best, best[1:])))
+  test_restart_curve_consumes_seeds_in_a_fixed_order: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: list(curve['seed']) == seeds; list(curve['best_of_first_r']) == [70.0, 63.0, 63.0]
+  test_restart_curve_keeps_the_cooling_factors_apart: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: list(slow['best_of_first_r']) == [60.0, 59.0]; len(curve) == 4
+  test_library_gate_accepts_an_identical_rebuild: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: out['runs_compared'] == 1; out['max_abs_diff_harvest_cuft_per_ac'] == pytest.approx(0.0)
+  test_library_gate_raises_on_a_changed_harvest: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_library_gate_raises_on_a_missing_or_extra_run: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_library_gate_tolerates_only_a_csv_round_trip: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: ok['runs_compared'] == 1
+  test_the_sweep_refuses_a_setting_that_would_void_its_comparison: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+  test_library_gate_rebuilds_the_run_id_without_going_through_a_float: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: out['runs_compared'] == 1
+  test_plan_reproduction_reports_an_identical_plan: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: out['identical'] is True; out['stands_choosing_the_same_trajectory'] == 2; out['stands_choosing_differently'] == 0
+  test_plan_reproduction_catches_a_stand_that_chose_differently: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: out['identical'] is False; out['stands_choosing_differently'] == 1
+  test_plan_reproduction_catches_a_missing_or_extra_stand: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: out['identical'] is False; out['stands_only_published'] == 1; out['stands_only_here'] == 0
+  test_plan_reproduction_keeps_a_19_digit_control_number_intact: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: out['identical'] is True
+  test_plan_reproduction_says_so_when_there_is_nothing_to_compare: Retained: independent literal, invalid-input, preservation, cache identity, configuration-consumption or cross-path compatibility check.
+    Assertions: out['compared'] is False
+
+tests/test_quality_workflow.py: 2 test functions
+  test_configured_mutation_workspace_contains_fixtures_and_collects_suite: New CI regression: literal required inputs and actual isolated suite collection.
+    Assertions: result.returncode == 0; 'tests collected' in result.stdout; (mutation_workspace / relative).is_file()
+  test_missing_driver_is_rejected_during_isolated_collection: New negative control: deleting real timing driver must fail isolated collection.
+    Assertions: result.returncode != 0; 'FileNotFoundError' in result.stdout + result.stderr; 'make_timing_library.py' in result.stdout + result.stderr
+
+Parent Python inventory: 97 test functions.
+
+Remaining doctests
+
+pipeline/ids.py: six prompts include one import plus independently specified pandas float rendering, repaired digits, scientific-notation repair, leading-zero preservation and precision-loss rejection. No self-derived expected results.
+scripts/quality.py: parse_crap_table uses a literal external-format table and explicit parsed rows; module_name uses an explicit dotted name; mutation_score uses an explicit 46.2% result and None for no tested mutants. Existing examples retained. pipeline/spatial_ref.py has usage text but no doctest prompts. Spatial and management inventories account for every other pipeline doctest.
+
+JavaScript and R inventory
+
+viewer/tests/test-artemis-panel-core.mjs: all 85 assert calls inspected against viewer/artemis-panel-core.js.
+Replaced the supported catalog fixture schema from Core.CATALOG_SCHEMA with literal artemis.viewer.catalog/1. The other checks have independent expected labels, counts, coordinates, colors, selection/fallbacks and null handling. Recolor comparisons are valid invariance checks between different cluster assignments, supported by literal coordinates/color assertions.
+node viewer/tests/test-artemis-panel-core.mjs passed. A temporary-copy version-2 schema mutation passes the original test and fails the replacement.
+  Line 18: assert.equal(Core.formatPercent(0.9997, 2), "99.97%");
+  Line 19: assert.equal(Core.formatPercent(0.5), "50.0%");
+  Line 20: assert.equal(Core.formatPercent(null), "—");
+  Line 21: assert.equal(Core.formatPercent(undefined), "—");
+  Line 23: assert.equal(Core.formatArea(4.23), "4.2 ha");
+  Line 24: assert.equal(Core.formatArea(250), "250 ha");
+  Line 25: assert.equal(Core.formatArea(2500), "2.5k ha");
+  Line 26: assert.equal(Core.formatArea(250000), "250k ha");
+  Line 27: assert.equal(Core.formatArea(null), "—");
+  Line 31: assert.deepEqual(Core.coverageBadge({ complete: true, contributing_years: [2021] }), {
+  Line 38: assert.deepEqual(Core.coverageBadge({ complete: true, contributing_years: [2020, 2021] }), {
+  Line 43: assert.deepEqual(Core.coverageBadge({ complete: false, contributing_years: [2021] }), {
+  Line 48: assert.equal(Core.coverageBadge(undefined).kind, "partial");
+  Line 56: assert.match(filled, /99\.99%/);
+  Line 57: assert.match(filled, /14 images/);
+  Line 58: assert.match(filled, /holes filled from 2020, 2022/);
+  Line 62: assert.match(plain, /no images/);
+  Line 63: assert.doesNotMatch(plain, /holes filled/);
+  Line 70: assert.equal(fresh.known, true);
+  Line 71: assert.equal(fresh.stale, false);
+  Line 72: assert.equal(fresh.label, "minted just now");
+  Line 75: assert.equal(hours.label, "minted 8h ago");
+  Line 76: assert.equal(hours.stale, false);
+  Line 79: assert.equal(stale.label, "minted 3d ago");
+  Line 80: assert.equal(stale.stale, true);
+  Line 82: assert.equal(Core.tileAge(null, now).known, false);
+  Line 83: assert.equal(Core.tileAge("not-a-date", now).known, false);
+  Line 85: assert.equal(Core.tileAge("2026-08-10T13:00:00Z", now).hours, 0);
+  Line 97: assert.deepEqual(share.labels, ["C0", "C1"]);
+  Line 98: assert.equal(share.datasets.length, 2);
+  Line 99: assert.equal(share.datasets[0].label, "Inside AOI");
+  Line 100: assert.deepEqual(share.datasets[0].data, [90, 10]);
+  Line 101: assert.deepEqual(share.datasets[1].data, [10, 90]);
+  Line 104: assert.deepEqual(fraction.datasets[0].data, [90, 10]);
+  Line 106: assert.deepEqual(fraction.datasets[0].backgroundColor, ["#e69f00", "#56b4e9"]);
+  Line 110: assert.deepEqual(empty.datasets[0].data, [0]);
+  Line 111: assert.deepEqual(empty.datasets[0].backgroundColor, ["#999999"]);
+  Line 113: assert.deepEqual(Core.clusterShareChartData(undefined).labels, []);
+  Line 125: assert.equal(scatter.datasets.length, 2);
+  Line 126: assert.equal(scatter.datasets[0].label, "Inside AOI (1)");
+  Line 127: assert.equal(scatter.datasets[1].label, "Outside AOI (2)");
+  Line 128: assert.deepEqual(scatter.datasets[0].data, [{ x: 1, y: 2 }]);
+  Line 130: assert.equal(scatter.datasets[1].backgroundColor, "transparent");
+  Line 131: assert.deepEqual(scatter.datasets[1].borderColor, ["#56b4e9", "#e69f00"]);
+  Line 136: assert.deepEqual(recolored.datasets[0].data, scatter.datasets[0].data);
+  Line 137: assert.deepEqual(recolored.datasets[1].data, scatter.datasets[1].data);
+  Line 138: assert.deepEqual(recolored.datasets[0].backgroundColor, ["#56b4e9"]);
+  Line 146: assert.equal(wrapped.datasets[0].backgroundColor[0], "#222222");
+  Line 150: assert.equal(unlabelled.datasets[0].backgroundColor[0], "#999999");
+  Line 152: assert.equal(Core.scatterChartData(undefined, [], []).datasets[0].data.length, 0);
+  Line 165: assert.equal(summary.divergenceLabel, "0.423");
+  Line 166: assert.equal(summary.insideCount, 1500);
+  Line 167: assert.equal(summary.varianceLabel, "PC1 42% · PC2 19%");
+  Line 168: assert.equal(summary.interpretation, "Strong separation");
+  Line 171: assert.equal(missing.divergence, null);
+  Line 172: assert.equal(missing.divergenceLabel, "—");
+  Line 173: assert.equal(missing.varianceLabel, "");
+  Line 204: assert.equal(Core.selectRun(embeddingsPayload, "lvq").method, "lvq");
+  Line 206: assert.equal(Core.selectRun(embeddingsPayload, "cobweb").method, "xmeans");
+  Line 207: assert.equal(Core.selectRun(embeddingsPayload, undefined).method, "xmeans");
+  Line 209: assert.equal(
+  Line 213: assert.equal(Core.selectRun({ runs: [] }, "kmeans"), null);
+  Line 214: assert.equal(Core.selectRun(null, "kmeans"), null);
+  Line 219: assert.equal(methods.length, 3);
+  Line 220: assert.deepEqual(
+  Line 224: assert.equal(methods[1].divergenceLabel, "0.440");
+  Line 225: assert.equal(methods[1].autoK, true);
+  Line 226: assert.equal(methods[1].k, 9);
+  Line 228: assert.deepEqual(
+  Line 237: assert.equal(single[0].best, false);
+  Line 239: assert.deepEqual(Core.methodSummaries(null), []);
+  Line 240: assert.deepEqual(Core.methodSummaries({ runs: [] }), []);
+  Line 244: assert.equal(partial[0].divergenceLabel, "0.000");
+  Line 254: assert.equal(normalized.schemaMatches, true);
+  Line 255: assert.equal(normalized.vectors.aoi, null);
+  Line 256: assert.deepEqual(normalized.naip.incompleteYears, []);
+  Line 257: assert.equal(normalized.embeddings, null);
+  Line 260: assert.equal(Core.normalizeCatalog({ schema: "artemis.viewer.catalog/0" }).schemaMatches, false);
+  Line 263: assert.equal(bare.name, "ARTEMIS");
+  Line 264: assert.equal(bare.naip, null);
+  Line 265: assert.deepEqual(bare.vectors, { extent: null, aoi: null });
+  Line 268: assert.deepEqual(withEmbeddings.embeddings.runs, []);
+  Line 269: assert.deepEqual(withEmbeddings.embeddings.scatter.points, []);
+  Line 272: assert.equal(withRuns.embeddings.runs.length, 3);
+  Line 273: assert.equal(withRuns.embeddings.default_method, "xmeans");
+
+r/tests/test_guards.R: all 18 check() calls inspected, with real extracted shipped guard blocks and literal input/output expectations. Base-R behavior checks intentionally pin external formatting, IEEE double boundaries and round-trip semantics. They are independent runtime contracts, not assertions of our own implementation against itself. No tautologies found. Rscript is unavailable here, so this suite was reviewed but not executed.
+  check("format() pads a character vector, trim does not stop it",
+  check("format(NA_real_) yields the string \"NA\", not NA",
+  check("format() on a numeric is unpadded and unscientific",
+  check("2^53 is the exact-integer limit for a double",
+  check("character input passes through unpadded",
+  check("factor input converts losslessly",
+  check("numeric input renders full digits, no padding",
+  check("numeric NA stays NA rather than becoming \"NA\"",
+  check("a value at 2^53 aborts before the crosswalk is written",
+  check("a clean crosswalk is allowed through", !run02(exact))
+  check("a genuine NA is tolerated", !run02(c("17498047010478", NA)))
+  check("a numeric PLT_CN is blocked before write.csv", run02(c(17498047010478, 236048879010661)))
+  check("scientific notation is blocked", run02("1.7498047010478e+13"))
+  check("trailing-blank padding is blocked", run02(c("17498047010478 ", "236048879010661")))
+  check("setdiff() clears matched CNs when both sides are character",
+  check("paste(character(0)) is empty, not \"integer(0)\"",
+  check("a digits-only key survives a write/read round trip",
+  check("without colClasses the same round trip loses the string form",
+
+Focused fault evidence
+
+.venv/bin/python research/code_quality/probe_oracles.py: five faults each pass the immutable original test and fail the replacement; original behavior passes. Covers YEAR_PARAMS missing end_year, shared builders dropping harvests, missing regeneration, relabelled convergence baseline and viewer schema drift. Production files are never mutated.
+.venv/bin/python research/code_quality/management_rejection_probes.py: twelve old-pass/new-fail/restore proofs, with JSON evidence.
+Spatial proof details and runnable probes are in spatial_audit.txt: 17 deliberate faults are rejected after replacement and pass after restoration; six also demonstrably pass the immutable original tests. Across all three runners, 34 faults are rejected, with 23 demonstrated original-pass/replacement-fail comparisons.
+
+Final verification and measured quality results are recorded in hardening.txt.

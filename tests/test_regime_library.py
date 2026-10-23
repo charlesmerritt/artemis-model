@@ -22,5 +22,8 @@ def test_regime_that_names_no_owner_class_is_rejected():
 
 def test_shipped_library_names_only_harris_owner_classes():
     harris = {"family", "corporate", "tribal", "federal", "state", "local", "unknown"}
-    for regime in load_library()["regimes"].values():
+    regimes = load_library()["regimes"]
+    assert regimes, "the shipped trajectory menu must contain prescriptions"
+    for regime in regimes.values():
+        assert set(regime["owner_classes"]), "each prescription must name an owner class"
         assert set(regime["owner_classes"]) <= harris

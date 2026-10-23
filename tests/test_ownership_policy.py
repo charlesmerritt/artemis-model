@@ -53,7 +53,11 @@ def test_policy_covers_exactly_the_canonical_legend(policy):
 
 def test_every_class_label_names_its_canonical_harris_class(policy):
     # A class whose harris_values do not spell its canonical label is a mis-join.
+    assert set(policy["classes"]) == {
+        "family", "corporate", "tribal", "federal", "state", "local", "unknown",
+    }
     for cls in policy["classes"].values():
+        assert cls["harris_values"], "every owner class must claim a Harris raster value"
         for value in cls["harris_values"]:
             assert CANONICAL_HARRIS_LEGEND[value].lower().startswith(cls["label"].split()[0].lower()), (
                 f"{cls['label']!r} claims Harris {value} = {CANONICAL_HARRIS_LEGEND[value]!r}"
@@ -61,15 +65,22 @@ def test_every_class_label_names_its_canonical_harris_class(policy):
 
 
 def test_every_tpo_group_is_one_the_tpo_budgets_express(policy):
-    for cls in policy["classes"].values():
-        assert cls["tpo_group"] in CANONICAL_TPO_GROUPS
+    # Pin which budget each class charges, so swapping two valid groups cannot pass.
+    groups = {name: cls["tpo_group"] for name, cls in policy["classes"].items()}
+    assert groups == {
+        "family": "Private", "corporate": "Private", "tribal": "Private",
+        "federal": "Federal (NF)", "state": "Other public", "local": "Other public",
+        "unknown": "Private",
+    }
+    assert set(groups.values()) == CANONICAL_TPO_GROUPS
 
 
 def test_masked_values_are_excluded_from_the_fvs_pipeline(policy):
-    from pipeline.s3_management.owner_classes import MASKED, harris_value_to_class
+    from pipeline.s3_management.owner_classes import harris_value_to_class
 
+    assert set(policy["masked_harris_values"]) == {1, 2}
     for value in policy["masked_harris_values"]:
-        assert harris_value_to_class(value) == MASKED
+        assert harris_value_to_class(value) == "masked"
 
 
 def test_policy_records_the_canonical_source(policy):
