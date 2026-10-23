@@ -14,6 +14,10 @@ and the minimum patch area. Analysis and the v2 decision: ``docs/evt2022-add-bac
 - ``AGRICULTURE_DEVELOPED_PASTURE_V3``: v2, and Eastern Warm Temperate Pasture and Hayland
   (7997) blocked too: Hansen and Obata add back FL5 hay fields LANDFIRE files there. Some
   planted pine LANDFIRE mislabels as 7997 goes with them. The adopted gate.
+- ``AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4``: v3's pixels, and a patch veto: an accepted
+  patch (8-connected, after the minimum patch area) that contains or 8-touches Quarries-Strip
+  Mines-Gravel Pits (7295) is rejected whole. Reconstructed from the published v4 rasters,
+  whose code was lost: the rule separates all 15 rejected FL5 patches from all accepted ones.
 
 Codes the legend does not list, and nodata, fail closed under every gate but ``NONE``.
 """
@@ -29,6 +33,7 @@ DEVELOPED_BLOCKED = (7296, 7297, 7298, 7299)   # Developed-Low/Medium/High Inten
 NEVER_ELIGIBLE_LIFEFORMS = ("Water", "Snow-Ice", "Fill-NoData")
 PASTURE_BLOCKED = (7997,)                       # Eastern Warm Temperate Pasture and Hayland
 PASTURE_AND_HAY = "Pasture and Hay"            # matches "Pasture and Hay" and "... Pasture and Hayland"
+QUARRY = (7295,)                                # Quarries-Strip Mines-Gravel Pits
 
 
 class EvtGatePolicy(StrEnum):
@@ -36,6 +41,7 @@ class EvtGatePolicy(StrEnum):
     AGRICULTURE_V1 = "evt2022_agriculture_v1"
     AGRICULTURE_DEVELOPED_V2 = "evt2022_agriculture_developed_v2"
     AGRICULTURE_DEVELOPED_PASTURE_V3 = "evt2022_agriculture_developed_pasture_v3"
+    AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4 = "evt2022_agriculture_developed_pasture_quarry_v4"
 
     def eligible_codes(self, legend: pd.DataFrame) -> np.ndarray:
         """The LF 2022 EVT ``VALUE`` codes this gate lets an add-back proposal through on."""
@@ -45,11 +51,19 @@ class EvtGatePolicy(StrEnum):
         agricultural = ((legend["EVT_PHYS"] == "Agricultural") | (legend["EVT_LF"] == "Agriculture"))
         pasture = legend["EVT_NAME"].str.contains(PASTURE_AND_HAY, regex=False)
         blocked = (agricultural & ~pasture) | legend["EVT_LF"].isin(NEVER_ELIGIBLE_LIFEFORMS)
-        if self in (EvtGatePolicy.AGRICULTURE_DEVELOPED_V2, EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3):
+        if self in (EvtGatePolicy.AGRICULTURE_DEVELOPED_V2, EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3,
+                    EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4):
             blocked |= legend["VALUE"].isin(DEVELOPED_BLOCKED)
-        if self is EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3:
+        if self in (EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3,
+                    EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4):
             blocked |= legend["VALUE"].isin(PASTURE_BLOCKED)
         return values[~blocked.to_numpy()]
+
+    def patch_veto(self, evt: np.ndarray) -> np.ndarray | None:
+        """Pixels whose touch rejects a whole accepted patch; ``None`` when the gate has none."""
+        if self is EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4:
+            return np.isin(evt, QUARRY)
+        return None
 
 
 def eligibility(evt: np.ndarray, legend: pd.DataFrame, policy: EvtGatePolicy) -> np.ndarray:

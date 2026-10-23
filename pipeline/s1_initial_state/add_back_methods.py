@@ -42,6 +42,8 @@ METHOD_BIT = {method: 1 << i for i, method in enumerate(METHOD_PRIORITY)}
 class ConsensusRule(StrEnum):
     UNION = "union"                # any run method is enough (the rule while only bookends has run)
     AT_LEAST_TWO = "at_least_two"  # the proposed synthesis: two independent methods must agree
+    # Bookends alone, or the two disturbance detectors together (the v4 recipe).
+    BOOKENDS_OR_OBATA_AND_HANSEN = "bookends_or_obata_and_hansen"
 
 
 class MethodMasks:
@@ -72,6 +74,8 @@ class MethodMasks:
         return sum(self.masks[m].astype(np.uint8) for m in self.run)
 
     def combine(self, rule: ConsensusRule) -> np.ndarray:
+        if rule is ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN:
+            return self._bookends_or_obata_and_hansen()
         votes = self.votes()
         if rule is ConsensusRule.UNION:
             return votes >= 1
@@ -79,6 +83,16 @@ class MethodMasks:
             raise ValueError(
                 f"{rule} needs at least two methods to have run; only {list(self.run)} have")
         return votes >= 2
+
+    def _bookends_or_obata_and_hansen(self) -> np.ndarray:
+        obata = self.masks[AddBackMethod.OBATA_DISTURBANCE]
+        hansen = self.masks[AddBackMethod.HANSEN_LOSS]
+        if obata is None or hansen is None:
+            raise ValueError(f"{ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN} needs obata_disturbance "
+                             f"and hansen_loss to have run; only {list(self.run)} have")
+        bookends = self.masks[AddBackMethod.BOOKENDS]
+        both = obata & hansen
+        return both if bookends is None else bookends | both
 
 
 def method_bits(masks: MethodMasks) -> np.ndarray:

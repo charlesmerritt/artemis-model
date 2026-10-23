@@ -11,6 +11,7 @@ from rasterio.transform import Affine
 from pipeline.s1_initial_state.add_back_methods import AddBackMethod, ConsensusRule, MethodMasks
 from pipeline.s1_initial_state.county_improvement import (
     OUTSIDE,
+    DisturbanceWindow,
     Grid,
     TreeMapProvenance as TP,
     county_summary,
@@ -19,6 +20,7 @@ from pipeline.s1_initial_state.county_improvement import (
     improve_block,
     obata_rule,
     Inputs,
+    required_pad,
     read_on_grid,
     run_manifest,
     SUM_KEYS,
@@ -35,7 +37,8 @@ MODES = {1: M.SCALED_YOUNG, 2: M.DONOR_AS_IS, 3: M.SCALED_YOUNG, 4: M.SCALED_YOU
 PX = 0.2224  # acres per pixel
 
 
-def block(tm, land=None, bookends=None, obata=None, nwos=None, strata=None, eligible=None, **kw):
+def block(tm, land=None, bookends=None, obata=None, nwos=None, strata=None, eligible=None,
+          veto=None, **kw):
     tm = np.array(tm, dtype=np.uint32)
     land = np.ones(tm.shape, dtype=bool) if land is None else np.array(land, dtype=bool)
     # Default S2 (tree at both bookends): donor as is, provenance 2.
@@ -50,6 +53,8 @@ def block(tm, land=None, bookends=None, obata=None, nwos=None, strata=None, elig
     kw.setdefault("stratum_modes", MODES)
     if eligible is not None:
         kw["eligible"] = np.array(eligible, dtype=bool)
+    if veto is not None:
+        kw["patch_veto"] = np.array(veto, dtype=bool)
     return improve_block(tm, land, masks, strata, nwos, **kw)
 
 
@@ -249,7 +254,8 @@ def test_county_summary_records_the_gate_and_what_it_rejected():
                        evt_gate=EvtGatePolicy.AGRICULTURE_V1)
     assert s["evt_gate"] == {"policy": "evt2022_agriculture_v1",
                              "raw_proposal_acres": round(3 * PX, 1),
-                             "rejected_acres": round(2 * PX, 1)}
+                             "rejected_acres": round(2 * PX, 1),
+                             "patch_rejected_acres": 0.0}
 
 
 LEGEND = pd.DataFrame({"VALUE": [7755, 7296, 9001],
@@ -289,3 +295,140 @@ def test_gate_rejected_is_a_raw_proposal_the_gate_stripped_from_every_method():
     r = block([[7, 0, 0, 0, 7]], bookends=[[0, 1, 1, 0, 0]], obata=[[0, 0, 1, 1, 0]],
               eligible=[[1, 1, 1, 0, 1]])
     assert r.gate_rejected[0].tolist() == [False, False, False, True, False]
+
+
+def test_a_patch_touching_a_veto_pixel_diagonally_is_rejected_whole():
+    # The left patch touches the veto pixel at a corner; the right patch is clear of it.
+    r = block([[7, 0, 0, 7, 0, 0, 7],
+               [7, 7, 7, 7, 7, 7, 7]],
+              bookends=[[0, 1, 1, 0, 1, 1, 0],
+                        [0, 0, 0, 0, 0, 0, 0]],
+              veto=[[0, 0, 0, 0, 0, 0, 0],
+                    [1, 0, 0, 0, 0, 0, 0]])
+    assert r.provenance[0].tolist() == [TP.PUBLISHED, TP.UNMAPPED_LAND, TP.UNMAPPED_LAND,
+                                        TP.PUBLISHED, TP.ADDED_BACK, TP.ADDED_BACK, TP.PUBLISHED]
+    assert r.patch_rejected[0].tolist() == [False, True, True, False, False, False, False]
+    assert len(r.assignments) == 1
+
+
+def test_a_veto_pixel_inside_a_patch_rejects_it():
+    r = block([[7, 0, 0, 0, 7]], bookends=[[0, 1, 1, 1, 0]], veto=[[0, 0, 1, 0, 0]])
+    assert TP.added_back(r.provenance).sum() == 0
+    assert r.patch_rejected[0].tolist() == [False, True, True, True, False]
+
+
+def test_the_patch_veto_judges_patches_after_the_minimum_area():
+    # A one-pixel fragment by the veto pixel is dropped by the MMU, not counted as vetoed;
+    # the two-pixel patch far from it survives both.
+    r = block([[0, 7, 7, 7, 0, 0, 7]], bookends=[[1, 0, 0, 0, 1, 1, 0]],
+              veto=[[0, 1, 0, 0, 0, 0, 0]], min_acres=2 * PX)
+    assert r.patch_rejected.sum() == 0
+    assert r.provenance[0].tolist() == [TP.UNMAPPED_LAND, TP.PUBLISHED, TP.PUBLISHED, TP.PUBLISHED,
+                                        TP.ADDED_BACK, TP.ADDED_BACK, TP.PUBLISHED]
+
+
+def test_without_a_veto_nothing_is_patch_rejected():
+    r = block([[7, 0, 7]], bookends=[[0, 1, 0]])
+    assert r.patch_rejected.sum() == 0
+
+
+def test_county_summary_counts_patch_rejected_acres_apart_from_the_mmu_drop():
+    r = block([[7, 0, 0, 7, 0, 7]], bookends=[[0, 1, 1, 0, 1, 0]], veto=[[0, 0, 0, 0, 0, 1]])
+    whole = (slice(None), slice(None))
+    shape = r.provenance.shape
+    s = county_summary("12003", r, np.zeros(shape, dtype=np.uint8), np.ones(shape, dtype=bool),
+                       whole, np.zeros(shape, dtype=bool), ConsensusRule.UNION, 0.0, "all_forest",
+                       63, pd.DataFrame(r.assignments.assign(county_pixels=2)),
+                       evt_gate=EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4,
+                       window=DisturbanceWindow.Y2012_2022)
+    assert s["evt_gate"]["patch_rejected_acres"] == round(PX, 1)
+    assert s["added_back_acres"] == round(2 * PX, 1)
+    # From the rounded acres, as the published v1 and v4 summaries computed it.
+    assert s["dropped_by_mmu_or_no_donor_acres"] == round(
+        s["rule_accepted_before_mmu_acres"] - s["added_back_acres"]
+        - s["evt_gate"]["patch_rejected_acres"], 1)
+    assert s["disturbance_window"] == "2012_2022"
+
+
+def test_the_2012_window_drops_obata_cuts_and_hansen_loss_before_2012():
+    years = np.array([2011, 2012, 2022, 2023])
+    assert obata_rule(years, DisturbanceWindow.Y2012_2022).tolist() == [False, True, True, False]
+    lossyear = np.array([11, 12, 22, 23])
+    cover = np.full(4, 90)
+    assert hansen_rule(lossyear, cover, DisturbanceWindow.Y2012_2022).tolist() == \
+        [False, True, True, False]
+
+
+def test_the_default_window_is_the_published_2010_window():
+    assert DisturbanceWindow.PUBLISHED.obata_years == (2010, 2022)
+    assert DisturbanceWindow.PUBLISHED.hansen_lossyear == (1, 22)
+    assert DisturbanceWindow("2012_2022").hansen_lossyear == (12, 22)
+
+
+def test_patch_rejections_and_the_window_sum_into_the_aoi_total():
+    a = county("12001", "Alachua", 1.0, 2.0, 0.5)
+    b = county("12003", "Baker", 2.0, 3.0, 1.0)
+    for s, rejected in ((a, 0.5), (b, 1.25)):
+        s["evt_gate"]["patch_rejected_acres"] = rejected
+        s["disturbance_window"] = "2012_2022"
+    total = sum_county_summaries([a, b])
+    assert total["evt_gate"]["patch_rejected_acres"] == 1.8
+    assert total["disturbance_window"] == "2012_2022"
+
+
+def test_the_run_manifest_records_the_disturbance_window():
+    total = {"counties": ["12003 Baker"], "rule": "union", "methods": {"bookends": "run"},
+             "evt_gate": {"policy": "evt2022_agriculture_v1"}, "disturbance_window": "2012_2022"}
+    assert run_manifest(total, Inputs())["disturbance_window"] == "2012_2022"
+
+
+def test_stitch_places_counties_whose_grids_start_inside_the_mosaic(tmp_path):
+    # Counties are pasted into their own window of the mosaic; the second starts two
+    # columns right and one row down of the mosaic's corner.
+    a, b = tmp_path / "a.tif", tmp_path / "b.tif"
+    _write(a, np.array([[1, 1, 1], [1, OUTSIDE, OUTSIDE]], dtype=np.uint8),
+           Affine(30, 0, 0, 0, -30, 60), OUTSIDE)
+    _write(b, np.array([[2, 2], [2, 2]], dtype=np.uint8), Affine(30, 0, 60, 0, -30, 30), OUTSIDE)
+    out = tmp_path / "state.tif"
+    assert stitch_rasters([a, b], out) == 0
+    with rasterio.open(out) as s:
+        assert s.read(1).tolist() == [[1, 1, 1, OUTSIDE], [1, OUTSIDE, 2, 2],
+                                      [OUTSIDE, OUTSIDE, 2, 2]]
+
+
+def test_stitch_refuses_a_county_off_the_mosaic_lattice(tmp_path):
+    a, b = tmp_path / "a.tif", tmp_path / "b.tif"
+    _write(a, np.ones((2, 2), dtype=np.uint8), Affine(30, 0, 0, 0, -30, 60), OUTSIDE)
+    _write(b, np.ones((2, 2), dtype=np.uint8), Affine(30, 0, 45, 0, -30, 60), OUTSIDE)
+    with pytest.raises(ValueError, match="off the grid"):
+        stitch_rasters([a, b], tmp_path / "state.tif")
+
+
+def _county_and_patches(patch_cells):
+    inside = np.zeros((9, 9), dtype=bool)
+    inside[3:6, 3:6] = True                     # the county; a pad of 3 around it
+    patches = np.zeros((9, 9), dtype=bool)
+    for r, c in patch_cells:
+        patches[r, c] = True
+    return patches, inside
+
+
+def test_a_patch_inside_the_county_needs_no_more_padding():
+    patches, inside = _county_and_patches([(4, 4), (4, 5)])
+    assert required_pad(patches, inside, pad=3, margin=2) == 3
+
+
+def test_a_patch_reaching_from_the_county_toward_the_grid_edge_grows_the_padding():
+    # It runs from the county to one pixel off the left edge: one pixel short of the margin.
+    patches, inside = _county_and_patches([(4, 1), (4, 2), (4, 3)])
+    assert required_pad(patches, inside, pad=3, margin=2) == 3 + 1 + 2
+
+
+def test_a_patch_cut_off_by_the_grid_edge_grows_the_padding_past_the_margin():
+    patches, inside = _county_and_patches([(4, 0), (4, 1), (4, 2), (4, 3)])
+    assert required_pad(patches, inside, pad=3, margin=2) == 3 + 2 + 2
+
+
+def test_a_patch_at_the_grid_edge_that_never_reaches_the_county_is_ignored():
+    patches, inside = _county_and_patches([(0, 0), (0, 1)])
+    assert required_pad(patches, inside, pad=3, margin=2) == 3
