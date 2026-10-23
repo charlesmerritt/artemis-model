@@ -49,7 +49,7 @@ def test_tie_break_prefers_the_lowest_tm_id():
     assert assignments.loc[1, "donor_tm_id"] == "9"
 
 
-def test_donor_ring_never_takes_a_hole_pixel_or_another_patch():
+def test_donor_ring_expands_past_zero_valued_hole_pixels():
     # Pixels adjacent to the patch are TreeMap holes (0); the only donors sit
     # one pixel further out. The ring must expand past the holes.
     donors = np.zeros((9, 9), dtype=np.int32)
@@ -86,7 +86,7 @@ def test_assignment_carries_patch_geometry_and_stratum():
     assignments, unresolved = donor_assignments(donors, labels, strata=strata)
     row = assignments.loc[1]
     assert row["pixels"] == 9
-    assert row["acres"] == pytest.approx(9 * 0.2224)
+    assert row["acres"] == pytest.approx(2.0016)
     assert row["stratum"] == 1
     # S1 was cut before the 2016 vintage: establishment window closes at 2016.
     assert row["est_year_low"] is None and row["est_year_high"] == 2016

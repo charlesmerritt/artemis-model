@@ -1,0 +1,70 @@
+[
+  {
+    "mutation": "normalization multiplies by retained group sum",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "weighted tree density adds rather than multiplies weight",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "missing height fills zero rather than ACTUALHT",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "imputed MU_ID remains donor identity",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "logged regrowth assigned S2 rather than S1",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "2024 forest classified with 2016 legend",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "tile row budget grows by one",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "tile left edge shifted one pixel",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "wrong hectares-to-acres conversion",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "wrong segmentation method constant",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "fingerprint byte size zeroed",
+    "result": "baseline passed; replacement rejected; original restored and passed"
+  },
+  {
+    "mutation": "comparison acreage divisor wrong",
+    "result": "killed by assertion"
+  },
+  {
+    "mutation": "bootstrap fixes AOI indices instead of resampling",
+    "result": "baseline passed; replacement rejected; original restored and passed"
+  },
+  {
+    "mutation": "tile order reversed",
+    "result": "baseline passed; replacement rejected; original restored and passed"
+  },
+  {
+    "mutation": "source constructor points to wrong parcel path",
+    "result": "baseline passed; replacement rejected; original restored and passed"
+  },
+  {
+    "mutation": "CA returns empty donor weights",
+    "result": "baseline passed; replacement rejected; original restored and passed"
+  },
+  {
+    "mutation": "CA polygon crosses ownership split while centroid stays west",
+    "result": "baseline passed; replacement rejected; original restored and passed"
+  }
+]

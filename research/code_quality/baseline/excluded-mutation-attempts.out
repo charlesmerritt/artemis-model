@@ -1,0 +1,4334 @@
+
+=== mutation-ids-complete.raw.txt ===
+mutating pipeline/ids.py ...
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠙ Generating mutants
+⠋ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠙ Generating mutants
+⠋ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠸ Generating mutants
+⠹ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠴ Generating mutants
+⠸ Generating mutants
+⠹ Generating mutants
+⠦ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠧ Generating mutants
+⠦ Generating mutants
+⠇ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠴ Generating mutants
+⠧ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠇ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠏ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠇ Generating mutants
+⠋ Generating mutants
+⠴ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠦ Generating mutants
+⠙ Generating mutants
+⠏ Generating mutants
+⠹ Generating mutants
+⠧ Generating mutants
+⠋ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠴ Generating mutants
+⠙ Generating mutants
+⠦ Generating mutants
+⠦ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+    done in 2964ms (0 files mutated, 0 ignored, 54 unmodified)
+
+⠏ Running stats     
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+
+==================================== ERRORS ====================================
+________ ERROR collecting tests/test_weekly_artifact_20260914_timing.py ________
+Traceback (most recent call last):
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 353, in from_call
+    result: TResult | None = func()
+                             ~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 398, in collect
+    return list(collector.collect())
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/doctest.py", line 548, in collect
+    module = self.obj
+             ^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 289, in obj
+    self._obj = obj = self._getobj()
+                      ~~~~~~~~~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 560, in _getobj
+    return importtestmodule(self.path, self.config)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 507, in importtestmodule
+    mod = import_path(
+        path,
+    ...<2 lines>...
+        consider_namespace_packages=config.getini("consider_namespace_packages"),
+    )
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/pathlib.py", line 561, in import_path
+    mod = _import_module_using_spec(
+        module_name, path, path.parent, insert_modules=True
+    )
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/pathlib.py", line 725, in _import_module_using_spec
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/assertion/rewrite.py", line 197, in exec_module
+    exec(co, module.__dict__)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/tests/test_weekly_artifact_20260914_timing.py", line 358, in <module>
+    plan = _load(PLAN_DRIVER, "wa_20260914_anneal")
+  File "/home/chazm/Projects/work/artemis-model/tests/test_weekly_artifact_20260914_timing.py", line 51, in _load
+    spec.loader.exec_module(module)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 896, in get_code
+  File "<frozen importlib._bootstrap_external>", line 954, in get_data
+FileNotFoundError: [Errno 2] No such file or directory: '/home/chazm/Projects/work/artemis-model/mutants/weekly-artifact/2026-09-14/make_annealed_plan.py'
+=========================== short test summary info ============================
+ERROR tests/test_weekly_artifact_20260914_timing.py - FileNotFoundError: [Err...
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 error in 1.81s
+failed to collect stats. runner returned 1
+
+### Mutation testing — requested files
+
+| File | Score | Killed | Survived | No tests | Timeout | Other |
+|---|---:|---:|---:|---:|---:|---:|
+| `pipeline/ids.py` | — | 0 | 0 | 0 | 0 | 2 |
+
+=== mutation-ids-completed.raw.txt ===
+mutating pipeline/ids.py ...
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠏ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠹ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠴ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠦ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠧ Generating mutants
+⠸ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠧ Generating mutants
+⠴ Generating mutants
+⠇ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠸ Generating mutants
+⠧ Generating mutants
+⠹ Generating mutants
+⠇ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠏ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠋ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠴ Generating mutants
+⠧ Generating mutants
+⠹ Generating mutants
+⠦ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠧ Generating mutants
+⠋ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠙ Generating mutants
+⠦ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+    done in 4331ms (0 files mutated, 0 ignored, 54 unmodified)
+
+⠏ Running stats     
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+..........F
+=================================== FAILURES ===================================
+_______________ test_checked_in_notes_run_without_external_data ________________
+Traceback (most recent call last):
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 353, in from_call
+    result: TResult | None = func()
+                             ~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 245, in <lambda>
+    lambda: runtest_hook(item=item, **kwds),
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/logging.py", line 850, in pytest_runtest_call
+    yield
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/capture.py", line 900, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/skipping.py", line 268, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 179, in pytest_runtest_call
+    item.runtest()
+    ~~~~~~~~~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 1720, in runtest
+    self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 166, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+  File "/home/chazm/Projects/work/artemis-model/tests/test_executable_notes.py", line 18, in test_checked_in_notes_run_without_external_data
+    assert result.returncode == 0, result.stdout + result.stderr
+AssertionError: pipeline.ids: 6 examples, 0 failures
+  pipeline.spatial_ref: 0 examples, 0 failures
+  pipeline.s3_management.owner_classes: 3 examples, 0 failures
+  pipeline.s3_management.regime_assignment: 5 examples, 0 failures
+  pipeline.s4_fvs.regime_templates: 0 examples, 0 failures
+  pipeline.s4_fvs.regime_library: 1 examples, 0 failures
+  management_regimes.yaml v1 — 8 prescriptions, 5-yr cycles over 50 yr from 2022
+  riparian: SMZ_Pct >= 50.0 -> {no_management} only (absolute=True)
+  
+  corporate
+    default   pine: pine_plantation_short_rotation · hardwood: hardwood_clearcut_regen · other: hardwood_clearcut_regen
+    eligible  pine_plantation_short_rotation, pine_plantation_long_rotation, hardwood_clearcut_regen (+ no_management)
+  family
+    default   family_light_thin
+    eligible  family_light_thin, family_uneven_aged_selection, pine_plantation_long_rotation (+ no_management)
+  tribal
+    default   public_selection_light
+    eligible  public_selection_light, family_light_thin (+ no_management)
+  federal
+    default   public_selection_light
+    eligible  public_selection_light, public_thin_restore (+ no_management)
+  state
+    default   pine: public_thin_restore · hardwood: public_selection_light · other: public_selection_light
+    eligible  public_thin_restore, public_selection_light, pine_plantation_long_rotation (+ no_management)
+  local
+    default   no_management
+    eligible  public_selection_light, public_thin_restore (+ no_management)
+  unknown
+    default   family_light_thin
+    eligible  family_light_thin (+ no_management)
+  ok   rendered 14 configured harvest-library regimes
+  Library constraints (config/regimes.yaml): {'offsets_must_be_multiples_of': 5, 'max_year_offset': 50, 'operations_strictly_ordered': True, 'regeneration_harvest_is_terminal': True}
+  Spatial reference: EPSG:5070 (NAD83 / Conus Albers); resolution=30 m
+  Snap transform: [30, 0, -2361585, 0, -30, 3177435]
+  
+  Checked-in archived evidence; not rerun, not landscape-wide validation:
+  column 'PLT_CN': repaired 1 identifier(s) that had been through a float (e.g. '1.0' or '1.7498047010478e+13'). The values were below 9007199254740992, the exact-integer limit for float64, so no digits were lost — but the producing step should emit them as strings.
+  FAIL missing restart evidence
+  
+assert 1 == 0
+ +  where 1 = CompletedProcess(args=['/home/chazm/Projects/work/artemis-model/.venv/bin/python', '/home/chazm/Projects/work/artemis-...loat64, so no digits were lost — but the producing step should emit them as strings.\nFAIL missing restart evidence\n").returncode
+=========================== short test summary info ============================
+FAILED tests/test_executable_notes.py::test_checked_in_notes_run_without_external_data
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 10 passed in 2.55s
+failed to collect stats. runner returned 1
+
+### Mutation testing — requested files
+
+| File | Score | Killed | Survived | No tests | Timeout | Other |
+|---|---:|---:|---:|---:|---:|---:|
+| `pipeline/ids.py` | — | 0 | 0 | 0 | 0 | 2 |
+
+=== mutation-ids-result.raw.txt ===
+mutating pipeline/ids.py ...
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠙ Generating mutants
+⠋ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠏ Generating mutants
+⠏ Generating mutants
+⠹ Generating mutants
+⠋ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠙ Generating mutants
+⠼ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠸ Generating mutants
+⠦ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠧ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠇ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠸ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠼ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠧ Generating mutants
+⠼ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠴ Generating mutants
+⠇ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠙ Generating mutants
+⠧ Generating mutants
+⠹ Generating mutants
+⠇ Generating mutants
+    done in 5138ms (0 files mutated, 0 ignored, 54 unmodified)
+
+⠏ Running stats     
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+........................................................................ [ 15%]
+........................................................................ [ 30%]
+..........s.................F
+=================================== FAILURES ===================================
+__________ test_walkthrough_notebook_is_valid_and_covers_leto_stages ___________
+Traceback (most recent call last):
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/nbformat/__init__.py", line 169, in read
+    buf = fp.read()
+          ^^^^^^^
+AttributeError: 'PosixPath' object has no attribute 'read'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 353, in from_call
+    result: TResult | None = func()
+                             ~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 245, in <lambda>
+    lambda: runtest_hook(item=item, **kwds),
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/logging.py", line 850, in pytest_runtest_call
+    yield
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/capture.py", line 900, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/skipping.py", line 268, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 179, in pytest_runtest_call
+    item.runtest()
+    ~~~~~~~~~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 1720, in runtest
+    self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 166, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+  File "/home/chazm/Projects/work/artemis-model/tests/test_s1_leto_notebook.py", line 38, in test_walkthrough_notebook_is_valid_and_covers_leto_stages
+    notebook = nbformat.read(NOTEBOOK, as_version=4)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/nbformat/__init__.py", line 171, in read
+    with open(fp, encoding="utf8") as f:  # noqa: PTH123
+         ~~~~^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/chazm/Projects/work/artemis-model/mutants/notebooks/LETO_Initial_State_Walkthrough.ipynb'
+=========================== short test summary info ============================
+FAILED tests/test_s1_leto_notebook.py::test_walkthrough_notebook_is_valid_and_covers_leto_stages
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 171 passed, 1 skipped in 3.53s
+failed to collect stats. runner returned 1
+
+### Mutation testing — requested files
+
+| File | Score | Killed | Survived | No tests | Timeout | Other |
+|---|---:|---:|---:|---:|---:|---:|
+| `pipeline/ids.py` | — | 0 | 0 | 0 | 0 | 2 |
+
+=== mutation-ids-retry.raw.txt ===
+mutating pipeline/ids.py ...
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠙ Generating mutants
+⠋ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠸ Generating mutants
+⠹ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠸ Generating mutants
+⠦ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠴ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠧ Generating mutants
+⠸ Generating mutants
+⠇ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠸ Generating mutants
+⠧ Generating mutants
+⠋ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠦ Generating mutants
+⠏ Generating mutants
+⠧ Generating mutants
+⠋ Generating mutants
+⠇ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠴ Generating mutants
+⠋ Generating mutants
+⠦ Generating mutants
+    done in 3215ms (0 files mutated, 0 ignored, 54 unmodified)
+
+⠏ Running stats     
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+
+==================================== ERRORS ====================================
+________ ERROR collecting tests/test_weekly_artifact_20260914_timing.py ________
+Traceback (most recent call last):
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 353, in from_call
+    result: TResult | None = func()
+                             ~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 398, in collect
+    return list(collector.collect())
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/doctest.py", line 548, in collect
+    module = self.obj
+             ^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 289, in obj
+    self._obj = obj = self._getobj()
+                      ~~~~~~~~~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 560, in _getobj
+    return importtestmodule(self.path, self.config)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 507, in importtestmodule
+    mod = import_path(
+        path,
+    ...<2 lines>...
+        consider_namespace_packages=config.getini("consider_namespace_packages"),
+    )
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/pathlib.py", line 561, in import_path
+    mod = _import_module_using_spec(
+        module_name, path, path.parent, insert_modules=True
+    )
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/pathlib.py", line 725, in _import_module_using_spec
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/assertion/rewrite.py", line 197, in exec_module
+    exec(co, module.__dict__)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/tests/test_weekly_artifact_20260914_timing.py", line 55, in <module>
+    m = _load(LIBRARY_DRIVER, "wa_20260914_timing")
+  File "/home/chazm/Projects/work/artemis-model/tests/test_weekly_artifact_20260914_timing.py", line 51, in _load
+    spec.loader.exec_module(module)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 896, in get_code
+  File "<frozen importlib._bootstrap_external>", line 954, in get_data
+FileNotFoundError: [Errno 2] No such file or directory: '/home/chazm/Projects/work/artemis-model/mutants/weekly-artifact/2026-09-14/make_timing_library.py'
+=========================== short test summary info ============================
+ERROR tests/test_weekly_artifact_20260914_timing.py - FileNotFoundError: [Err...
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 error in 1.69s
+failed to collect stats. runner returned 1
+
+### Mutation testing — requested files
+
+| File | Score | Killed | Survived | No tests | Timeout | Other |
+|---|---:|---:|---:|---:|---:|---:|
+| `pipeline/ids.py` | — | 0 | 0 | 0 | 0 | 2 |
+
+=== mutation-ids-success.raw.txt ===
+mutating pipeline/ids.py ...
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠸ Generating mutants
+⠋ Generating mutants
+⠼ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠙ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠙ Generating mutants
+⠦ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠧ Generating mutants
+⠼ Generating mutants
+⠇ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠙ Generating mutants
+⠸ Generating mutants
+⠹ Generating mutants
+⠹ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠧ Generating mutants
+⠹ Generating mutants
+⠇ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠏ Generating mutants
+⠹ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠴ Generating mutants
+⠏ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠋ Generating mutants
+⠸ Generating mutants
+⠙ Generating mutants
+⠼ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠧ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠙ Generating mutants
+⠇ Generating mutants
+⠹ Generating mutants
+⠧ Generating mutants
+⠸ Generating mutants
+⠇ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠸ Generating mutants
+⠦ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠏ Generating mutants
+⠦ Generating mutants
+⠋ Generating mutants
+    done in 5244ms (0 files mutated, 0 ignored, 54 unmodified)
+
+⠏ Running stats     
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+........................................................................ [ 14%]
+........................................................................ [ 28%]
+..........s....................F
+=================================== FAILURES ===================================
+_____ test_synthesis_spec_defines_computable_paired_gates_and_limitations ______
+Traceback (most recent call last):
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 353, in from_call
+    result: TResult | None = func()
+                             ~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 245, in <lambda>
+    lambda: runtest_hook(item=item, **kwds),
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/logging.py", line 850, in pytest_runtest_call
+    yield
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/capture.py", line 900, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/skipping.py", line 268, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 179, in pytest_runtest_call
+    item.runtest()
+    ~~~~~~~~~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 1720, in runtest
+    self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 166, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+  File "/home/chazm/Projects/work/artemis-model/tests/test_s1_leto_notebook.py", line 98, in test_synthesis_spec_defines_computable_paired_gates_and_limitations
+    source = SYNTHESIS_SPEC.read_text()
+  File "/home/chazm/.local/share/mise/installs/python/3.14.8/lib/python3.14/pathlib/__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/.local/share/mise/installs/python/3.14.8/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/chazm/Projects/work/artemis-model/mutants/docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md'
+=========================== short test summary info ============================
+FAILED tests/test_s1_leto_notebook.py::test_synthesis_spec_defines_computable_paired_gates_and_limitations
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 174 passed, 1 skipped in 3.66s
+failed to collect stats. runner returned 1
+
+### Mutation testing — requested files
+
+| File | Score | Killed | Survived | No tests | Timeout | Other |
+|---|---:|---:|---:|---:|---:|---:|
+| `pipeline/ids.py` | — | 0 | 0 | 0 | 0 | 2 |
+
+=== mutation-ids-valid.raw.txt ===
+mutating pipeline/ids.py ...
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠙ Generating mutants
+⠏ Generating mutants
+⠹ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠋ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠸ Generating mutants
+⠹ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠴ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠴ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠙ Generating mutants
+⠸ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠴ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠏ Generating mutants
+⠦ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠸ Generating mutants
+⠧ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+    done in 6090ms (0 files mutated, 0 ignored, 54 unmodified)
+
+⠏ Running stats     
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+........................................................................ [ 14%]
+........................................................................ [ 28%]
+..........s............................................................. [ 42%]
+ss..................................F
+=================================== FAILURES ===================================
+______________ test_research_review_cites_direct_source_functions ______________
+Traceback (most recent call last):
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 353, in from_call
+    result: TResult | None = func()
+                             ~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 245, in <lambda>
+    lambda: runtest_hook(item=item, **kwds),
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/logging.py", line 850, in pytest_runtest_call
+    yield
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/capture.py", line 900, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/skipping.py", line 268, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/runner.py", line 179, in pytest_runtest_call
+    item.runtest()
+    ~~~~~~~~~~~~^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 1720, in runtest
+    self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/_pytest/python.py", line 166, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+  File "/home/chazm/Projects/work/artemis-model/tests/test_s1_segmentation_comparison.py", line 469, in test_research_review_cites_direct_source_functions
+    ).read_text()
+      ~~~~~~~~~^^
+  File "/home/chazm/.local/share/mise/installs/python/3.14.8/lib/python3.14/pathlib/__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chazm/.local/share/mise/installs/python/3.14.8/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/chazm/Projects/work/artemis-model/mutants/docs/research/leto-vs-boundary-overlay.md'
+=========================== short test summary info ============================
+FAILED tests/test_s1_segmentation_comparison.py::test_research_review_cites_direct_source_functions
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 249 passed, 3 skipped in 4.29s
+failed to collect stats. runner returned 1
+
+### Mutation testing — requested files
+
+| File | Score | Killed | Survived | No tests | Timeout | Other |
+|---|---:|---:|---:|---:|---:|---:|
+| `pipeline/ids.py` | — | 0 | 0 | 0 | 0 | 2 |
+
+=== mutation-ids-working.raw.txt ===
+mutating pipeline/ids.py ...
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠙ Generating mutants
+⠋ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠙ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠋ Generating mutants
+⠹ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠴ Generating mutants
+⠼ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠙ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠦ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠙ Generating mutants
+⠴ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠧ Generating mutants
+⠦ Generating mutants
+⠇ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠧ Generating mutants
+⠏ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠋ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠙ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠙ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠹ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠹ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠏ Generating mutants
+⠹ Generating mutants
+⠧ Generating mutants
+⠋ Generating mutants
+⠇ Generating mutants
+    done in 19594ms (0 files mutated, 0 ignored, 54 unmodified)
+
+⠏ Running stats     
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+    done
+
+⠦ Running clean tests
+⠧ Running clean tests
+⠇ Running clean tests
+⠏ Running clean tests
+⠋ Running clean tests
+⠙ Running clean tests
+⠹ Running clean tests
+⠸ Running clean tests
+⠼ Running clean tests
+⠴ Running clean tests
+⠦ Running clean tests
+    done
+
+⠧ Running forced fail test
+⠇ Running forced fail test
+⠏ Running forced fail test
+⠋ Running forced fail test
+⠙ Running forced fail test
+⠹ Running forced fail test
+⠸ Running forced fail test
+⠼ Running forced fail test
+⠴ Running forced fail test
+⠦ Running forced fail test
+⠧ Running forced fail test
+⠇ Running forced fail test
+⠏ Running forced fail test
+⠋ Running forced fail test
+⠙ Running forced fail test
+⠹ Running forced fail test
+⠸ Running forced fail test
+⠼ Running forced fail test
+⠴ Running forced fail test
+⠦ Running forced fail test
+⠧ Running forced fail test
+⠇ Running forced fail test
+⠏ Running forced fail test
+⠋ Running forced fail test
+⠙ Running forced fail test
+⠹ Running forced fail test
+    done
+Running mutation testing
+
+⠸ 0/85  🎉 0 🫥 0  ⏰ 0  🤔 0  🙁 0  🔇 0  🧙 0
+⠼ 0/85  🎉 0 🫥 0  ⏰ 0  🤔 0  🙁 0  🔇 0  🧙 0
+⠴ 2/85  🎉 2 🫥 0  ⏰ 0  🤔 0  🙁 0  🔇 0  🧙 0
+31.48 mutations/second
+
+Mutant results
+--------------
+🎉 pipeline.ids.x_normalize_id__mutmut_1
+🎉 pipeline.ids.x_normalize_id__mutmut_2
+
+### Mutation testing — requested files
+
+| File | Score | Killed | Survived | No tests | Timeout | Other |
+|---|---:|---:|---:|---:|---:|---:|
+| `pipeline/ids.py` | 100.0% | 2 | 0 | 0 | 0 | 0 |
+
+=== mutation-ids.raw.txt ===
+mutating pipeline/ids.py ...
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+    done in 2490ms (54 files mutated, 0 ignored, 0 unmodified)
+
+⠏ Running stats     
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+
+==================================== ERRORS ====================================
+__________ ERROR collecting tests/test_fvsjl_differential_compare.py ___________
+ImportError while importing test module '/home/chazm/Projects/work/artemis-model/mutants/tests/test_fvsjl_differential_compare.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../tests/test_fvsjl_differential_compare.py:5: in <module>
+    from research.fvsjl_engine_differential.compare import (
+E   ModuleNotFoundError: No module named 'research'
+=========================== short test summary info ============================
+ERROR tests/test_fvsjl_differential_compare.py
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 error in 0.24s
+failed to collect stats. runner returned 1
+
+### Mutation testing — requested files
+
+| File | Score | Killed | Survived | No tests | Timeout | Other |
+|---|---:|---:|---:|---:|---:|---:|
+| `pipeline/ids.py` | — | 0 | 0 | 0 | 0 | 2 |

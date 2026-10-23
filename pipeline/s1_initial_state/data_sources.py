@@ -120,7 +120,8 @@ def load_treemap_attributes(path: Path) -> pd.DataFrame:
     TreeMap 2022 ships FORTYPCD, BALIVE, QMD and TPA_LIVE directly in its
     raster attribute table -- already the plot-level values LETO's
     `01_build_segmentation_rasters.py` computes for its segmentation
-    features. STDAGE is not in the VAT; see `load_stand_age_by_plot`.
+    features. LETO uses them only as a fallback behind FIA
+    (`pipeline.leto_attributes`); see `load_leto_attribute_sources`.
     """
     lookup = read_dataframe(path, read_geometry=False)
     lookup = lookup.rename(
@@ -140,37 +141,36 @@ def load_treemap_attributes(path: Path) -> pd.DataFrame:
     return result
 
 
-def load_stand_age_by_plot(path: Path, plot_ids: Collection[str]) -> pd.DataFrame:
-    """Read each plot's STDAGE from its dominant FIA condition.
+LETO_COND_COLUMNS = ("PLT_CN", "CONDID", "COND_STATUS_CD", "CONDPROP_UNADJ", "STDAGE",
+                     "FORTYPCD", "BALIVE")
+LETO_TREE_COLUMNS = ("PLT_CN", "CONDID", "STATUSCD", "DIA", "TPA_UNADJ")
 
-    LETO reads STDAGE from the FIA COND record of the plot's dominant
-    condition -- the live-forest condition (`COND_STATUS_CD = 1`) with the
-    largest `CONDPROP_UNADJ` -- rather than from the TreeMap VAT, which
-    doesn't carry it.
-    """
+
+def load_leto_attribute_sources(
+    path: Path, plot_ids: Collection[str]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """COND and TREE rows `pipeline.leto_attributes.plot_lookup` needs for these plots."""
     plots = sorted({str(plot_id) for plot_id in plot_ids})
-    if not plots:
-        return pd.DataFrame(columns=["PLT_CN", "STDAGE"])
-
-    frames = []
+    tables = {"COND": LETO_COND_COLUMNS, "TREE": LETO_TREE_COLUMNS}
+    frames: dict[str, list[pd.DataFrame]] = {name: [] for name in tables}
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
         for plot_chunk in _chunks(plots, SQLITE_PARAMETER_LIMIT):
             plot_parameters = ", ".join("?" for _ in plot_chunk)
-            query = (
-                "SELECT PLT_CN, CONDID, STDAGE, CONDPROP_UNADJ FROM COND "
-                f"WHERE PLT_CN IN ({plot_parameters}) "
-                "AND COND_STATUS_CD = 1 AND STDAGE IS NOT NULL"
-            )
-            frames.append(pd.read_sql_query(query, connection, params=plot_chunk))
-
-    cond = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(
-        columns=["PLT_CN", "CONDID", "STDAGE", "CONDPROP_UNADJ"]
-    )
-    cond["PLT_CN"] = cond["PLT_CN"].astype("string")
-    cond = cond.sort_values(
-        ["PLT_CN", "CONDPROP_UNADJ"], ascending=[True, False]
-    ).drop_duplicates("PLT_CN")
-    return cond[["PLT_CN", "STDAGE"]].reset_index(drop=True)
+            for name, columns in tables.items():
+                select = ", ".join(
+                    "CAST(PLT_CN AS TEXT) AS PLT_CN" if c == "PLT_CN" else c for c in columns)
+                frames[name].append(pd.read_sql_query(
+                    f"SELECT {select} FROM {name} WHERE PLT_CN IN ({plot_parameters})",
+                    connection, params=plot_chunk))
+    out = []
+    for name, columns in tables.items():
+        frame = (pd.concat(frames[name], ignore_index=True) if frames[name]
+                 else pd.DataFrame(columns=list(columns)))
+        frame["PLT_CN"] = frame["PLT_CN"].astype("string")
+        for column in columns[1:]:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        out.append(frame)
+    return out[0], out[1]
 
 
 def _chunks(values: list[str], size: int) -> Iterator[list[str]]:

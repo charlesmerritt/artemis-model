@@ -96,7 +96,8 @@ def test_boundary_artifact_contains_complete_attributed_contract_and_manifest(
         "geometry",
     } <= set(units.columns)
     assert manifest_path_for(artifact).exists()
-    assert manifest == {
+    fingerprints = manifest["source_fingerprints"]
+    assert {key: value for key, value in manifest.items() if key != "source_fingerprints"} == {
         "schema_version": 1,
         "strategy": "boundary_overlay",
         "aoi_id": "12003",
@@ -104,7 +105,6 @@ def test_boundary_artifact_contains_complete_attributed_contract_and_manifest(
         "seed": 7,
         "strategy_parameters": {"threshold": 200},
         "code_version": "abc123",
-        "source_fingerprints": manifest["source_fingerprints"],
         "artifact_path": str(artifact.resolve()),
     }
     assert set(manifest["source_fingerprints"]) == {"shared", "strategy"}
@@ -114,12 +114,20 @@ def test_boundary_artifact_contains_complete_attributed_contract_and_manifest(
         "ownership",
         "species",
     }
-    assert set(manifest["source_fingerprints"]["shared"]["treemap"]) == {
-        "resolved_path",
-        "byte_size",
-        "mtime_ns",
-        "metadata_sha256",
-    }
+    assert set(fingerprints["strategy"]) == {"parcels"}
+    expected_sizes = {"treemap": 7, "fiadb": 5, "ownership": 9, "species": 7, "parcels": 7}
+    for group in fingerprints.values():
+        for name, fingerprint in group.items():
+            source = tmp_path / f"{name}.dat"
+            assert set(fingerprint) == {"resolved_path", "byte_size", "mtime_ns", "metadata_sha256"}
+            assert fingerprint["resolved_path"] == str(source.resolve())
+            assert fingerprint["byte_size"] == expected_sizes[name]
+            assert fingerprint["mtime_ns"] == source.stat().st_mtime_ns
+            assert len(fingerprint["metadata_sha256"]) == 64
+            assert set(fingerprint["metadata_sha256"]) <= set("0123456789abcdef")
+    assert units["PLT_CN"].tolist() == ["123"]
+    assert units["SMZ_Pct"].tolist() == [12.5]
+    assert units.geometry.iloc[0].equals(box(0, 0, 10, 10))
 
 
 def test_artifact_write_rejects_missing_post_attribution_column(tmp_path: Path):

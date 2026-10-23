@@ -16,6 +16,10 @@ and the minimum patch area. Analysis and the v2 decision: ``docs/evt2022-add-bac
   planted pine LANDFIRE mislabels as 7997 goes with them. The adopted gate.
 
 Codes the legend does not list, and nodata, fail closed under every gate but ``NONE``.
+
+The gate is per pixel. :class:`PatchRule` is per patch, after the minimum patch area:
+``QUARRY_TOUCH_V4`` (the released FL5 gate-v4 run) rejects an accepted patch whole when it
+contains or 8-touches an EVT 2022 Quarries-Strip Mines-Gravel Pits pixel (7295).
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ import pandas as pd
 DEVELOPED_BLOCKED = (7296, 7297, 7298, 7299)   # Developed-Low/Medium/High Intensity, Roads
 NEVER_ELIGIBLE_LIFEFORMS = ("Water", "Snow-Ice", "Fill-NoData")
 PASTURE_BLOCKED = (7997,)                       # Eastern Warm Temperate Pasture and Hayland
+QUARRY_VETO = (7295,)                           # Quarries-Strip Mines-Gravel Pits-Well and Wind Pads
 PASTURE_AND_HAY = "Pasture and Hay"            # matches "Pasture and Hay" and "... Pasture and Hayland"
 
 
@@ -57,3 +62,15 @@ def eligibility(evt: np.ndarray, legend: pd.DataFrame, policy: EvtGatePolicy) ->
     if policy is EvtGatePolicy.NONE:
         return np.ones(evt.shape, dtype=bool)
     return np.isin(evt, policy.eligible_codes(legend))
+
+
+class PatchRule(StrEnum):
+    NONE = "none"
+    QUARRY_TOUCH_V4 = "quarry_touch_v4"
+
+
+def patch_veto(evt: np.ndarray, rule: PatchRule) -> np.ndarray:
+    """Pixels whose contact rejects an accepted patch whole under ``rule``."""
+    if rule is PatchRule.NONE:
+        return np.zeros(evt.shape, dtype=bool)
+    return np.isin(evt, QUARRY_VETO)

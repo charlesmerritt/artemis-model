@@ -124,23 +124,19 @@ def test_strata_grid_tiles_split_into_2d_tiles_within_budget_and_width():
     rows, cols = 500, 300
     tiles = score_holes_statewide.grid_tiles(transform, rows, cols, max_tile_pixels=60_000,
                                    max_tile_width=200)
-    for window, (left, bottom, right, top) in tiles:
-        assert window.width <= 200
-        assert window.height * window.width <= 60_000
-        # every tile edge on the exact 30 m grid
-        assert top == 2_000_000.0 - window.row_off * 30.0
-        assert left == 1_000_000.0 + window.col_off * 30.0
-        assert bottom == top - window.height * 30.0
-        assert right == left + window.width * 30.0
-    # full coverage, no gaps: count once per unique (row_off, col_off)
-    for row_band in range(0, rows, 100):  # 60_000 // 200 = 300 rows per band
-        pass
-    band_rows = 60_000 // 200
-    assert band_rows == 300
-    n_row_bands = (rows + band_rows - 1) // band_rows
-    n_col_bands = (cols + 200 - 1) // 200
-    assert len(tiles) == n_row_bands * n_col_bands
-    assert len({(w.row_off, w.col_off) for w, _ in tiles}) == len(tiles)
+    # Four hand-specified rectangles cover the 500 by 300 raster in reading
+    # order. The last row and column are partial tiles.
+    actual = [
+        ((w.row_off, w.col_off, w.height, w.width), bounds)
+        for w, bounds in tiles
+    ]
+    assert actual == [
+        ((0, 0, 300, 200), (1_000_000.0, 1_991_000.0, 1_006_000.0, 2_000_000.0)),
+        ((0, 200, 300, 100), (1_006_000.0, 1_991_000.0, 1_009_000.0, 2_000_000.0)),
+        ((300, 0, 200, 200), (1_000_000.0, 1_985_000.0, 1_006_000.0, 1_991_000.0)),
+        ((300, 200, 200, 100), (1_006_000.0, 1_985_000.0, 1_009_000.0, 1_991_000.0)),
+    ]
+    assert all(w.width <= 200 and w.height * w.width <= 60_000 for w, _ in tiles)
 
 
 def test_strata_grid_tiles_cover_the_whole_grid_exactly_once():

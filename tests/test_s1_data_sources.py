@@ -13,7 +13,7 @@ from pipeline.s1_initial_state import data_sources
 from pipeline.s1_initial_state.data_sources import (
     ProductionDataPaths,
     load_fia_trees_sqlite,
-    load_stand_age_by_plot,
+    load_leto_attribute_sources,
     load_treemap_attributes,
     load_treemap_lookup,
     preflight_production_data,
@@ -142,34 +142,28 @@ def test_load_treemap_attributes_rejects_missing_vat_columns(tmp_path, monkeypat
         load_treemap_attributes(dbf_path)
 
 
-def test_load_stand_age_by_plot_takes_the_dominant_live_condition(tmp_path):
+def test_load_leto_attribute_sources_reads_cond_and_tree_for_the_plots(tmp_path):
     db_path = tmp_path / "fia.db"
     with sqlite3.connect(db_path) as connection:
         connection.execute(
-            "create table COND (PLT_CN text, CONDID integer, STDAGE real, "
-            "CONDPROP_UNADJ real, COND_STATUS_CD integer)"
-        )
-        connection.executemany(
-            "insert into COND values (?, ?, ?, ?, ?)",
-            [
-                ("101", 1, 15.0, 0.3, 1),
-                ("101", 2, 40.0, 0.7, 1),  # dominant: larger CONDPROP_UNADJ
-                ("101", 3, 5.0, 1.0, 2),  # not live forest -- excluded
-                ("202", 1, 80.0, 1.0, 1),
-            ],
-        )
-    result = load_stand_age_by_plot(db_path, {"101", "202"})
-    by_plot = dict(zip(result["PLT_CN"], result["STDAGE"]))
-    assert by_plot == {"101": 40.0, "202": 80.0}
+            "create table COND (PLT_CN integer, CONDID integer, COND_STATUS_CD integer, "
+            "CONDPROP_UNADJ real, STDAGE real, FORTYPCD integer, BALIVE real)")
+        connection.executemany("insert into COND values (?, ?, ?, ?, ?, ?, ?)", [
+            (1234567890123456789, 1, 1, 1.0, 40.0, 161, 90.0),
+            (999, 1, 1, 1.0, 10.0, 161, 50.0)])  # not requested
+        connection.execute("create table TREE (PLT_CN integer, CONDID integer, "
+                           "STATUSCD integer, DIA real, TPA_UNADJ real)")
+        connection.execute("insert into TREE values (1234567890123456789, 1, 1, 8.0, 6.0)")
+    cond, trees = load_leto_attribute_sources(db_path, ["1234567890123456789"])
+    assert cond["PLT_CN"].tolist() == ["1234567890123456789"]
+    assert cond.loc[0, ["STDAGE", "FORTYPCD", "BALIVE"]].tolist() == [40.0, 161, 90.0]
+    assert trees.loc[0, ["PLT_CN", "DIA", "TPA_UNADJ"]].tolist() == [
+        "1234567890123456789", 8.0, 6.0]
 
 
-def test_load_stand_age_by_plot_returns_empty_frame_for_no_plots(tmp_path):
+def test_load_leto_attribute_sources_returns_empty_frames_for_no_plots(tmp_path):
     db_path = tmp_path / "fia.db"
-    with sqlite3.connect(db_path) as connection:
-        connection.execute(
-            "create table COND (PLT_CN text, CONDID integer, STDAGE real, "
-            "CONDPROP_UNADJ real, COND_STATUS_CD integer)"
-        )
-    result = load_stand_age_by_plot(db_path, [])
-    assert list(result.columns) == ["PLT_CN", "STDAGE"]
-    assert len(result) == 0
+    sqlite3.connect(db_path).close()
+    cond, trees = load_leto_attribute_sources(db_path, [])
+    assert cond.empty and "CONDPROP_UNADJ" in cond.columns
+    assert trees.empty and "TPA_UNADJ" in trees.columns

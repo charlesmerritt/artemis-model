@@ -85,3 +85,11 @@ def test_v3_is_v2_with_eastern_warm_temperate_pasture_and_hay_blocked():
 def test_v3_eligibility_rejects_7997_and_keeps_forest():
     evt = np.array([7997, 7296, 9001])
     assert eligibility(evt, LEGEND, EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3).tolist() == [False, False, True]
+
+
+def test_the_v4_quarry_patch_rule_vetoes_quarries_strip_mines_and_gravel_pits():
+    from pipeline.s1_initial_state.evt_gate import PatchRule, patch_veto
+
+    evt = np.array([[7295, 9001], [7296, 7295]])
+    assert patch_veto(evt, PatchRule.QUARRY_TOUCH_V4).tolist() == [[True, False], [False, True]]
+    assert not patch_veto(evt, PatchRule.NONE).any()

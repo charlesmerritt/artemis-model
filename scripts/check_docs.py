@@ -50,7 +50,7 @@ MARKDOWN_BUDGET = {
     "docs/adr/0001-ruderal-grassland-clean-slate.md": (36, "record"),  # accepted decision, 2026-09-13
     "docs/adr/0002-scaled-nearest-neighbour-establishment.md": (93, "record"),  # accepted decision, 2026-09-28
     "docs/adr/0003-dated-stand-age-and-young-plots.md": (91, "record"),  # accepted decision, 2026-09-28; supersedes 0002; 75->91 2026-10-12 amendment (#87, #88)
-    "docs/config-policy.md": (429, "convert"),                # -> policy deck
+    "docs/config-policy.md": (427, "convert"),                # -> policy deck
     "docs/ownership-regimes.md": (183, "convert"),            # -> policy deck (per-class regime tables)
     "docs/research/leto-vs-boundary-overlay.md": (120, "record"),      # dated comparison record
     "docs/superpowers/plans/2026-07-20-leto-initial-state.md": (649, "record"),
@@ -75,6 +75,7 @@ MARKDOWN_BUDGET = {
     "pipeline/s5_imagery/README.md": (180, "code"),                    # -> module docstrings, --help
     "research/fia_treemap_fortype/README.md": (115, "convert"),        # -> treemap deck
     "research/regeneration_audit/README.md": (113, "record"),          # investigation with runnable probes
+    "research/leto_parity/README.md": (136, "record"),             # LETO v1 parity audit, 2026-10-19
     "research/regeneration_audit/proposed_revisions.md": (249, "convert"),  # owed regeneration.py
     "research/restart_fidelity/README.md": (204, "convert"),           # -> restart-fidelity deck
     "viewer/README.md": (126, "code"),                                 # -> serve_viewer.py --help

@@ -289,3 +289,33 @@ def test_gate_rejected_is_a_raw_proposal_the_gate_stripped_from_every_method():
     r = block([[7, 0, 0, 0, 7]], bookends=[[0, 1, 1, 0, 0]], obata=[[0, 0, 1, 1, 0]],
               eligible=[[1, 1, 1, 0, 1]])
     assert r.gate_rejected[0].tolist() == [False, False, False, True, False]
+
+
+def test_the_quarry_patch_rule_rejects_a_patch_that_touches_a_vetoed_pixel_whole():
+    # The left patch 8-touches the veto pixel diagonally; the right patch does not.
+    veto = [[0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0]]
+    r = block([[7, 7, 7, 7, 7, 7, 7],
+               [7, 7, 7, 7, 7, 7, 7],
+               [7, 0, 0, 7, 0, 0, 7]],
+              bookends=[[0, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 0],
+                        [0, 1, 1, 0, 1, 1, 0]],
+              patch_veto=np.array(veto, dtype=bool))
+    assert r.provenance[2].tolist() == [TP.PUBLISHED, TP.UNMAPPED_LAND, TP.UNMAPPED_LAND,
+                                        TP.PUBLISHED, TP.ADDED_BACK, TP.ADDED_BACK, TP.PUBLISHED]
+    assert r.patch_rejected[2].tolist() == [False, True, True, False, False, False, False]
+
+
+def test_the_quarry_patch_rule_judges_patches_after_the_minimum_area():
+    # A sub-MMU sliver next to the quarry is dropped by the MMU, not counted as quarry-rejected.
+    r = block([[7, 0, 7, 0, 0, 7]], bookends=[[0, 1, 0, 1, 1, 0]], min_acres=2 * PX,
+              patch_veto=np.array([[1, 0, 0, 0, 0, 0]], dtype=bool))
+    assert not r.patch_rejected.any()
+    assert TP.added_back(r.provenance).sum() == 2
+
+
+def test_without_a_patch_veto_nothing_is_patch_rejected():
+    r = block([[7, 0, 7]], bookends=[[0, 1, 0]])
+    assert not r.patch_rejected.any()

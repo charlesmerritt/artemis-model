@@ -56,6 +56,8 @@ class MatchLevel(StrEnum):
     TYPE = "type"          # the neighbour plot's FORTYPCD
     GROUP = "group"        # its forest type group
     UNMATCHED = "unmatched"   # no young plot of the type or group within ±2 years
+    NEIGHBOUR = "neighbour"   # unmatched, and the neighbour plot itself stands in (add_back_ids
+                              # UnmatchedYoungPlotPolicy.KEEP_NEIGHBOUR); its age gap is -1, not measured
 
 
 @dataclass(frozen=True)

@@ -117,9 +117,18 @@ def annual_embedding(ee, year: int, region=None):
     )
 
 
+def points_bounds(points: pd.DataFrame) -> tuple[float, float, float, float]:
+    """(west, south, east, north) in degrees around the points' ``lon``/``lat``."""
+    return (float(points.lon.min()), float(points.lat.min()),
+            float(points.lon.max()), float(points.lat.max()))
+
+
 def sample_year(ee, points: pd.DataFrame, year: int) -> pd.DataFrame:
-    """Return a (len(points), 64) frame of embedding bands for `year`, index-aligned."""
-    image = annual_embedding(ee, year)
+    """Return a (len(points), 64) frame of embedding bands for `year`, index-aligned.
+
+    The mosaic is filtered to the points' own bounds, so points outside the FL5 AOI sample too.
+    """
+    image = annual_embedding(ee, year, ee.Geometry.Rectangle(list(points_bounds(points))))
     out = []
     for start in range(0, len(points), CHUNK):
         block = points.iloc[start:start + CHUNK]

@@ -159,6 +159,19 @@ class UnmatchedYoungPlots(ValueError):
     """Add-back pixels with no young plot: an error, never a partial VAT row (ADR 0003 amendment)."""
 
 
+class UnmatchedYoungPlotPolicy(StrEnum):
+    """What an add-back pixel with no young plot gets.
+
+    ``REFUSE`` raises :class:`UnmatchedYoungPlots` (ADR 0003). ``KEEP_NEIGHBOUR`` gives it
+    its neighbour plot's VAT row and trees under the new ID, at its dated stand age, with
+    :attr:`MatchLevel.NEIGHBOUR`: for regions whose TreeMap library is too thin in young
+    plots (Maine: 96 in ME/MA/NH/NY, none of the white pine group).
+    """
+
+    REFUSE = "refuse"
+    KEEP_NEIGHBOUR = "keep_neighbour"
+
+
 class TreelessYoungPlots(ValueError):
     """Add-back pixels whose young plot has no tree to give them: a new ID needs a tree list."""
 
@@ -173,18 +186,19 @@ class AddBackIds:
 
 
 def add_back_ids(pixels: pd.DataFrame, vat: pd.DataFrame, library: YoungPlotLibrary,
-                 neighbour_trees: pd.DataFrame) -> AddBackIds:
+                 neighbour_trees: pd.DataFrame,
+                 unmatched: UnmatchedYoungPlotPolicy = UnmatchedYoungPlotPolicy.REFUSE) -> AddBackIds:
     """New IDs for add-back pixels (``NEIGHBOUR_TM_ID``, ``STAND_AGE_2022``, ``CUT_YEAR``, ``AGE_SOURCE``).
 
     ``vat`` is TreeMap's VAT (:data:`VAT_COLUMNS`, IDs as strings); ``neighbour_trees`` the
     neighbour plots' live trees, for their species mix.
     """
     vat_by_id = vat.set_index("TM_ID", drop=False)
-    matches = _match(pixels, vat_by_id, library, neighbour_trees)
+    matches = _match(pixels, vat_by_id, library, neighbour_trees, unmatched)
     pixels = pixels.assign(YOUNG_TM_ID=[m.tm_id for m in _matches_of(pixels, matches)])
     keys, values = number_keys(pixels, vat["TM_ID"])
     key_matches = _matches_of(keys, matches)
-    trees = _tree_extension(keys, library, key_matches)
+    trees = _tree_extension(keys, library, key_matches, neighbour_trees)
     treeless = ~keys["TM_ID"].isin(trees["TM_ID"]).to_numpy()
     if treeless.any():
         plots = sorted({(m.tm_id, m.plt_cn) for m, empty in zip(key_matches, treeless) if empty})
@@ -200,7 +214,8 @@ def _matches_of(rows: pd.DataFrame, matches: dict[tuple[str, int], YoungPlotMatc
 
 
 def _match(pixels: pd.DataFrame, vat_by_id: pd.DataFrame, library: YoungPlotLibrary,
-           neighbour_trees: pd.DataFrame) -> dict[tuple[str, int], YoungPlotMatch]:
+           neighbour_trees: pd.DataFrame, unmatched_policy: UnmatchedYoungPlotPolicy
+           ) -> dict[tuple[str, int], YoungPlotMatch]:
     """The young plot of each (neighbour plot, stand age) among ``pixels``."""
     mixes = {tm_id: species_mix(trees) for tm_id, trees in neighbour_trees.groupby("TM_ID")}
     pairs = pixels.groupby(["NEIGHBOUR_TM_ID", "STAND_AGE_2022"]).size()
@@ -210,7 +225,13 @@ def _match(pixels: pd.DataFrame, vat_by_id: pd.DataFrame, library: YoungPlotLibr
                for tm_id, age in pairs.index}
     unmatched = pd.Series({pair: n for pair, n in pairs.items()
                            if matches[pair].level is MatchLevel.UNMATCHED}, dtype=np.int64)
-    if len(unmatched):
+    if len(unmatched) and unmatched_policy is UnmatchedYoungPlotPolicy.KEEP_NEIGHBOUR:
+        logging.warning("%d add-back pixels keep their neighbour plot: no young plot",
+                        unmatched.sum())
+        for tm_id, age in unmatched.index:
+            matches[(tm_id, age)] = YoungPlotMatch(MatchLevel.NEIGHBOUR, -1,
+                                                   vat_by_id.at[tm_id, "PLT_CN"], tm_id, 0)
+    elif len(unmatched):
         by_type = unmatched.groupby([fortypcd[tm_id] for tm_id, _ in unmatched.index]).sum()
         raise UnmatchedYoungPlots(
             f"{unmatched.sum()} add-back pixels have no young plot of their neighbour plot's "
@@ -237,9 +258,14 @@ def _vat_extension(keys: pd.DataFrame, vat_by_id: pd.DataFrame,
 
 
 def _tree_extension(keys: pd.DataFrame, library: YoungPlotLibrary,
-                    key_matches: list[YoungPlotMatch]) -> pd.DataFrame:
-    """Each new ID's tree list: its young plot's trees, plus its seedlings at stand age 0-2."""
-    lists = [library.tree_list(match, age).assign(TM_ID=tm_id)
+                    key_matches: list[YoungPlotMatch], neighbour_trees: pd.DataFrame) -> pd.DataFrame:
+    """Each new ID's tree list: its young plot's trees, plus its seedlings at stand age 0-2.
+
+    A :attr:`MatchLevel.NEIGHBOUR` ID takes its neighbour plot's trees.
+    """
+    lists = [(neighbour_trees[neighbour_trees["TM_ID"] == match.tm_id]
+              if match.level is MatchLevel.NEIGHBOUR else library.tree_list(match, age)
+              ).assign(TM_ID=tm_id)
              for tm_id, age, match in zip(keys["TM_ID"], keys["STAND_AGE_2022"], key_matches)]
     return pd.concat(lists, ignore_index=True)
 
@@ -275,7 +301,8 @@ def run_detectors(run_dir: Path, obata: Path | None,
 
 def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLibrary,
                        tree_table: Path, obata: Path | None = None,
-                       hansen: Path | None = None) -> dict:
+                       hansen: Path | None = None,
+                       unmatched: UnmatchedYoungPlotPolicy = UnmatchedYoungPlotPolicy.REFUSE) -> dict:
     """Give a run folder's add-back pixels new IDs; write them under ``<run_dir>/young_plots/``.
 
     Returns :func:`validate`'s report, also written as ``validation.json``. Detectors not
@@ -298,7 +325,7 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
                            "CUT_YEAR": pd.Series(years, dtype="Int64").where(years > 0),
                            "AGE_SOURCE": sources})
     neighbour_trees = live_trees(tree_table, set(pixels["NEIGHBOUR_TM_ID"]))
-    ids = add_back_ids(pixels, vat, library, neighbour_trees)
+    ids = add_back_ids(pixels, vat, library, neighbour_trees, unmatched)
 
     out = run_dir / OUT_DIR
     out.mkdir(exist_ok=True)
@@ -382,6 +409,9 @@ def main() -> None:
     parser.add_argument("--vat", type=Path, default=Path(treemap["tif"] + ".vat.dbf"))
     parser.add_argument("--tree-table", type=Path, default=Path(treemap["tree_table"]))
     parser.add_argument("--db", type=Path, default=Path(raw["fia_sqlite"]["db"]))
+    parser.add_argument("--unmatched", type=UnmatchedYoungPlotPolicy,
+                        default=UnmatchedYoungPlotPolicy.REFUSE, choices=list(UnmatchedYoungPlotPolicy),
+                        help="an add-back pixel with no young plot: refuse, or keep its neighbour plot")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -389,7 +419,7 @@ def main() -> None:
     report = write_add_back_ids(
         args.run_dir, vat=read_vat(args.vat),
         library=read_young_plot_library(args.vat, args.db, args.tree_table),
-        tree_table=args.tree_table, obata=obata, hansen=hansen)
+        tree_table=args.tree_table, obata=obata, hansen=hansen, unmatched=args.unmatched)
     print(json.dumps(report, indent=2))
     if not all(report["checks"].values()):
         sys.exit("a check failed: the young_plots outputs do not join")

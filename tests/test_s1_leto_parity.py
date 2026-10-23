@@ -1,4 +1,4 @@
-"""Behavioral parity checks between legacy LETO equations and the Python port."""
+"""Worked LETO examples with independently specified expected outputs."""
 
 from pathlib import Path
 import sys
@@ -21,77 +21,6 @@ from pipeline.s1_initial_state.leto_initial_state import (
     impute_missing_tree_rows,
     prepare_direct_tree_rows,
 )
-
-LEGACY_TREE_COLUMNS = [
-    "STAND_ID",
-    "TREE_ID",
-    "SPECIES",
-    "DIAMETER",
-    "HT",
-    "CRRATIO",
-    "TREE_COUNT",
-    "MU_ID",
-    "PLT_CN",
-    "WEIGHT",
-    "Species_FIA",
-    "TREE_SOURCE",
-    "DONOR_STAND_ID",
-    "NEAR_DIST",
-]
-
-
-def _legacy_prepare_tree_rows(weights, trees, species_lookup):
-    """Independent pandas transcription of LETO_CSV_PIPELINE.txt."""
-    legacy = weights.merge(trees, on="PLT_CN", how="left", indicator=True)
-    legacy = legacy.loc[legacy["_merge"] == "both"].copy()
-    legacy = legacy.loc[legacy["STATUSCD"] == "1"].copy()
-    legacy = legacy.rename(
-        columns={
-            "CN": "TREE_ID",
-            "INVYR": "INV_YEAR",
-            "SPCD": "Species_FIA",
-            "DIA": "DIAMETER",
-            "CR": "CRRATIO",
-            "TPA_UNADJ": "TREE_COUNT",
-        }
-    )
-    legacy["Species_FIA_CLEAN"] = (
-        pd.to_numeric(legacy["Species_FIA"], errors="coerce")
-        .astype("Int64")
-        .astype("string")
-        .str.zfill(3)
-    )
-    legacy["SPECIES"] = legacy["Species_FIA_CLEAN"].map(species_lookup)
-    legacy["STAND_ID"] = "MU_" + legacy["Stand_ID"].astype("string")
-    for column in ["DIAMETER", "HT", "ACTUALHT", "CRRATIO", "TREE_COUNT", "WEIGHT"]:
-        legacy[column] = pd.to_numeric(legacy[column], errors="coerce")
-    legacy["TREE_COUNT"] = legacy["TREE_COUNT"] * legacy["WEIGHT"]
-    legacy["HT"] = legacy["HT"].fillna(legacy["ACTUALHT"])
-    legacy = legacy.dropna(subset=["STAND_ID", "SPECIES", "DIAMETER", "TREE_COUNT"])
-    legacy = legacy.loc[legacy["TREE_COUNT"] > 0].copy()
-    legacy["TREE_SOURCE"] = "FIA_WEIGHTED_DIRECT"
-    legacy["DONOR_STAND_ID"] = ""
-    legacy["NEAR_DIST"] = ""
-    return legacy[LEGACY_TREE_COLUMNS].reset_index(drop=True)
-
-
-def _legacy_impute_tree_rows(direct_trees, nearest_pairs):
-    """Independent transcription of LETO's nearest-table donor-copy loop."""
-    imputed_groups = []
-    for pair in nearest_pairs.itertuples(index=False):
-        donor_stand_id = f"MU_{pair.DONOR_MU_ID}"
-        donor_trees = direct_trees.loc[
-            direct_trees["STAND_ID"] == donor_stand_id
-        ].copy()
-        donor_trees["DONOR_STAND_ID"] = donor_stand_id
-        donor_trees["TREE_SOURCE"] = "IMPUTED_NEAREST"
-        donor_trees["NEAR_DIST"] = pair.NEAR_DIST
-        donor_trees["STAND_ID"] = f"MU_{pair.MISSING_MU_ID}"
-        donor_trees["MU_ID"] = pair.MISSING_MU_ID
-        donor_trees["TREE_ID"] = range(1, len(donor_trees) + 1)
-        imputed_groups.append(donor_trees)
-    return pd.concat([direct_trees, *imputed_groups], ignore_index=True)
-
 
 @pytest.fixture
 def leto_spatial_fixture(tmp_path: Path):
@@ -205,7 +134,7 @@ def test_majority_plot_tie_preserves_leto_tm_value_order():
 
 
 def test_weight_filter_matches_leto_group_normalization():
-    """Compare the new transform with LETO's filter/group-transform equations."""
+    """A sub-threshold donor is removed and retained donors are renormalized."""
     weights = pd.DataFrame(
         {
             "MU_ID": ["1", "1", "2", "2"],
@@ -223,19 +152,25 @@ def test_weight_filter_matches_leto_group_normalization():
             "SMZ_Pct": [0.0, 5.0],
         }
     )
-    legacy = weights.loc[weights["WEIGHT"] >= 0.05].copy()
-    legacy["WEIGHT"] = legacy["WEIGHT"] / legacy.groupby("MU_ID")["WEIGHT"].transform(
-        "sum"
-    )
-    legacy = legacy.merge(crosswalk, on="MU_ID", how="left")
-
     actual = filter_and_normalize_weights(weights, crosswalk)
 
-    pd.testing.assert_frame_equal(actual, legacy, check_dtype=False)
+    # The 4% donor is removed. Its unit's 96% donor then carries all trees.
+    expected = pd.DataFrame({
+        "MU_ID": ["1", "1", "2"],
+        "PLT_CN": ["101", "102", "201"],
+        "WEIGHT": [0.8, 0.2, 1.0],
+        "WEIGHT_ORIGINAL": [0.8, 0.2, 0.96],  # kept for LETO's imputation QA
+        "Stand_ID": ["1", "1", "2"],
+        "Acres": [10.0, 10.0, 20.0],
+        "OWN_CODE": [4, 4, 5],
+        "OWN_TYPE": ["family", "family", "corporate"],
+        "SMZ_Pct": [0.0, 0.0, 5.0],
+    })
+    pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
 
 
-def test_tree_preparation_matches_leto_csv_pipeline():
-    """Match LETO's live-tree, species, height, and weighted-TPA expressions."""
+def test_tree_preparation_matches_leto_v1_build_tree_list():
+    """Match LETO v1's live-tree, species, height, weighted-TPA and TREE_ID rules."""
     normalized_weights = pd.DataFrame(
         {
             "MU_ID": ["1", "1"],
@@ -260,9 +195,28 @@ def test_tree_preparation_matches_leto_csv_pipeline():
     )
 
     actual = prepare_direct_tree_rows(normalized_weights, fia_trees, {"131": "LP"})
-    legacy = _legacy_prepare_tree_rows(normalized_weights, fia_trees, {"131": "LP"})
-
-    pd.testing.assert_frame_equal(actual, legacy, check_dtype=False)
+    # t2 is dead, t3 has no species translation, and t1 needs ACTUALHT. TREE_ID is
+    # sequential within the stand; the FIA CN moves to TREE_ID_FIA.
+    expected = pd.DataFrame({
+        "STAND_ID": ["MU_1", "MU_1"],
+        "TREE_ID": [1, 2],
+        "SPECIES": ["LP", "LP"],
+        "DIAMETER": [10, 8],
+        "HT": [55.0, 40.0],
+        "CRRATIO": [50, 40],
+        "TREE_COUNT": [4.0, 2.0],
+        "MU_ID": ["1", "1"],
+        "SEG_ID": [1, 1],
+        "PLT_CN": ["101", "102"],
+        "WEIGHT": [0.8, 0.2],
+        "WEIGHT_ORIGINAL": [0.8, 0.2],
+        "Species_FIA": ["131", "131"],
+        "TREE_ID_FIA": ["t1", "t4"],
+        "TREE_SOURCE": ["FIA_WEIGHTED_DIRECT", "FIA_WEIGHTED_DIRECT"],
+        "DONOR_STAND_ID": ["", ""],
+        "NEAR_DIST": [float("nan"), float("nan")],
+    })
+    pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
 
 
 def test_nearest_imputation_matches_leto_generate_near_table():
@@ -280,22 +234,29 @@ def test_nearest_imputation_matches_leto_generate_near_table():
     direct_trees = pd.DataFrame(
         {
             "STAND_ID": ["MU_1", "MU_1", "MU_3"],
-            "TREE_ID": ["a", "b", "c"],
+            "TREE_ID": [1, 2, 1],
             "MU_ID": ["1", "1", "3"],
+            "SEG_ID": [1, 1, 3],
             "PLT_CN": ["101", "101", "301"],
             "TREE_SOURCE": ["FIA_WEIGHTED_DIRECT"] * 3,
             "DONOR_STAND_ID": [""] * 3,
-            "NEAR_DIST": [""] * 3,
+            "NEAR_DIST": [float("nan")] * 3,
         }
     )
 
     result = impute_missing_tree_rows(management_units, crosswalk, direct_trees)
-    nearest_pairs = pd.DataFrame(
-        {"MISSING_MU_ID": ["2"], "DONOR_MU_ID": ["1"], "NEAR_DIST": [90.0]}
-    )
-    legacy = _legacy_impute_tree_rows(direct_trees, nearest_pairs)
-
-    pd.testing.assert_frame_equal(result, legacy, check_dtype=False)
+    expected = pd.DataFrame({
+        "STAND_ID": ["MU_1", "MU_1", "MU_3", "MU_2", "MU_2"],
+        "TREE_ID": [1, 2, 1, 1, 2],
+        "MU_ID": ["1", "1", "3", "2", "2"],
+        "SEG_ID": [1, 1, 3, 2, 2],
+        "PLT_CN": ["101", "101", "301", "101", "101"],
+        "TREE_SOURCE": ["FIA_WEIGHTED_DIRECT", "FIA_WEIGHTED_DIRECT",
+                        "FIA_WEIGHTED_DIRECT", "IMPUTED_NEAREST", "IMPUTED_NEAREST"],
+        "DONOR_STAND_ID": ["", "", "", "MU_1", "MU_1"],
+        "NEAR_DIST": [float("nan"), float("nan"), float("nan"), 90.0, 90.0],
+    })
+    pd.testing.assert_frame_equal(result, expected, check_dtype=False)
     imputed = result.loc[result["STAND_ID"] == "MU_2"]
     assert imputed["DONOR_STAND_ID"].unique().tolist() == ["MU_1"]
     assert imputed["TREE_SOURCE"].unique().tolist() == ["IMPUTED_NEAREST"]

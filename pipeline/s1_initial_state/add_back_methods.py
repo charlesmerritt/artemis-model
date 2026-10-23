@@ -42,6 +42,8 @@ METHOD_BIT = {method: 1 << i for i, method in enumerate(METHOD_PRIORITY)}
 class ConsensusRule(StrEnum):
     UNION = "union"                # any run method is enough (the rule while only bookends has run)
     AT_LEAST_TWO = "at_least_two"  # the proposed synthesis: two independent methods must agree
+    # v4: bookends, or Obata and Hansen together; a pending Obata or Hansen proposes nothing
+    BOOKENDS_OR_OBATA_AND_HANSEN = "bookends_or_obata_and_hansen"
 
 
 class MethodMasks:
@@ -75,6 +77,15 @@ class MethodMasks:
         votes = self.votes()
         if rule is ConsensusRule.UNION:
             return votes >= 1
+        if rule is ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN:
+            bookends = self.masks[AddBackMethod.BOOKENDS]
+            if bookends is None:
+                raise ValueError(f"{rule} needs bookends to have run")
+            obata = self.masks[AddBackMethod.OBATA_DISTURBANCE]
+            hansen = self.masks[AddBackMethod.HANSEN_LOSS]
+            if obata is None or hansen is None:
+                return bookends.copy()
+            return bookends | (obata & hansen)
         if len(self.run) < 2:
             raise ValueError(
                 f"{rule} needs at least two methods to have run; only {list(self.run)} have")

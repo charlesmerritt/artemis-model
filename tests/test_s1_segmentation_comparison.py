@@ -47,17 +47,16 @@ def test_compare_segmentations_reports_coverage_overlap_and_sizes():
     assert metrics["coverage_jaccard"] == pytest.approx(1.0)
     assert metrics["coverage_symmetric_difference_acres"] == pytest.approx(0)
     assert metrics["candidate_overlap_acres"] == pytest.approx(0)
-    square_meters_per_acre = 4_046.872609874251
     assert metrics["coverage_intersection_acres"] == pytest.approx(
-        2 / square_meters_per_acre
+        0.0004942087852
     )
-    assert metrics["coverage_union_acres"] == pytest.approx(2 / square_meters_per_acre)
+    assert metrics["coverage_union_acres"] == pytest.approx(0.0004942087852)
     assert metrics["reference_median_acres"] == pytest.approx(
-        1 / square_meters_per_acre
+        0.0002471043926
     )
-    assert metrics["reference_p05_acres"] == pytest.approx(1 / square_meters_per_acre)
+    assert metrics["reference_p05_acres"] == pytest.approx(0.0002471043926)
     assert metrics["candidate_p95_acres"] == pytest.approx(
-        0.95 / square_meters_per_acre
+        0.0002347491730
     )
     assert metrics["reference_sliver_count"] == 2
     assert metrics["candidate_oversized_count"] == 0
@@ -83,9 +82,8 @@ def test_compare_segmentations_measures_within_method_overlap_without_unit_match
         candidate_name="candidate",
     )
 
-    square_meters_per_acre = 4_046.872609874251
     assert metrics["reference_overlap_acres"] == pytest.approx(
-        0.5 / square_meters_per_acre
+        0.0001235521963
     )
     assert metrics["candidate_overlap_acres"] == pytest.approx(0)
     assert "unit_id_agreement_rate" not in metrics.index
@@ -110,13 +108,12 @@ def test_compare_segmentations_reports_nonzero_coverage_differences():
         candidate_name="candidate",
     )
 
-    square_meters_per_acre = 4_046.872609874251
     assert metrics["coverage_intersection_acres"] == pytest.approx(
-        1 / square_meters_per_acre
+        0.0002471043926
     )
-    assert metrics["coverage_union_acres"] == pytest.approx(3 / square_meters_per_acre)
+    assert metrics["coverage_union_acres"] == pytest.approx(0.0007413131778)
     assert metrics["coverage_symmetric_difference_acres"] == pytest.approx(
-        2 / square_meters_per_acre
+        0.0004942087852
     )
     assert metrics["coverage_jaccard"] == pytest.approx(1 / 3)
 
@@ -141,7 +138,7 @@ def test_compare_segmentations_measures_unit_acres_from_geometry():
         candidate_name="candidate",
     )
 
-    measured_acres = 10_000 / 4_046.872609874251
+    measured_acres = 2.4710439261  # 10,000 square meters in US survey acres
     assert metrics["coverage_jaccard"] == pytest.approx(1.0)
     assert metrics["reference_median_acres"] == pytest.approx(measured_acres)
     assert metrics["candidate_median_acres"] == pytest.approx(measured_acres)
@@ -191,12 +188,11 @@ def test_compare_segmentations_converts_us_survey_feet_to_metric_outputs():
         candidate_name="candidate",
     )
 
-    meters_per_us_survey_foot = 1_200 / 3_937
     assert metrics["reference_coverage_acres"] == pytest.approx(
-        meters_per_us_survey_foot**2 / 4_046.872609874251
+        0.00002295684114  # one square foot is 1/43,560 acre
     )
     assert metrics["reference_boundary_length_median_meters"] == pytest.approx(
-        4 * meters_per_us_survey_foot
+        1.2192024384  # perimeter of a one-survey-foot square, in meters
     )
 
 
@@ -568,6 +564,10 @@ def test_hierarchical_bootstrap_resamples_aois_before_nested_seeds():
 
     assert result["bootstrap_method"] == "aoi_first_hierarchical"
     assert result["observed_mean"] == pytest.approx(5.0)
+    # Both AOIs have constant within-AOI effects. Resampling two AOIs can
+    # yield all-small (0), mixed (5), or all-large (10) replicates.
+    assert result["ci_95_lower"] == pytest.approx(0.0)
+    assert result["ci_95_upper"] == pytest.approx(10.0)
     assert result["aoi_count"] == 2
     assert result["block_count"] == 4
     assert result["per_block_differences"] == [0.0, 10.0, 10.0, 10.0]

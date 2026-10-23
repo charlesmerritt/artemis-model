@@ -64,6 +64,7 @@ import rasterio
 from rasterio import features
 from rasterio.transform import Affine
 from rasterio.windows import Window
+from scipy import ndimage
 
 from pipeline.ids import as_id_series, read_id_csv
 from pipeline.spatial_ref import project_crs
@@ -75,7 +76,7 @@ from pipeline.s1_initial_state.add_back_methods import (
     method_bits,
     priority_attribution,
 )
-from pipeline.s1_initial_state.evt_gate import EvtGatePolicy, eligibility
+from pipeline.s1_initial_state.evt_gate import EvtGatePolicy, PatchRule, eligibility, patch_veto
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL, apply_mmu
 from pipeline.s1_initial_state.impute_establishment import (
     EstablishmentMode,
@@ -251,6 +252,7 @@ class BlockResult:
     ownership_provenance: np.ndarray   # uint8 OwnershipProvenance
     assignments: pd.DataFrame          # patch -> donor
     labels: np.ndarray                 # accepted-patch labels, indexing ``assignments``
+    patch_rejected: np.ndarray         # bool: in a patch the patch rule rejected whole
     masks: MethodMasks = field(repr=False)
 
     @property
@@ -268,19 +270,28 @@ def improve_block(tm_ids: np.ndarray, land: np.ndarray, masks: MethodMasks, stra
                   stratum_modes: Mapping[int, EstablishmentMode],
                   scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
                   reach: float = MAX_DISTANCE_PX,
-                  eligible: np.ndarray | None = None) -> BlockResult:
+                  eligible: np.ndarray | None = None,
+                  patch_veto: np.ndarray | None = None) -> BlockResult:
     """Decide, fill and re-own the holes of one block. ``tm_ids`` is 0 where TreeMap has no plot.
 
     ``stratum_modes`` maps a patch's bookend stratum to its establishment mode; a stratum
     it does not list is ``scaled_young`` (:func:`impute_establishment.mode_for_stratum`).
     ``eligible`` is the EVT gate (:func:`evt_gate.eligibility`): every method's proposals
     are limited to it before the rule and the minimum patch area. ``None`` gates nothing.
+    ``patch_veto`` (:func:`evt_gate.patch_veto`) rejects whole every patch left after the
+    minimum area that contains or 8-touches one of its pixels. ``None`` vetoes nothing.
     """
     hole = (tm_ids == 0) & land
     raw_bits = method_bits(masks) * hole
     if eligible is not None:
         masks = masks.restricted_to(eligible)
     accepted = apply_mmu(masks.combine(rule) & hole, min_acres) & hole
+    patch_rejected = np.zeros(hole.shape, dtype=bool)
+    if patch_veto is not None and patch_veto.any():
+        candidates, _ = label_patches(accepted)
+        touching = ndimage.binary_dilation(patch_veto, structure=np.ones((3, 3), dtype=bool))
+        patch_rejected = np.isin(candidates, np.unique(candidates[touching & accepted]))
+        accepted &= ~patch_rejected
     labels, n_patches = label_patches(accepted)
     improved = tm_ids.copy()
     if n_patches:
@@ -299,7 +310,7 @@ def improve_block(tm_ids: np.ndarray, land: np.ndarray, masks: MethodMasks, stra
     ownership, ownership_provenance = repair_ownership(
         nwos, improved > 0, added_back, scope=scope, max_distance_px=reach)
     return BlockResult(improved, provenance, method_bits(masks) * hole, raw_bits, added_back,
-                       ownership, ownership_provenance, assignments, labels, masks)
+                       ownership, ownership_provenance, assignments, labels, patch_rejected, masks)
 
 
 # ── one county ──────────────────────────────────────────────────────────────────────────
@@ -356,7 +367,8 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
                    scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
                    reach: float = MAX_DISTANCE_PX,
                    stratum_modes: Mapping[int, EstablishmentMode] | None = None,
-                   evt_gate: EvtGatePolicy = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3) -> dict:
+                   evt_gate: EvtGatePolicy = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3,
+                   patch_rule: PatchRule = PatchRule.NONE) -> dict:
     if stratum_modes is None:
         stratum_modes = load_establishment_policy().stratum_modes
     geom = load_county(inputs.counties, fips)
@@ -383,7 +395,8 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     eligible = eligibility(evt[2022], legends[2022], evt_gate)
 
     r = improve_block(tm_ids, land, masks, strata, nwos, rule=rule, min_acres=min_acres,
-                      stratum_modes=stratum_modes, scope=scope, reach=reach, eligible=eligible)
+                      stratum_modes=stratum_modes, scope=scope, reach=reach, eligible=eligible,
+                      patch_veto=patch_veto(evt[2022], patch_rule))
 
     # Crop the padding away and mask to the county.
     crop = (slice(PAD_PX, -PAD_PX), slice(PAD_PX, -PAD_PX))
@@ -418,6 +431,8 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
                                           f"1 EVT 2022 class eligible under {evt_gate}"),
         "evt2022_gate_rejected.tif": (county(rejected.astype(np.uint8), OUTSIDE), OUTSIDE,
                                       f"1 a method proposed the pixel and {evt_gate} rejected it"),
+        "evt2022_patch_rejected.tif": (county(r.patch_rejected.astype(np.uint8), OUTSIDE), OUTSIDE,
+                                       f"1 in an accepted patch {patch_rule} rejected whole"),
         "bookend_strata.tif": (county(strata, OUTSIDE), OUTSIDE,
                                "LANDFIRE 2016/2024 strata S1-S5 over holes; 0 not a hole"),
         "nwos2022_published.tif": (county(nwos, NWOS_NODATA), NWOS_NODATA,
@@ -444,6 +459,8 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
 
     summary = county_summary(fips, r, strata, land, crop, outside, rule, min_acres, scope, reach,
                              patches, evt_gate=evt_gate)
+    summary["patch_rule"] = {"policy": str(patch_rule),
+                             "rejected_acres": _acres(r.patch_rejected[crop] & ~outside)}
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary
 
@@ -689,6 +706,9 @@ def main() -> None:
     parser.add_argument("--evt-gate", type=EvtGatePolicy,
                         default=EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3, choices=list(EvtGatePolicy),
                         help="EVT 2022 classes an add-back proposal may land on (default: v3)")
+    parser.add_argument("--patch-rule", type=PatchRule, default=PatchRule.NONE,
+                        choices=list(PatchRule),
+                        help="per-patch veto after the minimum area (v4: quarry_touch_v4)")
     parser.add_argument("--stage", type=Stage, default=Stage.ALL, choices=list(Stage))
     args = parser.parse_args()
 
@@ -697,7 +717,7 @@ def main() -> None:
         for fips in args.counties:
             s = improve_county(fips, inputs, args.out_root, rule=args.rule,
                                min_acres=args.min_acres, scope=args.ownership_scope,
-                               evt_gate=args.evt_gate)
+                               evt_gate=args.evt_gate, patch_rule=args.patch_rule)
             young = s["added_back_acres_by_mode"][str(EstablishmentMode.SCALED_YOUNG)]
             print(f"{fips} {s['county']:<9} holes {s['hole_acres']:>10,.0f} ac   "
                   f"added back {s['added_back_acres']:>9,.0f} ac ({young:,.0f} scaled young)   "

@@ -461,9 +461,8 @@ def test_assign_smz_percent_matches_legacy_intersection_formula():
     result = assign_smz_percent(units, streams, buffer_feet=10 / 0.3048)
 
     assert result.loc[0, "SMZ_Pct"] == pytest.approx(20.0)
-    assert result.loc[0, "SMZ_Acres"] == pytest.approx(
-        2_000 / US_SURVEY_SQUARE_METERS_PER_ACRE
-    )
+    # The 100 m by 20 m protected strip covers 2,000 square meters.
+    assert result.loc[0, "SMZ_Acres"] == pytest.approx(0.4942087852)
 
 
 def test_build_leto_management_units_preserves_stage_order_and_modal_ties(

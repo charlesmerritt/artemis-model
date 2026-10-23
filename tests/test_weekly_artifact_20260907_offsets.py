@@ -103,14 +103,25 @@ def test_params_round_trip(mol):
 @pytest.mark.parametrize("offset", [5, 10, 15])
 def test_shift_moves_years_and_only_years(mol, template, offset):
     """Proportions, DBH limits and intervals describe the treatment, not its timing."""
-    params = CASES[template]
-    shifted = mol.shift_params(template, params, offset)
-    assert set(shifted) == set(params)
-    for key, value in params.items():
-        if key in mol.YEAR_PARAMS[template]:
-            assert shifted[key] == value + offset, key
-        else:
-            assert shifted[key] == value, key
+    # Worked schedules, independent of the driver's YEAR_PARAMS and shift arithmetic.
+    years = {
+        "thin_from_below": [(2037,), (2042,), (2047,)],
+        "clearcut": [(2032,), (2037,), (2042,)],
+        "selection_harvest": [(2037, 2067), (2042, 2072), (2047, 2077)],
+        "thin_from_below_repeated": [(2032, 2072), (2037, 2077), (2042, 2082)],
+        "plantation_rotation": [(2032, 2042), (2037, 2047), (2042, 2052)],
+    }[template][[5, 10, 15].index(offset)]
+    expected = {
+        "thin_from_below": {"year": years[0], "max_dbh": 8.0, "proportion": 0.35},
+        "clearcut": {"year": years[0]},
+        "selection_harvest": {"start_year": years[0], "end_year": years[-1],
+                              "interval": 10, "proportion": 0.2},
+        "thin_from_below_repeated": {"start_year": years[0], "end_year": years[-1],
+                                    "interval": 15, "max_dbh": 10.0, "proportion": 0.3},
+        "plantation_rotation": {"thin_year": years[0], "clearcut_year": years[-1],
+                                "thin_max_dbh": 9.0, "thin_proportion": 0.35},
+    }[template]
+    assert mol.shift_params(template, dict(CASES[template]), offset) == expected
 
 
 @pytest.mark.parametrize("template", sorted(CASES))
@@ -248,7 +259,7 @@ def _tiny_library() -> pd.DataFrame:
 def test_expansion_keeps_no_management_once_per_stand(mol):
     out = mol.expand_offset_grid(_tiny_library())
     per_stand = out[out["base_prescription"] == "no_management"].groupby("unit_id").size()
-    assert set(per_stand) == {1}
+    assert per_stand.to_dict() == {"R1": 1, "U1": 1, "U2": 1}
 
 
 def test_expansion_leaves_riparian_libraries_structural(mol):
@@ -435,6 +446,7 @@ def test_the_committed_control_carries_no_non_finite_values():
     cols = ["cycles", "first_year", "last_year", "total_removed_merch_cuft_per_ac",
             "harvest_cycles", "ending_ba", "ending_merch_cuft_per_ac"]
     for frame, name in ((prev, "2026-08-31"), (now, "2026-09-07")):
+        assert not frame.empty, f"{name} carries no control trajectories"
         for col in cols:
             assert np.isfinite(frame[col]).all(), f"{name}/{col} carries a non-finite value"
 
