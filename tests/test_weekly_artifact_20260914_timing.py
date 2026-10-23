@@ -369,6 +369,8 @@ def test_parse_params_round_trips_the_20260817_form():
 # --------------------------------------------------------------------------------------
 
 plan = _load(PLAN_DRIVER, "wa_20260914_anneal")
+# The driver re-exports the selector; its policy global lives where the functions do.
+from pipeline.s3_management import annealer  # noqa: E402
 
 
 def test_greedy_baseline_takes_the_deterministic_timing():
@@ -426,12 +428,12 @@ def test_owner_group_resolves_under_either_vocabulary(monkeypatch, legacy, group
     and a stand's TPO budget must not depend on which.
     """
     assert plan.owner_group(legacy) == group          # the policy as configured today
-    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    monkeypatch.setattr(annealer, "OWNERSHIP_POLICY", HARRIS_POLICY)
     assert plan.owner_group(legacy) == group          # the seven Harris classes
 
 
 def test_legacy_names_map_onto_the_harris_classes(monkeypatch):
-    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    monkeypatch.setattr(annealer, "OWNERSHIP_POLICY", HARRIS_POLICY)
     assert plan.owner_class_in_policy("private_family") == "family"
     assert plan.owner_class_in_policy("private_industrial") == "corporate"
     # The parcel refinement that split corporate in two is gone; both halves are corporate.
@@ -452,7 +454,7 @@ def test_owner_class_comparison_survives_the_rename(monkeypatch):
     as a mismatch the moment the classes are renamed — a warning about a rename rather than
     about the attribution drift the check exists to catch.
     """
-    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    monkeypatch.setattr(annealer, "OWNERSHIP_POLICY", HARRIS_POLICY)
     same = plan.owner_class_in_policy("family") == plan.owner_class_in_policy("private_family")
     assert same, "a renamed class must not read as drifted attribution"
     drifted = plan.owner_class_in_policy("federal") == plan.owner_class_in_policy("family")
@@ -462,7 +464,7 @@ def test_owner_class_comparison_survives_the_rename(monkeypatch):
 def test_unresolvable_owner_class_stops_the_run(monkeypatch):
     """Never silently drop the stand. It has acres and trajectories; a missing lookup row is
     a fault in the configuration, not a reason to leave it out of the plan."""
-    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    monkeypatch.setattr(annealer, "OWNERSHIP_POLICY", HARRIS_POLICY)
     with pytest.raises(AssertionError, match="no TPO group"):
         plan.owner_group("conservation_ngo")
 
