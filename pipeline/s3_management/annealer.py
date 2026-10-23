@@ -19,7 +19,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import multiprocessing as mp
 import random
+import time
 from collections.abc import Collection
 from pathlib import Path
 
@@ -897,3 +899,47 @@ def evenflow_cost(viol: pd.DataFrame) -> float:
     """
     d = (viol["volume_cuft"] - viol["target_cuft"]) / viol["target_cuft"]
     return float((d ** 2).sum())
+
+
+# --------------------------------------------------------------------------------------
+# The schedule stage: a library and its FVS cycles in, the best of several restarts out
+# --------------------------------------------------------------------------------------
+
+def build_landscape(stands: pd.DataFrame, library: pd.DataFrame, cycles: pd.DataFrame,
+                    cfg: dict, caps: dict) -> tuple[Landscape, Objective, list[int]]:
+    """Join `trajectory_library` options to their runs' cycles; fail on a lost stand.
+
+    ``library`` is `enumerate_library`'s frame (``unit_id``, ``PLT_CN``, ``prescription``,
+    ``run_hash``) and ``cycles`` is `run_fvs`'s ``fvs_cycles`` table. A stand left with no
+    trajectory, or a riparian stand offered a cut, stops the run rather than shrinking it.
+    """
+    runs = library.drop_duplicates(["PLT_CN", "prescription"])[["PLT_CN", "prescription", "run_hash"]]
+    cyc = runs.merge(cycles, on=["run_hash", "PLT_CN"], how="inner")
+    land = Landscape(stands, library[["unit_id", "prescription"]], cyc, cfg["n_cycles"],
+                     counties=caps[hs.COUNTY].keys())
+    rip = land.verify_riparian_structural()
+    if not rip["structurally_enforced"]:
+        raise AssertionError(f"riparian stands with a cutting option: {rip}")
+    if land.dropped_no_trajectory:
+        raise AssertionError(f"{land.dropped_no_trajectory} stands lost every option")
+    obj = Objective(land, caps, cfg)
+    return land, obj, greedy_seed(land, stands, caps)
+
+
+_STATE: dict = {}
+
+
+def _search_one(seed: int) -> dict:
+    t = time.perf_counter()
+    res = anneal(_STATE["land"], _STATE["obj"], _STATE["cfg"], seed, _STATE["greedy"])
+    res["seconds"] = time.perf_counter() - t
+    return res
+
+
+def search(land: Landscape, obj: Objective, cfg: dict, greedy: list[int], seeds: list[int],
+           workers: int) -> tuple[dict, list[dict]]:
+    """Anneal once per seed from the greedy plan, in forked workers; the best and every run."""
+    _STATE.update(land=land, obj=obj, cfg=cfg, greedy=greedy)
+    with mp.get_context("fork").Pool(processes=max(1, min(workers, len(seeds)))) as pool:
+        results = pool.map(_search_one, seeds, chunksize=1)
+    return min(results, key=lambda r: r["objective"]), results
