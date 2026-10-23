@@ -29,8 +29,8 @@ as a failure:
 | How to run a stage | `--help` | argparse |
 | A finding or a design | a deck | `check_docs.py` (links, slide ids) |
 
-`check_docs.py` also sets a line budget for the markdown files that remain. It refuses new
-ones, and each existing file is marked keep, convert, code, record or generated. Checks and pytest
+`check_docs.py` also sets an advisory line budget for the markdown files that remain. New or
+over-ceiling files print a warning but do not fail, and each existing file is marked keep, convert, code, record or generated. Checks and pytest
 run in CI and pre-commit; each PR also gets CRAP and file-by-file mutation reports (`scripts/quality.py`).
 
 ## Quickstart
