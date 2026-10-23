@@ -78,6 +78,7 @@ MARKDOWN_BUDGET = {
     "scripts/notes/README.md": (226, "keep"),                 # orientation for scripts/
     "scripts/notes/southeast-fvs-artemis-export-package.md": (375, "record"),  # 2026-06-09 handoff
     "weekly-artifact/2026-09-07/README.md": (421, "record"),
+    "weekly-artifact/2026-10-19/README.md": (148, "record"),
     "weekly-artifact/2026-09-14/README.md": (511, "record"),
     "weekly-artifact/2026-07-19/README.md": (111, "record"),
     "weekly-artifact/2026-07-26/README.md": (156, "record"),
