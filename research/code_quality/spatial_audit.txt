@@ -1,0 +1,230 @@
+Spatial test-integrity audit
+
+Scope: every test function in tests/test_s1_*.py, tests/test_statewide_repair.py, tests/test_score_holes_statewide.py and tests/test_prepare_ownership_fl.py. Helpers and fixtures were read with their callers.
+Method: read each test and associated production behavior. Keep independently specified results, rejection cases, preservation/determinism properties and genuine independent-engine comparisons. Replace self-comparisons and copied expected-value algorithms with worked outputs.
+Interfaces: replacements stay at existing tested interfaces. No production code was changed. No commits were created.
+Skills: tdd and unslop. Existing tested interfaces and explicit user authorization establish scope for these replacements.
+
+Production sources checked:
+pipeline/s1_initial_state/{data_sources,weights,leto_initial_state,statewide_repair,score_holes_statewide,embed_holes,prepare_ownership_fl}.py
+pipeline/s1_initial_state/segmentation/{leto,cellular_automata,boundary_overlay,artifacts,comparison}.py
+
+Doctest scope:
+Inspected all Python modules under pipeline/s1_initial_state, including segmentation. There are zero >>> prompts and therefore zero existing spatial doctest cases to classify or replace. Pytest still imports these modules through the established doctest collection workflow.
+
+Verification:
+.venv/bin/python -m pytest -q tests/test_s1_*.py tests/test_statewide_repair.py tests/test_score_holes_statewide.py tests/test_prepare_ownership_fl.py
+144 passed, 3 skipped. Skips are the ArcPy executable comparison and two mounted production-data smoke tests.
+.venv/bin/python -m ruff check tests/test_s1_*.py tests/test_statewide_repair.py tests/test_score_holes_statewide.py tests/test_prepare_ownership_fl.py
+All checks passed.
+
+Fault sensitivity:
+17 distinct deliberate faults were rejected by replacement tests, with original behavior restored and green after each fault. Six also passed the unchanged baseline tests from commit 066aee6 before failing the replacement. The other eleven prove replacement sensitivity only; baseline outcome is not claimed.
+The runnable script compiles function-source mutants into copied namespaces, patches production constants, or temporarily returns deliberately wrong CA adapter output in process. The source-layout mutation is rejected by FileNotFoundError; the other sixteen are rejected by assertions. No on-disk production source edits occur.
+.venv/bin/python research/code_quality/spatial_rejection_probes.py
+Machine-readable evidence: research/code_quality/spatial_probe_results.json.
+These targeted proofs supplement, and do not replace, the hardener subagent mutation run.
+- normalization multiplies by retained group sum: killed by assertion; original restored and passed.
+- weighted tree density adds rather than multiplies weight: killed by assertion; original restored and passed.
+- missing height fills zero rather than ACTUALHT: killed by assertion; original restored and passed.
+- imputed MU_ID remains donor identity: killed by assertion; original restored and passed.
+- logged regrowth assigned S2 rather than S1: killed by assertion; original restored and passed.
+- 2024 forest classified with 2016 legend: killed by assertion; original restored and passed.
+- tile row budget grows by one: killed by assertion; original restored and passed.
+- tile left edge shifted one pixel: killed by assertion; original restored and passed.
+- wrong hectares-to-acres conversion: killed by assertion; original restored and passed.
+- wrong segmentation method constant: killed by assertion; original restored and passed.
+- fingerprint byte size zeroed: baseline passed; replacement rejected; original restored and passed.
+- comparison acreage divisor wrong: killed by assertion; original restored and passed.
+- bootstrap fixes AOI indices instead of resampling: baseline passed; replacement rejected; original restored and passed.
+- tile order reversed: baseline passed; replacement rejected; original restored and passed.
+- source constructor points to wrong parcel path: baseline passed; replacement rejected; original restored and passed.
+- CA returns empty donor weights: baseline passed; replacement rejected; original restored and passed.
+- CA polygon crosses ownership split while centroid stays west: baseline passed; replacement rejected; original restored and passed.
+
+Complete test/function inventory:
+
+tests/test_s1_boundary_overlay.py (8 test functions)
+Boundary adapter contracts, production-source preflight, CLI continuation/error status and known forest-mask geometry.
+- test_boundary_output_meets_s1_contract [line 42]: Changed. Replaced implementation conversion expression and imported method constant with known hectares-to-acres literals and boundary_overlay tag.
+- test_boundary_output_with_source_acres_writes_to_geopackage [line 52]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_boundary_output_is_fully_attributed_before_canonical_artifact_write [line 66]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_boundary_preflight_reports_every_missing_source_with_recovery_guidance [line 137]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_boundary_preflight_accepts_complete_temp_source_tree [line 160]: Changed. Replaced fixture construction through production from_root with independently specified published source paths.
+- test_process_county_preflights_before_dry_run [line 185]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_cli_processes_remaining_counties_but_exits_nonzero_after_failure [line 210]: Changed. Pinned the five county FIPS codes independently of the production PILOT_COUNTIES constant.
+- test_create_forest_mask_vectorizes_tree_dominated_evt [line 240]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_s1_cellular_automata.py (6 test functions)
+Public CA adapter returns complete attributed units and respects hard ownership boundaries and riparian splitting. Missing-age case remains a valid nonempty integration smoke check; it does not prove the exact median value.
+- test_produces_the_shared_canonical_output_contract [line 134]: Changed. Strengthened a potentially vacuous empty-weight subset assertion to equality with every nonempty output unit.
+- test_never_crosses_the_ownership_hard_boundary [line 145]: Changed. Strengthened centroid checks to whole-polygon bounds at the known ownership split.
+- test_splits_riparian_units_along_the_stream [line 158]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_multiple_parent_stands_from_the_small_maximum_stand_acres [line 167]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_raises_when_parcels_overlap_no_treemap_cells [line 175]: Retained. Independent invalid input or failure contract.
+- test_missing_stand_age_falls_back_to_the_aoi_median [line 183]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_s1_data_sources.py (8 test functions)
+DBF reader is mocked as an external input; independent literal rows and real SQLite queries check ID handling, filtering and dominant live FIA condition.
+- test_preflight_names_mount_and_r2_when_source_is_missing [line 23]: Retained. Independent invalid input or failure contract.
+- test_load_treemap_lookup_preserves_large_plot_ids [line 29]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_load_treemap_lookup_rejects_invalid_numeric_plot_ids [line 44]: Retained. Independent invalid input or failure contract.
+- test_load_fia_trees_sqlite_filters_plots_and_states [line 61]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_load_treemap_attributes_renames_vat_columns_and_normalizes_plt_cn [line 105]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_load_treemap_attributes_rejects_missing_vat_columns [line 133]: Retained. Independent invalid input or failure contract.
+- test_load_stand_age_by_plot_takes_the_dominant_live_condition [line 145]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_load_stand_age_by_plot_returns_empty_frame_for_no_plots [line 166]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_s1_leto_arcpy_parity.py (1 test functions)
+Independent ArcPy executable differential comparison plus coverage/size/weight invariants. Production statistics compared with input or another engine are not self-assertions.
+- test_arcpy_reference_stages_preserve_leto_invariants [line 116]: Retained. Independent engine differential comparison and invariants; locally skipped.
+
+tests/test_s1_leto_initial_state.py (17 test functions)
+Literal crosswalks, donor retention, species mappings, stand rows, SQLite/CSV IDs and integration outputs. Input/output equality for immutable weights is an intended preservation property.
+- test_crosswalk_uses_majority_plot_and_legacy_columns [line 59]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_weights_keep_threshold_boundary_and_renormalize [line 78]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_load_species_lookup_normalizes_fia_codes [line 95]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_legacy_xls_species_crosswalk_engine_is_available [line 106]: Retained. External artifact, documentation or installed-runtime contract.
+- test_load_fia_tree_files_combines_states_and_preserves_plot_ids [line 110]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_crosswalk_reports_missing_management_unit_columns [line 126]: Retained. Independent invalid input or failure contract.
+- test_crosswalk_rejects_duplicate_management_units [line 133]: Retained. Independent invalid input or failure contract.
+- test_load_fia_tree_files_requires_at_least_one_path [line 148]: Retained. Independent invalid input or failure contract.
+- test_load_species_lookup_rejects_conflicting_mappings [line 153]: Retained. Independent invalid input or failure contract.
+- test_load_species_lookup_reports_missing_columns [line 163]: Retained. Independent invalid input or failure contract.
+- test_imputation_requires_projected_crs [line 173]: Retained. Independent invalid input or failure contract.
+- test_imputation_requires_a_runnable_donor [line 186]: Retained. Independent invalid input or failure contract.
+- test_stand_rows_include_only_tree_bearing_units [line 197]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_build_and_write_initial_state_outputs [line 209]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_modal_plot_is_identity_but_all_retained_plots_build_trees [line 270]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_run_initial_state_from_sqlite_reads_all_weighted_plot_ids [line 318]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_run_leto_initial_state_reads_inputs_and_writes_outputs [line 414]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_s1_leto_notebook.py (5 test functions)
+Artifact/document structural contracts check external notebook/spec/README contents, parsing and clean saved state. Required-section literals are independent specifications.
+- test_walkthrough_notebook_is_valid_and_covers_leto_stages [line 35]: Retained. External artifact, documentation or installed-runtime contract.
+- test_walkthrough_notebook_code_parses_and_has_no_saved_outputs [line 54]: Retained. External artifact, documentation or installed-runtime contract.
+- test_walkthrough_begins_with_segmentation_and_offers_both_methods [line 66]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_synthesis_spec_defines_computable_paired_gates_and_limitations [line 97]: Retained. External artifact, documentation or installed-runtime contract.
+- test_s1_readme_documents_manifest_gated_artifacts_and_json_comparison [line 111]: Retained. External artifact, documentation or installed-runtime contract.
+
+tests/test_s1_leto_parity.py (6 test functions)
+Known raster counts, modal ties, complete normalization/tree/imputation worked examples. Removed copied transformation algorithms.
+- test_plot_weights_match_leto_assign_plt_cn [line 58]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_plot_weights_exclude_unmapped_cells_from_leto_denominator [line 80]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_majority_plot_tie_preserves_leto_tm_value_order [line 107]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_weight_filter_matches_leto_group_normalization [line 136]: Changed. Removed a replica filter/group-normalization oracle; pinned complete retained donor records and weights.
+- test_tree_preparation_matches_leto_csv_pipeline [line 171]: Changed. Removed a replica join/filter/species/height/TPA oracle; pinned complete expected live tree records.
+- test_nearest_imputation_matches_leto_generate_near_table [line 217]: Changed. Removed replica donor-copy helper; pinned all direct and imputed output rows, identities and distance.
+
+tests/test_s1_leto_segmentation.py (23 test functions)
+Geometry primitives have independent validation, threshold, coverage, containment, deterministic seed, ownership and riparian strip specifications. Same-seed equality is valid determinism, accompanied by count/coverage/separation assertions.
+- test_calculate_acres_uses_projected_crs_units_without_mutating_input [line 59]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_calculate_acres_rejects_null_and_empty_geometry [line 78]: Retained. Independent invalid input or failure contract.
+- test_calculate_acres_rejects_non_polygon_geometry [line 89]: Retained. Independent invalid input or failure contract.
+- test_calculate_acres_rejects_invalid_polygon_topology [line 100]: Retained. Independent invalid input or failure contract.
+- test_calculate_acres_rejects_non_positive_and_non_finite_area [line 119]: Retained. Independent invalid input or failure contract.
+- test_calculate_acres_accepts_multipolygon_geometry [line 130]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_cleanup_uses_us_survey_acres_at_exact_five_acre_threshold [line 139]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_sample_constrained_points_stays_inside_and_respects_separation [line 169]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_sample_constrained_points_returns_empty_list_for_zero_count [line 189]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_constrained_points_fail_instead_of_looping_forever [line 200]: Retained. Independent invalid input or failure contract.
+- test_constrained_points_scale_across_sparse_multipart_with_seeded_separation [line 210]: Retained. Same-seed determinism plus independent geometry constraints.
+- test_split_unit_thiessen_returns_polygonal_coverage [line 242]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_polygon_parts_ignore_non_polygon_collection_members [line 257]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_subdivide_large_units_keeps_units_at_threshold [line 264]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_subdivide_large_units_is_repeatable_and_preserves_coverage [line 284]: Retained. Same-seed determinism plus independent geometry constraints.
+- test_build_treemap_domain_reads_aoi_window_and_clips_valid_cells [line 308]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_build_treemap_domain_matches_arcpy_cell_center_footprint [line 367]: Retained. Independent engine differential comparison and invariants; locally skipped.
+- test_cleanup_matches_leto_singlepart_minimum_and_parcel_clip [line 380]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_cleanup_applies_minimum_before_final_parcel_clip [line 395]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_assign_majority_ownership_uses_pixel_centers_and_low_code_tie_break [line 411]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_assign_majority_ownership_leaves_units_without_valid_cells_null [line 433]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_assign_smz_percent_matches_legacy_intersection_formula [line 453]: Changed. Pinned independently worked protected-strip survey acreage instead of repeating area conversion formula.
+- test_build_leto_management_units_preserves_stage_order_and_modal_ties [line 468]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_s1_leto_weights.py (8 test functions)
+Independent invalid input scenarios must raise named errors, including ambiguous IDs, CRS, unmapped/nodata rasters and absent overlaps.
+- test_build_plot_weights_rejects_ambiguous_treemap_lookup [line 43]: Retained. Independent invalid input or failure contract.
+- test_build_plot_weights_rejects_duplicate_mu_ids [line 57]: Retained. Independent invalid input or failure contract.
+- test_build_plot_weights_requires_management_unit_crs [line 69]: Retained. Independent invalid input or failure contract.
+- test_build_plot_weights_rejects_units_outside_treemap [line 77]: Retained. Independent invalid input or failure contract.
+- test_build_plot_weights_reports_missing_lookup_columns [line 87]: Retained. Independent invalid input or failure contract.
+- test_build_plot_weights_reports_missing_mu_id [line 99]: Retained. Independent invalid input or failure contract.
+- test_build_plot_weights_rejects_all_nodata_window [line 107]: Retained. Independent invalid input or failure contract.
+- test_build_plot_weights_rejects_all_unmapped_cells [line 134]: Retained. Independent invalid input or failure contract.
+
+tests/test_s1_production_smoke.py (2 test functions)
+Mounted-data integration properties include nonempty outputs, weight completeness, normalized sums and subdivision maximum. They require /mnt/d and were skipped locally.
+- test_real_data_small_aoi_builds_weighted_management_units [line 50]: Retained. Real-data integration properties; locally skipped without mount.
+- test_real_oversized_parcel_exercises_seeded_subdivision [line 75]: Retained. Real-data integration properties; locally skipped without mount.
+
+tests/test_s1_segmentation_artifacts.py (8 test functions)
+Manifest contracts, independent known persisted values, fail-closed identity/provenance comparison, source preflight and fingerprint change sensitivity.
+- test_boundary_artifact_contains_complete_attributed_contract_and_manifest [line 80]: Changed. Removed source_fingerprints self-comparison. Assert actual filesystem paths, known byte sizes, filesystem mtimes, hash syntax and persisted unit values.
+- test_artifact_write_rejects_missing_post_attribution_column [line 133]: Retained. Independent invalid input or failure contract.
+- test_artifact_write_preflights_sources_before_writing_geopackage [line 152]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_comparison_fails_closed_when_manifest_is_missing [line 174]: Retained. Independent invalid input or failure contract.
+- test_comparison_rejects_mismatched_run_identity [line 191]: Retained. Independent invalid input or failure contract.
+- test_comparison_allows_strategy_specific_sources_to_differ [line 207]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_comparison_rejects_mismatched_shared_source_fingerprint [line 223]: Retained. Independent invalid input or failure contract.
+- test_directory_fingerprint_changes_when_existing_content_changes [line 237]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_s1_segmentation_comparison.py (25 test functions)
+Known polygon coverage/overlap/area/distribution calculations, invalid inputs, explicit crosswalk agreement, initial-state readiness, AOI bootstrap and stable literal serialization.
+- test_compare_segmentations_reports_coverage_overlap_and_sizes [line 21]: Changed. Pinned known rectangle acreages instead of recomputing the production division.
+- test_compare_segmentations_measures_within_method_overlap_without_unit_matching [line 66]: Changed. Pinned known overlap acreage; retained independent absence-of-ID-matching check.
+- test_compare_segmentations_reports_nonzero_coverage_differences [line 92]: Changed. Pinned known intersection/union/difference acreages; retained independently worked Jaccard value.
+- test_compare_segmentations_measures_unit_acres_from_geometry [line 121]: Changed. Pinned known survey acreage for 100 by 100 m rectangle; misleading input Acres remains a valid adversarial fixture.
+- test_compare_segmentations_uses_strict_sliver_and_oversized_thresholds [line 149]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_compare_segmentations_converts_us_survey_feet_to_metric_outputs [line 175]: Changed. Pinned one-survey-foot-square acreage and perimeter rather than reproducing conversion algorithm.
+- test_compare_segmentations_requires_non_null_unique_mu_ids [line 200]: Retained. Independent invalid input or failure contract.
+- test_compare_segmentations_requires_polygonal_positive_area [line 221]: Retained. Independent invalid input or failure contract.
+- test_compare_segmentations_revalidates_candidate_after_reprojection [line 251]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_compare_segmentations_reports_crosswalk_ownership_and_smz_agreement [line 272]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_compare_segmentations_rejects_non_bijective_unit_crosswalk [line 313]: Retained. Independent invalid input or failure contract.
+- test_compare_attribution_reports_donor_and_weight_diagnostics [line 364]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_compare_attribution_does_not_match_mu_ids_without_crosswalk [line 379]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_compare_attribution_rejects_one_sided_crosswalk [line 389]: Retained. Independent invalid input or failure contract.
+- test_compare_attribution_rejects_mu_id_mapped_to_multiple_crosswalk_ids [line 397]: Retained. Independent invalid input or failure contract.
+- test_compare_attribution_rejects_crosswalk_id_mapped_to_multiple_mu_ids [line 407]: Retained. Independent invalid input or failure contract.
+- test_compare_attribution_rejects_ambiguous_duplicate_donors [line 418]: Retained. Independent invalid input or failure contract.
+- test_compare_attribution_requires_numeric_tm_value_for_modal_agreement [line 427]: Retained. Independent invalid input or failure contract.
+- test_compare_attribution_requires_numeric_cell_count_for_modal_agreement [line 438]: Retained. Independent invalid input or failure contract.
+- test_compare_attribution_modal_tie_break_is_independent_of_input_order [line 446]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_research_review_cites_direct_source_functions [line 461]: Retained. External artifact, documentation or installed-runtime contract.
+- test_write_comparison_writes_stable_markdown [line 478]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_compare_initial_states_reports_readiness_and_workload_proxy [line 500]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_hierarchical_bootstrap_resamples_aois_before_nested_seeds [line 551]: Changed. Retained valid known mean/count checks; added known confidence interval endpoints to reject a bootstrap that never resamples AOIs.
+- test_write_comparison_writes_stable_json [line 576]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_statewide_repair.py (6 test functions)
+Outward grid snapping properties, literal legend code expectations, exhaustive vintage-specific history table, exact add-back mask, nodata padding and unresolved donor handling.
+- test_florida_window_snaps_to_whole_pixels_and_covers_the_bounds [line 13]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_legend_code_sets_split_tree_logged_and_water [line 25]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_stratify_block_classifies_each_history_with_its_vintage_legend [line 50]: Changed. Replaced test_stratify_block_matches_the_string_based_reference and replica reference helper with exhaustive 35-cell literal history table and different vintage code mappings.
+- test_unconditional_add_back_takes_only_s1_and_s2 [line 88]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_read_aligned_pads_a_short_footprint_with_nodata [line 96]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_stamp_donors_leaves_unresolved_patches_as_holes [line 122]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_score_holes_statewide.py (11 test functions)
+Independently specified threshold accept/reject cases and MMU sizes; exact tile outputs, single coverage, georeferencing, fake external downloads, empty-scoring products and enforced wall-clock deadline.
+- test_gated_add_back_keeps_unconditional_strata_regardless_of_scores [line 30]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_gated_add_back_accepts_conditional_strata_only_on_both_thresholds [line 44]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_gated_add_back_applies_the_mmu_and_respects_the_hole_mask [line 73]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_needed_tiles_keeps_only_windows_with_s3_or_s4_pixels [line 98]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_strata_grid_tiles_split_into_2d_tiles_within_budget_and_width [line 122]: Changed. Removed literal division self-check, no-op loop and replica edge/count formula. Pinned four exact windows and bounds with partial final row/column.
+- test_strata_grid_tiles_cover_the_whole_grid_exactly_once [line 142]: Retained. Independent geometry, boundary, threshold or raster invariant.
+- test_tile_download_params_carry_the_tile_transform [line 154]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_canvas_offsets_reject_an_off_grid_tile [line 163]: Retained. Independent invalid input or failure contract.
+- test_no_s3_s4_pixels_writes_zero_bands_into_a_new_directory [line 192]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_first_tile_downloads_into_a_new_output_directory [line 204]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_tile_fetch_holds_its_deadline [line 269]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+
+tests/test_prepare_ownership_fl.py (2 test functions)
+Actual geographic-to-Albers warp must move a corporate blob while preserving categorical classes and nodata; destination outside source must be all nodata. Fixture georeferencing is input setup, not the expected output algorithm.
+- test_reproject_tile_moves_values_onto_the_target_grid [line 17]: Retained. Independent expected output, schema, preservation or observable integration behavior.
+- test_reproject_tile_outside_source_is_all_nodata [line 42]: Retained. Independent geometry, boundary, threshold or raster invariant.
+
+Total: 15 files, 136 test functions. Parameterization collects 147 cases, with 144 passing and 3 skipped.
+No tests were removed. One stratification test was renamed to describe the independent history table. The directory fingerprint sensitivity check compares two calls after an external file edit; this is a valid change-sensitivity property, not equality of a result to itself.
+Limitations: environmental smoke skips cannot establish ArcPy or mounted-data correctness here. The missing-age CA smoke checks successful nonempty output, not the exact numerical fill. Manifest hash syntax and filesystem metadata checks do not assert a specific content hash algorithm.

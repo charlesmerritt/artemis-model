@@ -235,15 +235,13 @@ def test_every_table_is_acre_weighted_and_foots_to_the_run_total(fvs_out):
     stand_years = fvs_out_db.load_stand_years(fvs_out)
     years = fvs_out_db.reporting_years(stand_years)
     attributed = age_class.attribute(stand_years)
-    total = 1000.0 + 500.0 + 250.0
-
     for table in (age_class.overall(attributed, years),
                   age_class.by_forest_type(attributed, years),
                   age_class.by_state(attributed, years),
                   age_class.by_county(attributed, years)):
         per_year = table.groupby("Year")["acres"].sum()
-        assert per_year.round(6).eq(total).all()
-        assert (table["weight_basis"] == age_class.SAMPLING_WEIGHT).all()
+        assert per_year.round(6).to_dict() == {2026: 1750.0, 2031: 1750.0, 2036: 1750.0}
+        assert set(table["weight_basis"]) == {"sampling_weight"}
 
 
 def test_shares_are_computed_within_a_cut_not_across_the_run(fvs_out):
@@ -251,7 +249,11 @@ def test_shares_are_computed_within_a_cut_not_across_the_run(fvs_out):
     years = fvs_out_db.reporting_years(stand_years)
     table = age_class.by_forest_type(age_class.attribute(stand_years), years)
     within = table.groupby(["Year", "forest_type_label"])["share"].sum()
-    assert within.round(6).eq(1.0).all()
+    assert within.round(6).to_dict() == {
+        (2026, "Hardwood"): 1.0, (2026, "Pine (softwood)"): 1.0,
+        (2031, "Hardwood"): 1.0, (2031, "Pine (softwood)"): 1.0,
+        (2036, "Hardwood"): 1.0, (2036, "Pine (softwood)"): 1.0,
+    }
 
 
 def test_the_distribution_refuses_a_year_the_run_does_not_cover(fvs_out):
@@ -264,15 +266,17 @@ def test_mean_age_is_weighted_by_acres_not_by_stand_count(fvs_out):
     stand_years = fvs_out_db.load_stand_years(fvs_out)
     attributed = age_class.attribute(stand_years)
     mean = age_class.mean_age_trajectory(attributed, [2026])
-    # 1000 ac at 25, 500 ac at 75, 250 ac at 145 -> 52.857...; the unweighted mean is 81.7
-    assert mean["mean_age"].iloc[0] == pytest.approx((1000 * 25 + 500 * 75 + 250 * 145) / 1750)
+    # Fixture acreage yields 56.428571 years; the unweighted mean would be 81.666667.
+    assert mean["mean_age"].iloc[0] == pytest.approx(56.42857142857143)
 
 
 # ---- owner attribution ------------------------------------------------------------------------
 
 def test_owner_shares_sum_to_one_within_a_plot(crosswalk):
     shares = owner_attribution.load_owner_shares(crosswalk)
-    assert shares.groupby("Stand_CN")["owner_share"].sum().round(6).eq(1.0).all()
+    assert shares.groupby("Stand_CN")["owner_share"].sum().round(6).to_dict() == {
+        "1001": 1.0, "1002": 1.0,
+    }
     plot = shares[shares["Stand_CN"] == "1001"].set_index("owner_class")
     assert plot.loc["Private", "owner_share"] == pytest.approx(0.75)
 
@@ -293,7 +297,7 @@ def test_plots_outside_the_crosswalk_are_reported_unattributed_not_dropped(fvs_o
     owned = owner_attribution.apportion(age_class.attribute(stand_years),
                                         owner_attribution.load_owner_shares(crosswalk))
     missed = owned[owned["Stand_CN"] == "1003"]
-    assert set(missed["owner_class"]) == {CONFIG["owner_classes"]["unattributed_label"]}
+    assert set(missed["owner_class"]) == {"Unattributed"}
     assert owned["Stand_CN"].nunique() == stand_years["Stand_CN"].nunique()
     assert owner_attribution.coverage(owned)["cases_attributed"] == 2
 
@@ -304,9 +308,11 @@ def test_owner_tables_carry_the_owner_acre_basis_not_the_sampling_weight(fvs_out
     owned = owner_attribution.apportion(age_class.attribute(stand_years),
                                         owner_attribution.load_owner_shares(crosswalk))
     table = age_class.by_owner(owned, years)
-    assert (table["weight_basis"] == age_class.OWNER_ACRES).all()
+    assert set(table["weight_basis"]) == {"owner_acres"}
     # 100 crosswalked acres on plot 1001 plus 40 on 1002 — not the 1,750 sampling acres.
-    assert table.groupby("Year")["acres"].sum().round(6).eq(140.0).all()
+    assert table.groupby("Year")["acres"].sum().round(6).to_dict() == {
+        2026: 140.0, 2031: 140.0, 2036: 140.0,
+    }
 
 
 def test_a_crosswalk_without_the_owner_columns_says_so(tmp_path):
@@ -408,7 +414,9 @@ def test_managed_cycles_keep_post_removal_age_and_acreage(tmp_path):
     harvested = rows[(rows["Year"] == 2031) & (rows["StandID"] == "120010100001")]
     assert harvested["Age"].tolist() == [1]
     table = age_class.overall(age_class.attribute(rows), years)
-    assert table.groupby("Year")["acres"].sum().eq(200).all()
+    assert table.groupby("Year")["acres"].sum().to_dict() == {
+        2026: 200.0, 2031: 200.0, 2036: 200.0,
+    }
 
 
 @pytest.mark.parametrize("rows", [
@@ -451,7 +459,8 @@ def test_direct_aggregation_rejects_alternatives_on_disjoint_grids(fvs_out, summ
 
 
 @pytest.mark.parametrize("stages", [["visualize"], ["extract"], ["summarize"],
-                                   ["attribute", "visualize"], list(run_pipeline.STAGES)])
+                                   ["attribute", "visualize"],
+                                   ["resolve", "extract", "attribute", "summarize", "visualize"]])
 def test_dry_run_never_executes_stages_or_changes_files(tmp_path, monkeypatch, stages):
     """Every stage subset honors the CLI promise to write nothing."""
     marker = tmp_path / "figures" / "age_class_by_owner.png"
@@ -476,7 +485,7 @@ def test_oversized_optional_crosswalk_degrades_to_ownerless_reporting(fvs_out, t
     """The crosswalk fetch cap costs only owner reporting, with a visible warning."""
     def oversized(path, *, max_fetch_mb=None):
         """Simulate the optional crosswalk exceeding the configured fetch cap."""
-        assert max_fetch_mb == run_pipeline.CROSSWALK_MAX_FETCH_MB
+        assert max_fetch_mb == 64
         raise run_pipeline.data_access.RemoteFetchTooLarge("70 MB exceeds 64 MB cap")
 
     monkeypatch.setattr(run_pipeline.data_access, "ensure_local", oversized)
@@ -607,7 +616,7 @@ def test_unknown_only_ages_keep_tables_and_skip_mean_age_figures(fvs_out, crossw
         conn.execute("UPDATE FVS_Summary2 SET Age = 0")
     ctx = run_pipeline.run(fvs_out=str(fvs_out), crosswalk=str(crosswalk), out_dir=tmp_path)
     mean = ctx.tables["mean_age_by_forest_type"]
-    assert sorted(mean["Year"].unique()) == ctx.years
+    assert sorted(mean["Year"].unique()) == [2026, 2031, 2036]
     assert mean["mean_age"].isna().all()
     assert mean["acres"].eq(0).all()
     assert not (tmp_path / "figures" / "mean_age_by_forest_type.png").exists()

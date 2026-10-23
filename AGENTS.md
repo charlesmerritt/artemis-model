@@ -15,18 +15,27 @@ resetting age alone would restore mature biomass. In a run folder's own rasters,
 pixels (provenance 2, 4) carry the neighbour plot's `TM_ID`: never join it to trees. Use
 `<run>/young_plots/` (`add_back_ids`): new IDs from 1,000,000, in its VAT/tree extensions (ADR 0003).
 
+### LETO ground truth is `aauslander480/Leto`'s `LETO_v1_project/`, not its legacy `scripts/`
+
+`pipeline/leto_ca.py` was ported from the legacy `Leto/scripts/Cellular_automata/02_segment_treemap.py`.
+Only the CA core matches v1. Small-stand handling (v1 `force_merge`, never delete), Stage 1
+attribute sources, parent-segment donor weights, the 5% donor filter, the vector riparian split
+and the FVS sampling design all differ. See `research/leto_parity/README.md` before changing
+initial state.
+
 ### FIA control numbers (`PLT_CN`, `STAND_CN`, etc.) must not be cast via `str(int(...))`
 
-`PLT_CN` and the other FIA control numbers (`STAND_CN`, `COND_CN`, `PLOT_CN`, `TREE_CN`,
-`SUBP_CN`, …) are up to 19-digit integers. Any time one of these passes through a float64
-(e.g. a numeric field read out of a GeoPackage/DBF via geopandas), it can silently lose
-digits — an IEEE-754 double only carries 15–17 significant digits.
+`PLT_CN` and the other FIA control numbers (`STAND_CN`, `COND_CN`, `PLOT_CN`, `TREE_CN`, `SUBP_CN`, …) are up to 19-digit integers.
+Any time one of these passes through a float64 (e.g. a numeric field read out of a GeoPackage/DBF via geopandas), it can silently lose digits — an IEEE-754 double only carries 15–17 significant digits.
 
 `str(int(x))` typecast to int = BAD
 
-This was flagged as a real bug in PR #40 (`make_leto_figure.py` in the LETO CA research demo),
-where `str(int(rec.PLT_CN))` was used to join TreeMap VAT records to `fvs_trajectory.csv`
-instead of `as_id_series`.
+This was flagged as a real bug in PR #40 (`make_leto_figure.py` in the LETO CA research demo), where `str(int(rec.PLT_CN))` was used to join TreeMap VAT records to `fvs_trajectory.csv` instead of `as_id_series`.
+
+### Mutation runs require successful collection and a fresh cache
+After collection fails or tests change, rebuild the `mutants/` workspace before measuring.
+`scripts/quality.py mutate` can exit successfully with an undefined score after failure;
+verify collection and status counts. See `research/code_quality/hardening.txt`.
 
 ## What Artemis should do, step by step
 
@@ -46,7 +55,6 @@ instead of `as_id_series`.
 - No management is ever applied to riparian zones or other buffers.
 - When land is clearcut, we use nearest neighbor imputation to reestablish those management units with an initial treelist, age 0, following the pattern of nearby, similar units. If needed, we can manually prescribe initial conditions such as planting density, species, etc. for owner classes.
 - There are common sense heuristics in place such as minimum harvest age (15, enforced before FVS by `harvest_eligibility` in config/management_regimes.yaml; raw templates, dated experiments and saved schedules bypass it, see docs/harvest-eligibility.html), minimum harvestable % (25%, not yet enforced).
-
 
 4. With the optimal trajectory for each management unit selected, we should produce a final output table with the trajectory for each management unit and it's vegetation data from FVS for a 50 year time horizon. Our focus output is a number of maps, and other visualization outcomes, mainly in the form of Cloud optimized GeoTifs rasters for each timestep in the simulation.
 - A TreeMap like raster for each management unit in the simulation, going forward in time, reflecting the state of vegetation across the landscape.

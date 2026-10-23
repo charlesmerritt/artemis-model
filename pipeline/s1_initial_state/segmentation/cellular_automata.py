@@ -32,9 +32,9 @@ from rasterio.windows import Window
 from shapely import union_all
 from shapely.geometry import shape
 
-from pipeline import leto_ca
+from pipeline import leto_attributes, leto_ca
 from pipeline.s1_initial_state.data_sources import (
-    load_stand_age_by_plot,
+    load_leto_attribute_sources,
     load_treemap_attributes,
 )
 from pipeline.s1_initial_state.segmentation.leto import (
@@ -125,8 +125,8 @@ def _attribute_grids(
     treemap_vat_path: Path,
     fiadb_path: Path,
 ):
-    """Build STDAGE/BALIVE/QMD/TPA feature grids and a FORTYPCD grid from the
-    TreeMap VAT (BALIVE/QMD/TPA/FORTYPCD) plus a FIA COND join (STDAGE)."""
+    """LETO stage 1 feature grids (`pipeline.leto_attributes`): dominant FIA condition and
+    its live trees first, the TreeMap VAT as fallback, then the nearest assigned cell."""
     if not valid.any():
         raise SegmentationError("AOI contains no valid TreeMap cells")
 
@@ -136,28 +136,15 @@ def _attribute_grids(
     if vat_aoi.empty:
         raise SegmentationError("No TreeMap VAT rows match the AOI's TreeMap values")
 
-    stand_age = load_stand_age_by_plot(fiadb_path, vat_aoi["PLT_CN"])
-    vat_aoi = vat_aoi.merge(stand_age, on="PLT_CN", how="left")
-    if vat_aoi["STDAGE"].isna().any():
-        median_age = vat_aoi["STDAGE"].median()
-        if pd.isna(median_age):
-            raise SegmentationError(
-                "No AOI plot has a FIA COND STDAGE; cannot fill the missing values"
-            )
-        vat_aoi["STDAGE"] = vat_aoi["STDAGE"].fillna(median_age)
+    cond, trees = load_leto_attribute_sources(fiadb_path, vat_aoi["PLT_CN"])
+    rat = vat_aoi.rename(columns={"VALUE": "Value", "TPA": "TPA_LIVE"})
+    records = leto_attributes.value_records(rat, leto_attributes.plot_lookup(cond, trees))
+    try:
+        grids, _provenance = leto_attributes.attribute_rasters(tm_values, valid, records)
+    except ValueError as error:
+        raise SegmentationError(str(error)) from error
 
-    lookup_max = int(aoi_values.max())
-    grids: dict[str, np.ndarray] = {}
-    for column in ("STDAGE", "FORTYPCD", "BALIVE", "QMD", "TPA"):
-        lut = np.full(lookup_max + 1, np.nan, dtype="float64")
-        lut[vat_aoi["VALUE"].astype("int64").to_numpy()] = vat_aoi[column].to_numpy(
-            dtype="float64"
-        )
-        grid = np.zeros(tm_values.shape, dtype="float32")
-        grid[valid] = lut[tm_values[valid]].astype("float32")
-        grids[column] = grid
-
-    forest_type = grids.pop("FORTYPCD").astype("int32")
+    forest_type = np.where(valid, np.nan_to_num(grids.pop("FORTYPCD"), nan=0), 0).astype("int32")
     treemap_lookup = vat_aoi[["VALUE", "PLT_CN"]].reset_index(drop=True)
     return grids, forest_type, treemap_lookup
 
@@ -214,9 +201,9 @@ def build_cellular_automata_management_units(
     Mirrors `leto.build_leto_management_units`'s shape (parcels define the
     AOI; ownership/streams/treemap sources are the same production paths)
     so the two are interchangeable behind a `SEGMENTATION_METHOD` flag, but
-    reads two additional sources the CA algorithm's cost function needs that
-    the Voronoi method doesn't: the TreeMap VAT's BALIVE/QMD/TPA/FORTYPCD
-    columns and each donor plot's FIA COND STDAGE.
+    reads the attribute sources the CA cost function needs and the Voronoi
+    method doesn't: each donor plot's dominant FIA condition and live trees,
+    with the TreeMap VAT as LETO's fallback (`pipeline.leto_attributes`).
     """
     _require_crs(parcels, "Parcels")
     if parcels.empty:

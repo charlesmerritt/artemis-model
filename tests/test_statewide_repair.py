@@ -10,52 +10,6 @@ from pipeline.s1_initial_state.statewide_repair import (
     unconditional_add_back,
 )
 
-EXCLUDED_PREFIXES = (
-    "Eastern Warm Temperate Urban",
-    "Eastern Warm Temperate Developed",
-    "Developed",
-    "Eastern Warm Temperate Orchard",
-)
-
-
-def _reference_stratify(evt16, evt24, legend):
-    """The validated string-based semantics of stratify_treemap_holes, verbatim."""
-    name_of = {int(v): n for v, n in zip(legend.VALUE, legend.EVT_NAME)}
-    life_of = {int(v): lf for v, lf in zip(legend.VALUE, legend.EVT_LF)}
-
-    def fields(v):
-        name = np.array(
-            [name_of.get(int(x), "NA") if x >= 0 else "NA" for x in v.ravel()],
-            dtype=object,
-        ).reshape(v.shape)
-        life = np.array(
-            [life_of.get(int(x), "NA") if x >= 0 else "NA" for x in v.ravel()],
-            dtype=object,
-        ).reshape(v.shape)
-        return name, life
-
-    def tree(name, life):
-        text = name.astype(str)
-        excluded = np.zeros(text.shape, dtype=bool)
-        for prefix in EXCLUDED_PREFIXES:
-            excluded |= np.char.startswith(text, prefix)
-        return (life == "Tree") & ~excluded
-
-    name16, life16 = fields(evt16)
-    name24, life24 = fields(evt24)
-    tree16, tree24 = tree(name16, life16), tree(name24, life24)
-    logged16 = np.char.startswith(name16.astype(str), "Recently Logged")
-    evidence16 = tree16 | logged16
-
-    out = np.zeros(evt16.shape, dtype=np.uint8)
-    out[logged16 & tree24] = 1
-    out[tree16 & ~logged16 & tree24] = 2
-    out[evidence16 & ~tree24] = 3
-    out[~evidence16 & tree24] = 4
-    out[~evidence16 & ~tree24] = 5
-    return out
-
-
 def test_florida_window_snaps_to_whole_pixels_and_covers_the_bounds():
     grid = FLGrid(left=-2361585.0, top=3177435.0, pixel=30.0)
     bounds = (796752.36627286, 252185.03139664, 1609016.51443515, 961154.43793337)
@@ -93,11 +47,8 @@ def test_legend_code_sets_split_tree_logged_and_water():
     assert 9823 not in codes.tree
 
 
-def test_stratify_block_matches_the_string_based_reference():
-    rng = np.random.default_rng(7)
-    evt16 = rng.choice([100, 200, 300, 7191, 7193, 9823, -9999], size=(40, 40))
-    evt24 = rng.choice([100, 200, 9823, 7292, -9999], size=(40, 40))
-    legend = pd.DataFrame({
+def test_stratify_block_classifies_each_history_with_its_vintage_legend():
+    legend16 = pd.DataFrame({
         "VALUE": [100, 200, 300, 7191, 7193, 9823, 7292],
         "EVT_NAME": [
             "Montane Mixed Conifer Forest", "Eastern Warm Temperate Urban Evergreen Forest",
@@ -106,10 +57,32 @@ def test_stratify_block_matches_the_string_based_reference():
         ],
         "EVT_LF": ["Tree", "Tree", "Tree", "Herbaceous", "Tree", "Herbaceous", "NA"],
     })
-    codes = legend_code_sets(legend)
-    assert np.array_equal(
-        stratify_block(evt16, evt24, codes, codes), _reference_stratify(evt16, evt24, legend)
-    )
+    # New vintage codes differ, so using the 2016 legend for both is wrong.
+    legend24 = legend16.copy()
+    legend24["VALUE"] = [110, 210, 310, 7291, 7293, 9923, 7392]
+    evt16 = np.array([
+        [100, 100, 100, 100, 100],
+        [200, 200, 200, 200, 200],
+        [300, 300, 300, 300, 300],
+        [7191, 7191, 7191, 7191, 7191],
+        [7193, 7193, 7193, 7193, 7193],
+        [9823, 9823, 9823, 9823, 9823],
+        [-9999, -9999, -9999, -9999, -9999],
+    ])
+    evt24 = np.tile([110, 210, 9923, 7392, -9999], (7, 1))
+    # Columns are forest, excluded urban tree, grass, water, and unknown.
+    # Rows are forest, urban, orchard, logged herb, logged tree, grass, unknown.
+    expected = np.array([
+        [2, 3, 3, 3, 3],
+        [4, 5, 5, 5, 5],
+        [4, 5, 5, 5, 5],
+        [1, 3, 3, 3, 3],
+        [1, 3, 3, 3, 3],
+        [4, 5, 5, 5, 5],
+        [4, 5, 5, 5, 5],
+    ], dtype=np.uint8)
+    actual = stratify_block(evt16, evt24, legend_code_sets(legend16), legend_code_sets(legend24))
+    np.testing.assert_array_equal(actual, expected)
 
 
 def test_unconditional_add_back_takes_only_s1_and_s2():

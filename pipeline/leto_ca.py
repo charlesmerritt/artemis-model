@@ -18,21 +18,24 @@ adjacent neighbouring segment, at cost
 with reassignment only within the same ownership class (hard boundaries),
 iterated until the changed fraction falls below the convergence threshold.
 Post-CA: split disconnected pieces, split oversized segments, merge undersized
-segments (union-find, lowest attribute cost), and merge similar adjacent
-stands. The riparian stage then splits each parent stand into upland/riparian
-management units (`split_management_units`).
+segments (union-find, lowest attribute cost), merge similar adjacent stands, then
+resolve the remaining undersized segments (LETO v1 `force_merge`). The riparian
+stage then splits each parent stand into upland/riparian management units
+(`split_management_units` here; `pipeline.leto_riparian` for LETO's vector split).
 
 Features are robust-standardised (median / IQR / 1.349, clipped to +-z) before
-segmentation, exactly as LETO does. `DEFAULT_CFG` carries the constants the
-experiments/2026-08-24 pipeline validated end-to-end against FVS; callers with
-different data (e.g. a TreeMap VAT without STDAGE) override `variable_weights`
-and the similar-merge settings rather than assuming the five-feature set.
+segmentation, exactly as LETO does. `DEFAULT_CFG` is LETO v1's verified Maine
+baseline (aauslander480/Leto `LETO_v1_project/configs/maine_test.py`); see
+research/leto_parity/README.md. Callers with different data (e.g. a TreeMap VAT
+without STDAGE) override `variable_weights` and the similar-merge settings rather
+than assuming the five-feature set.
 """
 
 from __future__ import annotations
 
 import math
 from collections import defaultdict
+from enum import StrEnum
 
 import numpy as np
 from scipy import ndimage
@@ -41,31 +44,42 @@ from scipy import ndimage
 UPLAND_MANAGEMENT_CODE = 0
 RIPARIAN_MANAGEMENT_CODE = 1
 
-# LETO 02_segment_treemap.py constants, as validated in the 2026-08-24
-# experiment run. LETO ships 40 iterations / 1% convergence; this configuration
-# lets the CA settle an order of magnitude further so boundaries stop moving
-# rather than merely slowing (visual QA on the first render showed ragged,
-# still-moving edges). The similar-stand merge gates on raw stand age (10-year
-# window), LETO's maturity criterion.
+
+class SmallStandAction(StrEnum):
+    """LETO v1 `REMAINING_SMALL_STAND_ACTION` for segments still under the minimum size."""
+
+    FORCE_MERGE = "force_merge"   # verified baseline: merge with no maximum-size cap
+    RETAIN = "retain"
+    DELETE = "delete"
+
+
+# LETO v1 verified Maine baseline (configs/maine_test.py "segmentation" and
+# "small_stands"). The similar-stand merge gates on raw stand age (10-year window).
 DEFAULT_CFG = {
     "initial_seed_acres": 100.0,
     "minimum_stand_acres": 5.0,
     "maximum_stand_acres": 300.0,
-    "maximum_iterations": 100,
-    "convergence_threshold": 0.001,
+    "maximum_iterations": 40,
+    "convergence_threshold": 0.01,
     "minimum_score_improvement": 0.01,
     "use_eight_neighbors": False,
-    "shared_edge_bonus": 0.1,
+    "shared_edge_bonus": 0.2,
     "standardization_clip": 4.0,
     "variable_weights": {"FORTYPCD": 0.30, "STDAGE": 0.25, "BALIVE": 0.20,
                          "QMD": 0.15, "TPA": 0.10},
     "merge_similar_stands": True,
     "similar_merge_require_same_fortypcd": True,
-    "similar_merge_min_shared_edges": 1,
+    "similar_merge_min_shared_edges": 2,
     "similar_merge_similarity_name": "STDAGE",
     "similar_merge_max_similarity_difference": 10.0,
     "similar_merge_max_passes": 50,
+    "remaining_small_stand_action": SmallStandAction.FORCE_MERGE,
 }
+
+
+def seed_cells(initial_seed_acres: float, cell_acres: float) -> int:
+    """LETO's initial seed size in whole cells: `max(1, round(acres / cell_acres))`."""
+    return max(1, int(round(initial_seed_acres / cell_acres)))
 
 
 def connectivity_structure() -> np.ndarray:
@@ -474,6 +488,29 @@ def merge_similar_adjacent_stands(labels, similarity_features, forest_type, owne
     return labels
 
 
+def resolve_small_stands(labels, feature_arrays, forest_type, ownership, minimum_cells, *,
+                         action, cfg):
+    """LETO v1 "HANDLING REMAINING UNDERSIZED SEGMENTS" (stage2 `main`).
+
+    FORCE_MERGE reruns the small-segment merge with no maximum-size cap; ownership is still
+    a hard boundary, so a fragment with no same-owner neighbour is kept, never deleted.
+    """
+    action = SmallStandAction(action)
+    if action is SmallStandAction.FORCE_MERGE:
+        weights = dict(cfg["variable_weights"])
+        labels = merge_small_segments(labels, feature_arrays, forest_type, ownership,
+                                      minimum_cells, weights=weights,
+                                      continuous_names=list(feature_arrays),
+                                      shared_edge_bonus=cfg["shared_edge_bonus"],
+                                      maximum_cells=None, log=lambda *a, **k: None)
+    elif action is SmallStandAction.DELETE:
+        counts = np.bincount(labels.ravel())
+        small = np.flatnonzero((counts > 0) & (counts < minimum_cells))
+        small = small[small > 0]
+        labels = np.where(np.isin(labels, small), 0, labels)
+    return renumber_segments(split_disconnected_segments(labels))
+
+
 def segment(features_raw, forest_type, ownership, valid_mask, cell_acres, cfg=None, *,
             similarity_raw=None, info=None, log=print):
     """Run the full LETO CA segmentation. Returns renumbered int32 parent-stand
@@ -507,7 +544,7 @@ def segment(features_raw, forest_type, ownership, valid_mask, cell_acres, cfg=No
     if info is not None:
         info["homogeneity_scales"] = scales
 
-    cells_per_seed = cfg["initial_seed_acres"] / cell_acres
+    cells_per_seed = seed_cells(cfg["initial_seed_acres"], cell_acres)
     min_cells = max(1, int(math.ceil(cfg["minimum_stand_acres"] / cell_acres)))
     max_cells = max(min_cells, int(cfg["maximum_stand_acres"] / cell_acres))
     log(f"{int(valid_mask.sum()):,} valid cells; seed {cells_per_seed:.0f} cells, "
@@ -524,7 +561,7 @@ def segment(features_raw, forest_type, ownership, valid_mask, cell_acres, cfg=No
         convergence_threshold=cfg["convergence_threshold"],
         min_score_improvement=cfg["minimum_score_improvement"], log=log)
     labels = split_disconnected_segments(labels)
-    labels = split_oversized_segments(labels, max_cells, log=log)
+    labels = split_disconnected_segments(split_oversized_segments(labels, max_cells, log=log))
     labels = merge_small_segments(labels, std, forest_type, ownership, min_cells,
                                   weights=weights, continuous_names=continuous_names,
                                   shared_edge_bonus=cfg["shared_edge_bonus"],
@@ -539,7 +576,8 @@ def segment(features_raw, forest_type, ownership, valid_mask, cell_acres, cfg=No
             require_same_fortypcd=cfg["similar_merge_require_same_fortypcd"],
             minimum_shared_edges=cfg["similar_merge_min_shared_edges"],
             maximum_passes=cfg["similar_merge_max_passes"], log=log)
-    labels = renumber_segments(labels)
+    labels = resolve_small_stands(labels, std, forest_type, ownership, min_cells,
+                                  action=cfg["remaining_small_stand_action"], cfg=cfg)
     log(f"parent stands (SEG_ID): {int(labels.max()):,}")
     return labels
 

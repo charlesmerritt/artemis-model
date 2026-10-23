@@ -1,0 +1,158 @@
+{
+  "scope_files": 16,
+  "generated_total": 5311,
+  "totals": {
+    "survived": 1140,
+    "killed": 4165,
+    "no tests": 2,
+    "timeout": 4
+  },
+  "tested_total": 5309,
+  "weighted_score": 78.5,
+  "files": [
+    {
+      "file": "pipeline/ids.py",
+      "generated": 200,
+      "counts": {
+        "survived": 108,
+        "killed": 92
+      },
+      "score": 46.0
+    },
+    {
+      "file": "pipeline/harvest_eligibility.py",
+      "generated": 147,
+      "counts": {
+        "killed": 142,
+        "survived": 5
+      },
+      "score": 96.6
+    },
+    {
+      "file": "pipeline/s3_management/regime_assignment.py",
+      "generated": 520,
+      "counts": {
+        "killed": 362,
+        "survived": 156,
+        "no tests": 2
+      },
+      "score": 69.9
+    },
+    {
+      "file": "pipeline/s4_fvs/regime_library.py",
+      "generated": 222,
+      "counts": {
+        "killed": 181,
+        "survived": 41
+      },
+      "score": 81.5
+    },
+    {
+      "file": "pipeline/s3_management/owner_classes.py",
+      "generated": 92,
+      "counts": {
+        "survived": 15,
+        "killed": 77
+      },
+      "score": 83.7
+    },
+    {
+      "file": "pipeline/s1_initial_state/fia_volume_estimates.py",
+      "generated": 147,
+      "counts": {
+        "survived": 23,
+        "killed": 124
+      },
+      "score": 84.4
+    },
+    {
+      "file": "pipeline/s6_outputs/age_class.py",
+      "generated": 479,
+      "counts": {
+        "killed": 399,
+        "survived": 80
+      },
+      "score": 83.3
+    },
+    {
+      "file": "pipeline/s1_initial_state/weights.py",
+      "generated": 333,
+      "counts": {
+        "killed": 290,
+        "survived": 43
+      },
+      "score": 87.1
+    },
+    {
+      "file": "pipeline/s1_initial_state/leto_initial_state.py",
+      "generated": 770,
+      "counts": {
+        "killed": 680,
+        "survived": 90
+      },
+      "score": 88.3
+    },
+    {
+      "file": "pipeline/s1_initial_state/stratify_treemap_holes.py",
+      "generated": 0,
+      "counts": {},
+      "score": null
+    },
+    {
+      "file": "pipeline/s1_initial_state/score_holes_statewide.py",
+      "generated": 296,
+      "counts": {
+        "survived": 111,
+        "killed": 183,
+        "timeout": 2
+      },
+      "score": 62.5
+    },
+    {
+      "file": "pipeline/s1_initial_state/statewide_repair.py",
+      "generated": 288,
+      "counts": {
+        "killed": 246,
+        "survived": 42
+      },
+      "score": 85.4
+    },
+    {
+      "file": "pipeline/s1_initial_state/segmentation/boundary_overlay.py",
+      "generated": 323,
+      "counts": {
+        "killed": 196,
+        "survived": 127
+      },
+      "score": 60.7
+    },
+    {
+      "file": "pipeline/s1_initial_state/segmentation/artifacts.py",
+      "generated": 267,
+      "counts": {
+        "killed": 206,
+        "survived": 59,
+        "timeout": 2
+      },
+      "score": 77.9
+    },
+    {
+      "file": "pipeline/s1_initial_state/segmentation/comparison.py",
+      "generated": 977,
+      "counts": {
+        "killed": 815,
+        "survived": 162
+      },
+      "score": 83.4
+    },
+    {
+      "file": "pipeline/s6_outputs/owner_attribution.py",
+      "generated": 250,
+      "counts": {
+        "killed": 172,
+        "survived": 78
+      },
+      "score": 68.8
+    }
+  ]
+}

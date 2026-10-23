@@ -59,14 +59,19 @@ def _write_ownership(path):
 
 
 def _write_fiadb(path, ages):
+    """COND (dominant condition attributes) and TREE (live trees) per plot, as LETO reads them."""
     with sqlite3.connect(path) as connection:
         connection.execute(
             "create table COND (PLT_CN text, CONDID integer, STDAGE real, "
-            "CONDPROP_UNADJ real, COND_STATUS_CD integer)"
+            "CONDPROP_UNADJ real, COND_STATUS_CD integer, FORTYPCD integer, BALIVE real)"
         )
         connection.executemany(
-            "insert into COND values (?, ?, ?, ?, ?)",
-            [(plt_cn, 1, age, 1.0, 1) for plt_cn, age in ages.items()],
+            "insert into COND values (?, ?, ?, ?, ?, ?, ?)",
+            [(plt_cn, 1, age, 1.0, 1, None, None) for plt_cn, age in ages.items()],
+        )
+        connection.execute(
+            "create table TREE (PLT_CN text, CONDID integer, STATUSCD integer, DIA real, "
+            "TPA_UNADJ real)"
         )
 
 
@@ -139,20 +144,20 @@ def test_produces_the_shared_canonical_output_contract(scenario):
         assert column in units.columns
     assert set(units["SEGMENTATION_METHOD"]) == {"cellular_automata"}
     assert units["MU_ID"].is_unique
-    assert set(weights["MU_ID"]) <= set(units["MU_ID"])
+    assert set(weights["MU_ID"]) == set(units["MU_ID"])
 
 
 def test_never_crosses_the_ownership_hard_boundary(scenario):
     units, _weights = _run(scenario)
 
     assert set(units["OWN_CODE"].dropna().astype(int)) == {3, 4}
-    # Every unit's centroid x falls on the same side of the ownership split
-    # as its assigned owner code (west = 3, east = 4).
+    # The whole unit must stay on its assigned side. A centroid on the right
+    # side would still allow a polygon to cross the hard boundary.
     midpoint = GRID * CELL_M / 2
     west = units[units["OWN_CODE"] == 3]
     east = units[units["OWN_CODE"] == 4]
-    assert (west.geometry.centroid.x < midpoint + 1e-6).all()
-    assert (east.geometry.centroid.x > midpoint - 1e-6).all()
+    assert (west.geometry.bounds["maxx"] <= midpoint + 1e-6).all()
+    assert (east.geometry.bounds["minx"] >= midpoint - 1e-6).all()
 
 
 def test_splits_riparian_units_along_the_stream(scenario):
@@ -180,12 +185,45 @@ def test_raises_when_parcels_overlap_no_treemap_cells(scenario):
         _run(scenario)
 
 
-def test_missing_stand_age_falls_back_to_the_aoi_median(scenario, monkeypatch):
-    # plot-20 has no COND row; STDAGE must be filled from plot-10's median
-    # rather than raising or leaving NaN in the CA cost function.
-    fiadb_path = scenario["fiadb_path"]
-    with sqlite3.connect(fiadb_path) as connection:
-        connection.execute("delete from COND where PLT_CN = 'plot-20'")
+def _grids(scenario):
+    with rasterio.open(scenario["treemap_path"]) as src:
+        tm = src.read(1).astype("int64")
+    valid = tm != -9999
+    features, forest_type, _ = cellular_automata._attribute_grids(
+        tm, valid, scenario["treemap_vat_path"], scenario["fiadb_path"])
+    return tm, features, forest_type
 
+
+def test_missing_stand_age_takes_the_nearest_cells_value(scenario, monkeypatch):
+    # LETO stage1: plot-20 (the middle band) has no COND row and the VAT carries no STDAGE,
+    # so each of its cells takes the nearest assigned cell's age -- 15 on the plot-10 side,
+    # 81 on the plot-30 side -- never the landscape median (48).
+    bands = np.tile(np.arange(GRID), (GRID, 1)) // (GRID // 4)
+    values = np.choose(np.minimum(bands, 2), [10, 20, 30]).astype("int32")
+    with rasterio.open(scenario["treemap_path"], "r+") as dst:
+        dst.write(values, 1)
+    vat = pd.DataFrame({"VALUE": [10, 20, 30], "PLT_CN": ["plot-10", "plot-20", "plot-30"],
+                        "FORTYPCD": [161, 401, 161], "BALIVE": [90.0, 140.0, 90.0],
+                        "QMD": [6.0, 11.0, 6.0], "TPA": [300.0, 120.0, 300.0]})
+    monkeypatch.setattr(cellular_automata, "load_treemap_attributes", lambda path: vat)
+    with sqlite3.connect(scenario["fiadb_path"]) as connection:
+        connection.execute("delete from COND where PLT_CN = 'plot-20'")
+        connection.execute("insert into COND values ('plot-30', 1, 81, 1.0, 1, NULL, NULL)")
+    tm, features, _ = _grids(scenario)
+    assert set(np.unique(features["STDAGE"][tm == 20])) == {15.0, 81.0}
     units, _weights = _run(scenario)
     assert len(units) > 0
+
+
+def test_fia_attributes_win_over_the_treemap_vat(scenario):
+    # LETO stage1: dominant-condition BALIVE/FORTYPCD and live-tree TPA/QMD come first;
+    # the TreeMap RAT is only the fallback.
+    with sqlite3.connect(scenario["fiadb_path"]) as connection:
+        connection.execute("update COND set BALIVE = 50, FORTYPCD = 171 where PLT_CN = 'plot-10'")
+        connection.execute("insert into TREE values ('plot-10', 1, 1, 10.0, 6.0)")
+    tm, features, forest_type = _grids(scenario)
+    plot10 = tm == 10
+    assert set(np.unique(features["BALIVE"][plot10])) == {50.0}
+    assert set(np.unique(forest_type[plot10])) == {171}
+    assert set(np.unique(features["TPA"][plot10])) == {6.0}
+    assert set(np.unique(features["BALIVE"][tm == 20])) == {140.0}  # VAT fallback

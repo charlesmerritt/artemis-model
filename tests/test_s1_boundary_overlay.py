@@ -19,7 +19,6 @@ from pipeline.s1_initial_state.segmentation.artifacts import (
     write_segmentation_artifact,
 )
 from pipeline.s1_initial_state.segmentation.boundary_overlay import (
-    SEGMENTATION_METHOD,
     normalize_output_contract,
 )
 from pipeline.s1_initial_state.segmentation.leto import attribute_management_units
@@ -44,11 +43,10 @@ def test_boundary_output_meets_s1_contract(candidate_units):
     result = normalize_output_contract(candidate_units)
 
     assert {"MU_ID", "Acres", "SEGMENTATION_METHOD", "geometry"} <= set(result.columns)
-    assert result["MU_ID"].tolist() == candidate_units["unit_id"].tolist()
-    assert result["Acres"].tolist() == pytest.approx(
-        candidate_units["unit_area_ha"] * 2.471053814671653
-    )
-    assert set(result["SEGMENTATION_METHOD"]) == {SEGMENTATION_METHOD}
+    assert result["MU_ID"].tolist() == ["mu_12003_00000000", "mu_12003_00000001"]
+    # One and two hectares, converted independently to international acres.
+    assert result["Acres"].tolist() == pytest.approx([2.4710538147, 4.9421076293])
+    assert result["SEGMENTATION_METHOD"].tolist() == ["boundary_overlay", "boundary_overlay"]
 
 
 def test_boundary_output_with_source_acres_writes_to_geopackage(
@@ -162,8 +160,15 @@ def test_boundary_preflight_reports_every_missing_source_with_recovery_guidance(
 def test_boundary_preflight_accepts_complete_temp_source_tree(tmp_path):
     data_root = tmp_path / "production"
     config_path = tmp_path / "config" / "bmp_rules.yaml"
-    expected_paths = boundary_overlay.BoundaryOverlayDataPaths.from_root(
-        data_root, config_path
+    # Pin the published source layout independently of from_root, which the
+    # preflight itself calls. A wrong path must fail instead of creating it.
+    expected_paths = boundary_overlay.BoundaryOverlayDataPaths(
+        parcels=data_root / "FL_5_Co_Parcels.gdb",
+        roads=data_root / "SE_rds100k/SE_rds100k.gdb",
+        boundary_streams=data_root / "US SE Streams - FINAL/US SE Streams - FINAL/Streams By State/nhdplus_epasnapshot2022_fl.gdb",
+        waterbodies=data_root / "US SE Waterbodies Final/US SE Streams 10.20.2023/US SE Streams/US SE Streams.gdb",
+        landfire_evt=data_root / "LF2022_EVT_CONUS/LF2022_EVT_CONUS/Tif/LF2022_EVT_CONUS.tif",
+        bmp_rules=config_path,
     )
     for source_name, source_path in expected_paths.__dict__.items():
         if source_name in {"landfire_evt", "bmp_rules"}:
@@ -229,7 +234,7 @@ def test_cli_processes_remaining_counties_but_exits_nonzero_after_failure(
         boundary_overlay.main()
 
     assert error.value.code == 1
-    assert calls == boundary_overlay.PILOT_COUNTIES
+    assert calls == ["003", "023", "047", "089", "125"]
 
 
 def test_create_forest_mask_vectorizes_tree_dominated_evt(tmp_path):

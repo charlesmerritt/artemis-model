@@ -246,7 +246,7 @@ assert.equal(partial[0].divergenceLabel, "0.000");
 // ---- catalog normalization ----
 
 const normalized = Core.normalizeCatalog({
-  schema: Core.CATALOG_SCHEMA,
+  schema: "artemis.viewer.catalog/1",
   name: "Test Stands",
   vectors: { extent: { url: "artemis/extent.geojson" } },
   naip: { collection: "USDA/NAIP/DOQQ", years: [{ year: 2021 }] },
