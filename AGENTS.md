@@ -11,7 +11,9 @@ harvests without regeneration. Configured `regen_slot`, `delay_years`, and `repe
 establish that a restart loop consumes them. See `research/regeneration_audit/README.md`
 and its runnable probes before changing this policy. Reusing an original stand after a
 clearcut must distinguish a seedling configuration from restoring mature DBH/height;
-resetting age alone would restore mature biomass.
+resetting age alone would restore mature biomass. In a run folder's own rasters, add-back
+pixels (provenance 2, 4) carry the neighbour plot's `TM_ID`: never join it to trees. Use
+`<run>/young_plots/` (`add_back_ids`): new IDs from 1,000,000, in its VAT/tree extensions (ADR 0003).
 
 ### FIA control numbers (`PLT_CN`, `STAND_CN`, etc.) must not be cast via `str(int(...))`
 
