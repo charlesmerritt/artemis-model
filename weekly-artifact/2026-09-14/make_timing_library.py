@@ -59,7 +59,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import ast
 import dataclasses
 import hashlib
 import json
@@ -87,6 +86,13 @@ from pipeline.s4_fvs.regime_templates import (  # noqa: E402
     build_regeneration,
     build_thins,
     render_keyfile,
+)
+
+# Promoted to pipeline.s4_fvs.trajectory_library; imported so this dated driver keeps running.
+from pipeline.s4_fvs.trajectory_library import (  # noqa: E402,F401
+    REMOVAL_COLS,
+    merge_harvest_year_rows,
+    stand_sdi_tables,
 )
 
 log = logging.getLogger("timing_library")
@@ -141,64 +147,6 @@ ID_COLS = {"PLT_CN": str, "unit_id": str, "tm_id": str}
 
 # The schema every failure frame carries, whether or not anything failed.
 FAILURE_COLUMNS = ["PLT_CN", "prescription", "error"]
-
-
-def _leto_species_crosswalk() -> dict[str, str]:
-    """FIA SPCD -> FVS SN alpha code, from the compiled variant's own `sn/blkdat.f` tables.
-
-    The table is defined in `experiments/2026-08-24_leto-ca-forest-viz/04_fvs_run.py`
-    (`_SN_JSP` / `_SN_FIAJSP`, positionally aligned). It is read out of that file's source
-    rather than re-typed here, so the repository keeps one copy; the module is parsed, not
-    executed, because importing it resolves an FVS binary and experiment paths as a side
-    effect.
-    """
-    path = REPO / "experiments/2026-08-24_leto-ca-forest-viz/04_fvs_run.py"
-    tree = ast.parse(path.read_text())
-    found: dict[str, list[str]] = {}
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        name = getattr(node.targets[0], "id", None)
-        if name in ("_SN_JSP", "_SN_FIAJSP"):
-            found[name] = ast.literal_eval(node.value.func.value).split()
-    if set(found) != {"_SN_JSP", "_SN_FIAJSP"}:
-        raise AssertionError(f"species crosswalk not found in {path}")
-    if len(found["_SN_JSP"]) != len(found["_SN_FIAJSP"]):
-        raise AssertionError("SN/FIA species tables are not positionally aligned")
-    return dict(zip(found["_SN_FIAJSP"], found["_SN_JSP"]))
-
-
-def stand_sdi_tables(trees: pd.DataFrame) -> dict[str, dict[str, float]]:
-    """Per-plot species SDI shares (SN alpha codes) for natural regeneration.
-
-    The rule and the SDI form are `04_fvs_run.stand_sdi_tables`: natural regeneration is
-    apportioned across the stand's own species by SDI share (Diaz et al. 2015), rather than
-    falling back to a single loblolly record — which would regenerate every bottomland
-    hardwood clearcut as pine plantation. Unchanged from 2026-08-31, whose volumes this
-    artifact reproduces at offset 0.
-    """
-    fia_to_sn = _leto_species_crosswalk()
-    t = trees.copy()
-    # AGENTS.md: an ID column is normalised with `as_id_series`, never `str()`/`.astype(str)`.
-    # This lookup is keyed by PLT_CN and read by `render_batch` with an exact string, so a
-    # STAND_CN that arrived numeric would key the table as "4.4894e+14" and miss every
-    # lookup — silently sending every natural regeneration back to the single-species
-    # fallback instead of the stand's own composition. The batch's own frame is already
-    # normalised upstream; this makes the helper safe for any caller's.
-    t["STAND_CN"] = as_id_series(t["STAND_CN"], column="STAND_CN")
-    t["SN_SP"] = t["SPECIES"].astype(str).str.split(".").str[0].str.zfill(3).map(fia_to_sn)
-    t = t.dropna(subset=["SN_SP"])
-    live = t[(t["HISTORY"].fillna(1) <= 5) & (t["TREE_COUNT"] > 0)]
-    live = live.assign(
-        SDI=live["TREE_COUNT"] * (live["DIAMETER"].fillna(1.0).clip(lower=0.5) / 10.0) ** 1.6
-    )
-    out: dict[str, dict[str, float]] = {}
-    for stand_cn, grp in live.groupby("STAND_CN"):
-        by_sp = grp.groupby("SN_SP")["SDI"].sum()
-        table = {sp: float(v) for sp, v in by_sp.items() if v > 0}
-        if table:
-            out[stand_cn] = table
-    return out
 
 
 # --------------------------------------------------------------------------------------
@@ -718,36 +666,6 @@ def validate_runs(cyc: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     keys = set(incomplete.index)
     keep = ~cyc.set_index(["PLT_CN", "prescription"]).index.isin(keys)
     return cyc[keep].copy(), bad
-
-
-REMOVAL_COLS = ("RTpa", "RTCuFt", "RMCuFt", "RBdFt")
-
-
-def merge_harvest_year_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Collapse each `(run, year)` to one row: removals from the cut, state from after it.
-
-    A non-harvest year has a single `RmvCode = 0` row and passes through unchanged. A
-    harvest year has `RmvCode = 1` (removals + pre-cut state) and `RmvCode = 2` (post-cut
-    state, removals zeroed); the merged row takes the removal columns from the first and the
-    state from the second, which is the only combination that describes the cycle.
-
-    2026-08-31 fixed this and noted it changed none of its published numbers, because
-    nothing in its library harvested in the final cycle. **This week it matters**: a 2072
-    entry is exactly a harvest in the last scored cycle, and `ending_merch_cuft_per_ac` —
-    what the `standing_volume` objective reads — is that cycle's post-cut state.
-    """
-    key = ["PLT_CN", "prescription", "Year"]
-    df = df.sort_values([*key, "RmvCode"], kind="stable")
-    post = df.drop_duplicates(key, keep="last")
-    removals = (df.sort_values([*key, "RMCuFt"], ascending=[True, True, True, False],
-                               kind="stable")
-                  .drop_duplicates(key, keep="first"))
-    merged = post.set_index(key).copy()
-    rem = removals.set_index(key)
-    for col in REMOVAL_COLS:
-        if col in merged.columns and col in rem.columns:
-            merged[col] = rem[col]
-    return merged.reset_index()
 
 
 def build_library_tables(cycles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
