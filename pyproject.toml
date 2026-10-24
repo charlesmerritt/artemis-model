@@ -65,6 +65,8 @@ also_copy = [
     "config", "scripts", "tests", "notes",
     # Tests load dated drivers, archived evidence, and documentation by repository-relative path.
     "weekly-artifact", "research", "notebooks", "docs/research", "docs/superpowers/specs",
+    "experiments/2026-10-05_fl5-harvest-deck", "experiments/2026-10-08_permissive-menus",
+    "experiments/2026-10-12_raster-set-schedules", "experiments/2026-10-12_statewide-v1-v4",
 ]
 pytest_add_cli_args_test_selection = ["tests", "pipeline"]
 mutate_only_covered_lines = true

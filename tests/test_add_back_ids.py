@@ -17,6 +17,7 @@ from pipeline.s1_initial_state.add_back_ids import (
     AgeSource,
     TreelessYoungPlots,
     UnmatchedYoungPlots,
+    UnmatchedYoungPlotPolicy,
     number_keys,
     read_vat,
     pixel_stand_ages,
@@ -241,6 +242,32 @@ def test_a_pixel_with_no_young_plot_is_an_error_naming_its_forest_type_and_nothi
     with pytest.raises(UnmatchedYoungPlots, match=r"1 add-back pixels .* FORTYPCD 142: 1 px"):
         write_add_back_ids(run, **sources)
     assert not (run / "young_plots").exists()
+
+
+def test_keep_neighbour_gives_an_unmatched_pixel_its_neighbour_plot_at_its_dated_age(tmp_path):
+    # The same slash pixel, under KEEP_NEIGHBOUR: its new ID's VAT row and trees are the
+    # neighbour plot's, its stand age the dated one, and its match level says so.
+    run, sources = _run(tmp_path, young_plots=((YOUNG_7, LOBLOLLY, 7), (YOUNG_0, LOBLOLLY, 0)))
+    report = write_add_back_ids(run, **sources, unmatched=UnmatchedYoungPlotPolicy.KEEP_NEIGHBOUR)
+
+    out = run / "young_plots"
+    vat = read_id_csv(out / "treemap2022_improved_vat_extension.csv",
+                      id_columns=EXTENSION_ID_COLUMNS).set_index("TM_ID")
+    slash = vat.loc["1000000"]
+    assert (slash["MATCH_LEVEL"], slash["STAND_AGE_2022"], slash["AGE_SOURCE"]) == ("neighbour", 6, "hansen")
+    assert slash["PLT_CN"] == NEIGHBOUR_PLT_CN["2623"] == slash["YOUNG_PLT_CN"]
+    assert (slash["YOUNG_TM_ID"], slash["FORTYPCD"]) == ("2623", SLASH)
+    trees = read_id_csv(out / "treemap2022_improved_tree_extension.csv")
+    assert trees.loc[trees["TM_ID"] == "1000000", "SPCD"].tolist() == [SLASH_PINE]
+    assert report["acres_by_match_level"] == pytest.approx({"neighbour": PX, "type": 3 * PX})
+    assert all(report["checks"].values())
+
+
+def test_refuse_is_the_default_unmatched_policy():
+    import inspect
+
+    assert (inspect.signature(write_add_back_ids).parameters["unmatched"].default
+            is UnmatchedYoungPlotPolicy.REFUSE)
 
 
 def test_read_vat_keeps_treemaps_27_columns_with_its_ids_as_exact_strings(tmp_path):
