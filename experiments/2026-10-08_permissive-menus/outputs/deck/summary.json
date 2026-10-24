@@ -1,0 +1,33 @@
+{
+  "variant": "repeat_offsets_25",
+  "restarts": 22,
+  "cooling_factor": 0.98,
+  "wall_seconds": 1082.9001802519997,
+  "best_seed": 49,
+  "objective_best": 7.362140615153633,
+  "objective_greedy": 338.9060399342391,
+  "objective_worst_seed": 8.285777296211624,
+  "options_per_stand": 17.828163299805595,
+  "stands": 11831,
+  "target_cuft_per_cycle": 387529000.0,
+  "greedy": {
+    "evenflow_cost": 56.62192362484716,
+    "owner_cost": 21.875551345193095,
+    "county_cost": 34.74637227965407,
+    "owner_mean_abs_dev_pct": 78.49002124097966,
+    "county_mean_abs_dev_pct": 80.41232780032651,
+    "worst_cell_abs_dev_pct": 100.0,
+    "landscape_mean_dev_pct": -80.85492244820111,
+    "landscape_min_dev_pct": -94.98887929242865,
+    "landscape_max_dev_pct": -31.704598274351206
+  },
+  "evenflow_cost": 1.278544164860009,
+  "owner_cost": 0.2946771079300458,
+  "county_cost": 0.9838670569299632,
+  "owner_mean_abs_dev_pct": 7.352428155541204,
+  "county_mean_abs_dev_pct": 6.810216844888107,
+  "worst_cell_abs_dev_pct": 37.4310387101065,
+  "landscape_mean_dev_pct": -7.925712267893831,
+  "landscape_min_dev_pct": -10.051612689921646,
+  "landscape_max_dev_pct": -2.359107034413642
+}
