@@ -1,0 +1,17 @@
+{
+  "published_differs_from_treemap_px": 0,
+  "published_px": 71593432,
+  "provenance_acres": {
+    "water": 1447235.8,
+    "published": 15922379.3,
+    "added_back": 43649.3,
+    "unmapped_land": 17777671.0,
+    "added_back_young": 883091.7
+  },
+  "summary_added_back_acres": 926741.0,
+  "raster_added_back_acres": 926741.0,
+  "fl5_differs_from_gate_px": {
+    "treemap2022_improved.tif": 0,
+    "treemap2022_provenance.tif": 9
+  }
+}

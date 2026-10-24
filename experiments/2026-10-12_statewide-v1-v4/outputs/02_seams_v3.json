@@ -1,0 +1,15 @@
+{
+  "recipe": "v3",
+  "patches": 33937,
+  "crossing_patches": 279,
+  "crossing_acres": 21243.6,
+  "split_donor_patches": 0,
+  "split_donor_acres": 0.0,
+  "split_mode_patches": 0,
+  "split_mode_acres": 0.0,
+  "cut_at_line_px": 0,
+  "seams": {
+    "seconds": 8.7,
+    "peak_rss_gb": 9.027
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "added_back_acres": {
+    "with_obata": 189023.5,
+    "without_obata": 161595.1
+  },
+  "patches": {
+    "with_obata": 4931,
+    "without_obata": 4668
+  },
+  "improved_forest_acres": {
+    "with_obata": 1283709.2,
+    "without_obata": 1256280.9
+  },
+  "settings": {
+    "rule": "union",
+    "gate": "evt2022_agriculture_v1",
+    "window": "obata2010_hansen2001_2022"
+  },
+  "statewide": {
+    "added_back_in_scene_ac": 528862.3,
+    "added_back_outside_ac": 825322.4,
+    "land_share_in_scene": 0.166,
+    "fl5_loss_without_obata": 0.145,
+    "est_missing_outside_ac": 140086.4
+  }
+}

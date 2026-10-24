@@ -1,0 +1,32 @@
+{
+  "warp": {
+    "seconds": 43.2,
+    "peak_rss_gb": 2.964
+  },
+  "grid": {
+    "west": 792885.0,
+    "north": 964965.0000000037,
+    "width": 27052,
+    "height": 23306
+  },
+  "aoi_pixels": 12388236,
+  "agreement_with_fl5_ee_export": {
+    "lossyear": {
+      "pixels_differ": 6
+    },
+    "treecover2000": {
+      "pixels_differ": 15
+    },
+    "rule_v1": {
+      "aoi": 4097680,
+      "statewide": 4097681,
+      "both": 4097679
+    },
+    "rule_v4": {
+      "aoi": 1693364,
+      "statewide": 1693364,
+      "both": 1693363
+    }
+  },
+  "output": "work/inputs/hansen_fl.tif"
+}
