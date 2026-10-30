@@ -67,9 +67,9 @@ TREEMAP_TIF = YOUNG / "treemap2022_improved.tif"
 PROVENANCE_TIF = YOUNG / "treemap2022_provenance.tif"
 OWNERSHIP_TIF = c.RUN_DIR / "nwos2022_improved.tif"
 VAT_DBF = Path(str(c.TREEMAP_TIF) + ".vat.dbf")
-FIA_COND_CSV = c.WORK / "fia_cond.csv"
-FIA_TREE_CSV = c.WORK / "fia_tree.csv"
-COUNTY_DIR = c.WORK / "counties"
+FIA_COND_CSV = c.RUN_WORK / "fia_cond.csv"
+FIA_TREE_CSV = c.RUN_WORK / "fia_tree.csv"
+COUNTY_DIR = c.RUN_WORK / "counties"
 
 NOT_A_TREEMAP_ID = 0
 CELL_ACRES = 900 * 0.000247105381

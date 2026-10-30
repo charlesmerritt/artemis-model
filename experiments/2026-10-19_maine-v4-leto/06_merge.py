@@ -10,14 +10,17 @@ outputs/me_statewide_qa.json
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 
-HERE = Path(__file__).resolve().parent
-COUNTY_DIR = HERE / "work/counties"
-OUTPUTS = HERE / "outputs"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import common as c  # noqa: E402
+
+COUNTY_DIR = c.RUN_WORK / "counties"
+OUTPUTS = c.RUN_OUTPUTS
 
 
 def main() -> None:

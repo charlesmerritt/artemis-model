@@ -2,7 +2,8 @@
 
 Per county, :func:`county_improvement.improve_county` with the v4 recipe (see ``common``):
 rule ``bookends_or_obata_and_hansen``, EVT gate v4 (v3 and the quarry patch veto),
-``DisturbanceWindow.Y2012_2022``. Obata is the p17/r39 scene, which reads 0 over Maine, so
+``DisturbanceWindow.Y2012_2022``, and ``min_acres`` ``common.MIN_ACRES`` (0: every accepted
+pixel is added back; LETO builds the stands). Obata is the p17/r39 scene, which reads 0 over Maine, so
 v4 here is bookends only, as in the FL statewide run off that scene. The counties are then stitched into
 ``work/rasters/v4/maine/``. Next, :mod:`add_back_stand_age` dates the add-back pixels from
 Hansen, and :mod:`add_back_ids` gives each add-back pixel a young plot under a new ``TM_ID``
@@ -53,7 +54,7 @@ def improve(fips: str, names: dict[str, str]) -> dict:
     record: dict = {}
     with c.measured("improve", record):
         summary = ci.improve_county(fips, c.improvement_inputs(), c.RUN_ROOT,
-                                    rule=ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN,
+                                    rule=ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN, min_acres=c.MIN_ACRES,
                                     evt_gate=EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4,
                                     window=ci.DisturbanceWindow.Y2012_2022)
     summary["measured"] = record
@@ -99,7 +100,7 @@ def run_counties(workers: int, only: list[str]) -> None:
     with c.measured("stand_age", record):
         write_stand_age(c.RUN_DIR, obata=None, hansen=c.HANSEN_VRT)
     total["measured"] = record
-    c.write_json(c.WORK / "03_improve.json", total)
+    c.write_json(c.RUN_WORK / "03_improve.json", total)
     print(json.dumps({k: total[k] for k in ("added_back_acres", "patches", "added_back_acres_by_mode",
                                             "evt_gate", "rule", "measured")}, indent=1))
 
@@ -121,7 +122,7 @@ def run_young() -> None:
             tree_table=c.TREE_TABLE, obata=None, hansen=c.HANSEN_VRT,
             unmatched=UnmatchedYoungPlotPolicy.KEEP_NEIGHBOUR)
     report["measured"] = record
-    c.write_json(c.WORK / "03_young.json", report)
+    c.write_json(c.RUN_WORK / "03_young.json", report)
     print(json.dumps(report, indent=1))
     if not all(report["checks"].values()):
         raise SystemExit("a check failed: the young_plots outputs do not join")

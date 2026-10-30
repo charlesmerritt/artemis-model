@@ -1,7 +1,7 @@
 """Render the Maine layers and write the deck ``docs/maine-v4-leto/presentation.html``.
 
 Statewide maps are the stitched v4 grid decimated by ``FACTOR`` (a block takes its weighted
-majority class, add-back counted ``ADD_BACK_WEIGHT`` times so 5 ac patches stay visible). The
+majority class, add-back counted ``ADD_BACK_WEIGHT`` times so small patches stay visible). The
 zoom slides read one 9 km window of ``ZOOM_FIPS`` at full 30 m resolution. Every number on a
 slide is read here from the run's JSON outputs, not typed in.
 
@@ -265,11 +265,42 @@ def county_rows() -> str:
     return "\n".join(rows)
 
 
+def share(part: float, whole: float) -> str:
+    return f"{part / whole:.0%}" if whole else "–"
+
+
+def patch_area_rows(cmp: dict) -> str:
+    """One row per minimum patch area in 08_compare.json; extra acres are those the 5 ac build left holes."""
+    rows = []
+    for key, r in cmp.items():
+        raster, fate, stands = r["raster"], r["leto_fate"]["extra"], r["stands"]
+        extra = r["extra_vs_5ac"]["acres"]
+        default = float(key) == c.BASE_MIN_ACRES
+        cls = ' class="goodrow"' if default else ""
+        name = f"{key} ac" + (" (Maine default)" if default else "")
+        rows.append(
+            f'<tr{cls}><td class="name">{name}</td>'
+            f'<td class="num">{fmt(raster["added_back_acres"])}</td>'
+            f'<td class="num">{fmt(raster["patches"])}</td>'
+            f'<td class="num">{fmt(extra)}</td>'
+            f'<td class="num">{share(fate["in_stand"], extra)}</td>'
+            f'<td class="num">{share(fate["absorbed"], extra)}</td>'
+            f'<td class="num">{fmt(fate["island"])}</td>'
+            f'<td class="num">{fmt(stands["parent_stands"])}</td>'
+            f'<td class="num">{fmt(stands["management_units"])}</td>'
+            f'<td class="num">{share(stands["neighbour_kept_acres"], stands["added_back_acres"])}</td></tr>')
+    return "\n".join(rows)
+
+
 def slides(f: dict[str, str], zmeta: dict) -> str:
     qa = json.loads((c.OUTPUTS / "me_statewide_qa.json").read_text())
     imp = json.loads((c.WORK / "03_improve.json").read_text())
     yp = json.loads((c.WORK / "03_young.json").read_text())
     fl = json.loads((c.WORK / "03_improve_fl_model.json").read_text())
+    cmp = json.loads((c.WORK / "08_compare.json").read_text())
+    x0, x5 = cmp[f"{c.BASE_MIN_ACRES:g}"], cmp["5"]
+    extra = x0["extra_vs_5ac"]
+    s2_herb = extra["evt2022_lifeform_by_stratum"]["S2"].get("Herb", 0.0)
     model = json.loads(c.HOLE_MODEL.read_text())
     match = yp["acres_by_match_level"]
     added = imp["added_back_acres"]
@@ -295,8 +326,8 @@ def slides(f: dict[str, str], zmeta: dict) -> str:
       <p class="eyebrow">ARTEMIS · initial state · Maine</p>
       <h1>Maine stands on the v4-improved TreeMap</h1>
       <p class="lede">All 16 Maine counties: TreeMap 2022 repaired with the v4 recipe, a hole model
-        <b>refit on Maine</b>, LETO v1 cellular-automata stands, a <b>speckle cleanup after LETO</b>, and
-        the LETO Maine riparian split. <b>{fmt(qa['management_units'])}</b> management units over
+        <b>refit on Maine</b>, every accepted pixel added back (<b>no minimum patch area</b>), LETO v1
+        cellular-automata stands, a <b>speckle cleanup after LETO</b>, and the LETO Maine riparian split. <b>{fmt(qa['management_units'])}</b> management units over
         <b>{fmt(qa['forest_acres_cells'] / 1e6, 2)}M</b> forest acres.</p>
       <div class="meta">
         <span class="chip">counties <b>{qa['counties_run']}</b></span>
@@ -304,7 +335,7 @@ def slides(f: dict[str, str], zmeta: dict) -> str:
         <span class="chip">parent stands <b>{fmt(qa['parent_stands'])}</b></span>
         <span class="chip">median parent <b>{qa['parent_acre_median']} ac</b></span>
       </div>
-      <p class="sub" style="margin-top:22px">Branch experiment/maine-v4-leto · run 2026-10-23 · ← → or space</p>
+      <p class="sub" style="margin-top:22px">Branch experiment/maine-v4-leto · run 2026-10-25 · ← → or space</p>
     </div>
   </section>
 
@@ -315,7 +346,7 @@ def slides(f: dict[str, str], zmeta: dict) -> str:
       <div class="flow">
         <div class="fstep"><div class="t">01</div><div class="v">Grid inputs</div><div class="d">Maine grid on TreeMap's lattice; LANDFIRE hole strata, Harris ownership, Hansen loss warped onto it</div></div>
         <div class="fstep"><div class="t">02</div><div class="v">Hole model</div><div class="d">AlphaEarth Stage A/B refit on Maine strata; 72 Earth Engine tiles scored</div></div>
-        <div class="fstep"><div class="t">03</div><div class="v">v4 raster</div><div class="d">county_improvement per county, stitched; dated stand age; young-plot IDs</div></div>
+        <div class="fstep"><div class="t">03</div><div class="v">v4 raster</div><div class="d">county_improvement per county, no minimum patch area, stitched; dated stand age; young-plot IDs</div></div>
         <div class="fstep"><div class="t">04</div><div class="v">FIA</div><div class="d">COND/TREE rows for every plot the raster references (ME, MA, NH, NY)</div></div>
         <div class="fstep"><div class="t">05</div><div class="v">LETO</div><div class="d">Stage 1 attributes, CA, force_merge; speckle cleanup; riparian split; donor weights</div></div>
         <div class="fstep"><div class="t">06</div><div class="v">Merge</div><div class="d">statewide GeoPackage, donor weights, QA</div></div>
@@ -337,13 +368,13 @@ def slides(f: dict[str, str], zmeta: dict) -> str:
         <div>
           <div class="tiles" style="grid-template-columns:1fr 1fr">
             <div class="tile"><div class="n">{fmt(imp['hole_acres'])}</div><div class="l">acres of land with no TreeMap value</div></div>
-            <div class="tile"><div class="n">{fmt(imp['rule_accepted_before_mmu_acres'])}</div><div class="l">acres the rule accepted before the 5 ac minimum</div></div>
+            <div class="tile"><div class="n">{fmt(imp['rule_accepted_before_mmu_acres'])}</div><div class="l">acres the rule accepted, pixel by pixel</div></div>
             <div class="tile"><div class="n good">{fmt(added)}</div><div class="l">acres added back in {fmt(imp['patches'])} patches</div></div>
             <div class="tile"><div class="n warn">{fmt(imp['evt_gate']['rejected_acres'])}</div><div class="l">acres the EVT gate v3 rejected (crops, developed)</div></div>
           </div>
           <ul class="take">
             <li><b>{fmt(imp['added_back_acres_by_mode']['scaled_young'])} ac</b> are established young (ADR 0003 scaled neighbour); <b>{fmt(imp['added_back_acres_by_mode']['donor_as_is'])} ac</b> (S2) keep the donor as is.</li>
-            <li><b>{fmt(imp['dropped_by_mmu_or_no_donor_acres'])} ac</b> fell to the minimum patch size or had no donor.</li>
+            <li><b>No minimum patch area:</b> only {fmt(imp['dropped_by_mmu_or_no_donor_acres'], 1)} ac had no donor. The 5 ac minimum would drop {fmt(x5['raster']['dropped_by_mmu_or_no_donor_acres'])} ac (slide 07).</li>
           </ul>
         </div>
       </div>
@@ -363,12 +394,12 @@ def slides(f: dict[str, str], zmeta: dict) -> str:
             <tbody>
               <tr><td class="name">Stage A threshold</td><td class="num">0.907</td><td class="num">{model['similarity_threshold']:.3f}</td></tr>
               <tr><td class="name">Maine S3/S4 passing</td><td class="num">0</td><td class="num"><b>model: 26% / 41%</b></td></tr>
-              <tr class="goodrow"><td class="name">Acres added back</td><td class="num">{fmt(fl['added_back_acres'])}</td><td class="num"><b>{fmt(added)}</b></td></tr>
+              <tr class="goodrow"><td class="name">Acres added back (5 ac minimum)</td><td class="num">{fmt(fl['added_back_acres'])}</td><td class="num"><b>{fmt(x5['raster']['added_back_acres'])}</b></td></tr>
             </tbody></table></div>
           <ul class="take">
             <li><b>Refit on 4,500 Maine points in 185 spatial blocks</b>: block-CV AUC {m['auc_block_cv']:.3f} (shuffled labels {m['auc_label_shuffle']:.2f}); end to end balanced accuracy {m['pipeline_balanced_accuracy']:.3f}, precision {m['pipeline_precision']:.3f}.</li>
             <li><b>Added back by stratum:</b> {' · '.join(f'S{k} {fmt(v)}' for k, v in f['by_stratum'].items())} ac.</li>
-            <li>Most model-accepted S3/S4 pixels are in patches under 5 ac, so the minimum patch size removes them.</li>
+            <li>Most model-accepted S3/S4 pixels are in patches under 5 ac: with no minimum, S3/S4 add back {fmt(f['by_stratum'][3] + f['by_stratum'][4])} ac against {fmt(x5['raster']['added_back_acres_by_stratum']['S3'] + x5['raster']['added_back_acres_by_stratum']['S4'])} ac at 5 ac.</li>
           </ul>
         </div>
       </div>
@@ -436,12 +467,34 @@ def slides(f: dict[str, str], zmeta: dict) -> str:
     </div>
   </section>
 
+  <section class="slide" id="patch-area">
+    <div class="inner">
+      <p class="kicker">Decision · minimum patch area <span class="rule"></span> 07</p>
+      <h2>Without the 5 ac minimum, {fmt(extra['acres'])} more acres go back, and LETO puts {share(x0['leto_fate']['extra']['in_stand'], extra['acres'])} of them in stands of 5 ac or more</h2>
+      <p class="lede">The add-back rule decides pixel by pixel. county_improvement then dropped 8-connected patches
+        under 5 ac (<span class="mono">finalize_add_back.apply_mmu</span>): half of what the rule accepted. LETO and the
+        speckle cleanup already build stands, so Maine now adds back every accepted pixel
+        (<span class="mono">common.BASE_MIN_ACRES</span>).</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Minimum patch</th><th class="num">Added back ac</th><th class="num">Patches</th><th class="num">Extra vs 5 ac</th><th class="num">Extra in stands ≥5 ac</th><th class="num">Absorbed</th><th class="num">Island ac</th><th class="num">Parents</th><th class="num">MUs</th><th class="num">Neighbour-kept</th></tr></thead>
+        <tbody>{patch_area_rows(cmp)}</tbody></table></div>
+      <ul class="take">
+        <li><b>The extra acres are mostly forest:</b> {share(extra['by_stratum']['S2'], extra['acres'])} are S2 (LANDFIRE forest in 2016 and 2024) and {share(extra['evt2022_lifeform'].get('Tree', 0.0), extra['acres'])} are EVT 2022 Tree.</li>
+        <li><b>The stand layer barely moves:</b> they join stands that already exist, so parents and management units stay within a few percent; the run takes under 10 minutes longer.</li>
+      </ul>
+      <div class="caveat"><b>Extra S2 takes its neighbour plot as is.</b> {fmt(s2_herb)} of its {fmt(extra['by_stratum']['S2'])} ac are Herb in
+        EVT 2022, forest in 2016 and 2024 but open in 2022, and still carry mature structure. {fmt(x0['leto_fate']['extra']['island'])} extra ac
+        end as isolated islands under 5 ac, which joins the island question.</div>
+      <p class="srcline">experiments/2026-10-19_maine-v4-leto/08_compare.py · run_mmu_variants.sh · work/08_compare.json</p>
+    </div>
+  </section>
+
   <section class="slide" id="zoom">
     <div class="inner">
-      <p class="kicker">Layers · one window <span class="rule"></span> 07</p>
+      <p class="kicker">Layers · one window <span class="rule"></span> 08</p>
       <h2>Raster, owner and management units in the same 9 km of Kennebec</h2>
       <div class="cards three" style="margin-top:12px">
-        <div>{fig('z_prov', 'Improved TreeMap provenance in the Kennebec window: mostly published forest, a few orange add-back patches, beige unmapped land.', '<b>v4 provenance.</b> Orange: added back young.')}</div>
+        <div>{fig('z_prov', 'Improved TreeMap provenance in the Kennebec window: mostly published forest, orange add-back patches and gaps, beige unmapped land.', '<b>v4 provenance.</b> Orange: added back young.')}</div>
         <div>{fig('z_owner', 'Ownership pixels in the window: family, industrial, town and unknown owners interleave at the pixel scale.', '<b>Harris owners.</b> The speckle source.')}</div>
         <div>{fig('z_mu', 'Management unit polygons in the window coloured by owner class, with riparian buffer units in blue along streams and ponds.', f"<b>Management units.</b> {fmt(zmeta['units'])} in view, {fmt(zmeta['riparian'])} riparian.")}</div>
       </div>
@@ -451,7 +504,7 @@ def slides(f: dict[str, str], zmeta: dict) -> str:
 
   <section class="slide" id="counties">
     <div class="inner">
-      <p class="kicker">Stand layer · by county <span class="rule"></span> 08</p>
+      <p class="kicker">Stand layer · by county <span class="rule"></span> 09</p>
       <h2>{fmt(qa['management_units'])} management units, {fmt(qa['riparian_units'])} of them riparian</h2>
       <div class="tbl-wrap"><table>
         <thead><tr><th>County</th><th class="num">Forest ac</th><th class="num">Added ac</th><th class="num">LETO parents</th><th class="num">Parents</th><th class="num">Median ac</th><th class="num">MUs</th><th class="num">Riparian ac</th><th class="num">Unknown</th></tr></thead>
@@ -462,16 +515,18 @@ def slides(f: dict[str, str], zmeta: dict) -> str:
 
   <section class="slide" id="close">
     <div class="inner">
-      <p class="kicker">Closing <span class="rule"></span> 09</p>
+      <p class="kicker">Closing <span class="rule"></span> 10</p>
       <h2>What the Maine layer establishes, and what it does not</h2>
       <ul class="take">
         <li><b>A statewide v4 stand layer exists:</b> {fmt(qa['parent_stands'])} parents, {fmt(qa['management_units'])} management units, {fmt(qa['distinct_donor_plots'])} donor plots, every forest acre accounted (MU acres = forest cells).</li>
-        <li><b>Hole models are regional:</b> the FL fit passes nothing; the Maine refit adds back {fmt(added - fl['added_back_acres'])} ac more than the FL-model run.</li>
+        <li><b>Hole models are regional:</b> the FL fit passes nothing; at the same 5 ac minimum the Maine refit adds back {fmt(x5['raster']['added_back_acres'] - fl['added_back_acres'])} ac more than the FL-model run.</li>
+        <li><b>The raster has no minimum patch area:</b> stand size is LETO's job; {fmt(extra['acres'])} ac more go back than at 5 ac.</li>
         <li><b>The speckle cleanup is a separate post-LETO step;</b> LETO's labels are kept beside it.</li>
         <li><b>Young structure is thin:</b> {fmt(match['neighbour'])} add-back acres carry mature structure under a young age.</li>
       </ul>
       <div class="caveat"><b>Open:</b> an owner policy for {fmt(qa['unknown_owner_acres'] / 1e6, 2)}M unknown acres;
-        isolated forest islands under 5 ac (keep, LETO's 60 m proximity merge, or drop); EVT gate v3 blocks only warm-temperate
+        isolated forest islands under 5 ac (keep, LETO's 60 m proximity merge, or drop); {fmt(s2_herb)} ac of S2 that EVT 2022 calls Herb
+        keep a mature neighbour plot; EVT gate v3 blocks only warm-temperate
         pasture (7997); NHDPlus HR HU4 <span class="mono">NHDFlowline</span> stands in for v1's
         <span class="mono">NetworkNHDFlowline</span>; Obata covers only Landsat p17/r39 and reads 0 here.</div>
       <p class="srcline">experiments/2026-10-19_maine-v4-leto/common.py (Findings)</p>

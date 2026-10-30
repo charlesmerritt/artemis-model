@@ -31,11 +31,11 @@ from pipeline.s1_initial_state.add_back_ids import (  # noqa: E402
 )
 
 YOUNG = c.RUN_DIR / OUT_DIR
-PLOTS_TXT = c.WORK / "plt_cns.txt"
+PLOTS_TXT = c.RUN_WORK / "plt_cns.txt"
 COLUMNS = {"COND": ("STATECD", "CONDID", "COND_STATUS_CD", "CONDPROP_UNADJ", "STDAGE", "FORTYPCD",
                     "BALIVE"),
            "TREE": ("CONDID", "STATUSCD", "DIA", "TPA_UNADJ")}
-FIA_CSV = {"COND": c.WORK / "fia_cond.csv", "TREE": c.WORK / "fia_tree.csv"}
+FIA_CSV = {"COND": c.RUN_WORK / "fia_cond.csv", "TREE": c.RUN_WORK / "fia_tree.csv"}
 
 
 def referenced_plots() -> set[str]:
@@ -76,7 +76,7 @@ def main() -> None:
         print(record, flush=True)
     found = set(read_id_csv(FIA_CSV["COND"], id_columns=("PLT_CN",))["PLT_CN"])
     record["plots_without_cond"] = len(plots - found)
-    c.write_json(c.WORK / "04_fia.json", record)
+    c.write_json(c.RUN_WORK / "04_fia.json", record)
     print(record)
 
 

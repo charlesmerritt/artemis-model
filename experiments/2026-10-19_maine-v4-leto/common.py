@@ -37,30 +37,44 @@ Caveats a reader must carry:
   pasture classes are not on that list, so in Maine v3 blocks only crops and developed land.
 - Young plots come from FIA plots in LETO Maine's states (ME, MA, NH, NY), not FL/GA/AL.
 
-## Findings (2026-10-19 to 10-23)
+## Findings (2026-10-19 to 10-25)
+
+Numbers are for the default build, no minimum patch area (0 ac), unless they say 5 ac.
 
 - **The FL hole model does not transfer.** Cosine similarity of Maine S3/S4 to the FL clearcut
   exemplars peaks at ~0.69 against the 0.907 Stage A threshold, so it passes nothing. The
   Maine refit (``classify_holes`` on Maine strata after ``embed_holes`` stopped sampling the FL
   AOI): 4,500 points in 185 blocks, Stage A threshold 0.887, block-CV AUC 0.996 (shuffled
-  labels 0.48), end-to-end balanced accuracy 0.943, precision 0.991.
-- **v4 add-back (Maine model): 321,483 ac in 18,522 patches** (FL model: 254,669 ac). By
-  stratum: S1 228,440, S2 45,465, S3 29,264, S4 18,306 ac. The rule accepted 652,752 ac
-  before the MMU; the MMU or no donor dropped 330,634. The EVT gate rejected 81,476 ac, the
-  quarry patch veto 635 ac. Obata ran and credited 0 ac.
-- **Young plots are thin.** 58% of add-back acres (185,251 ac) have no young plot and keep
-  their neighbour plot (``UnmatchedYoungPlotPolicy.KEEP_NEIGHBOUR``): they carry a young
-  dated age with mature BA/QMD/TPA. Matched: 83,599 ac by type, 52,633 ac by group (the group
-  map is southern: white pine and hemlock fall in ``other``).
+  labels 0.48), end-to-end balanced accuracy 0.943, precision 0.991. At 5 ac the Maine model
+  adds back 321,483 ac, the FL model 254,669 ac.
+- **The raster has no minimum patch area** (``08_compare.py``, 2026-10-25). The add-back
+  decision is per pixel; county_improvement's 5 ac minimum dropped 330,634 of the 652,752 ac
+  the rule accepted (no donor drops 0.1 ac). At 5 / 1 / 0 ac the raster adds back 321,483 /
+  482,675 / 651,892 ac. Of the 330,402 extra acres at 0 ac, 63% are S2 (LANDFIRE forest in
+  2016 and 2024) and 61% are EVT 2022 Tree (Herb 26%, Shrub 13%; the extra S1 is shrub and
+  herb, as a regrowing cut should be). After LETO and the speckle cleanup, 82% of them sit in
+  stands of 5 ac or more, 10% are absorbed and 7% (24,685 ac) are isolated islands. Parent
+  stands (390,336 / 371,472 / 380,595) and management units barely move, and the run takes
+  under 10 minutes longer. So stand size is left to LETO (``BASE_MIN_ACRES``); the 5 and 1 ac
+  builds are ``work/mmu5`` and ``work/mmu1``.
+- **v4 add-back: 651,892 ac in 563,455 patches** (465k under 1 ac). By stratum: S1 287,892,
+  S2 255,209, S3 59,118, S4 49,659 ac. The EVT gate rejected 81,476 ac, the quarry patch veto
+  860 ac. Obata ran and credited 0 ac.
+- **Extra S2 keeps its neighbour plot as is.** 34,858 of the 209,744 extra S2 acres are Herb
+  in EVT 2022 (forest in 2016 and 2024, open in 2022) and still carry mature structure.
+- **Young plots are thin.** 41% of add-back acres (268,396 ac; 58% at 5 ac) have no young
+  plot and keep their neighbour plot (``UnmatchedYoungPlotPolicy.KEEP_NEIGHBOUR``): they carry
+  a young dated age with mature BA/QMD/TPA. Matched: 215,851 ac by type, 167,644 ac by group
+  (the group map is southern: white pine and hemlock fall in ``other``).
 - **Ownership speckle, cleaned after LETO.** Harris is 10 m; warped to 30 m nearest it leaves
-  single-pixel owners, and LETO's force_merge needs the same owner, so LETO leaves 709,216
+  single-pixel owners, and LETO's force_merge needs the same owner, so LETO leaves 731,084
   parents (FL-model run: 473,609 under 5 ac). ``pipeline.stand_speckle`` then absorbs every
   parent under 5 ac that touches another stand into its longest-shared-edge neighbour:
-  318,880 stands (201,794 ac) absorbed, 390,336 parents left, median 9.8 ac. LETO's labels stay
-  in ``<fips>_seg_leto.tif``. 145,678 isolated forest islands under 5 ac remain (87,393 ac,
+  350,489 stands (221,858 ac) absorbed, 380,595 parents left, median 9.8 ac. LETO's labels stay
+  in ``<fips>_seg_leto.tif``. 142,050 isolated forest islands under 5 ac remain (81,810 ac,
   0.5% of forest).
-- **Stand layer:** 1,035,735 management units (483,999 riparian, 336,220 ac) over 17.05M ac;
-  unknown owner 5.97M ac (32% of parents).
+- **Stand layer:** 1,031,648 management units (490,916 riparian, 340,767 ac) over 17.38M ac;
+  unknown owner 6.05M ac (31% of parents).
 
 ## Inputs
 
@@ -83,6 +97,8 @@ subset, and only FCodes 460xx carry buffers).
    donor weights).
 6. ``06_merge.py``: the statewide stand layer.
 7. ``07_deck.py``: the maps and ``docs/maine-v4-leto/presentation.html``.
+8. ``08_compare.py``: the minimum-patch-area builds (``run_mmu_variants.sh`` runs steps 3-6
+   with ``ARTEMIS_MAINE_MIN_ACRES`` 5 and 1) against the 5 ac build. Run it before step 7.
 """
 
 from __future__ import annotations
@@ -126,9 +142,39 @@ OWNERSHIP_TIF = INPUTS / "us_forest_ownership_me.tif"
 HANSEN_VRT = INPUTS / "hansen_me.vrt"
 SCORED_TIF = INPUTS / "hole_prob_similarity_me.tif"
 HYDRO_GPKG = INPUTS / "hydro_me_5070.gpkg"
-RUN_ROOT = WORK / "rasters/v4"
 RUN_NAME = "maine"
-RUN_DIR = RUN_ROOT / RUN_NAME
+# county_improvement's minimum patch area (ARTEMIS_MAINE_MIN_ACRES). Maine adds back every
+# accepted pixel (0 ac) and leaves stand size to LETO and the speckle cleanup; that build writes
+# to work/ and outputs/. Any other value is a variant with its own work/mmu<acres>/ and
+# outputs_mmu<acres>/, compared in 08_compare.py (mmu5 is county_improvement's 5 ac default).
+BASE_MIN_ACRES = 0.0
+MIN_ACRES = float(os.environ.get("ARTEMIS_MAINE_MIN_ACRES", BASE_MIN_ACRES))
+
+
+@dataclass(frozen=True)
+class RunPaths:
+    work: Path      # step 3-5 JSON, logs, FIA csvs, counties/
+    outputs: Path   # step 6's statewide stand layer
+
+    @property
+    def root(self) -> Path:
+        return self.work / "rasters/v4"
+
+    @property
+    def dir(self) -> Path:
+        return self.root / RUN_NAME
+
+
+def run_paths(min_acres: float) -> RunPaths:
+    if min_acres == BASE_MIN_ACRES:
+        return RunPaths(WORK, OUTPUTS)
+    return RunPaths(WORK / f"mmu{min_acres:g}", EXP / f"outputs_mmu{min_acres:g}")
+
+
+RUN_WORK = run_paths(MIN_ACRES).work
+RUN_OUTPUTS = run_paths(MIN_ACRES).outputs
+RUN_ROOT = run_paths(MIN_ACRES).root
+RUN_DIR = run_paths(MIN_ACRES).dir
 
 PIXEL = 30.0
 STATE_FIPS = "23"
