@@ -61,6 +61,10 @@ extend-exclude = ["notebooks", "data", ".jupyter-runtime"]
 [tool.mutmut]
 # Mutation testing runs file by file (`scripts/quality.py mutate` selects the file); this is the base.
 source_paths = ["pipeline"]
-also_copy = ["config", "scripts", "tests", "notes"]
+also_copy = [
+    "config", "scripts", "tests", "notes",
+    # Tests load dated drivers, archived evidence, and documentation by repository-relative path.
+    "weekly-artifact", "research", "notebooks", "docs/research", "docs/superpowers/specs",
+]
 pytest_add_cli_args_test_selection = ["tests", "pipeline"]
 mutate_only_covered_lines = true

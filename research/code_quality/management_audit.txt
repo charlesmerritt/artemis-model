@@ -1,0 +1,214 @@
+# Management and FVS-output test audit
+
+Audited all 104 test functions in nine owned files, including every parametrized
+branch. The local selection collected 165 test cases, plus three doctest items.
+Reviewed the production functions called by these tests and the policy YAMLs.
+The seams remain the existing tested functions, rendered keyfiles, SQLite reads,
+CSV output, and figures. Production source files were not edited.
+
+There are no literal `assert value == value` tests in this partition. Seventeen
+test functions had circular production-derived expectations, vacuous collection
+checks, or related gaps. Those now use known fixture outcomes, independent policy
+literals, or complete expected collections. Four further edits clarify existing
+independent checks; worked arithmetic over literal fixture inputs was not itself
+a tautology.
+
+The ownership legend comes from RDS-2025-0045 metadata, already transcribed in
+`test_ownership_policy.py`. The assignment default and budget mapping are the
+explicit `management_regimes.yaml` and `ownership_policy.yaml` policy. FIA query
+numbers and evaluation group are the documented Florida 2022 EVALIDator contract.
+S6 totals follow its hand-built three-case database and three-row owner crosswalk.
+
+## Verification and limitations
+
+Baseline: 164 passed, one real-data test deselected. After replacements and the
+three owned doctests: 167 passed, one real-data test deselected in 9.16 seconds.
+
+`management_rejection_probes.py` applies 12 reversible runtime faults. Every
+fault raises an assertion in its replacement check, and every check passes again
+after restoration. The faults cover a wrong-but-eligible default, wrong evaluation
+group, invented and swapped FIA attributes, empty prescriptions and owner sets,
+a changed masked sentinel, a changed sampling-weight label, empty distributions,
+empty type shares, missing plot shares and a self-consistent renamed owner weight label.
+Every fault survives the original committed tests and is rejected by the replacement.
+These are targeted fault checks, not the repository's mutmut score.
+
+Run the probes from the repository root. The script adds the repository to its
+import path, so direct invocation needs no PYTHONPATH setting:
+
+```sh
+.venv/bin/python research/code_quality/management_rejection_probes.py
+```
+
+The production-data S6 test remains in the audit inventory but was deselected
+from the offline local run. It compares two independent aggregation paths and
+requires both pine and hardwood; it is a valid consistency check, not an absolute
+external acreage reference. Data availability does not change its static audit.
+
+The imputation fixture formerly titled `test_donor_ring_never_takes_a_hole_pixel_or_another_patch`
+contains one connected patch, and all holes have zero donor values. Its source
+filters candidate values greater than zero. The new title states its actual ring
+expansion check. This audit does not claim coverage for positive donor values on
+recovered pixels or for executing post-clearcut seedling establishment. The
+regeneration audit records that separate source behavior.
+
+## Per-function inventory
+
+Each row records its disposition and the concrete assertions or exception oracle
+reviewed. Literal parametrized expectations are defined in the source decorators.
+`pytest.raises` checks exercise a rejectable invalid input, not an expectation
+created by the same function being tested. `pytest.warns` checks preserve the
+warning contract alongside independently asserted schedules.
+
+### test_fia_volume_estimates.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_query_uses_county_domain_filter` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `'PLOT.COUNTYCD IN (3, 23, 47, 121, 125)' == wf` |
+| `test_query_hits_the_florida_2022_evaluation_group` | Replaced expected production EVAL_GRP with Florida 2022 literal 122022 for all requests. Checks: `{call['wc'] for call in calls} == {'122022'}` |
+| `test_estimates_carry_all_reported_attributes` | Replaced production ATTRIBUTE_SNUMS expected names with independent seven named measurements and their API numbers. Checks: `set(result) == {'growing_stock_inventory_forestland_cuft', 'growing_stock_inventory_timberland_cuft', 'net_growth_forestland_cuft_per_year', 'net_growth_timberland_cuft_per_year', 'removals_forestland_cuft_per_year', 'removals_timberland_cuft_per_year', 'harvest_removals_forestland_cuft_per_year', 'fetch_params_note'}; {name: row['snum'] for name, row in result.items() if name != 'fetch_params_note'} == {'growing_stock_inventory_forestland_cuft': 15, 'growing_stock_inventory_timberland_cuft': 18, 'net_growth_forestland_cuft_per_year': 202, 'net_growth_timberland_cuft_per_year': 208, 'removals_forestland_cuft_per_year': 226, 'removals_timberland_cuft_per_year': 232, 'harvest_removals_forestland_cuft_per_year': 238}; row['snum'] == 15; row['estimate'] == 1000000.0; row['se_pct'] == 5.0; row['se'] == 50000.0; row['plots'] == 120` |
+| `test_every_snum_requested_with_the_same_stocking_dimensions` | Added literal seven-query list before loop to detect missing requests. Checks: `[call['snum'] for call in calls] == [15, 18, 202, 208, 226, 232, 238]; call['rselected'] == 'All live stocking'; call['cselected'] == 'All live stocking'; call['outputFormat'] == 'JSON'` |
+| `test_plan_harvest_annualizes_each_cycle_over_five_years` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `rows == [{'cycle': 1, 'calendar_year': 2027, 'cycle_cuft': 100.0, 'annual_cuft': 20.0}, {'cycle': 2, 'calendar_year': 2032, 'cycle_cuft': 200.0, 'annual_cuft': 40.0}]` |
+| `test_removal_comparison_frames_the_even_flow_gate` | Already independent worked ratio; used literal 1.7777777777777777. Checks: `verdict['plan_annual_cuft'] == 45000000.0; verdict['fia_removals_cuft_per_year'] == 50000000.0; verdict['plan_over_fia_removals'] == 0.9; verdict['plan_within_fia_removals_ci'] is True; verdict['fia_growth_over_plan'] == pytest.approx(1.7777777777777777)` |
+| `test_removal_comparison_flags_out_of_band_plan` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `verdict['plan_within_fia_removals_ci'] is False; verdict['plan_exceeds_growth'] is True` |
+
+### test_harvest_eligibility.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_family_thin_age_at_entry` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `resolved == {'year': expected}` |
+| `test_restoration_shifts_whole_sequence_and_clips_horizon` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `[t.year - 2022 for t in regime_templates.build_thins(p.template, p.params)] == expected` |
+| `test_repeated_end_bound_is_clamped_instead_of_lost` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `resolved == {'start_year': 15, 'end_year': 20}` |
+| `test_existing_higher_age_targets_remain` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `years(name, age)[0] == expected` |
+| `test_configured_policy_errors_on_unknown_age` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `policy().unknown_age_action is UnknownAgeAction.ERROR` |
+| `test_unknown_age_is_a_hard_error_for_managed_assignment` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(MissingStandAgeError, match='stand age')` |
+| `test_absent_age_column_is_a_hard_error` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(MissingStandAgeError, match='stand age')` |
+| `test_unknown_age_is_a_hard_error_for_library_render` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(MissingStandAgeError, match='stand age')` |
+| `test_unknown_age_still_allowed_where_nothing_is_harvested` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `p.template == 'no_management'; p.template == 'no_management'` |
+| `test_missing_stand_age_error_is_a_value_error` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `issubclass(MissingStandAgeError, ValueError)` |
+| `test_unknown_age_excludes_managed_assignment_with_reason` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `p.template == 'no_management'; p.params == {}; p.regen_slot is None; 'unknown stand age' in ' '.join(p.notes); 'ThinDBH' not in key and 'Estab' not in key` |
+| `test_leto_age_alias_and_riparian_override` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `p.params == {'year': 2027}; p.template == 'no_management' and p.regen_slot is None` |
+| `test_invalid_authoritative_age_is_not_replaced_by_a_lower_priority_alias` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(MissingStandAgeError, match='stand age')` |
+| `test_invalid_policy_rejected` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='harvest_eligibility')` |
+| `test_missing_policy_field_rejected` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='harvest_eligibility')` |
+| `test_missing_or_misspelled_policy_is_not_ignored` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='harvest_eligibility'); pytest.raises(ValueError, match='harvest_eligibility')` |
+| `test_library_uses_same_deferral_and_preserves_operations` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `[(t.year - 2022, t.proportion) for t in thins] == [(15, 0.4), (30, 1.0)]; 'ThinDBH' not in key and 'Estab' not in key; pytest.warns(UserWarning, match='deferred'); pytest.warns(UserWarning, match='unknown stand age')` |
+| `test_library_render_obeys_actual_projection_horizon` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `len(lines) == 1 and '2037' in lines[0]; pytest.warns(UserWarning)` |
+| `test_no_management_is_valid_without_age` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `years('no_management', None) == ({}, ()); regime_library.build_thins('no_management') == []` |
+| `test_grid_deferral_uses_actual_entry_year_and_fractional_age` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `resolved == {'year': 2037}` |
+| `test_params_cannot_override_age_checked_entry_year` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='schedule')` |
+| `test_invalid_projection_grid_fails_clearly` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='cycle&#124;horizon')` |
+| `test_library_rejects_incompatible_cycle_before_fvs_silently_reschedules` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='cycle')` |
+| `test_changed_harvest_cannot_reuse_original_regeneration_year` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `'Estab' in key and '2048' in key; pytest.raises(ValueError, match='regeneration')` |
+
+### test_harvest_eligibility_hardening.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_nonnegative_policy_floor_allows_subyear_values` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `_resolve({'year': 2023}, minimum=minimum, cycle=1) == ({'year': 2023}, ())` |
+| `test_zero_horizon_can_keep_an_eligible_inventory_entry` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `_resolve({'year': 2022}, horizon=0, age=15) == ({'year': 2022}, ())` |
+| `test_window_bound_without_entry_is_not_a_managed_schedule` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `_resolve({'end_year': 2052}, age=None) == ({}, ())` |
+| `test_partial_cycle_horizon_clamps_repeated_window_to_last_cycle` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `resolved == {'start_year': 2037, 'end_year': 2042}; any(('clipped' in note and '2044' in note for note in notes))` |
+| `test_single_entry_repeated_window_is_inclusive` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `resolved == {'start_year': 2037, 'end_year': 2037}` |
+| `test_repeated_window_entirely_beyond_horizon_returns_empty_mapping` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `resolved == {}; any(('clipped' in note for note in notes))` |
+
+### test_impute_establishment.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_label_patches_is_8_connected` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `count == 2; labels[0, 0] == labels[1, 1]; labels[3, 3] != labels[0, 0]` |
+| `test_donor_is_the_modal_neighbour_tm_id` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `count == 1; unresolved == []; assignments.loc[1, 'donor_tm_id'] == '12'` |
+| `test_tie_break_prefers_the_lowest_tm_id` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `assignments.loc[1, 'donor_tm_id'] == '9'` |
+| `test_donor_ring_expands_past_zero_valued_hole_pixels` | Renamed overclaiming test: fixture checks ring expansion past zero-valued holes, not positive donors inside another patch. Checks: `count == 1; unresolved == []; assignments.loc[1, 'donor_tm_id'] == '33'` |
+| `test_unresolvable_patch_is_reported_not_assigned` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `unresolved == [1]; pd.isna(assignments.loc[1, 'donor_tm_id'])` |
+| `test_assignment_carries_patch_geometry_and_stratum` | Already independent worked arithmetic; simplified expected acreage to literal 2.0016. Checks: `row['pixels'] == 9; row['acres'] == pytest.approx(2.0016); row['stratum'] == 1; row['est_year_low'] is None and row['est_year_high'] == 2016` |
+| `test_establishment_tree_lists_use_the_donor_plot_exactly` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `lists[lists.patch_id == 1]['SP'].tolist() == ['131', '111']; lists[lists.patch_id == 1]['PLT_CN'].tolist() == ['17498047010478', '17498047010478']; lists['PLT_CN'].dtype == object or pd.api.types.is_string_dtype(lists['PLT_CN'])` |
+| `test_large_plt_cn_survives_intact` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `lists.loc[0, 'PLT_CN'] == '123456789012345678'` |
+
+### test_owner_classes.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_corporate_harris_value_is_one_corporate_class` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `(assignment.owner_class, assignment.tpo_group) == ('corporate', 'Private')` |
+| `test_row_whose_label_is_not_the_harris_class_for_its_code_is_rejected` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='Harris')` |
+| `test_leto_v1_row_labelled_with_its_harris_class_is_accepted` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `classify_owner({'OWN_CODE': 3, 'OWN_TYPE': 'Family'}).owner_class == 'family'` |
+| `test_value_outside_the_harris_legend_is_rejected` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='Harris')` |
+
+### test_ownership_policy.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_policy_covers_exactly_the_canonical_legend` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `assigned &#124; set(policy['masked_harris_values']) == set(CANONICAL_HARRIS_LEGEND); not assigned & set(policy['masked_harris_values']); set(policy['masked_harris_values']) == CANONICAL_MASKED` |
+| `test_every_class_label_names_its_canonical_harris_class` | Closed empty-class and empty-raster-value loop vacuity with seven known Harris classes and nonempty values. Checks: `set(policy['classes']) == {'family', 'corporate', 'tribal', 'federal', 'state', 'local', 'unknown'}; cls['harris_values']; CANONICAL_HARRIS_LEGEND[value].lower().startswith(cls['label'].split()[0].lower())` |
+| `test_every_tpo_group_is_one_the_tpo_budgets_express` | Replaced vacuous valid-group loop with explicit owner-to-budget policy mapping. Checks: `groups == {'family': 'Private', 'corporate': 'Private', 'tribal': 'Private', 'federal': 'Federal (NF)', 'state': 'Other public', 'local': 'Other public', 'unknown': 'Private'}; set(groups.values()) == CANONICAL_TPO_GROUPS` |
+| `test_masked_values_are_excluded_from_the_fvs_pipeline` | Closed empty masked-value loop and replaced self-consistent production MASKED sentinel oracle with literal masked. Checks: `set(policy['masked_harris_values']) == {1, 2}; harris_value_to_class(value) == 'masked'` |
+| `test_policy_records_the_canonical_source` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `'RDS-2025-0045' in text; 'doi:10.2737/RDS-2025-0045' in text; 'US_forest_ownership.tif.xml' in text` |
+
+### test_regime_assignment.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_corporate_pine_stand_takes_the_corporate_menu` | Replaced circular production menu oracle with declared pulpwood default, next-cycle year and regeneration slot. Checks: `p.owner_class == 'corporate'; p.prescription_id == 'pine_plantation_short_rotation'; p.params == {'year': 2027}; p.regen_slot == 'planted_pine_regen'` |
+| `test_every_harris_forest_class_may_decline_to_harvest` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `'no_management' in eligible_prescriptions(owner)` |
+
+### test_regime_library.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_regime_written_for_an_owner_harris_does_not_have_is_rejected` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='ngo')` |
+| `test_regime_that_names_no_owner_class_is_rejected` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='owner_classes')` |
+| `test_shipped_library_names_only_harris_owner_classes` | Closed empty-library and empty-owner-set vacuity before validating independent Harris names. Checks: `regimes; set(regime['owner_classes']); set(regime['owner_classes']) <= harris` |
+
+### test_s6_fvs_outputs.py
+| Test function | Disposition and evidence |
+| --- | --- |
+| `test_load_stand_years_joins_cases_and_decodes_the_stand_id` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `len(stand_years) == 10; first['state_fips'] == '12'; first['county_fips'] == '12101'; first['plot_number'] == '00001'; first['inventory_year'] == 2000; first['SamplingWt'] == 1000.0` |
+| `test_a_missing_summary_table_names_the_table_rather_than_raising_sqlite_noise` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(fvs_out_db.FvsOutputError, match='FVS_Summary2')` |
+| `test_pre_removal_rows_do_not_add_acres_to_the_final_state` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `len(stand_years) == 1; (stand_years['RmvCode'] == 0).all()` |
+| `test_a_case_with_no_sampling_weight_is_dropped_rather_than_counted_as_an_acre` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `stand_years['StandID'].tolist() == ['120010100001']` |
+| `test_a_wide_control_number_survives_the_read_intact` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `stand_years['Stand_CN'].iloc[0] == WIDE_CN` |
+| `test_a_control_number_that_already_lost_digits_raises_instead_of_joining_wrongly` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(IdPrecisionError)` |
+| `test_the_reporting_grid_excludes_years_not_every_case_reports` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `fvs_out_db.balanced_years(stand_years) == [2026, 2031, 2036]; 2021 not in fvs_out_db.reporting_years(stand_years)` |
+| `test_a_run_whose_cycles_never_line_up_is_an_error_not_a_thin_report` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(fvs_out_db.FvsOutputError, match='covered by all')` |
+| `test_year_grid_mode_all_keeps_the_unbalanced_years` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `2021 in fvs_out_db.reporting_years(stand_years, config=config)` |
+| `test_ages_bin_into_the_configured_classes` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `binned['age_class_label'].iloc[0] == label` |
+| `test_age_zero_can_be_counted_as_the_youngest_class_when_the_config_says_so` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `age_class.assign_age_class([0], config=config)['age_class_label'].iloc[0] == '0-9'` |
+| `test_a_negative_age_raises_rather_than_binning_into_a_nonsense_class` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='negative stand age')` |
+| `test_a_top_class_that_is_not_a_multiple_of_the_width_is_refused` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='multiple of')` |
+| `test_unknown_ages_sort_after_every_real_class` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `binned['age_class_sort'].iloc[0] > real.max(); binned.sort_values('age_class_sort')['age_class_label'].tolist() == ['0-9', '140+', 'unknown']` |
+| `test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `labels[141] == 'Pine (softwood)'; labels[161] == 'Pine (softwood)'; labels[602] == 'Hardwood'; detail[141] == 'Longleaf/slash pine'; detail[602] == 'Oak/gum/cypress'` |
+| `test_every_table_is_acre_weighted_and_foots_to_the_run_total` | Replaced vacuous all() aggregates with literal year-to-acre dictionary; pinned external basis label rather than implementation constant. Checks: `per_year.round(6).to_dict() == {2026: 1750.0, 2031: 1750.0, 2036: 1750.0}; set(table['weight_basis']) == {'sampling_weight'}` |
+| `test_shares_are_computed_within_a_cut_not_across_the_run` | Replaced vacuous all() with expected six year/type groups and unit shares. Checks: `within.round(6).to_dict() == {(2026, 'Hardwood'): 1.0, (2026, 'Pine (softwood)'): 1.0, (2031, 'Hardwood'): 1.0, (2031, 'Pine (softwood)'): 1.0, (2036, 'Hardwood'): 1.0, (2036, 'Pine (softwood)'): 1.0}` |
+| `test_the_distribution_refuses_a_year_the_run_does_not_cover` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(ValueError, match='reporting grid')` |
+| `test_mean_age_is_weighted_by_acres_not_by_stand_count` | Already independent worked fixture calculation; used literal 56.42857142857143 and fixed incorrect explanatory comment. Checks: `mean['mean_age'].iloc[0] == pytest.approx(56.42857142857143)` |
+| `test_owner_shares_sum_to_one_within_a_plot` | Replaced vacuous all() with both expected plot keys and unit totals; retained independent 75% ownership share. Checks: `shares.groupby('Stand_CN')['owner_share'].sum().round(6).to_dict() == {'1001': 1.0, '1002': 1.0}; plot.loc['Private', 'owner_share'] == pytest.approx(0.75)` |
+| `test_a_plot_spanning_two_owners_is_apportioned_not_assigned_to_the_largest` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `set(split['owner_class']) == {'Private', 'Corporate'}; split['owner_acres'].sum() == pytest.approx(100.0)` |
+| `test_plots_outside_the_crosswalk_are_reported_unattributed_not_dropped` | Replaced configured default-label oracle with documented Unattributed output label. Checks: `set(missed['owner_class']) == {'Unattributed'}; owned['Stand_CN'].nunique() == stand_years['Stand_CN'].nunique(); owner_attribution.coverage(owned)['cases_attributed'] == 2` |
+| `test_owner_tables_carry_the_owner_acre_basis_not_the_sampling_weight` | Replaced production basis constant and vacuous all() totals with literal owner_acres and three 140-acre years. Checks: `set(table['weight_basis']) == {'owner_acres'}; table.groupby('Year')['acres'].sum().round(6).to_dict() == {2026: 140.0, 2031: 140.0, 2036: 140.0}` |
+| `test_a_crosswalk_without_the_owner_columns_says_so` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises((owner_attribution.OwnerCrosswalkError, ValueError))` |
+| `test_the_pipeline_runs_every_stage_and_the_last_one_only_draws` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `'age_class_by_forest_type.csv' in tables; 'age_class_by_owner.csv' in tables; 'age_class_by_forest_type.png' in figures; 'age_class_by_owner.png' in figures; summary['reporting_years'] == [2026, 2031, 2036]; summary['owner_coverage']['cases_attributed'] == 2; ctx.years == [2026, 2031, 2036]` |
+| `test_the_visualize_stage_redraws_from_tables_alone` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `list((out_dir / 'figures').glob('*.png'))` |
+| `test_visualize_without_tables_says_to_run_summarize_first` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(run_pipeline.StageError, match='summarize')` |
+| `test_an_unreachable_crosswalk_costs_the_owner_tables_and_nothing_else` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `ctx.owned is None; 'age_class_by_forest_type' in ctx.tables; 'age_class_by_owner' not in ctx.tables; (out_dir / 'figures' / 'age_class_by_forest_type.png').exists(); not (out_dir / 'figures' / 'age_class_by_owner.png').exists()` |
+| `test_an_unknown_stage_name_is_refused` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(run_pipeline.StageError, match='unknown stage')` |
+| `test_the_declared_five_county_run_reports_a_balanced_grid` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `len(years) >= CONFIG['year_grid']['min_years']; {'Pine (softwood)', 'Hardwood'} <= set(table['forest_type_label']); table[table['Year'] == years[0]]['acres'].sum() == pytest.approx(identity['sampling_weight_acres'])` |
+| `test_managed_cycles_keep_post_removal_age_and_acreage` | Replaced vacuous all() acreage assertion with expected three 200-acre years. Checks: `years == [2026, 2031, 2036]; harvested['Age'].tolist() == [1]; table.groupby('Year')['acres'].sum().to_dict() == {2026: 200.0, 2031: 200.0, 2036: 200.0}` |
+| `test_incomplete_or_duplicate_cycle_states_are_rejected` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(fvs_out_db.FvsOutputError)` |
+| `test_post_removal_state_supersedes_an_unmanaged_row` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `fvs_out_db.select_cycle_states(summary)['Age'].tolist() == [1]` |
+| `test_alternative_cases_are_rejected_at_extraction` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(fvs_out_db.FvsOutputError, match='one case per stand')` |
+| `test_direct_aggregation_rejects_alternatives_on_disjoint_grids` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `pytest.raises(fvs_out_db.FvsOutputError, match='multiple FVS cases')` |
+| `test_dry_run_never_executes_stages_or_changes_files` | Replaced production-derived full-stage parameter with literal five promised stages, so deleting a production stage cannot silently remove its test case. Checks: `before == {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}` |
+| `test_oversized_optional_crosswalk_degrades_to_ownerless_reporting` | Replaced production cap expected value with independently documented 64 MB policy. Checks: `ctx.summary['owner_crosswalk'] is None; 'age_class_by_owner' not in ctx.tables; '70 MB exceeds' in caplog.text; max_fetch_mb == 64` |
+| `test_ownerless_rerun_removes_stale_owned_outputs` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `not (out / 'tables' / 'age_class_by_owner.csv').exists(); not list((out / 'figures').glob('*.png')); not (out / 'figures' / 'age_class_by_owner.png').exists(); (out / 'figures' / 'age_class_by_state.png').exists(); custom.read_text() == 'note\nkeep me\n'` |
+| `test_snapshot_axes_share_one_formatter_and_correct_unit` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `axes[0].get_ylabel() == unit; all((ax.yaxis.get_major_formatter()(5000, None) == tick for ax in axes))` |
+| `test_time_axes_use_the_combined_stacked_peak` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `axes[0].get_ylabel() == 'Thousand acres'; all((ax.yaxis.get_major_formatter()(12000, None) == '12' for ax in axes))` |
+| `test_unknown_types_and_custom_labels_appear_in_all_charts` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `sum((p.get_height() for p in snapshot.axes[0].patches)) == pytest.approx(1750); 'Unknown' in [t.get_text() for t in legend.get_texts()]; 'Unknown' in [ax.get_title() for ax in capture_figure[-1].axes]; sum((p.get_height() for ax in capture_figure[-1].axes for p in ax.patches)) == 1750; snapshot.axes[0].patches[0].get_facecolor() == to_rgba(CONFIG['figures']['palette']['pine'])` |
+| `test_county_remainder_is_pooled_using_only_the_selected_year` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `[ax.get_title() for ax in axes] == ['C\n100 acres', 'Other counties\n30 acres']; sum((p.get_height() for ax in axes for p in ax.patches)) == 130; table['county'].tolist() == ['A', 'B', 'C'] * 2` |
+| `test_unknown_only_ages_keep_tables_and_skip_mean_age_figures` | Replaced output-to-output year equality with fixture reporting years before NaN/all-zero assertions. Checks: `sorted(mean['Year'].unique()) == [2026, 2031, 2036]; mean['mean_age'].isna().all(); mean['acres'].eq(0).all(); not (tmp_path / 'figures' / 'mean_age_by_forest_type.png').exists(); (tmp_path / 'figures' / 'age_class_by_owner.png').exists(); 'no known stand ages' in caplog.text` |
+| `test_crosswalk_default_matches_the_declared_ownership_run` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `str(run_pipeline._declared(run_pipeline.OWNER_CROSSWALK_KEY)).endswith('20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv')` |
+| `test_drive_paths_keep_their_documented_r2_locations` | Retained. Independent fixture, literal policy, exception, filesystem, or behavioral oracle. Checks: `run_pipeline.data_access.remote_url(local) == f'r2:artemis-r2/data/{remote}'` |
+
+## Doctest inventory
+
+| Module/item | Disposition and evidence |
+| --- | --- |
+| `pipeline.s3_management.owner_classes` module | Retained. OWN_CODE 6 has independently specified `federal`, `Federal (NF)` tuple. |
+| `pipeline.s3_management.regime_assignment` module | Retained. Corporate pine age 22 has literal pulpwood prescription, planted-pine slot and 2027 year; federal menu has explicit three-item list. |
+| `pipeline.s4_fvs.regime_library.validate_library` | Retained. Off-cycle offset 12 produces explicit multiple-of-5 ValueError. |
+
+No doctest examples occur in `pipeline.harvest_eligibility`,
+`pipeline.s1_initial_state.impute_establishment`,
+`pipeline.s1_initial_state.fia_volume_estimates`,
+`pipeline.s4_fvs.regime_templates` or the five `pipeline.s6_outputs` modules.

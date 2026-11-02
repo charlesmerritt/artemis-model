@@ -9,15 +9,15 @@ the usage examples. `uv run pytest` runs those doctests alongside `tests/`.
 
 ```bash
 uv run python -c "import pipeline.s4_fvs.build_fvs_inputs as m; help(m)"   # any module
-uv run python -m pipeline.s3_management.sketch_management_units --help
+uv run python main.py --help   # the runner (pipeline/run.py): library, then schedule
 ```
 
 | Stage | Modules | Entry point |
 |---|---|---|
-| shared | `ids` (exact-string join keys), `spatial_ref` (the one CRS), `data_access` (drive, then R2), `raster_clip`, `raster_windows`, `leto_ca` | `python -m pipeline.spatial_ref` |
+| shared | `ids` (exact-string join keys), `spatial_ref` (the one CRS), `data_access` (drive, then R2), `raster_clip`, `raster_windows`, `leto_*` (LETO v1 stages 1-5, `research/leto_parity/README.md`) | `python -m pipeline.spatial_ref` |
 | `s1_initial_state/` | TreeMap hole stratification, sampling, embedding, classification, add-back, FIA and LCMS validation | each module's `--help` |
-| `s3_management/` | `sketch_management_units` → `sliver_merge` → `assign_plt_cn`; `owner_classes`, `regime_assignment`, `tpo_targets`, `harvest_scheduler` (greedy baseline) | `python -m pipeline.s3_management.regime_assignment` |
-| `s4_fvs/` | `build_fvs_inputs` (area-weighted union), `regime_templates` / `regime_library` (keyfiles), `fallback_treelists`, `paint_fvs_to_raster` | `python -m pipeline.s4_fvs.fallback_treelists` |
+| `s3_management/` | `sketch_management_units` → `sliver_merge` → `assign_plt_cn`; `owner_classes`, `regime_assignment`, `tpo_targets`, `harvest_scheduler` (greedy baseline), `annealer` (simulated-annealing selection) | `python -m pipeline.s3_management.regime_assignment` |
+| `s4_fvs/` | `trajectory_library` (open-menu options, FVS runs), `build_fvs_inputs`, `regime_templates` / `regime_library` (keyfiles), `fallback_treelists`, `paint_fvs_to_raster` | `python -m pipeline.s4_fvs.fallback_treelists` |
 | `s5_imagery/` | NAIP acquisition with a per-year coverage check, embedding clustering inside vs outside an AOI, raster correction, viewer catalog | `python -m pipeline.s5_imagery.naip_acquire --help` |
 
 Rules that apply to every module, enforced by `scripts/check_conventions.py`:

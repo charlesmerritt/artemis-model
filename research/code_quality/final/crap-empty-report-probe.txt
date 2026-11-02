@@ -1,0 +1,7 @@
+A process-local fault probe supplied crap4py exit code 1 with no parseable result rows. The requested gate was --max-crap 30.
+
+### CRAP scores — pipeline
+
+No functions in scope.
+
+Wrapper exit code: 0

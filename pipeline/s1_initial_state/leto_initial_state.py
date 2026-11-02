@@ -6,8 +6,9 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
-from shapely import STRtree
 
+from pipeline import leto_inventory
+from pipeline.leto_donors import filter_weights
 from pipeline.s1_initial_state.weights import attach_modal_plot, build_plot_weights
 
 MU_COLUMNS = ["MU_ID", "Acres", "OWN_CODE", "OWN_TYPE", "SMZ_Pct"]
@@ -20,30 +21,7 @@ CROSSWALK_COLUMNS = [
     "OWN_TYPE",
     "SMZ_Pct",
 ]
-TREE_RENAME = {
-    "CN": "TREE_ID",
-    "INVYR": "INV_YEAR",
-    "SPCD": "Species_FIA",
-    "DIA": "DIAMETER",
-    "CR": "CRRATIO",
-    "TPA_UNADJ": "TREE_COUNT",
-}
-TREE_OUTPUT_COLUMNS = [
-    "STAND_ID",
-    "TREE_ID",
-    "SPECIES",
-    "DIAMETER",
-    "HT",
-    "CRRATIO",
-    "TREE_COUNT",
-    "MU_ID",
-    "PLT_CN",
-    "WEIGHT",
-    "Species_FIA",
-    "TREE_SOURCE",
-    "DONOR_STAND_ID",
-    "NEAR_DIST",
-]
+TREE_OUTPUT_COLUMNS = leto_inventory.TREE_COLUMNS
 STAND_OUTPUT_COLUMNS = [
     "STAND_ID",
     "VARIANT",
@@ -97,15 +75,15 @@ def filter_and_normalize_weights(
     crosswalk: pd.DataFrame,
     min_plot_weight: float = 0.05,
 ) -> pd.DataFrame:
-    """Apply LETO's donor threshold and renormalize within each retained unit."""
+    """Apply LETO's donor threshold and renormalize within each retained unit.
+
+    A unit whose donors all fall below the threshold keeps its largest one
+    (LETO v1 `pipeline._filter_weights`, via `pipeline.leto_donors.filter_weights`).
+    """
     retained = weights.copy()
     retained["MU_ID"] = retained["MU_ID"].astype("string")
     retained["PLT_CN"] = retained["PLT_CN"].astype("string")
-    retained["WEIGHT"] = pd.to_numeric(retained["WEIGHT"], errors="coerce")
-    retained = retained.loc[retained["WEIGHT"] >= min_plot_weight].copy()
-    retained["WEIGHT"] = retained["WEIGHT"] / retained.groupby("MU_ID")[
-        "WEIGHT"
-    ].transform("sum")
+    retained = filter_weights(retained, min_plot_weight, key="MU_ID")
 
     attributes = crosswalk[
         ["MU_ID", "Stand_ID", "Acres", "OWN_CODE", "OWN_TYPE", "SMZ_Pct"]
@@ -152,34 +130,13 @@ def prepare_direct_tree_rows(
     fia_trees: pd.DataFrame,
     species_lookup: Mapping[str, str],
 ) -> pd.DataFrame:
-    """Join weighted donor plots to live FIA trees and emit FVS tree rows."""
-    trees = fia_trees.copy()
-    trees["PLT_CN"] = trees["PLT_CN"].astype("string")
-    joined = normalized_weights.merge(trees, on="PLT_CN", how="inner")
-    joined = joined.loc[joined["STATUSCD"] == "1"].copy()
-    joined = joined.rename(columns=TREE_RENAME)
-    joined["Species_FIA_CLEAN"] = (
-        pd.to_numeric(joined["Species_FIA"], errors="coerce")
-        .astype("Int64")
-        .astype("string")
-        .str.zfill(3)
-    )
-    joined["SPECIES"] = joined["Species_FIA_CLEAN"].map(species_lookup)
-    joined["STAND_ID"] = "MU_" + joined["Stand_ID"].astype("string")
-
-    for column in ["DIAMETER", "HT", "ACTUALHT", "CRRATIO", "TREE_COUNT", "WEIGHT"]:
-        if column in joined.columns:
-            joined[column] = pd.to_numeric(joined[column], errors="coerce")
-    if "HT" in joined.columns and "ACTUALHT" in joined.columns:
-        joined["HT"] = joined["HT"].fillna(joined["ACTUALHT"])
-
-    joined["TREE_COUNT"] = joined["TREE_COUNT"] * joined["WEIGHT"]
-    joined = joined.dropna(subset=["STAND_ID", "SPECIES", "DIAMETER", "TREE_COUNT"])
-    joined = joined.loc[joined["TREE_COUNT"] > 0].copy()
-    joined["TREE_SOURCE"] = "FIA_WEIGHTED_DIRECT"
-    joined["DONOR_STAND_ID"] = ""
-    joined["NEAR_DIST"] = ""
-    return joined[TREE_OUTPUT_COLUMNS].reset_index(drop=True)
+    """Join weighted donor plots to live FIA trees (LETO v1 `stage4.build_tree_list`)."""
+    weights = normalized_weights.copy()
+    weights["SEG_ID"] = pd.to_numeric(weights["MU_ID"], errors="raise").astype("int64")
+    weights["STAND_ID"] = "MU_" + weights["Stand_ID"].astype("string")
+    if "WEIGHT_ORIGINAL" not in weights.columns:
+        weights["WEIGHT_ORIGINAL"] = weights["WEIGHT"]
+    return leto_inventory.build_tree_list(weights, fia_trees, species_lookup).trees
 
 
 def impute_missing_tree_rows(
@@ -187,48 +144,15 @@ def impute_missing_tree_rows(
     crosswalk: pd.DataFrame,
     direct_trees: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Copy the nearest runnable unit's trees into each missing unit."""
-    units = management_units[["MU_ID", "geometry"]].copy()
-    units["MU_ID"] = units["MU_ID"].astype("string")
-    crosswalk_ids = crosswalk["MU_ID"].astype("string")
-    runnable_ids = set(direct_trees["MU_ID"].astype("string"))
-    missing_ids = [mu_id for mu_id in crosswalk_ids if mu_id not in runnable_ids]
-    if not missing_ids:
-        return direct_trees.copy().reset_index(drop=True)
-    if management_units.crs is None or management_units.crs.is_geographic:
-        raise ValueError("Nearest-tree imputation requires a projected CRS")
-    if not runnable_ids:
-        raise ValueError("No runnable management unit is available for imputation")
-
-    donor_units = units.loc[units["MU_ID"].isin(runnable_ids)].sort_values("MU_ID")
-    if donor_units.empty:
-        raise ValueError("No runnable management unit is available for imputation")
-    missing_units = units.set_index("MU_ID").reindex(missing_ids)
-    if missing_units.geometry.isna().any():
-        raise ValueError("Every missing management unit must have a geometry")
-
-    spatial_index = STRtree(donor_units.geometry.to_numpy())
-    imputed_groups = []
-    for missing_id, geometry in missing_units.geometry.items():
-        donor_positions, distances = spatial_index.query_nearest(
-            geometry,
-            all_matches=False,
-            return_distance=True,
-        )
-        donor_id = donor_units.iloc[int(donor_positions[0])]["MU_ID"]
-        donor_stand_id = f"MU_{donor_id}"
-        donor_trees = direct_trees.loc[
-            direct_trees["STAND_ID"].astype("string") == donor_stand_id
-        ].copy()
-        donor_trees["DONOR_STAND_ID"] = donor_stand_id
-        donor_trees["TREE_SOURCE"] = "IMPUTED_NEAREST"
-        donor_trees["NEAR_DIST"] = float(distances[0])
-        donor_trees["STAND_ID"] = f"MU_{missing_id}"
-        donor_trees["MU_ID"] = missing_id
-        donor_trees["TREE_ID"] = range(1, len(donor_trees) + 1)
-        imputed_groups.append(donor_trees)
-
-    return pd.concat([direct_trees, *imputed_groups], ignore_index=True)
+    """Copy the nearest runnable unit's trees into each missing unit
+    (LETO v1 `stage4.impute_missing_tree_lists`)."""
+    stands = management_units[["MU_ID", "geometry"]].copy()
+    stands["MU_ID"] = stands["MU_ID"].astype("string")
+    stands = stands[stands["MU_ID"].isin(set(crosswalk["MU_ID"].astype("string")))]
+    stands["SEG_ID"] = pd.to_numeric(stands["MU_ID"], errors="raise").astype("int64")
+    stands["STAND_ID"] = "MU_" + stands["MU_ID"]
+    trees, _ = leto_inventory.impute_missing_tree_lists(stands, direct_trees)
+    return trees
 
 
 def build_stand_rows(

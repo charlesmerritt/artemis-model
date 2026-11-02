@@ -1,0 +1,211 @@
+# Mutation testing and CRAP scoring
+
+This branch uses the repository's existing `scripts/quality.py`, `pyproject.toml`, and
+`.github/workflows/quality.yml` workflow. Measurements run with the installed `.venv`
+and Python 3.14.8, mutmut 3.8.0, and crap4py 0.1.1. No production functions were
+changed for these measurements.
+
+## Baseline
+
+Before the test audit edits, the whole local suite reported 477 passed and 3 skipped
+in 17.14 seconds. The skips require optional ArcGIS or production-data inputs.
+The whole `pipeline/` coverage was 48.897% of statements and 33.744% of branches.
+The combined coverage reported by pytest-cov was 45.585%.
+
+The whole pipeline CRAP report scored 568 functions. There were 79 above 30,
+195 between 5 and 30, and 294 at or below 5. The maximum was 2756.0 for
+`pipeline/s5_imagery/embeddings.py:main`, with complexity 52 and zero branch
+coverage. Complete baseline scores are in `baseline/crap.csv`, with the formatted
+largest 40 in `baseline/crap.txt`. Coverage evidence is in `baseline/lcov.info`
+and `baseline/coverage.json`.
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest -q \
+  --cov=pipeline --cov-branch \
+  --cov-report=lcov:research/code_quality/baseline/lcov.info \
+  --cov-report=json:research/code_quality/baseline/coverage.json
+PATH="$PWD/.venv/bin:$PATH" .venv/bin/python scripts/quality.py crap pipeline \
+  --lcov research/code_quality/baseline/lcov.info \
+  --summary research/code_quality/baseline/crap.txt
+```
+
+## Isolated mutation workspace repair
+
+The original `also_copy` setting omitted inputs required by the actual tests.
+Mutation collection failed successively on dated weekly drivers, archived research
+evidence, a walkthrough notebook, and documentation files. A concurrent research
+test also imported a research module. These were genuine collection failures,
+not surviving or killed mutants.
+
+The configuration now copies `weekly-artifact`, `research`, `notebooks`,
+`docs/research`, and `docs/superpowers/specs` into the mutation workspace.
+`tests/test_quality_workflow.py` copies the configured inputs into an isolated
+temporary directory, checks literal required fixture paths, and collects the
+full suite there. Its rejection probe removes the timing driver and requires
+collection to fail with that missing filename.
+
+The regression check failed before the configuration change, with one failed
+and one passed test. After the change, both tests passed in 4.36 seconds.
+
+```bash
+.venv/bin/python -m pytest -q tests/test_quality_workflow.py
+```
+
+## How to interpret the established reports
+
+CRAP uses `CC² × (1 − coverage)³ + CC`. The installed crap4py reads LCOV `BRDA`
+branch records within each function. It treats functions with no branch records
+as 100% covered, even when their statements never execute. CRAP therefore does
+not replace the statement coverage report. The wrapper prints at most 40 rows;
+the CSV retains all rows.
+
+Mutmut only generates mutations on covered lines because the established
+configuration sets `mutate_only_covered_lines = true`. Mutation scores describe
+that generated set; they cannot establish protection for unexecuted code.
+The wrapper counts killed and timeout mutants in the numerator, and killed,
+timeout, survived, and suspicious mutants in the denominator. It excludes
+`no tests`, `not checked`, skipped, and other statuses. Those counts must be
+read alongside the percentage.
+
+Both CI thresholds remain empty and reports remain report-only. A passing
+workflow is not evidence of meeting a CRAP or mutation score threshold.
+The pull-request jobs select source files changed since the merge base.
+Changes confined to tests or configuration select no pipeline files. This
+audit therefore runs explicit whole-pipeline CRAP and explicit mutation paths.
+
+The mutation wrapper accepts mutmut exit code 1. We observed failed test
+collection followed by a successful wrapper exit, a score of `—`, zero killed
+mutants, and an `Other` count of two. The threshold also accepts an undefined
+score because it only rejects defined scores below the requested minimum.
+These reports must not be described as passing mutation measurements.
+
+An initial broken coverage collection produced just two ID mutants. After
+repairing the workspace inputs, mutmut reused unchanged source hashes and kept
+that incomplete generated set. Its subsequent nominal 100% ID report is
+excluded from the final metrics. A fresh mutation workspace is required after
+this failure, and the final run starts from a fresh workspace after the test
+audit edits.
+
+The baseline suite included a concurrent research comparison test that was later
+removed from the dedicated audit branch. Test-count differences between baseline
+and final therefore include this external change. The final suite is authoritative.
+
+## Final coverage and CRAP
+
+The final branch is `code-quality/test-integrity-audit`, based on main commit
+`066aee6`. After the audited test replacements and mutation-workspace repair,
+the full suite passed with 499 passed and 3 skipped in 22.41 seconds.
+Statement coverage, branch coverage, and all 568 CRAP scores are exactly
+unchanged from the baseline. Independent test oracles and fault-rejection probes
+improve the ability to detect mistakes without changing which source lines run.
+The final full reports are `final/coverage.json`, `final/lcov.info`,
+`final/crap.csv`, and `final/crap.txt`.
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m pytest -q \
+  --cov=pipeline --cov-branch \
+  --cov-report=lcov:research/code_quality/final/lcov.info \
+  --cov-report=json:research/code_quality/final/coverage.json
+PATH="$PWD/.venv/bin:$PATH" .venv/bin/python scripts/quality.py crap pipeline \
+  --lcov research/code_quality/final/lcov.info \
+  --summary research/code_quality/final/crap.txt
+```
+
+The eight initial mutation outputs are consolidated in
+`baseline/excluded-mutation-attempts.out`. Their summaries are excluded because
+collection failures or incomplete cached mutation generation made them invalid.
+The initial workspace was preserved by moving it to
+`/tmp/artemis-test-integrity-incomplete-mutants-20261005`.
+
+## Final mutation measurements
+
+After the test edits were frozen, a fresh mutmut workspace generated 11,321
+mutants across all pipeline sources. The explicit sixteen-file scope contained
+5,311 of those mutants. All generated mutants in that requested scope reached
+a final status. The run completed with wrapper exit code zero.
+
+There were 4,165 killed, 1,140 survived, four timeout, and two no-tests mutants.
+There were no suspicious, not-checked, segfault, or interrupted mutants in scope.
+The existing convention counts timeouts as caught and excludes no-tests mutants,
+so the combined score is 78.5% over 5,309 tested mutants. The score is weighted
+by mutant count, rather than an average of the module percentages.
+
+`final/mutation.txt` contains the full per-file table and all 1,140 survivor
+names. `final/mutation.json` stores module and combined metrics.
+`final/mutations.csv` stores every selected mutant's status, exit code, and
+measured duration. `final/mutmut-results-all.out` preserves mutmut's raw results
+for the entire generated pipeline set, including unrequested mutants.
+`final/mutation.raw.out` preserves the complete sixteen-file command output.
+The raw output suffix avoids interpreting cache-warning paths as live
+repository references. Those warnings concern changing audit/report files;
+production sources and tests remained frozen during the final mutation run.
+
+Mutation testing was not a full sweep of every pipeline module. The measured
+sixteen-file scope covers ID handling, harvest eligibility, owner policy,
+prescription libraries, FIA volume, age classes, tree weights and initial state,
+hole classification and scoring, segmentation artifacts and comparisons, and
+owner attribution. Other pipeline modules remain outside the mutation results.
+The requested `stratify_treemap_holes` module has zero generated mutants and
+an undefined score. It is imported, but its function bodies do not execute in
+the suite. Covered-only generation provides no mutation result for those bodies.
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" .venv/bin/python scripts/quality.py mutate \
+  pipeline/ids.py pipeline/harvest_eligibility.py \
+  pipeline/s3_management/regime_assignment.py \
+  pipeline/s4_fvs/regime_library.py pipeline/s3_management/owner_classes.py \
+  pipeline/s1_initial_state/fia_volume_estimates.py pipeline/s6_outputs/age_class.py \
+  pipeline/s1_initial_state/weights.py pipeline/s1_initial_state/leto_initial_state.py \
+  pipeline/s1_initial_state/stratify_treemap_holes.py \
+  pipeline/s1_initial_state/score_holes_statewide.py \
+  pipeline/s1_initial_state/statewide_repair.py \
+  pipeline/s1_initial_state/segmentation/boundary_overlay.py \
+  pipeline/s1_initial_state/segmentation/artifacts.py \
+  pipeline/s1_initial_state/segmentation/comparison.py \
+  pipeline/s6_outputs/owner_attribution.py \
+  --show-survivors 2000 --summary research/code_quality/final/mutation.txt
+```
+
+Do not reuse the incomplete baseline mutation cache. For a fresh reproducible
+run, preserve an existing workspace in a unique temporary directory before
+invoking the command above:
+
+```bash
+if [ -d mutants ]; then
+  mutation_archive="$(mktemp -d /tmp/artemis-mutmut.XXXXXX)"
+  mv mutants "$mutation_archive/"
+fi
+```
+
+## Representative remaining gaps
+
+Survivors need individual review; the raw survivor count includes message
+variants and potentially equivalent changes as well as behavioral defects.
+They have not all been classified or accepted as equivalent. This test audit
+replaces dependent test oracles; it does not close every surviving mutation.
+
+The remaining ID mutations provide concrete examples:
+
+- `exact_int_limit__mutmut_13` replaces the mantissa lookup with `int(None)`.
+  The exception handler then always chooses the float64 bound. Narrow floats
+  can therefore lose their dtype-specific precision protection without a test
+  detecting it.
+- `as_id_series__mutmut_94` removes the explicit identifier output dtype.
+  The current tests do not reject that changed output contract.
+- `_normalize__mutmut_71` reports a repaired float as unrepaired. The numeric
+  string still matches, but the warning contract changes without detection.
+
+The four timeout mutations have clear causes. Two remove the tile-download
+timeout by changing the thread join or download timeout argument to `None`.
+Two replace the fingerprint reader's end-of-file sentinel with a value that
+can never match end-of-file, causing an infinite read loop. The existing
+workflow counts these as caught, and the reports retain their timeout status
+rather than labeling them assertion failures. All seven representative diffs
+are retained in `final/representative-diffs.txt`.
+
+The CRAP wrapper has a related reporting limitation. A process-local fault probe
+supplied a crap4py exit code of 1 with no parseable rows under `--max-crap 30`.
+The wrapper emitted "No functions in scope" and returned zero. A malformed or
+failed report can therefore pass that gate unless its output is inspected.
+The reproduction output is `final/crap-empty-report-probe.txt`. Production
+reporting code was not changed by this audit.

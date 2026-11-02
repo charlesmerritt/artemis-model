@@ -42,15 +42,18 @@ sys.path.insert(0, str(REPO_ROOT))
 #   code      owed as docstrings, doctests, --help or a check; delete once that lands
 MARKDOWN_BUDGET = {
     ".agents/skills/linear/SKILL.md": (37, "keep"),            # agent skill; linear.py --help is the usage
-    "AGENTS.md": (72, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-28 for the regeneration gotcha
+    "AGENTS.md": (74, "keep"),                                # the architect's agent brief; raised 63->72 2026-09-28 for the regeneration gotcha, 72->74 for its provenance-4 rule (ADR 0002)
     "CLAUDE.md": (1, "keep"),                                 # @AGENTS.md
-    "CONTEXT.md": (64, "keep"),                               # the project vocabulary
+    "CONTEXT.md": (100, "keep"),                               # the project vocabulary; raised 64->93 2026-09-28 for the raster-repair terms (ADR 0003), 93->100 2026-10-12 for age source and young-plot library
     "README.md": (119, "keep"),
     "data/index.md": (122, "generated"),                      # scripts/r2_index.py; regrew 2026-09-14 (+6 rows)
     "docs/adr/0001-ruderal-grassland-clean-slate.md": (36, "record"),  # accepted decision, 2026-09-13
-    "docs/config-policy.md": (429, "convert"),                # -> policy deck
+    "docs/adr/0002-scaled-nearest-neighbour-establishment.md": (93, "record"),  # accepted decision, 2026-09-28
+    "docs/adr/0003-dated-stand-age-and-young-plots.md": (91, "record"),  # accepted decision, 2026-09-28; supersedes 0002; 75->91 2026-10-12 amendment (#87, #88)
+    "docs/config-policy.md": (427, "convert"),                # -> policy deck
     "docs/ownership-regimes.md": (183, "convert"),            # -> policy deck (per-class regime tables)
     "docs/research/leto-vs-boundary-overlay.md": (120, "record"),      # dated comparison record
+    "research/leto_parity/README.md": (136, "record"),             # LETO v1 parity audit, 2026-10-19
     "docs/superpowers/plans/2026-07-20-leto-initial-state.md": (649, "record"),
     "docs/superpowers/plans/2026-07-20-s1-segmentation-strategies.md": (570, "record"),
     "docs/superpowers/specs/2026-07-19-leto-initial-state-design.md": (232, "record"),

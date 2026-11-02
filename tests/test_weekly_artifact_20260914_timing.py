@@ -102,20 +102,32 @@ def test_offset_shifts_every_entry_and_changes_nothing_else():
                (before.proportion, before.min_dbh, before.max_dbh, before.species)
 
 
-def test_offset_zero_is_the_identity():
-    """The claim the week-on-week comparison rests on, at the operation level."""
-    for template, params in [
-        ("thin_from_below", {"year": 2032, "max_dbh": 8.0, "proportion": 0.35}),
-        ("clearcut", {"year": 2042}),
-        ("plantation_rotation", {"thin_year": 2027, "clearcut_year": 2047,
-                                 "thin_proportion": 0.35, "thin_max_dbh": 9.0}),
-        ("thin_from_below_repeated", {"start_year": 2027, "end_year": 2057, "interval": 15,
-                                      "proportion": 0.3, "max_dbh": 10.0}),
-    ]:
-        v = m.shift_variant(template, params, "p", 0)
-        assert list(v.thins) == m.build_thins(template, params)
-        assert list(v.regen) == m.build_regeneration(template, params)
-        assert v.dropped_entries == 0
+@pytest.mark.parametrize("template,params,expected_thins,expected_regen", [
+    ("thin_from_below", {"year": 2032, "max_dbh": 8.0, "proportion": 0.35},
+     [(2032, 0.35, 0.0, 8.0, 0)], []),
+    ("clearcut", {"year": 2042, "regen": "plant", "regen_species": "SA", "regen_tpa": 400,
+                  "regen_delay_years": 2, "regen_survival_pct": 90, "regen_age": 0,
+                  "regen_height_ft": 1},
+     [(2042, 1.0, 0.0, 999.0, 0)], [(2044, "SA", 400.0, False, 90.0, 0.0, 1.0)]),
+    ("plantation_rotation", {"thin_year": 2027, "clearcut_year": 2047,
+                             "thin_proportion": 0.35, "thin_max_dbh": 9.0,
+                             "regen_species": "SA", "regen_tpa": 400, "regen_delay_years": 2,
+                             "regen_survival_pct": 90, "regen_age": 0, "regen_height_ft": 1},
+     [(2027, 0.35, 0.0, 9.0, 0), (2047, 1.0, 0.0, 999.0, 0)],
+     [(2049, "SA", 400.0, False, 90.0, 0.0, 1.0)]),
+    ("thin_from_below_repeated", {"start_year": 2027, "end_year": 2057, "interval": 15,
+                                  "proportion": 0.3, "max_dbh": 10.0},
+     [(2027, 0.3, 0.0, 10.0, 0), (2042, 0.3, 0.0, 10.0, 0),
+      (2057, 0.3, 0.0, 10.0, 0)], []),
+])
+def test_offset_zero_is_the_identity(template, params, expected_thins, expected_regen):
+    """Offset zero preserves worked schedules, even if a shared builder regresses."""
+    v = m.shift_variant(template, params, "p", 0)
+    assert [(t.year, t.proportion, t.min_dbh, t.max_dbh, t.species)
+            for t in v.thins] == expected_thins
+    assert [(r.year, r.species, r.trees_per_acre, r.natural, r.survival_pct, r.age, r.height_ft)
+            for r in v.regen] == expected_regen
+    assert v.dropped_entries == 0
 
 
 # --------------------------------------------------------------------------------------
@@ -193,12 +205,13 @@ def test_delayed_rotation_keeps_the_thin_when_the_clearcut_falls_out():
 # --------------------------------------------------------------------------------------
 
 def test_regeneration_moves_with_its_harvest():
-    params = {"year": 2042, "regen": "plant"}
-    base = m.shift_variant("clearcut", params, "hardwood_clearcut_regen", 0)
+    params = {"year": 2042, "regen": "plant", "regen_species": "SA", "regen_tpa": 400,
+              "regen_delay_years": 2, "regen_survival_pct": 90, "regen_age": 0,
+              "regen_height_ft": 1}
     moved = m.shift_variant("clearcut", params, "hardwood_clearcut_regen", 10)
-    assert [r.year for r in moved.regen] == [r.year + 10 for r in base.regen]
-    assert [r.species for r in moved.regen] == [r.species for r in base.regen]
-    assert [r.trees_per_acre for r in moved.regen] == [r.trees_per_acre for r in base.regen]
+    assert moved.entry_years == (2052,)
+    assert [(r.year, r.species, r.trees_per_acre, r.natural, r.survival_pct, r.age, r.height_ft)
+            for r in moved.regen] == [(2054, "SA", 400.0, False, 90.0, 0.0, 1.0)]
 
 
 def test_regeneration_is_dropped_with_the_harvest_that_created_it():
@@ -356,6 +369,8 @@ def test_parse_params_round_trips_the_20260817_form():
 # --------------------------------------------------------------------------------------
 
 plan = _load(PLAN_DRIVER, "wa_20260914_anneal")
+# The driver re-exports the selector; its policy global lives where the functions do.
+from pipeline.s3_management import annealer  # noqa: E402
 
 
 def test_greedy_baseline_takes_the_deterministic_timing():
@@ -413,12 +428,12 @@ def test_owner_group_resolves_under_either_vocabulary(monkeypatch, legacy, group
     and a stand's TPO budget must not depend on which.
     """
     assert plan.owner_group(legacy) == group          # the policy as configured today
-    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    monkeypatch.setattr(annealer, "OWNERSHIP_POLICY", HARRIS_POLICY)
     assert plan.owner_group(legacy) == group          # the seven Harris classes
 
 
 def test_legacy_names_map_onto_the_harris_classes(monkeypatch):
-    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    monkeypatch.setattr(annealer, "OWNERSHIP_POLICY", HARRIS_POLICY)
     assert plan.owner_class_in_policy("private_family") == "family"
     assert plan.owner_class_in_policy("private_industrial") == "corporate"
     # The parcel refinement that split corporate in two is gone; both halves are corporate.
@@ -439,7 +454,7 @@ def test_owner_class_comparison_survives_the_rename(monkeypatch):
     as a mismatch the moment the classes are renamed — a warning about a rename rather than
     about the attribution drift the check exists to catch.
     """
-    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    monkeypatch.setattr(annealer, "OWNERSHIP_POLICY", HARRIS_POLICY)
     same = plan.owner_class_in_policy("family") == plan.owner_class_in_policy("private_family")
     assert same, "a renamed class must not read as drifted attribution"
     drifted = plan.owner_class_in_policy("federal") == plan.owner_class_in_policy("family")
@@ -449,7 +464,7 @@ def test_owner_class_comparison_survives_the_rename(monkeypatch):
 def test_unresolvable_owner_class_stops_the_run(monkeypatch):
     """Never silently drop the stand. It has acres and trajectories; a missing lookup row is
     a fault in the configuration, not a reason to leave it out of the plan."""
-    monkeypatch.setattr(plan, "OWNERSHIP_POLICY", HARRIS_POLICY)
+    monkeypatch.setattr(annealer, "OWNERSHIP_POLICY", HARRIS_POLICY)
     with pytest.raises(AssertionError, match="no TPO group"):
         plan.owner_group("conservation_ngo")
 

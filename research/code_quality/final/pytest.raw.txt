@@ -1,0 +1,380 @@
+........................................................................ [ 14%]
+........................................................................ [ 28%]
+......s.............................................................ss.. [ 43%]
+........................................................................ [ 57%]
+........................................................................ [ 71%]
+........................................................................ [ 86%]
+....................................................................../home/chazm/.local/share/mise/installs/python/3.14.8/lib/python3.14/collections/__init__.py:455: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f784130>
+  result = tuple_new(cls, iterable)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+   [100%]
+=============================== warnings summary ===============================
+tests/test_s1_cellular_automata.py::test_produces_the_shared_canonical_output_contract
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac22268310>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_cellular_automata.py::test_produces_the_shared_canonical_output_contract
+  <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac22268040>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac222688b0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac222697b0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac222686d0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac222698a0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac222694e0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac22269990>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac222693f0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac222695d0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac222687c0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac22269b70>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac2226a890>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac2226b6a0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac2226a4d0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac2226a2f0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_crosswalk_uses_majority_plot_and_legacy_columns
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:260: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac2226b4c0>
+    return type(self)(values, placement=placement, ndim=self.ndim, refs=refs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s1_leto_initial_state.py::test_run_initial_state_from_sqlite_reads_all_weighted_plot_ids
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:645: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa50f40>
+    values = values.copy()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fb6e6b0>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa51300>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa51120>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa515d0>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa51b70>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa51030>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa513f0>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa51210>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa509a0>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa51d50>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_forest_type_splits_pine_from_hardwood_and_carries_the_fia_detail
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/yaml/error.py:6: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa50e50>
+    def __init__(self, name, index, line, column, buffer, pointer):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_pipeline_runs_every_stage_and_the_last_one_only_draws
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/array_algos/take.py:265: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fb6e890>
+    def _get_take_nd_function(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_pipeline_runs_every_stage_and_the_last_one_only_draws
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/array_algos/take.py:265: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa51c60>
+    def _get_take_nd_function(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_pipeline_runs_every_stage_and_the_last_one_only_draws
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/array_algos/take.py:265: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa518a0>
+    def _get_take_nd_function(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_pipeline_runs_every_stage_and_the_last_one_only_draws
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/array_algos/take.py:265: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa531f0>
+    def _get_take_nd_function(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_pipeline_runs_every_stage_and_the_last_one_only_draws
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/array_algos/take.py:265: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa53100>
+    def _get_take_nd_function(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_pipeline_runs_every_stage_and_the_last_one_only_draws
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/array_algos/take.py:265: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa52f20>
+    def _get_take_nd_function(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_pipeline_runs_every_stage_and_the_last_one_only_draws
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/array_algos/take.py:265: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa532e0>
+    def _get_take_nd_function(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_pipeline_runs_every_stage_and_the_last_one_only_draws
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/array_algos/take.py:265: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa533d0>
+    def _get_take_nd_function(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_the_visualize_stage_redraws_from_tables_alone
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/sorting.py:158: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa52d40>
+    for i, mul in enumerate(shape):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_an_unreachable_crosswalk_costs_the_owner_tables_and_nothing_else
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/matplotlib/transforms.py:195: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa536a0>
+    ref = weakref.ref(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/indexes/base.py:667: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa53970>
+    result = object.__new__(cls)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/indexes/base.py:667: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa53d30>
+    result = object.__new__(cls)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/indexes/base.py:667: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f784400>
+    result = object.__new__(cls)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/indexes/base.py:667: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f7845e0>
+    result = object.__new__(cls)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/indexes/base.py:667: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f7844f0>
+    result = object.__new__(cls)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/indexes/base.py:667: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f784040>
+    result = object.__new__(cls)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/indexes/base.py:667: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f784220>
+    result = object.__new__(cls)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/matplotlib/transforms.py:175: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1fa53880>
+    for parent in list(self._parents.values()):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_ownerless_rerun_removes_stale_owned_outputs
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/matplotlib/_api/__init__.py:65: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac2226a980>
+    def check_isinstance(types, /, **kwargs):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_unknown_types_and_custom_labels_appear_in_all_charts[False]
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/matplotlib/_api/__init__.py:86: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f9a73d0>
+    for k, v in kwargs.items():
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_unknown_types_and_custom_labels_appear_in_all_charts[True]
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/matplotlib/transforms.py:109: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f9a7e20>
+    def __init__(self, shorthand_name=None):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_s6_fvs_outputs.py::test_unknown_only_ages_keep_tables_and_skip_mean_age_figures
+  /home/chazm/Projects/work/artemis-model/.venv/lib/python3.14/site-packages/pandas/core/internals/blocks.py:970: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7dac1f784310>
+    def _slice(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.14.8-final-0 ________________
+
+Name                                                          Stmts   Miss Branch BrPart  Cover
+-----------------------------------------------------------------------------------------------
+pipeline/data_access.py                                         164     98     62      5    33%
+pipeline/harvest_eligibility.py                                  78      0     26      0   100%
+pipeline/ids.py                                                 106     28     44     12    69%
+pipeline/leto_ca.py                                             383     64    126     29    79%
+pipeline/raster_clip.py                                         127     93     28      1    23%
+pipeline/raster_windows.py                                        8      3      0      0    62%
+pipeline/s1_initial_state/__init__.py                             0      0      0      0   100%
+pipeline/s1_initial_state/classify_holes.py                     178    147     22      1    16%
+pipeline/s1_initial_state/data_sources.py                        99     10     26      4    87%
+pipeline/s1_initial_state/embed_holes.py                        170    119     26      3    29%
+pipeline/s1_initial_state/fia_volume_estimates.py                68     22     10      2    67%
+pipeline/s1_initial_state/finalize_add_back.py                   69     45     10      1    32%
+pipeline/s1_initial_state/impute_establishment.py                61      2     14      3    93%
+pipeline/s1_initial_state/leto_initial_state.py                 158      2     30      5    96%
+pipeline/s1_initial_state/make_report_figures.py                419    376     62      1     9%
+pipeline/s1_initial_state/prepare_ownership_fl.py                79     39     16      2    46%
+pipeline/s1_initial_state/sample_hole_points.py                  81     58      8      1    27%
+pipeline/s1_initial_state/score_holes_statewide.py              133     23     30      7    79%
+pipeline/s1_initial_state/segmentation/__init__.py                2      0      0      0   100%
+pipeline/s1_initial_state/segmentation/artifacts.py             140     35     60     14    72%
+pipeline/s1_initial_state/segmentation/boundary_overlay.py      319    213    110      8    28%
+pipeline/s1_initial_state/segmentation/cellular_automata.py     123     13     30     13    83%
+pipeline/s1_initial_state/segmentation/comparison.py            251     28    120     30    84%
+pipeline/s1_initial_state/segmentation/leto.py                  304     38    112     35    82%
+pipeline/s1_initial_state/statewide_repair.py                   221    111     34      5    47%
+pipeline/s1_initial_state/stratify_treemap_holes.py              89     67     10      1    23%
+pipeline/s1_initial_state/validate_s3_lcms.py                   106     79     18      1    23%
+pipeline/s1_initial_state/verify_fia_evalidator.py               54     32      4      1    40%
+pipeline/s1_initial_state/weights.py                             74      2     20      2    96%
+pipeline/s3_management/assign_plt_cn.py                          71     55     12      1    20%
+pipeline/s3_management/harvest_scheduler.py                      60     47     26      0    15%
+pipeline/s3_management/owner_classes.py                          76     18     24      5    75%
+pipeline/s3_management/regime_assignment.py                     217     41     76     16    80%
+pipeline/s3_management/sketch_management_units.py               371    324    122      1    10%
+pipeline/s3_management/sliver_merge.py                          194    163     80      1    12%
+pipeline/s3_management/tpo_targets.py                           113     92     48      1    14%
+pipeline/s4_fvs/build_fvs_inputs.py                             249    223     66      1     9%
+pipeline/s4_fvs/fallback_treelists.py                           200    142     70      2    24%
+pipeline/s4_fvs/paint_fvs_to_raster.py                          103     82     12      1    19%
+pipeline/s4_fvs/regime_library.py                                73      5     28      4    91%
+pipeline/s4_fvs/regime_templates.py                             160     12     44     13    88%
+pipeline/s5_imagery/embeddings.py                               374    327    136      1     9%
+pipeline/s5_imagery/feature_sources.py                           61     28     14      0    44%
+pipeline/s5_imagery/naip_acquire.py                             275    238     88      1    10%
+pipeline/s5_imagery/naip_viewer.py                              210    161     64      0    18%
+pipeline/s5_imagery/raster_correction.py                        318    192     58      0    34%
+pipeline/s5_imagery/vectors.py                                   78     53     28      0    24%
+pipeline/s5_imagery/viewer_catalog.py                           134    110     56      1    13%
+pipeline/s6_outputs/age_class.py                                 91      2     10      2    96%
+pipeline/s6_outputs/figures.py                                  209      6     38      7    95%
+pipeline/s6_outputs/fvs_out_db.py                                97      5     26      6    91%
+pipeline/s6_outputs/owner_attribution.py                         46      3      6      3    88%
+pipeline/s6_outputs/run_pipeline.py                             188     25     56      6    86%
+pipeline/spatial_ref.py                                          83     46     24      4    38%
+-----------------------------------------------------------------------------------------------
+TOTAL                                                          8115   4147   2270    264    46%
+Coverage JSON written to file research/code_quality/final/coverage.json
+Coverage LCOV written to file research/code_quality/final/lcov.info
+499 passed, 3 skipped, 51 warnings in 22.41s

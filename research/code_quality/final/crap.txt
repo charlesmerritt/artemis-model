@@ -1,0 +1,48 @@
+### CRAP scores — pipeline
+
+**568 functions:** 79 high risk (> 30), 195 moderate, 294 low (≤ 5). CRAP = CC² × (1 − coverage)³ + CC; lower it with tests or by splitting the function.
+
+| CRAP | Function | Module | CC | Coverage |
+|---:|---|---|---:|---:|
+| 2756.0 | `main` | `pipeline/s5_imagery/embeddings.py` | 52 | 0% |
+| 1406.0 | `process_county` | `pipeline/s1_initial_state/segmentation/boundary_overlay.py` | 38 | 2% |
+| 1190.0 | `process_county` | `pipeline/s3_management/sketch_management_units.py` | 34 | 0% |
+| 702.0 | `main` | `pipeline/s5_imagery/naip_acquire.py` | 26 | 0% |
+| 702.0 | `resolve_year_window` | `pipeline/s5_imagery/naip_viewer.py` | 26 | 0% |
+| 462.0 | `split_samples` | `pipeline/s5_imagery/raster_correction.py` | 21 | 0% |
+| 380.0 | `impute_nearest_runnable` | `pipeline/s4_fvs/build_fvs_inputs.py` | 19 | 0% |
+| 380.0 | `main` | `pipeline/s5_imagery/viewer_catalog.py` | 19 | 0% |
+| 342.0 | `extract_summary_block` | `pipeline/s3_management/tpo_targets.py` | 18 | 0% |
+| 272.0 | `ladder_decisions` | `pipeline/s4_fvs/build_fvs_inputs.py` | 16 | 0% |
+| 272.0 | `resolve_years` | `pipeline/s5_imagery/naip_acquire.py` | 16 | 0% |
+| 240.0 | `hatch_ticks` | `pipeline/s5_imagery/naip_viewer.py` | 15 | 0% |
+| 210.0 | `_shared_boundary_edges` | `pipeline/s3_management/sliver_merge.py` | 14 | 0% |
+| 210.0 | `ensure_local_dir` | `pipeline/data_access.py` | 14 | 0% |
+| 210.0 | `filter_candidates` | `pipeline/s4_fvs/fallback_treelists.py` | 14 | 0% |
+| 182.0 | `build_catalog` | `pipeline/s5_imagery/viewer_catalog.py` | 13 | 0% |
+| 156.0 | `build_layers_json` | `pipeline/s5_imagery/viewer_catalog.py` | 12 | 0% |
+| 156.0 | `extract_annual_average` | `pipeline/s3_management/tpo_targets.py` | 12 | 0% |
+| 156.0 | `fig2_mechanism` | `pipeline/s1_initial_state/make_report_figures.py` | 12 | 0% |
+| 156.0 | `main` | `pipeline/s1_initial_state/prepare_ownership_fl.py` | 12 | 0% |
+| 156.0 | `main` | `pipeline/s1_initial_state/statewide_repair.py` | 12 | 0% |
+| 156.0 | `main` | `pipeline/s3_management/sketch_management_units.py` | 12 | 0% |
+| 156.0 | `merge_slivers_to_neighbors` | `pipeline/s3_management/sliver_merge.py` | 12 | 0% |
+| 156.0 | `summarize_tree_sources` | `pipeline/s4_fvs/build_fvs_inputs.py` | 12 | 0% |
+| 132.0 | `_contiguous_year_runs` | `pipeline/s3_management/tpo_targets.py` | 11 | 0% |
+| 132.0 | `main` | `pipeline/s1_initial_state/validate_s3_lcms.py` | 11 | 0% |
+| 132.0 | `resolve_initialization` | `pipeline/s4_fvs/fallback_treelists.py` | 11 | 0% |
+| 132.0 | `split_large_geometry` | `pipeline/s1_initial_state/segmentation/boundary_overlay.py` | 11 | 0% |
+| 110.0 | `build_clusters_payload` | `pipeline/s5_imagery/embeddings.py` | 10 | 0% |
+| 110.0 | `fig3_strata` | `pipeline/s1_initial_state/make_report_figures.py` | 10 | 0% |
+| 110.0 | `fig6_stage_b` | `pipeline/s1_initial_state/make_report_figures.py` | 10 | 0% |
+| 110.0 | `fig9_s3_validation` | `pipeline/s1_initial_state/make_report_figures.py` | 10 | 0% |
+| 90.0 | `allocate_cycle` | `pipeline/s3_management/harvest_scheduler.py` | 9 | 0% |
+| 90.0 | `build_year_mosaic` | `pipeline/s5_imagery/naip_acquire.py` | 9 | 0% |
+| 90.0 | `cluster_distribution` | `pipeline/s5_imagery/embeddings.py` | 9 | 0% |
+| 90.0 | `fig8_fia` | `pipeline/s1_initial_state/make_report_figures.py` | 9 | 0% |
+| 90.0 | `read_id_csv` | `pipeline/ids.py` | 9 | 0% |
+| 90.0 | `split_large_geometry` | `pipeline/s3_management/sketch_management_units.py` | 9 | 0% |
+| 72.0 | `_fallback_slot_resolver` | `pipeline/s4_fvs/build_fvs_inputs.py` | 8 | 0% |
+| 72.0 | `build_riparian_buffer_layer` | `pipeline/s3_management/sketch_management_units.py` | 8 | 0% |
+
+528 lower-scoring functions not shown.

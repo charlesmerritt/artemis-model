@@ -8,7 +8,7 @@ assumption rather than a measurement.
 |---|---|---|
 | [`config/projection.yaml`](../config/projection.yaml) `spatial` | The coordinate reference system and snap grid, for everything | `pipeline/spatial_ref.py` |
 | [`config/ownership_policy.yaml`](../config/ownership_policy.yaml) | Who owns each unit, and which TPO volume budget it charges against | `pipeline/s3_management/owner_classes.py` |
-| [`config/management_regimes.yaml`](../config/management_regimes.yaml) | The prescription library, and 2–3 eligible prescriptions per owner class | `pipeline/s3_management/regime_assignment.py` |
+| [`config/management_regimes.yaml`](../config/management_regimes.yaml) | The prescription library, and the eligible menu per owner class (the same permissive menu for every class since 2026-10-08) | `pipeline/s3_management/regime_assignment.py` |
 | [`config/fallback_treelists.yaml`](../config/fallback_treelists.yaml) | What a stand is initialized from when it has no tree list of its own | `pipeline/s4_fvs/fallback_treelists.py` |
 
 They interlock: ownership picks the owner class, the owner class picks the prescription,
@@ -138,29 +138,28 @@ grouping (OWNGRPCD 40).
 
 The file separates two things that are easy to conflate:
 
-- **`prescriptions`** — the library. Eight distinct prescriptions, each renderable through
+- **`prescriptions`** — the library. Nine distinct prescriptions, each renderable through
   the verified `ThinDBH` templates in `pipeline/s4_fvs/regime_templates.py`. Library size is
   the cost driver: the FVS trajectory library is keyed by
-  `(plot_id, prescription, site_index_bin)`, so 8 prescriptions × 3 SI bins × 693 pilot
-  plots bounds the pilot at 16,632 runs. Every addition multiplies that, and the config
+  `(plot_id, prescription, site_index_bin)`, so 9 prescriptions × 3 SI bins × 693 pilot
+  plots bounds the pilot at 18,711 runs, before timing offsets. Every addition multiplies that, and the config
   carries the arithmetic so it cannot drift.
-- **`owner_classes`** — the policy. Two or three eligible prescriptions per owner class,
-  one declared default per forest-type branch. Prescriptions are **shared** across owner
-  classes: `public_selection_light` is eligible for four classes and still costs one
-  column in the library. That is how every owner gets a real menu without the library
-  growing owner-by-owner.
+- **`owner_classes`** — the policy. One default per forest-type branch, and an eligible
+  menu that since 2026-10-08 is the same for every class: owner class sets the default and
+  the TPO owner group; the scheduler decides the rest.
 
 The default is what gets assigned deterministically today. The eligible menu is what the
 landscape scheduler will choose among once the trajectory library exists — declaring it
 now means the library is generated for the right set from the start.
 
-### The eight prescriptions
+### The nine prescriptions
 
 | Prescription | Template | Shape |
 |---|---|---|
 | `no_management` | `no_management` | Grow only |
 | `pine_plantation_short_rotation` | `plantation_rotation` | Thin at 15, clearcut at 25 |
 | `pine_plantation_long_rotation` | `plantation_rotation` | Thin at 18, clearcut at 35 |
+| `natural_short_rotation` | `clearcut` | Stand-replacing at 30, natural regeneration, any forest type |
 | `hardwood_clearcut_regen` | `clearcut` | Stand-replacing at 50 |
 | `family_light_thin` | `thin_from_below` | One entry |
 | `family_uneven_aged_selection` | `selection_harvest` | 15% every 15 years |
@@ -172,20 +171,19 @@ and for riparian units it is the only one.
 
 ### The menus
 
-| Owner class | Default (pine / hardwood) | Also eligible |
-|---|---|---|
-| `corporate` | short rotation / hardwood clearcut | long rotation |
-| `family` | light thin | uneven-aged selection, long rotation |
-| `tribal` | public selection | light thin |
-| `federal` | public selection | restoration thin |
-| `state` | restoration thin / public selection | long rotation |
-| `local` | no management | public selection, restoration thin |
-| `unknown` | light thin | *(minimal menu — see below)* |
+| Owner class | Default (pine / hardwood) |
+|---|---|
+| `corporate` | short rotation / hardwood clearcut |
+| `family` | light thin |
+| `tribal` | public selection |
+| `federal` | public selection |
+| `state` | restoration thin / public selection |
+| `local` | no management |
+| `unknown` | light thin |
 
-`unknown` is deliberately narrower than the 2–3 every real owner class gets. It is missing
-information, not an owner type: with no owner known, letting the scheduler place a rotation
-clearcut there would be inventing behaviour to hit a volume target. The shortfall lands on
-known private units instead, where it is attributable.
+Every class may take every cutting prescription its forest type admits (hardwood/`other`
+never a planted-pine rotation), plus `no_management`. Until 2026-10-08 each class had 2–3
+options; see `experiments/2026-10-08_permissive-menus/` for why that changed.
 
 ### Deliberate changes from the previous behaviour
 

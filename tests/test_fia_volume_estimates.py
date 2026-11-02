@@ -44,13 +44,32 @@ def test_query_uses_county_domain_filter():
 def test_query_hits_the_florida_2022_evaluation_group():
     calls: list = []
     mod.five_county_estimates(query=_fake_query_factory(calls), fetch_plan=False)
-    assert calls[0]["wc"] == mod.EVAL_GRP
+    # Florida's 2022 evaluation group is 122022, independent of the query constant.
+    assert {call["wc"] for call in calls} == {"122022"}
 
 
 def test_estimates_carry_all_reported_attributes():
     calls: list = []
     result = mod.five_county_estimates(query=_fake_query_factory(calls), fetch_plan=False)
-    assert set(result) == set(mod.ATTRIBUTE_SNUMS.values()) | {"fetch_params_note"}
+    assert set(result) == {
+        "growing_stock_inventory_forestland_cuft",
+        "growing_stock_inventory_timberland_cuft",
+        "net_growth_forestland_cuft_per_year",
+        "net_growth_timberland_cuft_per_year",
+        "removals_forestland_cuft_per_year",
+        "removals_timberland_cuft_per_year",
+        "harvest_removals_forestland_cuft_per_year",
+        "fetch_params_note",
+    }
+    assert {name: row["snum"] for name, row in result.items() if name != "fetch_params_note"} == {
+        "growing_stock_inventory_forestland_cuft": 15,
+        "growing_stock_inventory_timberland_cuft": 18,
+        "net_growth_forestland_cuft_per_year": 202,
+        "net_growth_timberland_cuft_per_year": 208,
+        "removals_forestland_cuft_per_year": 226,
+        "removals_timberland_cuft_per_year": 232,
+        "harvest_removals_forestland_cuft_per_year": 238,
+    }
     row = result["growing_stock_inventory_forestland_cuft"]
     assert row["snum"] == 15
     assert row["estimate"] == 1_000_000.0
@@ -62,6 +81,7 @@ def test_estimates_carry_all_reported_attributes():
 def test_every_snum_requested_with_the_same_stocking_dimensions():
     calls: list = []
     mod.five_county_estimates(query=_fake_query_factory(calls), fetch_plan=False)
+    assert [call["snum"] for call in calls] == [15, 18, 202, 208, 226, 232, 238]
     for call in calls:
         assert call["rselected"] == "All live stocking"
         assert call["cselected"] == "All live stocking"
@@ -95,7 +115,7 @@ def test_removal_comparison_frames_the_even_flow_gate():
     assert verdict["fia_removals_cuft_per_year"] == 50_000_000.0
     assert verdict["plan_over_fia_removals"] == 0.9
     assert verdict["plan_within_fia_removals_ci"] is True
-    assert verdict["fia_growth_over_plan"] == pytest.approx(80_000_000.0 / 45_000_000.0)
+    assert verdict["fia_growth_over_plan"] == pytest.approx(1.7777777777777777)
 
 
 def test_removal_comparison_flags_out_of_band_plan():
