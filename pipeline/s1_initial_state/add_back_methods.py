@@ -42,8 +42,11 @@ METHOD_BIT = {method: 1 << i for i, method in enumerate(METHOD_PRIORITY)}
 class ConsensusRule(StrEnum):
     UNION = "union"                # any run method is enough (the rule while only bookends has run)
     AT_LEAST_TWO = "at_least_two"  # the proposed synthesis: two independent methods must agree
-    # Bookends alone, or the two disturbance detectors together (the v4 recipe).
+    # Bookends alone, or the two disturbance detectors together (the v4 recipe, the default).
     BOOKENDS_OR_OBATA_AND_HANSEN = "bookends_or_obata_and_hansen"
+
+
+DEFAULT_RULE = ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN
 
 
 class MethodMasks:

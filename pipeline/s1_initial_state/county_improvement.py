@@ -18,11 +18,13 @@ Per county:
    (LANDFIRE 2016/2024 strata plus the AlphaEarth gate) always runs. Obata and Hansen
    run when their rasters are supplied (``--obata-tif``, ``--hansen-tif``); otherwise
    they are pending.
-4. **Decision.** The EVT 2022 gate (:mod:`evt_gate`, ``--evt-gate``, default
-   ``evt2022_agriculture_developed_pasture_v3``) limits every method's proposals to eligible
-   LANDFIRE 2022 classes. ``ConsensusRule`` then combines them, and the 5 ac minimum patch
-   area applies. A gate with a patch veto (v4: quarries) then rejects whole patches.
-   ``--disturbance-window`` sets the years Obata and Hansen cuts must fall in.
+4. **Decision.** The EVT 2022 gate (:mod:`evt_gate`, ``--evt-gate``) limits every method's
+   proposals to eligible LANDFIRE 2022 classes. ``ConsensusRule`` (``--rule``) then combines
+   them, and the 5 ac minimum patch area applies. A gate with a patch veto (v4: quarries)
+   then rejects whole patches. ``--disturbance-window`` sets the years Obata and Hansen cuts
+   must fall in. The defaults are the v4 decision: bookends, or Obata and Hansen together;
+   v3's classes plus the quarry patch veto; 2012-2022 for both detectors. That rule needs
+   both detectors' rasters, and a run without them stops before reading anything.
 5. **Vegetation.** Each accepted patch takes the modal TreeMap plot (``TM_ID``) in the
    nearest ring that has any (:func:`impute_establishment.donor_assignments`). Its
    bookend stratum sets the establishment mode (``config/establishment.yaml``): a cut
@@ -73,6 +75,7 @@ from rasterio.windows import Window
 from pipeline.ids import as_id_series, read_id_csv_rows
 from pipeline.spatial_ref import assert_project_crs, project_crs, resolution_m, to_project_crs
 from pipeline.s1_initial_state.add_back_methods import (
+    DEFAULT_RULE,
     METHOD_PRIORITY,
     AddBackMethod,
     ConsensusRule,
@@ -80,7 +83,7 @@ from pipeline.s1_initial_state.add_back_methods import (
     method_bits,
     priority_attribution,
 )
-from pipeline.s1_initial_state.evt_gate import EvtGatePolicy, eligibility
+from pipeline.s1_initial_state.evt_gate import DEFAULT_EVT_GATE, EvtGatePolicy, eligibility
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL, apply_mmu
 from pipeline.s1_initial_state.impute_establishment import (
     EstablishmentMode,
@@ -124,7 +127,7 @@ HANSEN_TREECOVER_MIN = 30    # only ground that carried canopy in 2000
 class DisturbanceWindow(StrEnum):
     """The years an Obata cut or Hansen loss must fall in for the method to propose a pixel."""
     PUBLISHED = "obata2010_hansen2001_2022"  # v1-v3: OBATA_YEARS and HANSEN_LOSSYEAR
-    Y2012_2022 = "2012_2022"                 # v4: both detectors 2012-2022
+    Y2012_2022 = "2012_2022"                 # v4, the default: both detectors 2012-2022
 
     @property
     def obata_years(self) -> tuple[int, int]:
@@ -134,6 +137,9 @@ class DisturbanceWindow(StrEnum):
     def hansen_lossyear(self) -> tuple[int, int]:
         """Years since 2000, as Hansen stores them."""
         return HANSEN_LOSSYEAR if self is DisturbanceWindow.PUBLISHED else (12, 22)
+
+
+DEFAULT_WINDOW = DisturbanceWindow.Y2012_2022
 
 
 class Stage(StrEnum):
@@ -227,13 +233,13 @@ def read_on_grid(path: Path, grid: Grid, *, fill, indexes: int | list[int] = 1) 
 
 
 def obata_rule(last_disturbance_year: np.ndarray,
-               window: DisturbanceWindow = DisturbanceWindow.PUBLISHED) -> np.ndarray:
+               window: DisturbanceWindow = DEFAULT_WINDOW) -> np.ndarray:
     first, last = window.obata_years
     return (last_disturbance_year >= first) & (last_disturbance_year <= last)
 
 
 def hansen_rule(lossyear: np.ndarray, treecover2000: np.ndarray,
-                window: DisturbanceWindow = DisturbanceWindow.PUBLISHED) -> np.ndarray:
+                window: DisturbanceWindow = DEFAULT_WINDOW) -> np.ndarray:
     first, last = window.hansen_lossyear
     return ((lossyear >= first) & (lossyear <= last)
             & (treecover2000 >= HANSEN_TREECOVER_MIN))
@@ -436,13 +442,26 @@ def decide_on_grid(inputs: Inputs, grid: Grid, tm_nodata, *, rule: ConsensusRule
     return GridDecision(r, tm_ids, land, strata, nwos, evt[2022], legends[2022], eligible)
 
 
+def refuse_pending_detectors(rule: ConsensusRule, inputs: Inputs) -> None:
+    """Raise before any read when ``rule`` cannot decide with the detectors ``inputs`` supply.
+
+    Bookends always runs; Obata and Hansen run only when their rasters are given. The
+    rule's own check (:meth:`MethodMasks.combine`) decides, on one-pixel stand-ins.
+    """
+    ran = np.zeros(1, dtype=bool)
+    MethodMasks({AddBackMethod.BOOKENDS: ran,
+                 AddBackMethod.OBATA_DISTURBANCE: None if inputs.obata is None else ran,
+                 AddBackMethod.HANSEN_LOSS: None if inputs.hansen is None else ran}).combine(rule)
+
+
 def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_ROOT, *,
-                   rule: ConsensusRule = ConsensusRule.UNION, min_acres: float = 5.0,
+                   rule: ConsensusRule = DEFAULT_RULE, min_acres: float = 5.0,
                    scope: OwnershipRepairScope = OwnershipRepairScope.ALL_FOREST,
                    reach: float = MAX_DISTANCE_PX,
                    stratum_modes: Mapping[int, EstablishmentMode] | None = None,
-                   evt_gate: EvtGatePolicy = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3,
-                   window: DisturbanceWindow = DisturbanceWindow.PUBLISHED) -> dict:
+                   evt_gate: EvtGatePolicy = DEFAULT_EVT_GATE,
+                   window: DisturbanceWindow = DEFAULT_WINDOW) -> dict:
+    refuse_pending_detectors(rule, inputs)
     if stratum_modes is None:
         stratum_modes = load_establishment_policy().stratum_modes
     geom = load_county(inputs.counties, fips)
@@ -529,7 +548,7 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
 
 def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_acres,
                    scope, reach, patches: pd.DataFrame, *, evt_gate: EvtGatePolicy,
-                   window: DisturbanceWindow = DisturbanceWindow.PUBLISHED) -> dict:
+                   window: DisturbanceWindow = DEFAULT_WINDOW) -> dict:
     inside = ~outside
 
     def c(a):  # crop to the county
@@ -789,8 +808,9 @@ def main() -> None:
     parser.add_argument("--counties", nargs="+", default=list(AOI_COUNTIES),
                         help="county FIPS codes, run one at a time (default: the 5-county AOI)")
     parser.add_argument("--out-root", type=Path, default=OUT_ROOT)
-    parser.add_argument("--rule", type=ConsensusRule, default=ConsensusRule.UNION,
-                        choices=list(ConsensusRule))
+    parser.add_argument("--rule", type=ConsensusRule, default=DEFAULT_RULE, choices=list(ConsensusRule),
+                        help="how the methods' proposals combine (default: v4's, which needs "
+                             "--obata-tif and --hansen-tif)")
     parser.add_argument("--min-acres", type=float, default=5.0)
     parser.add_argument("--ownership-scope", type=OwnershipRepairScope,
                         default=OwnershipRepairScope.ALL_FOREST, choices=list(OwnershipRepairScope))
@@ -799,11 +819,11 @@ def main() -> None:
     parser.add_argument("--hansen-tif", type=Path, default=None,
                         help="Hansen GFC lossyear/treecover2000 on the TreeMap grid (enables Hansen)")
     parser.add_argument("--evt-gate", type=EvtGatePolicy,
-                        default=EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_V3, choices=list(EvtGatePolicy),
-                        help="EVT 2022 classes an add-back proposal may land on (default: v3)")
+                        default=DEFAULT_EVT_GATE, choices=list(EvtGatePolicy),
+                        help="EVT 2022 classes an add-back proposal may land on (default: v4)")
     parser.add_argument("--disturbance-window", type=DisturbanceWindow,
-                        default=DisturbanceWindow.PUBLISHED, choices=list(DisturbanceWindow),
-                        help="years Obata cuts and Hansen loss must fall in (default: v1-v3's)")
+                        default=DEFAULT_WINDOW, choices=list(DisturbanceWindow),
+                        help="years Obata cuts and Hansen loss must fall in (default: v4's, 2012-2022)")
     parser.add_argument("--stitch-name", default=AOI_NAME,
                         help="folder under --out-root the stitched rasters go in")
     parser.add_argument("--stage", type=Stage, default=Stage.ALL, choices=list(Stage))

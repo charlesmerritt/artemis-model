@@ -17,6 +17,7 @@ import pytest
 import rasterio
 
 from pipeline.s1_initial_state import county_improvement as ci
+from pipeline.s1_initial_state.add_back_methods import ConsensusRule
 from pipeline.s1_initial_state.evt_gate import EvtGatePolicy
 
 ROOT = Path(os.environ.get("ARTEMIS_FL5_GATE_REGRESSION", "/nonexistent"))
@@ -49,7 +50,9 @@ def v1_run(tmp_path_factory):
     )
     out_root = tmp_path_factory.mktemp("fl5_v1")
     for fips in ci.AOI_COUNTIES:
-        ci.improve_county(fips, inputs, out_root, evt_gate=EvtGatePolicy.AGRICULTURE_V1)
+        # The published run's decision, pinned: the defaults have moved on to v4.
+        ci.improve_county(fips, inputs, out_root, evt_gate=EvtGatePolicy.AGRICULTURE_V1,
+                          rule=ConsensusRule.UNION, window=ci.DisturbanceWindow.PUBLISHED)
     # The establishment lists need TreeMap's 4.8 GB tree table; the published run skipped them.
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(ci, "stitch_establishment", lambda *a, **k: {"status": "not run"})
