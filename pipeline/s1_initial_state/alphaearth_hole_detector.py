@@ -38,6 +38,7 @@ import rasterio
 from rasterio.transform import Affine
 
 from pipeline.s1_initial_state.county_improvement import TreeMapProvenance as TP
+from pipeline.spatial_ref import assert_project_crs, project_crs
 from pipeline.s1_initial_state.embed_holes import (
     CHUNK,
     EMBEDDING_BANDS,
@@ -66,7 +67,7 @@ def sample_pixels(provenance: np.ndarray, transform: Affine, n_per_class: int,
                   seed: int) -> pd.DataFrame:
     """``n_per_class`` random pixels of each :class:`SampleClass`, without replacement.
 
-    Columns: ``sample_class, row, col, x, y`` (EPSG:5070 pixel centre), ``lon, lat`` and
+    Columns: ``sample_class, row, col, x, y`` (pixel centre, project CRS), ``lon, lat`` and
     ``block``, the 10 km cell used to group the cross-validation.
     """
     rng = np.random.default_rng(seed)
@@ -84,10 +85,8 @@ def sample_pixels(provenance: np.ndarray, transform: Affine, n_per_class: int,
 
 
 def pixel_points(rows, cols, transform: Affine) -> pd.DataFrame:
-    """Pixel centres: ``x, y`` (EPSG:5070), the 10 km CV ``block``, and ``lon, lat``."""
+    """Pixel centres: ``x, y`` (project CRS), the 10 km CV ``block``, and ``lon, lat``."""
     from pyproj import Transformer
-
-    from pipeline.spatial_ref import project_crs
 
     rows, cols = np.asarray(rows), np.asarray(cols)
     out = pd.DataFrame({"x": transform.c + (cols + 0.5) * transform.a,
@@ -206,10 +205,11 @@ def treemap_like(prob: np.ndarray, threshold: float) -> np.ndarray:
 
 
 def grid_region(ee, like: Path):
-    """The bounds of ``like``'s grid as an Earth Engine rectangle in EPSG:5070."""
+    """The bounds of ``like``'s grid, which must be in the project CRS, as an Earth Engine rectangle."""
     with rasterio.open(like) as src:
+        assert_project_crs(src, context=like.name)
         b = src.bounds
-    return ee.Geometry.Rectangle([b.left, b.bottom, b.right, b.top], proj="EPSG:5070", geodesic=False)
+    return ee.Geometry.Rectangle([b.left, b.bottom, b.right, b.top], proj=project_crs(), geodesic=False)
 
 
 def download_on_grid(ee, image, like: Path, out: Path, dtype: str, description: str,

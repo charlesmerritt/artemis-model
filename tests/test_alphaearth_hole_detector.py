@@ -2,8 +2,11 @@
 
 import json
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
+import rasterio
 from rasterio.transform import Affine
 
 from pipeline.s1_initial_state.alphaearth_hole_detector import (
@@ -12,11 +15,13 @@ from pipeline.s1_initial_state.alphaearth_hole_detector import (
     SampleClass,
     fit_hole_detector,
     fit_threshold,
+    grid_region,
     hole_probability,
     sample_pixels,
     treemap_like,
 )
 from pipeline.s1_initial_state.county_improvement import TreeMapProvenance as TP
+from pipeline.spatial_ref import project_crs
 
 T = Affine(30, 0, 1_000_000, 0, -30, 900_000)
 
@@ -113,3 +118,25 @@ def test_the_numpy_score_is_the_fitted_logistic_and_round_trips_through_json(tmp
     back = HoleDetector.load(path)
     assert back == d
     assert json.loads(path.read_text())["feature_year"] == 2022
+
+
+# Earth Engine's Rectangle, recorded rather than called.
+FAKE_EE = SimpleNamespace(Geometry=SimpleNamespace(Rectangle=lambda coords, proj, geodesic: (coords, proj, geodesic)))
+
+
+def _grid(path, crs):
+    with rasterio.open(path, "w", driver="GTiff", height=2, width=3, count=1, dtype="uint8",
+                       crs=crs, transform=T) as dst:
+        dst.write(np.zeros((1, 2, 3), dtype=np.uint8))
+    return path
+
+
+def test_the_region_is_the_grid_bounds_in_the_project_crs(tmp_path):
+    coords, proj, geodesic = grid_region(FAKE_EE, _grid(tmp_path / "like.tif", project_crs()))
+    assert coords == [1_000_000, 900_000 - 60, 1_000_000 + 90, 900_000]
+    assert (proj, geodesic) == (project_crs(), False)
+
+
+def test_the_region_refuses_a_grid_in_another_crs(tmp_path):
+    with pytest.raises(ValueError, match="like.tif"):
+        grid_region(FAKE_EE, _grid(tmp_path / "like.tif", "EPSG:3857"))

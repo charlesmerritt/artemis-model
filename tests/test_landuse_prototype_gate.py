@@ -1,7 +1,6 @@
 """The land-use prototype gate: automatic labels, per-class AlphaEarth prototypes, the fitted gate."""
 
 import numpy as np
-import pytest
 
 from pipeline.s1_initial_state.landuse_prototype_gate import (
     EMBED_YEARS,
