@@ -52,6 +52,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# tools/board's per-clone read cursor
+.board/
+
 # Git worktrees
 worktrees/
 .worktrees/
