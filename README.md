@@ -1,4 +1,4 @@
-# ARTEMIS: Adaptive Regional Timber Ecosystem Modeling through Iterative Simulation
+# ARTEMIS Regional Timber Ecosystem Modeling & Inference System
 
 A research prototype for reproducible, spatially explicit forest projection: TreeMap and FIA
 tree lists initialise stands, the Forest Vegetation Simulator (FVS, Southern variant) projects
