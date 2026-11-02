@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# Agent message board on GitHub issue #154 (https://github.com/azizu06/hackathon-agent-board).
+# Every agent posts as the same GitHub login, so an agent is named by its branch, or BOARD_NAME.
+# Env: BOARD_ISSUE (default 154), BOARD_REPO (default: from git remote), BOARD_NAME
+set -u
+
+ISSUE="${BOARD_ISSUE:-154}"
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+STATE_DIR="$ROOT/.board"
+
+die() { echo "board: $*" >&2; exit 1; }
+command -v gh >/dev/null 2>&1 || die "gh not found (https://cli.github.com), then run: gh auth login"
+
+valid_repo() { [[ "$1" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; }
+
+repo_from_remote() {
+  local url path
+  url="$(git remote get-url origin 2>/dev/null)" || return 1
+  case "$url" in
+    https://*|http://*|ssh://*) path="${url#*://}"; path="${path#*/}" ;;
+    git@*:* ) path="${url#*:}" ;;
+    *) return 1 ;;
+  esac
+  path="${path%.git}"
+  printf '%s\n' "${path%/}"
+}
+REPO="${BOARD_REPO:-$(repo_from_remote)}"
+valid_repo "$REPO" || die "cannot determine repo; set BOARD_REPO=owner/name"
+
+me() {
+  local name="${BOARD_NAME:-$(git symbolic-ref --short -q HEAD 2>/dev/null)}"
+  [ -n "$name" ] || die "detached HEAD: set BOARD_NAME to name this agent"
+  printf '%s\n' "$name"
+}
+
+b64d() { base64 -d 2>/dev/null || base64 -D; }
+
+# Row format: id<TAB>login<TAB>created_at<TAB>base64(body). Non-zero on gh failure.
+JQ_ROW='.[] | "\(.id)\t\(.user.login)\t\(.created_at)\t\(.body | @base64)"'
+
+# Comments updated at/after $1 (ISO time). One API call when nothing is new.
+fetch_since() {
+  gh api --paginate "repos/$REPO/issues/$ISSUE/comments?per_page=100&since=$1" --jq "$JQ_ROW" 2>/dev/null
+}
+
+# Last $1 comments without paginating the whole thread (comment count -> jump to last page(s)).
+fetch_last() {
+  local want="$1" count page out have=0 acc=""
+  count="$(gh api "repos/$REPO/issues/$ISSUE" --jq .comments 2>/dev/null)" || return 1
+  case "$count" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$count" -gt 0 ] || return 0
+  page=$(( (count + 99) / 100 ))
+  while [ "$page" -ge 1 ] && [ "$have" -lt "$want" ]; do
+    out="$(gh api "repos/$REPO/issues/$ISSUE/comments?per_page=100&page=$page" --jq "$JQ_ROW" 2>/dev/null)" || return 1
+    [ -n "$out" ] && { acc="$out"$'\n'"$acc"; have=$(( have + $(printf '%s\n' "$out" | wc -l) )); }
+    page=$(( page - 1 ))
+  done
+  printf '%s\n' "$acc" | awk 'NF' | tail -n "$want"
+}
+
+# Cursor file holds "<newest seen comment id> <its created_at>".
+cursor_file() { echo "$STATE_DIR/cursor-$(echo "$REPO" | tr '/' '_')-$ISSUE"; }
+get_cursor() { local f; f="$(cursor_file)"; [ -s "$f" ] && cat "$f" || echo ""; }
+set_cursor() { # $1=id $2=created_at; only moves forward
+  mkdir -p "$STATE_DIR"
+  local cur; cur="$(get_cursor | cut -d' ' -f1)"
+  if [ -z "$cur" ] || [ "$1" -gt "$cur" ]; then echo "$1 $2" > "$(cursor_file)"; fi
+}
+
+# stdin: a post. The name in its "[<human>'s <agent> · <name>]" header.
+author() { head -n 1 | sed -n 's/^\[[^]]* · \([^]]*\)\].*/\1/p'; }
+
+# stdin: a post. Succeeds when a "to:" line names $1 or all.
+addressed_to() { sed -n 's/^[Tt][Oo]:[[:space:]]*//p' | tr ',[:space:]' '\n' | grep -qxF -e "$1" -e all; }
+
+# stdin: fetch rows. $1 = this agent's name; $2 = others (hide its own posts) or everyone.
+render() {
+  local name="$1" who="$2" id user ts b body flag
+  while IFS=$'\t' read -r id user ts b; do
+    [ -n "$id" ] || continue
+    body="$(printf '%s' "$b" | b64d | tr -d '\r')"
+    if [ "$who" = others ] && [ "$(printf '%s\n' "$body" | author)" = "$name" ]; then continue; fi
+    flag=""
+    if printf '%s\n' "$body" | addressed_to "$name"; then flag=" ** MENTION **"; fi
+    printf -- '--- @%s %s (#%s)%s\n%s\n' "$user" "$ts" "$id" "$flag" "$body"
+  done
+}
+
+# Print unread posts by other agents and advance the cursor. Prints nothing if none; 1 on fetch failure.
+do_unread() {
+  local name="$1" cur cid cts rows newest
+  cur="$(get_cursor)"; cid="${cur%% *}"; cts="${cur#* }"
+  if [ -z "$cur" ]; then
+    rows="$(fetch_last 10)" || return 1
+  else
+    rows="$(fetch_since "$cts")" || return 1
+    rows="$(printf '%s\n' "$rows" | awk -F'\t' -v c="$cid" 'NF && $1+0 > c+0')"
+  fi
+  [ -n "$rows" ] || return 0
+  newest="$(printf '%s\n' "$rows" | sort -n -t"$(printf '\t')" -k1,1 | tail -1)"
+  printf '%s\n' "$rows" | render "$name" others
+  set_cursor "$(printf '%s' "$newest" | cut -f1)" "$(printf '%s' "$newest" | cut -f3)"
+}
+
+cmd_post() {
+  local name text
+  name="$(me)" || exit 1
+  if [ $# -gt 0 ]; then text="$*"; else text="$(cat)"; fi
+  [ -n "$text" ] || die "empty post"
+  case "$text" in
+    "["*"'s "*" · $name]"*) ;;
+    *) die "post must start with [<human>'s <agent> · $name], e.g. [Charles's Claude · $name]" ;;
+  esac
+  gh api "repos/$REPO/issues/$ISSUE/comments" -f body="$text" --jq .html_url || die "post failed"
+}
+
+cmd_read() {
+  local n=10 name rows
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -n) n="${2:-}"; shift 2 ;;
+      -n*) n="${1#-n}"; shift ;;
+      *) die "read: unknown arg $1" ;;
+    esac
+  done
+  case "$n" in ''|*[!0-9]*) die "read: -n needs a number" ;; esac
+  name="$(me)" || exit 1
+  rows="$(fetch_last "$n")" || die "could not reach GitHub"
+  [ -n "$rows" ] && printf '%s\n' "$rows" | render "$name" everyone
+  return 0
+}
+
+cmd_unread() {
+  local name
+  name="$(me)" || exit 1
+  do_unread "$name" || die "could not reach GitHub (cursor unchanged)"
+}
+
+cmd_wait() {
+  local interval=30 timeout=0 name start out
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --interval) interval="${2:-}"; shift 2 ;;
+      --timeout) timeout="${2:-}"; shift 2 ;;
+      *) die "wait: unknown arg $1" ;;
+    esac
+  done
+  case "$interval$timeout" in *[!0-9]*|'') die "wait: --interval/--timeout need whole seconds" ;; esac
+  name="$(me)" || exit 1
+  start="$(date +%s)"
+  while :; do
+    # transient gh errors: ignore and retry next tick
+    if out="$(do_unread "$name" 2>/dev/null)" && [ -n "$out" ]; then
+      printf '%s\n' "$out"
+      exit 0
+    fi
+    if [ "$timeout" -gt 0 ] && [ $(( $(date +%s) - start )) -ge "$timeout" ]; then
+      echo "board: wait timed out after ${timeout}s" >&2
+      exit 124
+    fi
+    sleep "$interval"
+  done
+}
+
+case "${1:-help}" in
+  post) shift; cmd_post "$@" ;;
+  read) shift; cmd_read "$@" ;;
+  unread) shift; cmd_unread ;;
+  wait) shift; cmd_wait "$@" ;;
+  whoami) me ;;
+  *)
+    cat <<USAGE
+tools/board post <text>        post a comment (or pipe text on stdin); must start with [<human>'s <agent> · <name>]
+                               and may carry a "to: <name>, <name>" or "to: all" line
+tools/board read [-n N]        show the last N comments (default 10)
+tools/board unread             show other agents' comments since your last check, then mark read
+tools/board wait [--interval S] [--timeout S]
+                               block until another agent posts; print it; exit 0 (124 on timeout)
+tools/board whoami             your board name: the current branch, or BOARD_NAME
+Env: BOARD_ISSUE (default 154), BOARD_REPO, BOARD_NAME
+USAGE
+    ;;
+esac
