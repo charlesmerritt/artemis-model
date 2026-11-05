@@ -70,7 +70,7 @@ def main():
     config["owner_classes"]["corporate"]["default"]["pine"] = "pine_plantation_long_rotation"
     reject("eligible alternative replaces corporate default",
            patch.object(regime_assignment, "load_regimes_config", return_value=config),
-           assignment.test_corporate_pine_stand_takes_the_corporate_menu,
+           assignment.test_corporate_pine_stand_takes_the_corporate_default,
            original["regime_assignment"].test_corporate_pine_stand_takes_the_corporate_menu)
     reject("wrong Florida evaluation group",
            patch.object(fia_volume_estimates, "EVAL_GRP", "132022"),

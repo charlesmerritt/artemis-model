@@ -237,9 +237,9 @@
   <section class="slide" id="pipeline">
     <div class="inner">
       <p class="kicker">The pipeline <span class="rule"></span> 02</p>
-      <h2>Menu, enumeration, library, selection, painting</h2>
+      <h2>Regime library, enumeration, trajectory library, selection, painting</h2>
       <div class="flow">
-        <div class="fstep"><div class="t">1 · menu</div><div class="v">Eligible set</div><div class="d">ownership class → prescriptions; riparian → <span class="mono">{no_management}</span>; screens shrink it</div></div>
+        <div class="fstep"><div class="t">1 · regimes</div><div class="v">Regime library</div><div class="d">ownership class → prescriptions; riparian → <span class="mono">{no_management}</span>; screens shrink it</div></div>
         <div class="fstep"><div class="t">2 · enumerate</div><div class="v">stand × prescription</div><div class="d">parameters resolved against stand age, snapped to 5-yr cycles</div></div>
         <div class="fstep"><div class="t">3 · simulate</div><div class="v">One FVS run per pair</div><div class="d">continuous, parallel, cached on a content hash</div></div>
         <div class="fstep"><div class="t">4 · store</div><div class="v">Trajectory library</div><div class="d"><span class="mono">trajectory_index</span> + <span class="mono">trajectory_cycles</span></div></div>
@@ -249,7 +249,7 @@
 <pre class="ascii">  Corrected TreeMap ◀──▶ FIA plots ──▶ LETO initializer (stands, plots, ownership, variant, site)
         │
         ▼
-  <b>ownership class ─▶ eligible menu</b> ─▶ (stand × prescription) ─▶ parallel FVS workers
+  <b>ownership class ─▶ regime library</b> ─▶ (stand × prescription) ─▶ parallel FVS workers
                                                                    │
   <b>SELECTED PLAN</b> ◀── simulated annealing ◀── trajectory store (DuckDB) ◀──┘
   stand_id → trajectory_id ──▶ rasters · schedules · regional &amp; scenario summaries</pre>
@@ -264,7 +264,7 @@
       <div class="bands">
         <div class="bcol a"><h3><span class="dot done"></span>Built in <span class="mono">pipeline/</span></h3>
           <div class="stage"><div class="st"><span class="dot done"></span><b>Management units</b></div><p><span class="mono">sketch_management_units</span> → <span class="mono">sliver_merge</span>; riparian retained as its own <span class="mono">unit_class</span>. Pilot, needs visual QA.</p></div>
-          <div class="stage"><div class="st"><span class="dot done"></span><b>Owner classes &amp; menus</b></div><p><span class="mono">owner_classes</span>, <span class="mono">regime_assignment</span>. The seven Harris classes; the ownership repair is in progress.</p></div>
+          <div class="stage"><div class="st"><span class="dot done"></span><b>Owner classes &amp; regime library</b></div><p><span class="mono">owner_classes</span>, <span class="mono">regime_assignment</span>. The seven Harris classes; the ownership repair is in progress.</p></div>
           <div class="stage"><div class="st"><span class="dot done"></span><b>FVS inputs &amp; keyfiles</b></div><p><span class="mono">build_fvs_inputs</span> (area-weighted union), <span class="mono">regime_templates</span> (<span class="mono">ThinDBH</span> only).</p></div>
           <div class="stage"><div class="st"><span class="dot done"></span><b>Greedy allocator</b></div><p><span class="mono">harvest_scheduler</span> — seed and baseline for the annealer.</p></div>
         </div>
@@ -377,7 +377,7 @@
 
   <section class="slide" id="ownership">
     <div class="inner">
-      <p class="kicker">Ownership decides the menu, not the meal <span class="rule"></span> 07</p>
+      <p class="kicker">Ownership decides the library, not the choice <span class="rule"></span> 07</p>
       <h2>Three rules turn an owner class into a library</h2>
       <div class="cards three">
         <div class="tcard"><h4>1 · <span class="mono">no_management</span> is always there</h4>
@@ -607,14 +607,14 @@ state      eligible  public_thin_restore, public_selection_light, pine_plantatio
         <div class="tcard"><h4>Library integrity <span class="tag">every build</span></h4>
           <p>Riparian → exactly <span class="mono">no_management</span>. Others ≥ 2 unless screened down, and logged.
             <span class="mono">n_cycles + 1</span> rows, no NaNs. Unit layer and library cover each other <b>both
-            ways</b>. Every prescription is in its owner's menu.</p></div>
+            ways</b>. Every prescription is in its owner's regime library.</p></div>
         <div class="tcard"><h4>Plan plausibility <span class="tag">headline results</span></h4>
           <p><b>The chosen prescription mix by owner class</b> (Diaz et al. Fig. 16), per-county outcomes, harvested area
             against TPO and LCMS, age classes through time, opening sizes against green-up.</p></div>
       </div>
       <div class="caveat"><b>The fitted LCMS harvest model changes job.</b> The optimiser now generates the schedule, so
         <span class="mono">P(harvest | features)</span> becomes calibration evidence: observed harvest rates by owner,
-        county and age are what the plan is checked against. Disagreement localises to the menu or the weights — both
+        county and age are what the plan is checked against. Disagreement localises to the regime library or the weights — both
         inspectable.</div>
       <p class="srcline">weekly-artifact/2026-08-31/make_annealed_plan.py (asserts riparian and row counts) · LCMS v2024.10</p>
     </div>
@@ -676,7 +676,7 @@ state      eligible  public_thin_restore, public_selection_light, pine_plantatio
             <tr><td class="num">2</td><td><b>Parameter-grid resolution</b> per family — how many rotation ages and offsets change the answer (Diaz et al.: 4 offsets × 6 prescriptions)</td><td><span class="res warn">now the binding limit</span></td></tr>
             <tr><td class="num">3</td><td><b>Even-flow scope</b> — county × owner dimensions kept; still open: non-declining vs a ± band, and owner-class even flow on top of or instead of county caps</td><td><span class="res warn">leaning resolved</span></td></tr>
             <tr><td class="num">4</td><td><b>Adjacency source</b> — polygon topology or centroid distance; URM vs ARM green-up (from LAMPS alone)</td><td><span class="res open">open</span></td></tr>
-            <tr><td class="num">5</td><td><b>Tribal and unknown menus</b> — conservative placeholders needing a documented source</td><td><span class="res open">open</span></td></tr>
+            <tr><td class="num">5</td><td><b>Tribal and unknown regime libraries</b> — conservative placeholders needing a documented source</td><td><span class="res open">open</span></td></tr>
             <tr><td class="num">6</td><td><b>Re-enabling carbon</b> — the measured obstacle is gone; reporting the five IPCC pools is a scope call</td><td><span class="res open">open</span></td></tr>
             <tr><td class="num">7</td><td><b>Eastern-US extent and compute</b> — state list; local, HPC or cloud for <span class="mono">stands × prescriptions</span> runs</td><td><span class="res open">open</span></td></tr>
             <tr><td class="num">8</td><td><b>Ownership source</b> — the Harris et al. (2025) RDS-2025-0045 raster, from the NWOS team, repaired in a second step. <span class="mono">OWN_CODE</span> is a Harris value and the owner classes are its seven forest classes; <span class="mono">classify_owner</span> rejects anything else.</td><td><span class="res pass">resolved — Harris</span></td></tr>
@@ -712,7 +712,7 @@ state      eligible  public_thin_restore, public_selection_light, pine_plantatio
       <ul class="take">
         <li><b>FVS leaves the loop</b> — enumerate each stand's eligible futures once, then select among them; a whole plan
           costs a lookup and a sum.</li>
-        <li><b>Ownership defines the menu</b> — <span class="mono">no_management</span> always present, riparian structurally
+        <li><b>Ownership defines the regime library</b> — <span class="mono">no_management</span> always present, riparian structurally
           <span class="mono">{no_management}</span>, screens only remove.</li>
         <li><b>The first plan is real</b> — 11,831 stands, 3,781 FVS runs, objective 190.41 against greedy 363.68, converged
           across five seeds, riparian no-entry intact.</li>

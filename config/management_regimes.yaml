@@ -12,13 +12,13 @@
 #     two or three eligible prescriptions and one declared default. Prescriptions are
 #     SHARED across owner classes — `public_selection_light` is eligible for four classes
 #     and still costs one column in the trajectory library. That is how each owner gets a
-#     real menu without the library growing owner-by-owner.
+#     real regime library without the trajectory library growing owner-by-owner.
 #
 # The default is what pipeline/s3_management/regime_assignment.py assigns deterministically
 # today. The eligible set is what the landscape scheduler is allowed to choose among once
 # the trajectory library exists (see artemis.txt: "stand × eligible management
-# prescription"). Building both now means the scheduler does not have to invent a menu
-# later, and the trajectory library can be generated for the right set from the start.
+# prescription"). Building both now means the scheduler does not have to invent a regime
+# library later, and the trajectory library can be generated for the right set from the start.
 
 version: 1
 
@@ -292,15 +292,15 @@ prescriptions:
 # Eligibility and defaults, by owner class
 # ---------------------------------------------------------------------------------------
 # `default` — one prescription per forest-type branch; what regime_assignment.py assigns.
-# `eligible` — the menu the landscape scheduler may choose from, before the forest-type
-#              filter. Since 2026-10-08 it is the SAME permissive menu for every class
-#              (`&all_cutting_prescriptions`): every owner may run a short or long rotation
-#              ending in a clearcut, a thin, or a selection regime, and `no_management` is
-#              universally eligible on top. Owner class now sets only the DEFAULT; the
+# `eligible` — the regime library the landscape scheduler may choose from, before the
+#              forest-type filter. Since 2026-10-08 it is the SAME permissive library for
+#              every class (`&all_cutting_prescriptions`): every owner may run a short or
+#              long rotation ending in a clearcut, a thin, or a selection regime, and
+#              `no_management` is universally eligible on top. Owner class now sets only the DEFAULT; the
 #              scheduler decides the rest against the per-owner-group TPO targets. The
 #              forest-type filter still applies, so hardwood/other stands are never offered a
-#              planted-pine rotation. Why: the narrower 2-3 option menus left every plan
-#              ~30% under TPO removals (weekly-artifact/2026-09-28); the comparison of menu
+#              planted-pine rotation. Why: the narrower 2-3 option libraries left every plan
+#              ~30% under TPO removals (weekly-artifact/2026-09-28); the comparison of library
 #              variants is experiments/2026-10-08_permissive-menus. Individual rationales below
 #              describe the defaults.
 
@@ -326,7 +326,7 @@ owner_classes:
       Harris corporate forest (value 4). Rotation forestry, with the pulpwood and sawtimber
       rotations as the real economic choice the scheduler makes per stand, and a hardwood
       path for the non-pine share. Harris puts not-for-profits and institutions in this
-      class too; `no_management` stays on their menu like everyone's.
+      class too; `no_management` stays in their regime library like everyone's.
 
   family:
     default:
@@ -371,7 +371,7 @@ owner_classes:
     rationale: >
       State forests carry an active timber program alongside conservation objectives, so
       the pine default is the thinning regime rather than light selection, and a
-      sawtimber rotation stays on the menu.
+      sawtimber rotation stays in the library.
 
   local:
     default:
@@ -381,8 +381,8 @@ owner_classes:
     eligible: *all_cutting_prescriptions
     rationale: >
       County and municipal forest is predominantly parks, watershed, and school land
-      where commercial harvest is the exception. Default to no entry — which stays on the
-      menu through `no_management_universally_eligible` — and let the scheduler opt in to
+      where commercial harvest is the exception. Default to no entry — which stays in the
+      library through `no_management_universally_eligible` — and let the scheduler opt in to
       light selection or a density-reduction thin where a county does manage its forest.
 
   unknown:
@@ -393,7 +393,7 @@ owner_classes:
     eligible: *all_cutting_prescriptions
     rationale: >
       Harris `unknown`, which is not an owner type — it is missing information.
-      Defaults to one light entry. It carries the same permissive menu as every other
+      Defaults to one light entry. It carries the same permissive regime library as every other
       class (2026-10-08), so a rotation clearcut chosen here is the scheduler's choice
       against the targets, not observed behaviour. Every unit here carries the
       `unknown_ownership` flag so the area, and any harvest placed on it, stays reportable.
@@ -419,8 +419,8 @@ owner_classes:
 # FIA plots (docs/architecture/presentation.html#vocabulary). With site-index binning at
 # `si_bins` the upper bound on FVS runs is 693 × 9 × si_bins, before timing offsets and
 # before deduplication for plots never eligible for a prescription by forest type. With the
-# permissive menu every plot is eligible for every prescription its forest type admits, so
-# the bound is now close to the realised count. Any addition to `prescriptions` must state
+# permissive regime library every plot is eligible for every prescription its forest type
+# admits, so the bound is now close to the realised count. Any addition to `prescriptions` must state
 # its cost here.
 si_bins: 3
 estimated_max_runs_pilot: 18711      # 693 × 9 × 3

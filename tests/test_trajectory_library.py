@@ -23,11 +23,11 @@ def _stands():
     })
 
 
-def test_the_open_menu_never_offers_planted_pine_to_hardwood():
-    menu = tl.menu_for(tl.OPEN_MENU, CONFIG, "corporate", "hardwood")
+def test_the_open_library_never_offers_planted_pine_to_hardwood():
+    regimes = tl.regimes_for(tl.OPEN_LIBRARY, CONFIG, "corporate", "hardwood")
 
-    assert "pine_plantation_short_rotation" not in menu
-    assert {"natural_short_rotation", "hardwood_clearcut_regen", "no_management"} <= set(menu)
+    assert "pine_plantation_short_rotation" not in regimes
+    assert {"natural_short_rotation", "hardwood_clearcut_regen", "no_management"} <= set(regimes)
 
 
 def test_a_repeating_rotation_clearcuts_again_inside_the_horizon_with_its_own_regeneration():
@@ -82,7 +82,7 @@ def test_a_leto_inventory_keyfile_reads_leto_table_names():
 def test_enumerate_shares_runs_by_plot_and_gives_riparian_only_no_management():
     keyfiles: dict[str, str] = {}
 
-    lib = tl.enumerate_library(tl.OPEN_MENU, _stands(), sdi={}, keyfiles=keyfiles, config=CONFIG)
+    lib = tl.enumerate_library(tl.OPEN_LIBRARY, _stands(), sdi={}, keyfiles=keyfiles, config=CONFIG)
 
     assert lib.loc[lib["unit_id"] == "rip", "prescription"].tolist() == ["no_management"]
     assert not lib.duplicated(["unit_id", "prescription"]).any()
@@ -138,8 +138,8 @@ def test_a_failed_fvs_run_is_recorded_and_writes_no_trajectory(tmp_path):
     assert not paths.cycles.exists()
 
 
-@pytest.mark.parametrize("policy", [tl.OPEN_MENU])
-def test_the_open_menu_is_the_decks_repeat_offsets_25(policy):
+@pytest.mark.parametrize("policy", [tl.OPEN_LIBRARY])
+def test_the_open_library_is_the_decks_repeat_offsets_25(policy):
     assert policy.rotations is tl.RotationMode.REPEAT
     assert policy.forest_types is tl.ForestTypeRule.FILTER
     assert policy.offsets == (0, 5, 10, 15, 20, 25)

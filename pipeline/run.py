@@ -17,8 +17,8 @@ The raster repair (`pipeline.s1_initial_state.county_improvement`) and the LETO 
 (`pipeline.leto_ca`, `leto_riparian`, `leto_donors`, `leto_inventory`, `leto_database`) produce
 them; their FL5 driver is still `experiments/2026-10-19_fl5-leto-stands` steps 1-2 and 8.
 
-``library`` enumerates every stand's open-menu options (`trajectory_library.OPEN_MENU`) and runs
-the FVS keyfiles not yet cached. ``schedule`` selects one trajectory per stand against the TPO
+``library`` enumerates every stand's regime-library options (`trajectory_library.OPEN_LIBRARY`)
+and runs the FVS keyfiles not yet cached. ``schedule`` selects one trajectory per stand against the TPO
 even-flow targets by simulated annealing (`pipeline.s3_management.annealer`), best of
 ``--restarts``.
 """
@@ -84,7 +84,7 @@ def build_library(run_dir: Path, workers: int, layout: InventoryLayout, fvs_bin:
         trees = pd.read_sql(f"SELECT * FROM {layout.tables.tree}", con)
     sdi = tl.stand_sdi_tables(trees)
     keyfiles: dict[str, str] = {}
-    lib = tl.enumerate_library(tl.OPEN_MENU, stands, sdi, keyfiles, tables=layout.tables)
+    lib = tl.enumerate_library(tl.OPEN_LIBRARY, stands, sdi, keyfiles, tables=layout.tables)
     lib.to_csv(run_dir / LIBRARY, index=False)
     plt_of = dict(zip(lib["run_hash"], lib["PLT_CN"]))
     paths = tl.RunPaths(work=run_dir, data_db=run_dir / FVS_DATA, fvs_bin=fvs_bin)

@@ -30,10 +30,10 @@ def test_policy_without_unmanaged_choice_fails_command(monkeypatch):
     config = check.regime_assignment.load_regimes_config()
 
     def missing_unmanaged(owner, branch=None, config=None):
-        menu = original(owner, branch, config)
+        regimes = original(owner, branch, config)
         if branch is not None and config["owner_classes"][owner]["default"][branch] != "no_management":
-            return [p for p in menu if p != "no_management"]
-        return menu
+            return [p for p in regimes if p != "no_management"]
+        return regimes
 
     assert any(spec["default"]["pine"] != "no_management"
                for spec in config["owner_classes"].values())

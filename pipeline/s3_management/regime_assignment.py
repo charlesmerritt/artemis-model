@@ -1,7 +1,7 @@
 """
 Management-regime assignment (Phase 3.2), driven by `config/management_regimes.yaml`.
 
-The default choice feeds the greedy baseline; the eligible menu feeds trajectory-library
+The default choice feeds the greedy baseline; the regime library feeds trajectory-library
 generation and, ultimately, simulated-annealing selection. Riparian units expose only
 ``no_management``, so the no-entry rule is structural rather than a weighted preference.
 
@@ -14,11 +14,11 @@ Two questions, deliberately separated:
     **What is this unit allowed to be?**  :func:`eligible_prescriptions` — the two or
     three prescriptions the landscape scheduler may choose among once the FVS trajectory
     library exists (`artemis.txt`: "stand × eligible management prescription"). Declaring
-    the menu now means the trajectory library can be built for the right set from the
+    the library now means the trajectory library can be built for the right set from the
     start, instead of being regenerated when the scheduler arrives.
 
 Owner classes come from `pipeline/s3_management/owner_classes.py`: the Harris et al. (2025)
-ownership raster's own forest classes. The regime library, the per-owner menus,
+ownership raster's own forest classes. The regime library, each owner's defaults,
 and the scheduling rules are all in `config/management_regimes.yaml` — this module is the
 resolver, not the policy.
 
@@ -32,7 +32,7 @@ Private, 5 Tribal, 6 Federal, 7 State, 8 Local) — never the parcel-derived LET
 ``config/ownership_policy.yaml``. This is a documented policy for review, not a calibrated
 behaviour model.
 
-Print the whole policy — every owner class's default and eligible menu, and the riparian
+Print the whole policy — every owner class's default and regime library, and the riparian
 override — straight from the config::
 
     uv run python -m pipeline.s3_management.regime_assignment
@@ -45,7 +45,7 @@ Usage (a doctest; ``scripts/check_docs.py`` runs it):
     ('corporate', 'pine_plantation_short_rotation', 'planted_pine_regen')
     >>> p.params  # a 22-year-old stand on a 25-year rotation is cut at the next cycle
     {'year': 2027}
-    >>> eligible_prescriptions("federal", "hardwood")  # every class: the permissive menu
+    >>> eligible_prescriptions("federal", "hardwood")  # every class: the permissive library
     ['natural_short_rotation', 'hardwood_clearcut_regen', 'family_light_thin', 'family_uneven_aged_selection', 'public_selection_light', 'public_thin_restore', 'no_management']
 """
 
@@ -360,15 +360,15 @@ def eligible_prescriptions(
     """
     The prescriptions the scheduler may choose among for an owner class.
 
-    This is an owner/forest-type menu, not certification of stand-age eligibility.
+    This is an owner/forest-type regime library, not certification of stand-age eligibility.
     Resolve each candidate's schedule before generating its FVS trajectory.
 
-    ``forest_branch`` (``pine`` / ``hardwood`` / ``other``) filters the menu by each
+    ``forest_branch`` (``pine`` / ``hardwood`` / ``other``) filters the library by each
     prescription's ``forest_types``. Pass it for any stand-level call: without it an
     corporate *hardwood* stand is offered both pine-plantation prescriptions, and
     selecting one would apply pine thinning parameters and inject a planted-pine
     regeneration tree list into a hardwood trajectory. Omitting it returns the owner's
-    whole menu, which is only meaningful for describing the policy rather than scheduling
+    whole library, which is only meaningful for describing the policy rather than scheduling
     a stand.
 
     Prescriptions marked ``forest_types: [any]`` survive every branch, and `no_management`
@@ -533,8 +533,8 @@ def main() -> None:
             default = defaults[PINE]
         else:
             default = " · ".join(f"{branch}: {name}" for branch, name in defaults.items())
-        menu = [p for p in eligible_prescriptions(owner, config=config) if p != "no_management"]
-        print(f"{owner}\n  default   {default}\n  eligible  {', '.join(menu)} (+ no_management)")
+        regimes = [p for p in eligible_prescriptions(owner, config=config) if p != "no_management"]
+        print(f"{owner}\n  default   {default}\n  eligible  {', '.join(regimes)} (+ no_management)")
 
 
 if __name__ == "__main__":

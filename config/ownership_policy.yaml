@@ -56,8 +56,8 @@ classes:
     tpo_group: "Private"
     description: >
       Harris's corporate class, which by the dataset's own definition includes
-      not-for-profit organizations and institutions. One class, one menu: nothing in the
-      raster separates a timber company from any other corporate owner.
+      not-for-profit organizations and institutions. One class, one regime library: nothing
+      in the raster separates a timber company from any other corporate owner.
 
   tribal:
     label: "Tribal forest"
@@ -132,4 +132,4 @@ known_limitations:
     but the mapping is a convention, not a measurement.
   corporate_is_one_class: >
     Harris's corporate class includes not-for-profit organizations and institutions, so
-    all corporate forest shares one prescription menu, rotation prescriptions included.
+    all corporate forest shares one regime library, rotation prescriptions included.
