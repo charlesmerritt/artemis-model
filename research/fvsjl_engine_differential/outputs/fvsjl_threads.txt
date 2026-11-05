@@ -1,0 +1,6 @@
+threads=1 runs=600 5.38s  111.5 runs/s
+threads=1 runs=600 5.18s  115.9 runs/s
+threads=8 runs=600 1.18s  510.3 runs/s
+threads=8 runs=600 1.02s  589.4 runs/s
+threads=16 runs=600 1.01s  596.2 runs/s
+threads=16 runs=600 0.78s  773.7 runs/s

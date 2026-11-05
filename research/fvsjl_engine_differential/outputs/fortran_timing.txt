@@ -1,0 +1,4 @@
+none fortran serial: 21.786928698 s  ok=167 sigfpe=33
+thin fortran serial: 23.039983786 s  ok=163 sigfpe=37
+plant fortran serial: 20.226089202 s  ok=158 sigfpe=42
+fortran 16-proc 600 runs: 7.767225577 s

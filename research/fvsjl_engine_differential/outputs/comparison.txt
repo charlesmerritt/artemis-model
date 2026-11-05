@@ -1,0 +1,3 @@
+none: merged rows 1838 | Tpa: <=1%=0.950 >5%=0.002 | BA: <=1%=0.967 >5%=0.000 | TCuFt: <=1%=0.972 >5%=0.000 | RTCuFt: <=1%=1.000 >5%=0.000 | final TCuFt sum f/j 825767/825848 | fortran stands missing 32 | jl ghost-volume stands 0
+thin: merged rows 1808 | Tpa: <=1%=0.886 >5%=0.010 | BA: <=1%=0.908 >5%=0.000 | TCuFt: <=1%=0.912 >5%=0.002 | RTCuFt: <=1%=0.997 >5%=0.000 | final TCuFt sum f/j 808427/808208 | fortran stands missing 32 | jl ghost-volume stands 0
+plant: merged rows 1786 | Tpa: <=1%=0.975 >5%=0.001 | BA: <=1%=0.844 >5%=0.001 | TCuFt: <=1%=0.914 >5%=0.004 | RTCuFt: <=1%=0.986 >5%=0.000 | final TCuFt sum f/j 409976/409296 | fortran stands missing 32 | jl ghost-volume stands 0
