@@ -7,7 +7,7 @@ statewide. Deck: ``docs/improved-rasters-fl/presentation.html``.
 
 Per county:
 
-1. **Grid.** The county's bounding box on TreeMap 2022's own 30 m EPSG:5070 grid, padded
+1. **Grid.** The county's bounding box on TreeMap 2022's own 30 m grid, padded
    by ``PAD_PX``. The padding lets a patch that crosses the county line keep its full
    area for the minimum-patch-area test and its full ring for the donor search. A patch
    reaching from the county to within ``PAD_PX`` of the grid edge grows the padding and
@@ -41,7 +41,8 @@ gate) and ``add_back_method_bits_raw.tif`` (before it), ``evt2022_add_back_eligi
 rejections for the AOI under ``aoi_5county/``, a ``manifest.json`` naming the gate, plus
 ``establishment_tree_lists.csv`` keyed by ``(TM_ID, establishment_mode)`` and, in its
 ``summary.json``, the live basal area and TPA the added-back acres carry with mature
-donors vs. as established.
+donors vs. as established, and any donor that establishes nothing. Its ``patches`` counts
+the stitched raster's added-back patches, so one crossing a county line counts once.
 
 Dating and aging the add-back pixels (ADR 0003) is a second pass over a run folder:
 :mod:`pipeline.s1_initial_state.add_back_stand_age`, then
@@ -69,8 +70,8 @@ from scipy import ndimage
 from rasterio.transform import Affine
 from rasterio.windows import Window
 
-from pipeline.ids import as_id_series, read_id_csv
-from pipeline.spatial_ref import project_crs
+from pipeline.ids import as_id_series, read_id_csv_rows
+from pipeline.spatial_ref import assert_project_crs, project_crs, resolution_m, to_project_crs
 from pipeline.s1_initial_state.add_back_methods import (
     METHOD_PRIORITY,
     AddBackMethod,
@@ -89,6 +90,7 @@ from pipeline.s1_initial_state.impute_establishment import (
     load_establishment_policy,
     mode_for_stratum,
     scaled_establishment_lists,
+    unestablished_donors,
 )
 from pipeline.s1_initial_state.ownership_repair import (
     MAX_DISTANCE_PX,
@@ -102,6 +104,7 @@ from pipeline.s1_initial_state.statewide_repair import (
     GatedScores,
     legend_code_sets,
     scored_add_back,
+    stamp_donors,
     stratify_block,
 )
 
@@ -111,7 +114,7 @@ OUT_ROOT = Path("/mnt/d/improved-rasters")
 AOI_NAME = "aoi_5county"
 PAD_PX = 64          # wider than the widest donor ring (63 px) and any sub-MMU patch
 OUTSIDE = 255        # uint8 nodata outside the county
-PIXEL = 30.0
+PIXEL = float(resolution_m())
 
 OBATA_YEARS = (2010, 2022)   # cut dated inside the run's window, capped at the TreeMap vintage
 HANSEN_LOSSYEAR = (1, 22)    # 2001-2022, stored as years since 2000
@@ -205,8 +208,9 @@ def read_on_grid(path: Path, grid: Grid, *, fill, indexes: int | list[int] = 1) 
     """
     height, width = grid.shape
     with rasterio.open(path) as src:
-        if src.crs.to_epsg() != 5070 or (src.transform.a, src.transform.e) != (PIXEL, -PIXEL):
-            raise ValueError(f"{path.name} is not a 30 m EPSG:5070 raster")
+        assert_project_crs(src, context=path.name)
+        if (src.transform.a, src.transform.e) != (PIXEL, -PIXEL):
+            raise ValueError(f"{path.name} is not a {PIXEL:g} m raster")
         col = (grid.transform.c - src.transform.c) / PIXEL
         row = (src.transform.f - grid.transform.f) / PIXEL
         if abs(col - round(col)) > 1e-6 or abs(row - round(row)) > 1e-6:
@@ -233,22 +237,6 @@ def hansen_rule(lossyear: np.ndarray, treecover2000: np.ndarray,
     first, last = window.hansen_lossyear
     return ((lossyear >= first) & (lossyear <= last)
             & (treecover2000 >= HANSEN_TREECOVER_MIN))
-
-
-def stamp_donors(ids: np.ndarray, labels: np.ndarray, assignments: pd.DataFrame) -> np.ndarray:
-    """Write each patch's donor ``TM_ID`` into ``ids`` in place; return the recovered mask.
-
-    A patch with no reachable donor stays a hole: stamping it would write ``TM_ID`` 0
-    (no plot) as if recovered, which FVS cannot initialize.
-    """
-    donor_per_patch = np.zeros(int(labels.max()) + 1, dtype=np.uint32)
-    for patch_id, value in assignments.get("donor_tm_id", pd.Series(dtype=object)).items():
-        if pd.notna(value):
-            donor_per_patch[patch_id] = int(value)
-    stamped = donor_per_patch[labels]
-    recovered = stamped > 0
-    ids[recovered] = stamped[recovered]
-    return recovered
 
 
 PATCH_COLUMNS = ["pixels", "acres", "stratum", "donor_tm_id", "est_year_low", "est_year_high",
@@ -350,7 +338,7 @@ def load_county(counties: Path, fips: str):
     rows = gpd.read_file(counties, where=f"ADMIN_FIPS = '{fips}'")
     if rows.empty:
         raise ValueError(f"county {fips} not found in {counties}")
-    return rows.to_crs(5070).geometry.union_all()
+    return to_project_crs(rows).geometry.union_all()
 
 
 def county_dir(out_root: Path, fips: str) -> Path:
@@ -694,17 +682,21 @@ def stitch_establishment(patches: pd.DataFrame, inputs: Inputs, out_dir: Path) -
     The lists are keyed by ``(TM_ID, establishment_mode)``. The effect compares the live
     basal area and TPA of the added-back acres under their mature donors with what is
     established, AOI-wide and by mode; a patch crossing a county line counts its pixels
-    in each county once.
+    in each county once. ``unestablished_donors`` lists each donor and mode with no rows, and
+    the acres left with nothing to initialize from.
     """
     resolved = patches.dropna(subset=["donor_tm_id"]).rename(columns={"donor_tm_id": "TM_ID"})
     donor_modes = resolved[["TM_ID", "establishment_mode"]].drop_duplicates()
-    tree_table = read_id_csv(inputs.tree_table, usecols=TREE_COLUMNS)
-    donor_rows = tree_table[tree_table["TM_ID"].isin(set(donor_modes["TM_ID"]))]
+    donor_rows = read_id_csv_rows(inputs.tree_table, "TM_ID", set(donor_modes["TM_ID"]),
+                                  usecols=TREE_COLUMNS)
     policy = load_establishment_policy()
     lists = scaled_establishment_lists(donor_modes, donor_rows,
                                        donor_forest_types(inputs.vat, donor_modes["TM_ID"]), policy)
     lists.to_csv(out_dir / "establishment_tree_lists.csv", index=False)
     acres = resolved.assign(acres=resolved["county_pixels"] * ACRES_PER_PIXEL)
+    keys = ["TM_ID", "establishment_mode"]
+    unestablished = unestablished_donors(donor_modes, lists).merge(
+        acres.astype({k: object for k in keys}).groupby(keys, as_index=False)["acres"].sum(), on=keys)
     return {
         "target_age": policy.target_age,
         "density": str(policy.density),
@@ -712,16 +704,28 @@ def stitch_establishment(patches: pd.DataFrame, inputs: Inputs, out_dir: Path) -
         "donors": int(donor_modes["TM_ID"].nunique()),
         "tree_list_rows": {str(m): int(n) for m, n in lists.groupby("establishment_mode").size().items()},
         "live_effect": establishment_effect(acres, donor_rows, lists),
+        "unestablished_donors": unestablished.round({"acres": 1}).to_dict("records"),
     }
 
 
 SUM_KEYS = ("county_acres", "land_acres", "published_forest_acres", "hole_acres",
             "rule_accepted_before_mmu_acres", "added_back_acres",
-            "dropped_by_mmu_or_no_donor_acres", "improved_forest_acres", "patches")
+            "dropped_by_mmu_or_no_donor_acres", "improved_forest_acres")
+
+
+def aoi_patch_count(provenance: np.ndarray) -> int:
+    """Added-back patches in a stitched provenance raster, each once wherever a county line cuts it.
+
+    Summing the counties' ``patches`` would count a crossing patch once per county it touches.
+    """
+    return label_patches(TreeMapProvenance.added_back(provenance))[1]
 
 
 def sum_county_summaries(summaries: list[dict]) -> dict:
-    """The AOI totals: acres summed over counties; method status and rule from the first."""
+    """The AOI totals: acres summed over counties; method status and rule from the first.
+
+    Not ``patches``: :func:`stitch` counts them on the stitched raster (:func:`aoi_patch_count`).
+    """
     first = summaries[0]
     total = {k: round(sum(s[k] for s in summaries), 1) for k in SUM_KEYS}
     total["counties"] = [f"{s['county_fips']} {s['county']}" for s in summaries]
@@ -762,6 +766,8 @@ def stitch(fips_list: list[str], out_root: Path = OUT_ROOT, inputs: Inputs = Inp
     establishment = stitch_establishment(patches, inputs, out_dir)
 
     total = sum_county_summaries(summaries)
+    with rasterio.open(out_dir / "treemap2022_provenance.tif") as src:
+        total["patches"] = aoi_patch_count(src.read(1))
     total["stitch_overlap_pixels"] = overlaps
     total["establishment"] = establishment
     (out_dir / "summary.json").write_text(json.dumps(total, indent=2))

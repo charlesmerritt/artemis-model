@@ -38,6 +38,7 @@ Identifiers never touch a float: ``TM_ID``/``PLT_CN`` are coerced with
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -59,6 +60,8 @@ from pipeline.s1_initial_state.young_stand_profiles import (
     forest_type_group,
     load_young_stand_profiles,
 )
+
+logger = logging.getLogger(__name__)
 
 ACRES_PER_PIXEL = 0.2224  # 30 m pixel = 900 m²
 
@@ -296,7 +299,8 @@ def scaled_establishment_lists(donor_modes: pd.DataFrame, tree_table: pd.DataFra
     ``establishment_age`` = the target age. ``DONOR_AS_IS`` rows: the donor's rows verbatim,
     ``establishment_age`` empty. Both carry the donor's ``PLT_CN`` as an exact string and
     its ``forest_type_group``. The list depends only on the donor and the mode, so patches
-    sharing both share rows.
+    sharing both share rows. A ``SCALED_YOUNG`` donor with no live trees has no species mix
+    to scale and gets no rows; it is logged, and :func:`unestablished_donors` lists it.
     """
     table = tree_table.copy()
     table["TM_ID"] = as_id_series(table["TM_ID"], column="TM_ID")
@@ -306,19 +310,46 @@ def scaled_establishment_lists(donor_modes: pd.DataFrame, tree_table: pd.DataFra
     report_key_overlap(keys["TM_ID"], table["TM_ID"], left_name="patch donor", right_name="tree table")
 
     by_donor = dict(tuple(table.groupby("TM_ID", sort=False)))
-    parts = []
+    parts, no_live = [], []
     for tm_id, mode in keys[["TM_ID", "establishment_mode"]].drop_duplicates().itertuples(index=False):
         rows = by_donor.get(tm_id)
         if rows is None:
             continue
         code = fortypcd.get(tm_id)
         if EstablishmentMode(mode) is EstablishmentMode.SCALED_YOUNG:
-            parts.append(_scaled_rows(rows, code, policy))
+            scaled = _scaled_rows(rows, code, policy)
+            if scaled.empty:
+                no_live.append(tm_id)
+                continue
+            parts.append(scaled)
         else:
             parts.append(rows.assign(establishment_mode=str(EstablishmentMode.DONOR_AS_IS),
                                      establishment_age=pd.NA,
                                      forest_type_group=str(forest_type_group(code))))
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    if no_live:
+        logger.warning("%d scaled_young donor(s) have no live trees, so no species mix and no "
+                       "establishment rows: TM_ID %s", len(no_live), ", ".join(sorted(no_live)))
+    if not parts:
+        return pd.DataFrame(columns=[*table.columns, *LIST_COLUMNS])
+    return pd.concat(parts, ignore_index=True)
+
+
+LIST_COLUMNS = ["establishment_mode", "establishment_age", "forest_type_group"]
+
+
+def unestablished_donors(donor_modes: pd.DataFrame, lists: pd.DataFrame) -> pd.DataFrame:
+    """The ``(TM_ID, establishment_mode)`` pairs in use that have no establishment rows.
+
+    A donor missing from the tree table, or a ``scaled_young`` donor with no live trees,
+    leaves its patches on the improved raster with nothing to initialize them from.
+    """
+    keys = (donor_modes[["TM_ID", "establishment_mode"]]
+            .assign(TM_ID=lambda f: as_id_series(f["TM_ID"], column="TM_ID"),
+                    establishment_mode=lambda f: f["establishment_mode"].map(str))
+            .drop_duplicates())
+    listed = pd.MultiIndex.from_frame(lists[["TM_ID", "establishment_mode"]].astype(object))
+    missing = ~pd.MultiIndex.from_frame(keys.astype(object)).isin(listed)
+    return keys[missing].reset_index(drop=True)
 
 
 def live_stand_metrics(rows: pd.DataFrame, keys: list[str]) -> pd.DataFrame:

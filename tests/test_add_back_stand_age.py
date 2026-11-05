@@ -123,3 +123,6 @@ def test_write_stand_age_reads_a_run_and_writes_the_cut_year_raster_and_the_tabl
     saved = pd.read_csv(run / "add_back_stand_age.csv")
     assert saved["pixels"].sum() == 2 + 1                  # two union rows, one two-method row
     assert list(table.columns) == ["agreement", "stand_age", "age_class", "pixels", "acres"]
+    text = pd.read_csv(run / "add_back_stand_age.csv", dtype=str, keep_default_na=False)
+    assert text["stand_age"].tolist() == ["5", "", "5"]    # whole years; undated is empty
+    assert text["acres"].tolist() == ["0.2", "0.2", "0.2"]  # acres to a tenth

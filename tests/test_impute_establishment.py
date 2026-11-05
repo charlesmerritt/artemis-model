@@ -132,6 +132,7 @@ from pipeline.s1_initial_state.impute_establishment import (  # noqa: E402
     establishment_effect,
     live_stand_metrics,
     scaled_establishment_lists,
+    unestablished_donors,
 )
 from pipeline.s1_initial_state.young_stand_profiles import (  # noqa: E402
     BA_FACTOR,
@@ -256,3 +257,48 @@ def test_establishment_effect_compares_mature_donors_with_what_is_established():
     total = effect["total"]
     assert total["acres"] == pytest.approx(45.0)
     assert total["established"]["live_ba_ft2"] == pytest.approx(40 * young_ba + 5 * mature_ba, rel=1e-3)
+
+
+def _dead_donor_table() -> pd.DataFrame:
+    # Donor 66: one standing-dead tree and nothing alive, so no species mix to scale.
+    return pd.DataFrame({"TM_ID": ["66"], "PLT_CN": ["987654321098765432"], "STATUSCD": [2],
+                         "TPA_UNADJ": [6.0], "SPCD": [111], "DIA": [9.0], "HT": [60.0], "CR": [0]})
+
+
+def test_a_scaled_donor_without_live_trees_is_reported_not_silently_dropped(caplog):
+    keys = pd.DataFrame({"TM_ID": ["55", "66"], "establishment_mode": [M.SCALED_YOUNG] * 2})
+    table = pd.concat([_donor_table(), _dead_donor_table()], ignore_index=True)
+    lists = scaled_establishment_lists(keys, table, pd.Series({"55": 142, "66": 142}), _policy())
+    assert set(lists["TM_ID"]) == {"55"}
+    assert "66" in caplog.text                                         # warned, by TM_ID
+    missing = unestablished_donors(keys, lists)
+    assert missing.to_dict("records") == [{"TM_ID": "66", "establishment_mode": "scaled_young"}]
+
+
+def test_no_donors_give_an_empty_list_that_keeps_the_list_columns():
+    keys = pd.DataFrame({"TM_ID": pd.Series(dtype="string"), "establishment_mode": pd.Series(dtype="string")})
+    lists = scaled_establishment_lists(keys, _donor_table(), FORTYPES, _policy())
+    assert lists.empty
+    assert list(lists.columns) == [*_donor_table().columns, "establishment_mode",
+                                   "establishment_age", "forest_type_group"]
+    assert lists.groupby("establishment_mode").size().to_dict() == {}
+
+
+def test_establishment_effect_of_no_acres_is_empty_not_an_error():
+    keys = pd.DataFrame({"TM_ID": pd.Series(dtype="string"), "establishment_mode": pd.Series(dtype="string")})
+    lists = scaled_establishment_lists(keys, _donor_table(), FORTYPES, _policy())
+    acres = pd.DataFrame({"TM_ID": pd.Series(dtype="string"),
+                          "establishment_mode": pd.Series(dtype="string"), "acres": pd.Series(dtype=float)})
+    effect = establishment_effect(acres, _donor_table().iloc[:0], lists)
+    assert effect["by_mode"] == {}
+    assert effect["total"]["acres"] == 0.0
+    assert effect["total"]["established"]["live_tpa"] is None
+
+
+def test_an_unestablished_donor_counts_its_acres_with_nothing_established():
+    keys = pd.DataFrame({"TM_ID": ["66"], "establishment_mode": [M.SCALED_YOUNG]})
+    lists = scaled_establishment_lists(keys, _dead_donor_table(), pd.Series({"66": 142}), _policy())
+    acres = pd.DataFrame({"TM_ID": ["66"], "establishment_mode": ["scaled_young"], "acres": [10.0]})
+    effect = establishment_effect(acres, _dead_donor_table(), lists)
+    assert effect["total"]["established"] == {"live_tpa": 0.0, "live_ba_ft2_per_ac": 0.0,
+                                              "live_trees": 0, "live_ba_ft2": 0}

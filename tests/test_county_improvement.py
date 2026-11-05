@@ -8,12 +8,15 @@ import pytest
 import rasterio
 from rasterio.transform import Affine
 
+from pipeline.s1_initial_state import county_improvement as ci
 from pipeline.s1_initial_state.add_back_methods import AddBackMethod, ConsensusRule, MethodMasks
 from pipeline.s1_initial_state.county_improvement import (
     OUTSIDE,
     DisturbanceWindow,
     Grid,
+    TREE_COLUMNS,
     TreeMapProvenance as TP,
+    aoi_patch_count,
     county_summary,
     gate_rejections,
     hansen_rule,
@@ -24,6 +27,7 @@ from pipeline.s1_initial_state.county_improvement import (
     read_on_grid,
     run_manifest,
     SUM_KEYS,
+    stitch_establishment,
     stitch_rasters,
     sum_county_summaries,
     sum_gate_rejections,
@@ -184,10 +188,10 @@ def test_hansen_rule_needs_loss_2001_2022_on_ground_that_was_30pct_canopy():
     assert hansen_rule(lossyear, cover).tolist() == [False, True, True, False, False]
 
 
-def _write(path, values, transform, nodata):
+def _write(path, values, transform, nodata, crs="EPSG:5070"):
     values = np.asarray(values)
     with rasterio.open(path, "w", driver="GTiff", height=values.shape[0], width=values.shape[1],
-                       count=1, dtype=values.dtype, crs="EPSG:5070", transform=transform,
+                       count=1, dtype=values.dtype, crs=crs, transform=transform,
                        nodata=nodata) as dst:
         dst.write(values, 1)
 
@@ -203,6 +207,13 @@ def test_read_on_grid_refuses_an_off_grid_source(tmp_path):
     src = tmp_path / "src.tif"
     _write(src, np.ones((2, 2), dtype=np.uint8), Affine(30, 0, 15, 0, -30, 60), 0)
     with pytest.raises(ValueError, match="off the grid"):
+        read_on_grid(src, Grid(Affine(30, 0, 0, 0, -30, 60), (2, 2)), fill=0)
+
+
+def test_read_on_grid_refuses_a_source_in_another_crs(tmp_path):
+    src = tmp_path / "src.tif"
+    _write(src, np.ones((2, 2), dtype=np.uint8), Affine(30, 0, 0, 0, -30, 60), 0, crs="EPSG:3857")
+    with pytest.raises(ValueError, match="src.tif"):
         read_on_grid(src, Grid(Affine(30, 0, 0, 0, -30, 60), (2, 2)), fill=0)
 
 
@@ -432,3 +443,52 @@ def test_a_patch_cut_off_by_the_grid_edge_grows_the_padding_past_the_margin():
 def test_a_patch_at_the_grid_edge_that_never_reaches_the_county_is_ignored():
     patches, inside = _county_and_patches([(0, 0), (0, 1)])
     assert required_pad(patches, inside, pad=3, margin=2) == 3
+
+
+def test_a_patch_crossing_a_county_line_counts_once_in_the_aoi():
+    # The stitched provenance: one patch spans the county line at column 2, one sits apart.
+    prov = np.array([[TP.PUBLISHED, TP.ADDED_BACK_YOUNG, TP.ADDED_BACK_YOUNG, TP.PUBLISHED, TP.ADDED_BACK],
+                     [OUTSIDE, TP.UNMAPPED_LAND, TP.ADDED_BACK_YOUNG, TP.PUBLISHED, TP.PUBLISHED]],
+                    dtype=np.uint8)
+    assert aoi_patch_count(prov) == 2
+    # Each county lists the crossing patch, so summing their counts would say 3.
+    assert "patches" not in sum_county_summaries([county("12001", "Alachua", 1.0, 2.0, 0.5)])
+
+
+def _patches(rows) -> pd.DataFrame:
+    """County ``establishment_patches.csv`` rows as ``stitch`` reads them."""
+    tm_id, mode, county_pixels = zip(*rows)
+    return pd.DataFrame({"county_fips": "12003", "patch_id": range(1, len(rows) + 1),
+                         "donor_tm_id": pd.array(tm_id, dtype="string"),
+                         "establishment_mode": pd.array(mode, dtype="string"),
+                         "county_pixels": county_pixels})
+
+
+TREES_CSV = ("TM_ID,PLT_CN,STATUSCD,TPA_UNADJ,SPCD,DIA,HT,CR\n"
+             "55,1234567890123456789,1,60.0,111,10.0,70.0,40\n"
+             "66,1234567890123456700,2,6.0,111,9.0,60.0,0\n"
+             "77,1234567890123456711,1,30.0,611,8.0,50.0,30\n")
+
+
+def test_stitching_no_resolved_patch_writes_an_empty_list_and_a_summary(tmp_path, monkeypatch):
+    (tmp_path / "trees.csv").write_text(TREES_CSV)
+    monkeypatch.setattr(ci, "donor_forest_types", lambda vat, tm_ids: pd.Series(dtype=float))
+    result = stitch_establishment(_patches([(pd.NA, "scaled_young", 4)]),
+                                  Inputs(tree_table=tmp_path / "trees.csv"), tmp_path)
+    assert result["tree_list_rows"] == {}
+    assert result["live_effect"]["total"]["acres"] == 0.0
+    written = pd.read_csv(tmp_path / "establishment_tree_lists.csv")
+    assert written.empty
+    assert list(written.columns) == [*TREE_COLUMNS, "establishment_mode", "establishment_age",
+                                     "forest_type_group"]
+
+
+def test_the_stitch_records_donors_that_establish_nothing(tmp_path, monkeypatch):
+    (tmp_path / "trees.csv").write_text(TREES_CSV)
+    monkeypatch.setattr(ci, "donor_forest_types",
+                        lambda vat, tm_ids: pd.Series({"55": 142, "66": 142}))
+    patches = _patches([("55", "donor_as_is", 3), ("66", "scaled_young", 10), ("66", "scaled_young", 5)])
+    result = stitch_establishment(patches, Inputs(tree_table=tmp_path / "trees.csv"), tmp_path)
+    assert result["tree_list_rows"] == {"donor_as_is": 1}           # donor 77's rows never read
+    assert result["unestablished_donors"] == [
+        {"TM_ID": "66", "establishment_mode": "scaled_young", "acres": round(15 * PX, 1)}]

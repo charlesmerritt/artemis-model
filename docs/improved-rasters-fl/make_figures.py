@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -393,10 +394,13 @@ def ownership_table() -> dict:
 
 
 def copy_run_tables() -> None:
-    """The EVT gate's rejections and the stand-age table, as the run wrote them."""
+    """The EVT gate's rejections and the stand-age table, byte for byte as the run wrote them.
+
+    Not through ``pd.read_csv``: a blank (undated) ``stand_age`` makes the column float.
+    """
     for name in ("evt2022_gate_rejections.csv", "add_back_stand_age.csv"):
         if (AOI / name).exists():
-            pd.read_csv(AOI / name).to_csv(DATA / name, index=False)
+            shutil.copyfile(AOI / name, DATA / name)
 
 
 # ── chips: TreeMap, NWOS and NAIP around one place ──────────────────────────────────────

@@ -269,14 +269,38 @@ def read_id_csv(path: Path, id_columns=ID_COLUMNS, **kwargs) -> pd.DataFrame:
     so a CSV that already carries float-damaged IDs fails (or is repaired and logged) at
     the read, not silently three joins later.
     """
+    dtype, present = _pinned_dtype(path, id_columns, kwargs)
+    df = pd.read_csv(path, dtype=dtype, **kwargs)
+    return normalize_id_columns(df, [c for c in present if c in df.columns])
+
+
+def read_id_csv_rows(path: Path, column: str, keys, id_columns=ID_COLUMNS, *,
+                     chunksize: int = 1_000_000, **kwargs) -> pd.DataFrame:
+    """
+    :func:`read_id_csv`, keeping only the rows whose ``column`` is one of ``keys``.
+
+    Reads a chunk at a time, so memory holds one chunk and the matches, not the file: for
+    pulling a few hundred plots out of a multi-gigabyte table. Keys compare as exact ID
+    strings, after the same validation :func:`read_id_csv` applies.
+    """
+    dtype, present = _pinned_dtype(path, id_columns, kwargs)
+    wanted = set(as_id_series(pd.Series(list(keys), dtype=object), column=column))
+    parts = []
+    with pd.read_csv(path, dtype=dtype, chunksize=chunksize, **kwargs) as chunks:
+        for chunk in chunks:
+            chunk = normalize_id_columns(chunk, [c for c in present if c in chunk.columns])
+            parts.append(chunk[chunk[column].isin(wanted)])
+    return pd.concat(parts, ignore_index=True)
+
+
+def _pinned_dtype(path: Path, id_columns, kwargs: dict) -> tuple[dict, list[str]]:
+    """The read's ``dtype`` with every present ID column pinned to text; pops ``kwargs["dtype"]``."""
     dtype = dict(kwargs.pop("dtype", None) or {})
     header = pd.read_csv(path, nrows=0, **{k: v for k, v in kwargs.items() if k != "usecols"})
     present = [c for c in id_columns if c in header.columns]
     for column in present:
         dtype.setdefault(column, ID_DTYPE)
-
-    df = pd.read_csv(path, dtype=dtype, **kwargs)
-    return normalize_id_columns(df, [c for c in present if c in df.columns])
+    return dtype, present
 
 
 def report_key_overlap(left, right, *, left_name: str, right_name: str) -> tuple[int, int, int]:
