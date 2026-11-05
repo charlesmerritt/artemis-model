@@ -1,5 +1,7 @@
 """County-by-county improvement: the pure core, the grid reads, and the stitch."""
 
+import inspect
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -21,6 +23,7 @@ from pipeline.s1_initial_state.county_improvement import (
     gate_rejections,
     hansen_rule,
     improve_block,
+    improve_county,
     obata_rule,
     Inputs,
     required_pad,
@@ -177,15 +180,16 @@ def test_county_summary_counts_added_back_acres_by_mode_and_both_as_holes():
     assert s["hole_acres"] == pytest.approx(round(5 * PX, 1))   # 3 added back + 2 still unmapped
 
 
-def test_obata_rule_accepts_cuts_dated_2010_through_2022():
+def test_the_published_window_accepts_obata_cuts_dated_2010_through_2022():
     years = np.array([0, 2009, 2010, 2016, 2022, 2023])
-    assert obata_rule(years).tolist() == [False, False, True, True, True, False]
+    assert obata_rule(years, DisturbanceWindow.PUBLISHED).tolist() == [False, False, True, True, True, False]
 
 
-def test_hansen_rule_needs_loss_2001_2022_on_ground_that_was_30pct_canopy():
+def test_the_published_window_needs_hansen_loss_2001_2022_on_ground_that_was_30pct_canopy():
     lossyear = np.array([0, 1, 22, 23, 10])
     cover = np.array([90, 90, 30, 90, 29])
-    assert hansen_rule(lossyear, cover).tolist() == [False, True, True, False, False]
+    assert hansen_rule(lossyear, cover, DisturbanceWindow.PUBLISHED).tolist() == \
+        [False, True, True, False, False]
 
 
 def _write(path, values, transform, nodata, crs="EPSG:5070"):
@@ -370,10 +374,50 @@ def test_the_2012_window_drops_obata_cuts_and_hansen_loss_before_2012():
         [False, True, True, False]
 
 
-def test_the_default_window_is_the_published_2010_window():
+def test_the_published_window_is_obata_from_2010_and_hansen_from_2001():
     assert DisturbanceWindow.PUBLISHED.obata_years == (2010, 2022)
     assert DisturbanceWindow.PUBLISHED.hansen_lossyear == (1, 22)
     assert DisturbanceWindow("2012_2022").hansen_lossyear == (12, 22)
+
+
+def test_the_detector_rules_default_to_the_2012_window():
+    assert obata_rule(np.array([2011, 2012])).tolist() == [False, True]
+    assert hansen_rule(np.array([11, 12]), np.full(2, 90)).tolist() == [False, True]
+
+
+def test_improve_county_defaults_to_the_v4_decision():
+    defaults = {k: p.default for k, p in inspect.signature(improve_county).parameters.items()}
+    assert defaults["rule"] is ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN
+    assert defaults["evt_gate"] is EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4
+    assert defaults["window"] is DisturbanceWindow.Y2012_2022
+
+
+def test_the_cli_runs_the_v4_decision_by_default(tmp_path, monkeypatch):
+    seen = {}
+
+    def improve(fips, inputs, out_root, **kw):
+        seen.update(kw)
+        return {"county": "Alachua", "hole_acres": 0, "added_back_acres": 0,
+                "published_forest_acres": 0, "improved_forest_acres": 0,
+                "added_back_acres_by_mode": {"scaled_young": 0}}
+
+    monkeypatch.setattr(ci, "improve_county", improve)
+    monkeypatch.setattr(ci, "stitch", lambda *a, **k: {})
+    monkeypatch.setattr(sys, "argv", ["county_improvement", "--counties", "12001", "--out-root",
+                                      str(tmp_path), "--obata-tif", "o.tif", "--hansen-tif", "h.tif"])
+    ci.main()
+    assert seen["rule"] is ConsensusRule.BOOKENDS_OR_OBATA_AND_HANSEN
+    assert seen["evt_gate"] is EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4
+    assert seen["window"] is DisturbanceWindow.Y2012_2022
+
+
+def test_the_v4_rule_refuses_a_run_without_both_detectors_before_reading_anything(tmp_path):
+    # The county layer does not exist: reading it first would fail some other way.
+    inputs = Inputs(counties=tmp_path / "missing.shp", obata=tmp_path / "lastDist.tif")
+    with pytest.raises(ValueError, match="hansen_loss"):
+        improve_county("12001", inputs, tmp_path)
+    with pytest.raises(ValueError, match="obata_disturbance"):
+        improve_county("12001", Inputs(counties=tmp_path / "missing.shp"), tmp_path)
 
 
 def test_patch_rejections_and_the_window_sum_into_the_aoi_total():

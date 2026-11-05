@@ -13,11 +13,12 @@ and the minimum patch area. Analysis and the v2 decision: ``docs/evt2022-add-bac
   blocked too.
 - ``AGRICULTURE_DEVELOPED_PASTURE_V3``: v2, and Eastern Warm Temperate Pasture and Hayland
   (7997) blocked too: Hansen and Obata add back FL5 hay fields LANDFIRE files there. Some
-  planted pine LANDFIRE mislabels as 7997 goes with them. The adopted gate.
+  planted pine LANDFIRE mislabels as 7997 goes with them.
 - ``AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4``: v3's pixels, and a patch veto: an accepted
   patch (8-connected, after the minimum patch area) that contains or 8-touches Quarries-Strip
   Mines-Gravel Pits (7295) is rejected whole. Reconstructed from the published v4 rasters,
   whose code was lost: the rule separates all 15 rejected FL5 patches from all accepted ones.
+  The adopted gate (``DEFAULT_EVT_GATE``).
 
 Codes the legend does not list, and nodata, fail closed under every gate but ``NONE``.
 """
@@ -71,3 +72,6 @@ def eligibility(evt: np.ndarray, legend: pd.DataFrame, policy: EvtGatePolicy) ->
     if policy is EvtGatePolicy.NONE:
         return np.ones(evt.shape, dtype=bool)
     return np.isin(evt, policy.eligible_codes(legend))
+
+
+DEFAULT_EVT_GATE = EvtGatePolicy.AGRICULTURE_DEVELOPED_PASTURE_QUARRY_V4
