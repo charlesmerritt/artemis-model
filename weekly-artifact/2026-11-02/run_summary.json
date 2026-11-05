@@ -1,0 +1,155 @@
+{
+  "fvs_output_db": "/home/user/artemis-model/data/r2_cache/Artemis_project_fvs_copy/FVSOut.db",
+  "owner_crosswalk": "/home/user/artemis-model/data/r2_cache/forest_condition_2026/FVS/FVS_Database_Runs/20260804_095846_Hard_Ownership_Boundaries/Inputs/FVS_StandInit.csv",
+  "run": {
+    "run_title": [
+      "NoManagement_5countyFL_1"
+    ],
+    "variant": [
+      "SN"
+    ],
+    "mgmt_ids": [
+      "A002"
+    ],
+    "cases": 693,
+    "stands": 693,
+    "first_year": 1997,
+    "last_year": 2076,
+    "sampling_weight_acres": 3797722.0269
+  },
+  "reporting_years": [
+    2026,
+    2031,
+    2036,
+    2041,
+    2046,
+    2051,
+    2056,
+    2061,
+    2066,
+    2071,
+    2076
+  ],
+  "excluded_unbalanced_years": [
+    1997,
+    1999,
+    2000,
+    2001,
+    2002,
+    2003,
+    2004,
+    2005,
+    2006,
+    2007,
+    2008,
+    2009,
+    2010,
+    2011,
+    2012,
+    2013,
+    2014,
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "age_classes": {
+    "width": 10,
+    "max": 140,
+    "unknown_age_is_class_zero": false
+  },
+  "tables": {
+    "age_class_overall": {
+      "rows": 135,
+      "weight_basis": [
+        "sampling_weight"
+      ],
+      "acres_first_year": 3797722.0268999995
+    },
+    "age_class_by_forest_type": {
+      "rows": 381,
+      "weight_basis": [
+        "sampling_weight"
+      ],
+      "acres_first_year": 3797722.0269000004
+    },
+    "age_class_by_forest_type_detail": {
+      "rows": 941,
+      "weight_basis": [
+        "sampling_weight"
+      ],
+      "acres_first_year": 3797722.0269
+    },
+    "age_class_by_state": {
+      "rows": 1066,
+      "weight_basis": [
+        "sampling_weight"
+      ],
+      "acres_first_year": 3797722.0268999995
+    },
+    "age_class_by_county": {
+      "rows": 5477,
+      "weight_basis": [
+        "sampling_weight"
+      ],
+      "acres_first_year": 3797722.0269
+    },
+    "mean_age_by_forest_type": {
+      "rows": 33,
+      "weight_basis": [
+        "sampling_weight"
+      ],
+      "acres_first_year": 3797722.0269
+    },
+    "age_class_by_owner": {
+      "rows": 1165,
+      "weight_basis": [
+        "owner_acres"
+      ],
+      "acres_first_year": 1052305.900556058
+    },
+    "age_class_by_owner_forest_type": {
+      "rows": 2761,
+      "weight_basis": [
+        "owner_acres"
+      ],
+      "acres_first_year": 1052305.9005560577
+    },
+    "age_class_by_management_type": {
+      "rows": 1076,
+      "weight_basis": [
+        "owner_acres"
+      ],
+      "acres_first_year": 1052305.9005560577
+    },
+    "mean_age_by_owner": {
+      "rows": 99,
+      "weight_basis": [
+        "owner_acres"
+      ],
+      "acres_first_year": 1052305.900556058
+    }
+  },
+  "owner_coverage": {
+    "cases_total": 693,
+    "cases_attributed": 375,
+    "owner_acres": 1052305.900556058,
+    "owner_classes": [
+      "Corporate",
+      "County",
+      "Federal",
+      "NGO",
+      "Other",
+      "Private",
+      "State",
+      "Unknown"
+    ]
+  }
+}
