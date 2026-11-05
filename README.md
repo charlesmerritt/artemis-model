@@ -71,7 +71,7 @@ workbook. The rest is provenance; [`data/index.md`](data/index.md) catalogs all 
 # Policy, printed from config
 uv run python -m pipeline.spatial_ref                      # the CRS and its confusables
 uv run python -m pipeline.s3_management.owner_classes       # owner classes -> TPO groups
-uv run python -m pipeline.s3_management.regime_assignment   # default + eligible menu per owner
+uv run python -m pipeline.s3_management.regime_assignment   # default + regime library per owner
 uv run python -m pipeline.s4_fvs.fallback_treelists         # fallback tree lists and their donors
 
 # Management units, then sliver resolution (see --help on each)

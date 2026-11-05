@@ -1,6 +1,6 @@
 # How each ownership class is managed
 
-The regime menus, per owner class, as configured in
+The regime library, per owner class, as configured in
 [`config/management_regimes.yaml`](../config/management_regimes.yaml) and
 [`config/ownership_policy.yaml`](../config/ownership_policy.yaml).
 
@@ -15,7 +15,7 @@ Reading the tables:
 - **Roles.** *Always available* is `no_management`, eligible for every owner class
   everywhere (any owner may decline to harvest). *Default* is what
   `pipeline/s3_management/regime_assignment.py` assigns deterministically today.
-  *Optimizer option* below is the pre-2026-10-08 menu. Since then every class may take
+  *Optimizer option* below is the pre-2026-10-08 library. Since then every class may take
   every cutting prescription its forest type admits (`config/management_regimes.yaml`).
 - **Entry years.** `+N` is an offset from the 2022 inventory year, snapped up to a
   5-year cycle boundary. `age N` is a target stand age; entry lands
@@ -81,7 +81,7 @@ to prevent. Falls back to +30 when the stand has no age.
 ## Tribal forest (Harris 5)
 
 Placeholder policy, not a finding: pilot-scale tribal area is below the 500-event floor,
-so the class uses the conservative public menu rather than a class-specific estimate.
+so the class uses the conservative public regimes rather than a class-specific estimate.
 
 **Pine (FORTYPCD 140–179) and hardwood / other (500–998, plus 400–499 and unknown)**
 
@@ -113,7 +113,7 @@ The regime is the mechanical thinning only.
 
 State forests carry an active timber program alongside conservation objectives, so pine
 defaults to the density-reduction thinning rather than light selection, and a sawtimber
-rotation stays on the menu.
+rotation stays in the library.
 
 **Pine (FORTYPCD 140–179)**
 
@@ -148,7 +148,7 @@ in to light selection or a density-reduction thin where a county does manage its
 
 ## Unknown forest (Harris 0)
 
-Not an owner type — missing information. Deliberately minimal menu: with no owner known,
+Not an owner type — missing information. Deliberately minimal library: with no owner known,
 letting the scheduler place a rotation clearcut here would be inventing behaviour to hit
 a volume target. The shortfall lands on known private units instead, where it is
 attributable. Every unit here carries the `unknown_ownership` flag.

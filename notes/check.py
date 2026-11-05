@@ -28,14 +28,14 @@ class Evidence(Enum):
 
 
 def check_policy() -> None:
-    """Exercise configured menus, defaults and geometric exclusions without input data."""
+    """Exercise the configured regime library, defaults and geometric exclusions without input data."""
     config = regime_assignment.load_regimes_config()
     ownership = owner_classes.load_ownership_policy()
     regime_assignment.main()
     for owner, spec in config["owner_classes"].items():
         for branch in ("pine", "hardwood", "other"):
-            menu = regime_assignment.eligible_prescriptions(owner, branch, config)
-            if "no_management" not in menu or spec["default"][branch] not in menu:
+            regimes = regime_assignment.eligible_prescriptions(owner, branch, config)
+            if "no_management" not in regimes or spec["default"][branch] not in regimes:
                 raise ValueError(f"{owner}/{branch}: missing unmanaged choice or ineligible default")
     override = config["overrides"]["riparian"]
     for spec in ownership["classes"].values():

@@ -1,7 +1,7 @@
 """
 The trajectory library: every stand's eligible options, rendered to FVS keyfiles and run.
 
-A stand's options are its owner class's eligible menu (`config/management_regimes.yaml`),
+A stand's options are its owner class's regime library (`config/management_regimes.yaml`),
 filtered by forest type, each at every timing offset (Diaz et al.'s delayed starts). Riparian
 stands get only ``no_management``. Each option renders to one single-stand keyfile; options
 whose keyfile text is identical share one FVS run (``run_hash``), so stands on the same donor
@@ -11,9 +11,9 @@ library frame are what `pipeline.s3_management.annealer.Landscape` reads.
 
 Promoted from `experiments/2026-10-08_permissive-menus` (`menus.py`, `01_fvs_library.py`,
 `fvs_runner.py`) and two helpers of `weekly-artifact/2026-09-14/make_timing_library.py`
-(`stand_sdi_tables`, `merge_harvest_year_rows`). :data:`OPEN_MENU` is that sweep's
-`repeat_offsets_25` variant, the one the FL5 open-menu deck and the 2026-10-19 LETO-stand
-schedule ran. The sweep's pre-2026-10-08 baseline menu stays with the experiment.
+(`stand_sdi_tables`, `merge_harvest_year_rows`). :data:`OPEN_LIBRARY` is that sweep's
+`repeat_offsets_25` variant, the one the FL5 deck (`deck/fl5-open-menus`) and the 2026-10-19
+LETO-stand schedule ran. The sweep's pre-2026-10-08 baseline library stays with the experiment.
 """
 
 from __future__ import annotations
@@ -78,14 +78,14 @@ class ForestTypeRule(Enum):
 
 
 @dataclasses.dataclass(frozen=True)
-class MenuPolicy:
+class LibraryPolicy:
     rotations: RotationMode
     forest_types: ForestTypeRule
     offsets: tuple[int, ...]
     exclude: tuple[str, ...] = ()
 
 
-OPEN_MENU = MenuPolicy(RotationMode.REPEAT, ForestTypeRule.FILTER, OFFSETS_0_25)
+OPEN_LIBRARY = LibraryPolicy(RotationMode.REPEAT, ForestTypeRule.FILTER, OFFSETS_0_25)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -99,11 +99,11 @@ PLOT_TABLES = FvsTables("FVS_StandInit_Plot", "FVS_TreeInit_Plot")   # FIA per-p
 LETO_TABLES = FvsTables("FVS_StandInit", "FVS_TreeInit")             # `leto_database`
 
 
-def menu_for(policy: MenuPolicy, config: dict, owner_class: str, branch: str) -> list[str]:
+def regimes_for(policy: LibraryPolicy, config: dict, owner_class: str, branch: str) -> list[str]:
     """The prescriptions a managed stand of this owner and forest branch may take."""
     branch_arg = branch if policy.forest_types is ForestTypeRule.FILTER else None
-    menu = eligible_prescriptions(owner_class, branch_arg, config=config)
-    return [p for p in menu if p not in policy.exclude]
+    regimes = eligible_prescriptions(owner_class, branch_arg, config=config)
+    return [p for p in regimes if p not in policy.exclude]
 
 
 # --------------------------------------------------------------------------------------
@@ -258,7 +258,7 @@ def stand_sdi_tables(trees: pd.DataFrame) -> dict[str, dict[str, float]]:
     return out
 
 
-def enumerate_library(policy: MenuPolicy, stands: pd.DataFrame, sdi: dict,
+def enumerate_library(policy: LibraryPolicy, stands: pd.DataFrame, sdi: dict,
                       keyfiles: dict[str, str], *, config: dict | None = None,
                       tables: FvsTables = PLOT_TABLES, entry_cache: dict | None = None
                       ) -> pd.DataFrame:
@@ -301,9 +301,9 @@ def enumerate_library(policy: MenuPolicy, stands: pd.DataFrame, sdi: dict,
 
     rows = []
     for s in stands.itertuples(index=False):
-        menu = (["no_management"] if s.unit_class == "riparian"
-                else menu_for(policy, config, s.owner_class, s.forest_branch))
-        for prescription in menu:
+        regimes = (["no_management"] if s.unit_class == "riparian"
+                   else regimes_for(policy, config, s.owner_class, s.forest_branch))
+        for prescription in regimes:
             for label, h in runs_for(s.PLT_CN, prescription):
                 rows.append({"unit_id": s.unit_id, "PLT_CN": s.PLT_CN, "prescription": label,
                              "base_prescription": prescription, "run_hash": h})

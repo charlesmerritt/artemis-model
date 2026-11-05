@@ -1,8 +1,8 @@
 """Every owner class may run short and long clearcut rotations and a thin (2026-10-08).
 
-The menu is deliberately permissive: owner class no longer restricts which silvicultural
-system a stand may take, only which one it takes by default. Forest type still filters
-the menu, so a hardwood stand is never offered a planted-pine rotation.
+The regime library is deliberately permissive: owner class no longer restricts which
+silvicultural system a stand may take, only which one it takes by default. Forest type
+still filters the library, so a hardwood stand is never offered a planted-pine rotation.
 """
 
 import pytest

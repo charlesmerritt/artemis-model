@@ -14,17 +14,17 @@ Guiding references: docs/references/README.md  (LAMPS; Climate-FVS)
                                   │
                                   ▼
    ┌───────────────────────────────────────────────────────────────┐
-   │              OWNERSHIP CLASS DEFINES THE MENU                  │
+   │           OWNERSHIP CLASS DEFINES THE REGIME LIBRARY          │
    │                                                               │
    │  Each stand's ownership class (Harris et al. 2025) selects a  │
    │  set of ELIGIBLE prescriptions -- not a single regime.        │
    │  config/management_regimes.yaml is authoritative.             │
    │                                                               │
-   │  Print every owner class's default and eligible menu:         │
+   │  Print every owner class's default and regime library:        │
    │    uv run python -m pipeline.s3_management.regime_assignment  │
-   │  no_management is in every menu (a stand may always decline). │
+   │  no_management is always in the library (may always decline). │
    │  Federal, local, tribal, unknown: no stand-replacing harvest; │
-   │  tribal and unknown menus are conservative placeholders.      │
+   │  tribal and unknown libraries are conservative placeholders.  │
    │                                                               │
    │  Absolutes are structural, never priced:                      │
    │    riparian (BMP geometry) -> {no_management} ONLY            │

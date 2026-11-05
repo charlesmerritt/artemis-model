@@ -67,7 +67,7 @@ What set a pixel's stand age: a detector's cut year, or its bookend stratum's me
 **Prescription**:
 A named silvicultural pattern, meaning the ordered harvest entries and their intensities,
 that a management unit may be assigned.
-_Avoid_: Regime, treatment, scenario
+_Avoid_: Regime (except in *regime library*), treatment, scenario
 
 **Rotation age**:
 The stand age at which a prescription takes its regeneration harvest. Pine cuts at 25 or 40,
@@ -82,9 +82,9 @@ _Avoid_: Pre-commercial thin, retention harvest (neither is modelled)
 A harvest entry that removes the stand and restarts it at age 0 from an imputed tree list.
 _Avoid_: Clearcut (same thing; use it in prose, not as a config name)
 
-**Menu**:
-The prescriptions an owner class may choose among. `no_management` is always on it.
-_Avoid_: Eligible set, library (the trajectory library is the FVS output, not the choices)
+**Regime library**:
+The prescriptions an owner class may choose among. `no_management` is always in it.
+_Avoid_: Menu, eligible set, library (unqualified; the trajectory library is FVS output)
 
 **Offset**:
 Whole years by which a prescription's first entry is delayed, carrying every later entry with

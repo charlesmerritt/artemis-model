@@ -115,7 +115,7 @@ def build_thins(
     """Resolve eligible operations; warnings identify deferral, clipping or exclusion.
 
     Missing age raises MissingStandAgeError, never a legacy age-free harvest schedule.
-    ``cuts(name)`` describes the library menu, not this stand's resolved eligibility.
+    ``cuts(name)`` describes the regime library, not this stand's resolved eligibility.
     """
     thins, notes = _resolve_thins(
         name, inv_year, library, stand_age, harvest_eligibility, cycle_years, horizon_years,
@@ -185,5 +185,5 @@ def render_keyfile(
 
 
 def cuts(name: str, library: dict | None = None) -> bool:
-    """Menu metadata only; build_thins resolves whether this stand actually has entries."""
+    """Library metadata only; build_thins resolves whether this stand actually has entries."""
     return bool(get_regime(name, library)["cuts"])

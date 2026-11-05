@@ -526,7 +526,7 @@ def default_prescriptions(stands: pd.DataFrame) -> dict[str, str]:
     `OWN_CODE` for `classify_owner` and `FORTYPCD` for `forest_type_branch`, not the
     already-resolved `owner_class` / `forest_branch` strings. Passing the resolved names
     is silently accepted and degrades every stand to the `unknown` owner and the `other`
-    forest branch, which is a different (and much smaller) default menu.
+    forest branch, which is a different (and much smaller) regime library.
     """
     out, mismatched = {}, 0
     for row in stands.itertuples(index=False):
@@ -570,7 +570,7 @@ def default_variant(base: str, options: list[str]) -> str | None:
     the baseline a free choice of timing would make it a different algorithm and the
     week-on-week comparison meaningless.
 
-    Returns `None` when this stand's menu does not contain that variant at all — which
+    Returns `None` when this stand's options do not contain that variant at all — which
     happens when the deterministic timing collapses to no entry inside the horizon.
     """
     if base in options:            # no_management carries no timing variants
@@ -888,7 +888,7 @@ def evenflow_cost(viol: pd.DataFrame) -> float:
     This is the objective's weight-6 term, and the one number that is **exactly** comparable
     between two different libraries. The total objective is not, quite: its second term
     (`standing_volume`, weight 1) is normalised by `sum(max(standing))` — the landscape's own
-    attainable maximum — which a larger menu can raise, so the same plan can score a slightly
+    attainable maximum — which a larger library can raise, so the same plan can score a slightly
     different total under two libraries. The effect is bounded by the standing weight (1.0 in
     absolute objective units, against totals of order 100), but it is a real difference in the
     denominator rather than in the plan, and it is why the comparison reports this term beside

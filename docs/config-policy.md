@@ -8,7 +8,7 @@ assumption rather than a measurement.
 |---|---|---|
 | [`config/projection.yaml`](../config/projection.yaml) `spatial` | The coordinate reference system and snap grid, for everything | `pipeline/spatial_ref.py` |
 | [`config/ownership_policy.yaml`](../config/ownership_policy.yaml) | Who owns each unit, and which TPO volume budget it charges against | `pipeline/s3_management/owner_classes.py` |
-| [`config/management_regimes.yaml`](../config/management_regimes.yaml) | The prescription library, and the eligible menu per owner class (the same permissive menu for every class since 2026-10-08) | `pipeline/s3_management/regime_assignment.py` |
+| [`config/management_regimes.yaml`](../config/management_regimes.yaml) | The regime library, and each owner class's default and eligible prescriptions (the whole library, for every class, since 2026-10-08) | `pipeline/s3_management/regime_assignment.py` |
 | [`config/fallback_treelists.yaml`](../config/fallback_treelists.yaml) | What a stand is initialized from when it has no tree list of its own | `pipeline/s4_fvs/fallback_treelists.py` |
 
 They interlock: ownership picks the owner class, the owner class picks the prescription,
@@ -21,7 +21,7 @@ in [`docs/ownership-regimes.md`](ownership-regimes.md).
 Harris ownership raster ───► owner class ─► default prescription ─► FVS keyfile
                                   │              │
                                   │              └─► regen slot ─┐
-                                  └─► eligible menu              ├─► fixed tree list
+                                  └─► regime library             ├─► fixed tree list
                                        (scheduler chooses)       │      (pinned PLT_CN)
 TreeMap hole / no live trees ────────────────────────────────────┘
 ```
@@ -127,28 +127,28 @@ any value outside 0–8, and on a row whose `OWN_TYPE` is not the Harris label f
 the signature of a table coded from something other than the raster.
 
 Harris's corporate class includes not-for-profit organizations and institutions, so all
-corporate forest shares one menu. Tribal maps to the Private TPO group to match FIA's owner
+corporate forest shares one regime library. Tribal maps to the Private TPO group to match FIA's owner
 grouping (OWNGRPCD 40).
 
 ---
 
 ## 2. Management regimes
 
-### Library versus menu
+### Library versus policy
 
 The file separates two things that are easy to conflate:
 
-- **`prescriptions`** — the library. Nine distinct prescriptions, each renderable through
+- **`prescriptions`** — the regime library. Nine distinct prescriptions, each renderable through
   the verified `ThinDBH` templates in `pipeline/s4_fvs/regime_templates.py`. Library size is
   the cost driver: the FVS trajectory library is keyed by
   `(plot_id, prescription, site_index_bin)`, so 9 prescriptions × 3 SI bins × 693 pilot
   plots bounds the pilot at 18,711 runs, before timing offsets. Every addition multiplies that, and the config
   carries the arithmetic so it cannot drift.
-- **`owner_classes`** — the policy. One default per forest-type branch, and an eligible
-  menu that since 2026-10-08 is the same for every class: owner class sets the default and
-  the TPO owner group; the scheduler decides the rest.
+- **`owner_classes`** — the policy. One default per forest-type branch, and an `eligible`
+  list that since 2026-10-08 is the whole library for every class: owner class sets the
+  default and the TPO owner group; the scheduler decides the rest.
 
-The default is what gets assigned deterministically today. The eligible menu is what the
+The default is what gets assigned deterministically today. The regime library is what the
 landscape scheduler will choose among once the trajectory library exists — declaring it
 now means the library is generated for the right set from the start.
 
@@ -169,7 +169,7 @@ now means the library is generated for the right set from the start.
 `no_management` is universally eligible — declining to harvest is always a legal choice —
 and for riparian units it is the only one.
 
-### The menus
+### The defaults
 
 | Owner class | Default (pine / hardwood) |
 |---|---|
