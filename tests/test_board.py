@@ -1,4 +1,4 @@
-"""tools/board and its Claude Code hooks, run against a fake ``gh`` that keeps the issue's
+"""tools/board, run against a fake ``gh`` that keeps the issue's
 comments in a JSON file."""
 
 from __future__ import annotations
@@ -55,14 +55,8 @@ class Board:
     state: Path
 
     def run(self, *args: str, stdin: str | None = None, env: dict[str, str] | None = None):
-        return self._exec([self.clone / "tools" / "board", *args], stdin, env)
-
-    def hook(self, name: str, env: dict[str, str] | None = None):
-        return self._exec([self.clone / ".claude" / "hooks" / name], None, env)
-
-    def _exec(self, argv, stdin, env):
         return subprocess.run(
-            [str(a) for a in argv], cwd=self.clone, env={**self.env, **(env or {})},
+            [self.clone / "tools" / "board", *args], cwd=self.clone, env={**self.env, **(env or {})},
             input=stdin, capture_output=True, text=True, timeout=30,
         )
 
@@ -93,9 +87,6 @@ def board(tmp_path: Path) -> Board:
     clone = tmp_path / "clone"
     (clone / "tools").mkdir(parents=True)
     shutil.copy(REPO_ROOT / "tools" / "board", clone / "tools" / "board")
-    (clone / ".claude" / "hooks").mkdir(parents=True)
-    for hook in (REPO_ROOT / ".claude" / "hooks").glob("board-*.sh"):
-        shutil.copy(hook, clone / ".claude" / "hooks" / hook.name)
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -113,7 +104,6 @@ def board(tmp_path: Path) -> Board:
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "FAKE_GH_STATE": str(state),
         "BOARD_REPO": "charlesmerritt/artemis-model",
-        "CLAUDE_PROJECT_DIR": str(clone),
     }
     return Board(clone, env, state)
 
@@ -197,32 +187,3 @@ def test_wait_ignores_own_posts_and_wakes_on_another_agents(board):
     woke = board.run("wait", "--interval", "1", "--timeout", "5")
     assert woke.returncode == 0
     assert "MENTION" in woke.stdout
-
-
-def test_session_start_hook_shows_unread_posts_and_asks_for_a_background_wait(board):
-    board.add("[Charles's Claude · r2-tidy] hello")
-    started = board.hook("board-session-start.sh")
-    assert started.returncode == 0
-    assert BRANCH in started.stdout
-    assert "[Charles's Claude · r2-tidy] hello" in started.stdout
-    assert "run_in_background" in started.stdout
-
-
-def test_session_start_hook_skips_the_wait_when_opted_out(board):
-    started = board.hook("board-session-start.sh", env={"BOARD_WAIT": "off"})
-    assert started.returncode == 0
-    assert "run_in_background" not in started.stdout
-
-
-def test_session_start_hook_survives_an_unreachable_board(board):
-    started = board.hook("board-session-start.sh", env={"FAKE_GH_STATE": "/nonexistent"})
-    assert started.returncode == 0
-    assert "unavailable" in started.stdout
-    assert "run_in_background" not in started.stdout
-
-
-def test_prompt_hook_is_silent_until_a_post_arrives(board):
-    assert board.hook("board-prompt.sh").stdout == ""
-    board.add("[Charles's Claude · r2-tidy] hello")
-    assert "[Charles's Claude · r2-tidy] hello" in board.hook("board-prompt.sh").stdout
-    assert board.hook("board-prompt.sh").stdout == ""
