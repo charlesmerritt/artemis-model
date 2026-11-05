@@ -22,6 +22,7 @@ from pipeline.s1_initial_state.county_improvement import (
     hansen_rule,
     improve_block,
     improve_county,
+    landuse_eligibility,
     obata_rule,
     Inputs,
     required_pad,
@@ -34,7 +35,9 @@ from pipeline.s1_initial_state.county_improvement import (
 )
 from pipeline.s1_initial_state.evt_gate import EvtGatePolicy
 from pipeline.s1_initial_state.impute_establishment import EstablishmentMode as M
+from pipeline.s1_initial_state.landuse_prototype_gate import LandUse, PrototypeGate
 from pipeline.s1_initial_state.ownership_repair import OwnershipProvenance as OP
+from pipeline.spatial_ref import project_crs
 
 MODES = {1: M.SCALED_YOUNG, 2: M.DONOR_AS_IS, 3: M.SCALED_YOUNG, 4: M.SCALED_YOUNG}
 
@@ -477,3 +480,84 @@ def test_a_patch_cut_off_by_the_grid_edge_grows_the_padding_past_the_margin():
 def test_a_patch_at_the_grid_edge_that_never_reaches_the_county_is_ignored():
     patches, inside = _county_and_patches([(0, 0), (0, 1)])
     assert required_pad(patches, inside, pad=3, margin=2) == 3
+
+
+def _landuse_gate(tmp_path, trailing, transform, years=3):
+    """A saved prototype gate of ``years`` and its two-band raster beside it."""
+    path = tmp_path / "landuse_gate.json"
+    PrototypeGate({LandUse.MATURE_FOREST: np.ones((1, 64))}, years).save(path)
+    trailing = np.asarray(trailing, dtype=np.uint8)
+    with rasterio.open(path.with_suffix(".tif"), "w", driver="GTiff", height=trailing.shape[0],
+                       width=trailing.shape[1], count=2, dtype="uint8", crs=project_crs(),
+                       transform=transform) as dst:
+        dst.write(np.stack([trailing, np.ones_like(trailing)]))
+    return path
+
+
+def test_the_landuse_gate_passes_pixels_non_forest_for_fewer_than_its_fitted_years(tmp_path):
+    t = Affine(30, 0, 0, 0, -30, 30)
+    gate = _landuse_gate(tmp_path, [[0, 2, 3, 6]], t, years=3)
+    inside = np.ones((1, 4), dtype=bool)
+    assert landuse_eligibility(gate, Grid(t, (1, 4)), inside)[0].tolist() == [True, True, False, False]
+
+
+def test_the_landuse_gate_passes_padding_past_its_raster_but_refuses_a_county_pixel_there(tmp_path):
+    gate = _landuse_gate(tmp_path, [[6, 6]], Affine(30, 0, 0, 0, -30, 30))
+    grid = Grid(Affine(30, 0, 30, 0, -30, 30), (1, 2))       # one pixel past the raster's east edge
+    padding_past = np.array([[True, False]])
+    assert landuse_eligibility(gate, grid, padding_past)[0].tolist() == [False, True]
+    with pytest.raises(ValueError, match="does not cover"):
+        landuse_eligibility(gate, grid, np.ones((1, 2), dtype=bool))
+
+
+def test_county_summary_counts_landuse_rejections_apart_from_the_evt_gate():
+    # Pixel 3 fails EVT; pixel 2 passes EVT and fails the land-use gate.
+    evt_ok = np.array([[1, 1, 1, 0, 1]], dtype=bool)
+    landuse_ok = np.array([[1, 1, 0, 1, 1]], dtype=bool)
+    r = block([[7, 0, 0, 0, 7]], bookends=[[0, 1, 1, 0, 0]], obata=[[0, 0, 1, 1, 0]],
+              eligible=evt_ok & landuse_ok)
+    shape = r.provenance.shape
+    s = county_summary("12003", r, np.zeros(shape, dtype=np.uint8), np.ones(shape, dtype=bool),
+                       (slice(None), slice(None)), np.zeros(shape, dtype=bool), ConsensusRule.UNION,
+                       0.0, "all_forest", 63, pd.DataFrame(r.assignments.assign(county_pixels=1)),
+                       evt_gate=EvtGatePolicy.AGRICULTURE_V1,
+                       landuse_rejected=r.gate_rejected & evt_ok, landuse_years=3)
+    assert s["evt_gate"]["rejected_acres"] == round(PX, 1)
+    assert s["landuse_gate"] == {"years": 3, "rejected_acres": round(PX, 1)}
+
+
+def test_county_summary_without_a_landuse_gate_records_none():
+    r = block([[7, 0, 7]], bookends=[[0, 1, 0]])
+    shape = r.provenance.shape
+    s = county_summary("12003", r, np.zeros(shape, dtype=np.uint8), np.ones(shape, dtype=bool),
+                       (slice(None), slice(None)), np.zeros(shape, dtype=bool), ConsensusRule.UNION,
+                       0.0, "all_forest", 63, pd.DataFrame(r.assignments.assign(county_pixels=1)),
+                       evt_gate=EvtGatePolicy.AGRICULTURE_V1)
+    assert s["landuse_gate"] == {"years": None, "rejected_acres": 0.0}
+
+
+def test_landuse_gate_rejections_sum_over_counties_and_old_summaries_count_as_ungated():
+    a, b = county("12001", "Alachua", 1.0, 2.0, 0.5), county("12003", "Baker", 2.0, 3.0, 1.0)
+    a["landuse_gate"] = {"years": 3, "rejected_acres": 1.04}
+    b["landuse_gate"] = {"years": 3, "rejected_acres": 2.03}
+    assert sum_county_summaries([a, b])["landuse_gate"] == {"years": 3, "rejected_acres": 3.1}
+    old = county("12007", "Bradford", 1.0, 1.0, 1.0)
+    assert sum_county_summaries([old])["landuse_gate"] == {"years": None, "rejected_acres": 0.0}
+
+
+def test_the_cli_hands_the_landuse_gate_to_the_run_and_leaves_it_off_by_default(tmp_path, monkeypatch):
+    seen = []
+
+    def improve(fips, inputs, out_root, **kw):
+        seen.append(inputs.landuse_gate)
+        return {"county": "Alachua", "hole_acres": 0, "added_back_acres": 0,
+                "published_forest_acres": 0, "improved_forest_acres": 0,
+                "added_back_acres_by_mode": {"scaled_young": 0}}
+
+    monkeypatch.setattr(ci, "improve_county", improve)
+    monkeypatch.setattr(ci, "stitch", lambda *a, **k: {})
+    argv = ["county_improvement", "--counties", "12001", "--out-root", str(tmp_path)]
+    for extra in ([], ["--landuse-gate", "gate.json"]):
+        monkeypatch.setattr(sys, "argv", argv + extra)
+        ci.main()
+    assert seen == [None, Path("gate.json")]

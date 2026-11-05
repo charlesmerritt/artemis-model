@@ -24,7 +24,10 @@ Per county:
    then rejects whole patches. ``--disturbance-window`` sets the years Obata and Hansen cuts
    must fall in. The defaults are the v4 decision: bookends, or Obata and Hansen together;
    v3's classes plus the quarry patch veto; 2012-2022 for both detectors. That rule needs
-   both detectors' rasters, and a run without them stops before reading anything.
+   both detectors' rasters, and a run without them stops before reading anything. With
+   ``--landuse-gate`` the land-use prototype gate (:mod:`landuse_prototype_gate`, off by
+   default) also strips pixels whose AlphaEarth embedding has looked non-forest for its
+   fitted run of trailing years; a pixel both gates reject counts as an EVT rejection.
 5. **Vegetation.** Each accepted patch takes the modal TreeMap plot (``TM_ID``) in the
    nearest ring that has any (:func:`impute_establishment.donor_assignments`). Its
    bookend stratum sets the establishment mode (``config/establishment.yaml``): a cut
@@ -38,7 +41,8 @@ Outputs, one folder per county under ``/mnt/d/improved-rasters/counties/<fips>_<
 ``treemap2022_{published,improved,provenance}.tif``,
 ``nwos2022_{published,improved,provenance}.tif``, ``add_back_method_bits.tif`` (after the
 gate) and ``add_back_method_bits_raw.tif`` (before it), ``evt2022_add_back_eligible.tif``,
-``evt2022_gate_rejected.tif``, ``evt2022_gate_rejections.csv``, ``bookend_strata.tif``,
+``evt2022_gate_rejected.tif``, ``landuse_gate_rejected.tif``, ``evt2022_gate_rejections.csv``,
+``bookend_strata.tif``,
 ``establishment_patches.csv`` and ``summary.json``. ``stitch`` writes the same rasters and
 rejections for the AOI under ``aoi_5county/``, a ``manifest.json`` naming the gate, plus
 ``establishment_tree_lists.csv`` keyed by ``(TM_ID, establishment_mode)`` and, in its
@@ -179,6 +183,8 @@ class Inputs:
     counties: Path = Path("/mnt/d/county_p010g.shp_nt00934/countyp010g.shp")
     obata: Path | None = None    # geepipe lastDist (disturbance year) on the TreeMap grid
     hansen: Path | None = None   # band 1 lossyear, band 2 treecover2000, on the TreeMap grid
+    # landuse_prototype_gate's landuse_gate.json; its landuse_gate.tif sits beside it.
+    landuse_gate: Path | None = None
 
     @property
     def vat(self) -> Path:
@@ -226,6 +232,27 @@ def read_on_grid(path: Path, grid: Grid, *, fill, indexes: int | list[int] = 1) 
             data = src.read(bands, window=Window(c0, r0, c1 - c0, r1 - r0))
             out[:, r0 - row:r1 - row, c0 - col:c1 - col] = data
     return out[0] if isinstance(indexes, int) else out
+
+
+LANDUSE_UNCOVERED = 255   # read_on_grid fill: past the land-use gate raster's edge
+
+
+def landuse_eligibility(gate_json: Path, grid: Grid, inside: np.ndarray) -> np.ndarray:
+    """The land-use prototype gate on ``grid``: per pixel, whether a proposal may pass.
+
+    Eligible where the AlphaEarth embedding has looked non-forest for fewer trailing years
+    than the gate's fitted ``years`` (:class:`landuse_prototype_gate.PrototypeGate`). Pixels
+    past the raster's edge are eligible, so the padding may run past it; a county pixel
+    (``inside``) past it raises rather than pass ungated.
+    """
+    from pipeline.s1_initial_state.landuse_prototype_gate import PrototypeGate
+
+    tif = gate_json.with_suffix(".tif")
+    trailing = read_on_grid(tif, grid, fill=LANDUSE_UNCOVERED)
+    covered = trailing != LANDUSE_UNCOVERED
+    if (inside & ~covered).any():
+        raise ValueError(f"{tif} does not cover every county pixel")
+    return ~covered | ~PrototypeGate.load(gate_json).gated(trailing)
 
 
 def obata_rule(last_disturbance_year: np.ndarray,
@@ -427,10 +454,15 @@ class GridDecision:
     eligible: np.ndarray
 
 
-def decide_on_grid(inputs: Inputs, grid: Grid, tm_nodata, *, rule: ConsensusRule, min_acres: float,
-                   stratum_modes: Mapping[int, EstablishmentMode], scope: OwnershipRepairScope,
-                   reach: float, evt_gate: EvtGatePolicy, window: DisturbanceWindow) -> GridDecision:
-    """Read every input onto ``grid`` and decide its holes."""
+def decide_on_grid(inputs: Inputs, grid: Grid, tm_nodata, inside: np.ndarray, *, rule: ConsensusRule,
+                   min_acres: float, stratum_modes: Mapping[int, EstablishmentMode],
+                   scope: OwnershipRepairScope, reach: float, evt_gate: EvtGatePolicy,
+                   window: DisturbanceWindow) -> GridDecision:
+    """Read every input onto ``grid`` and decide its holes; ``inside`` marks the county.
+
+    ``GridDecision.eligible`` is the EVT gate's alone; the block decides on it and the
+    land-use gate together.
+    """
     tm = read_on_grid(inputs.treemap, grid, fill=tm_nodata)
     tm_ids = np.where(tm == tm_nodata, 0, tm).astype(np.uint32)
     legends = {y: pd.read_csv(inputs.evt(y)[1]) for y in (2016, 2022, 2024)}
@@ -448,8 +480,11 @@ def decide_on_grid(inputs: Inputs, grid: Grid, tm_nodata, *, rule: ConsensusRule
     masks = _method_masks(inputs, grid, strata, hole, scored, gate, window)
     nwos = read_on_grid(inputs.ownership, grid, fill=NWOS_NODATA)
     eligible = eligibility(evt[2022], legends[2022], evt_gate)
+    landuse_ok = (np.ones(grid.shape, dtype=bool) if inputs.landuse_gate is None
+                  else landuse_eligibility(inputs.landuse_gate, grid, inside))
     r = improve_block(tm_ids, land, masks, strata, nwos, rule=rule, min_acres=min_acres,
-                      stratum_modes=stratum_modes, scope=scope, reach=reach, eligible=eligible,
+                      stratum_modes=stratum_modes, scope=scope, reach=reach,
+                      eligible=eligible & landuse_ok,
                       patch_veto=evt_gate.patch_veto(evt[2022]))
     return GridDecision(r, tm_ids, land, strata, nwos, evt[2022], legends[2022], eligible)
 
@@ -482,11 +517,11 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     pad = PAD_PX
     while True:
         grid = county_grid(geom.bounds, tm_transform, pad)
-        d = decide_on_grid(inputs, grid, tm_nodata, rule=rule, min_acres=min_acres,
-                           stratum_modes=stratum_modes, scope=scope, reach=reach,
-                           evt_gate=evt_gate, window=window)
         inside = features.rasterize([(geom, 1)], out_shape=grid.shape, transform=grid.transform,
                                     fill=0, dtype="uint8").astype(bool)
+        d = decide_on_grid(inputs, grid, tm_nodata, inside, rule=rule, min_acres=min_acres,
+                           stratum_modes=stratum_modes, scope=scope, reach=reach,
+                           evt_gate=evt_gate, window=window)
         grown = required_pad((d.result.labels > 0) | d.result.patch_rejected, inside, pad)
         if grown == pad:
             break
@@ -508,7 +543,10 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
     out_dir.mkdir(parents=True, exist_ok=True)
     tm_published = np.where(tm_ids > 0, tm_ids, np.uint32(tm_nodata)).astype(np.uint32)
     tm_improved = np.where(r.improved > 0, r.improved, np.uint32(tm_nodata)).astype(np.uint32)
-    rejected = r.gate_rejected
+    # EVT first: a pixel both gates reject counts as an EVT rejection.
+    landuse_rejected = r.gate_rejected & eligible
+    rejected = r.gate_rejected & ~landuse_rejected
+    landuse_years = None if inputs.landuse_gate is None else _landuse_years(inputs.landuse_gate)
     rasters = {
         "treemap2022_published.tif": (county(tm_published, tm_nodata), tm_nodata,
                                       "TreeMap 2022 TM_ID as published"),
@@ -527,6 +565,9 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
                                       f"1 a method proposed the pixel and {evt_gate} rejected it"),
         "evt2022_patch_rejected.tif": (county(r.patch_rejected.astype(np.uint8), OUTSIDE), OUTSIDE,
                                        f"1 an accepted patch {evt_gate}'s patch veto rejected whole"),
+        "landuse_gate_rejected.tif": (county(landuse_rejected.astype(np.uint8), OUTSIDE), OUTSIDE,
+                                      "1 the EVT gate allowed the proposal and the land-use "
+                                      f"prototype gate (years={landuse_years}) rejected it"),
         "bookend_strata.tif": (county(strata, OUTSIDE), OUTSIDE,
                                "LANDFIRE 2016/2024 strata S1-S5 over holes; 0 not a hole"),
         "nwos2022_published.tif": (county(nwos, NWOS_NODATA), NWOS_NODATA,
@@ -552,16 +593,28 @@ def improve_county(fips: str, inputs: Inputs = Inputs(), out_root: Path = OUT_RO
         out_dir / GATE_REJECTIONS_CSV, index=False)
 
     summary = county_summary(fips, r, strata, land, crop, outside, rule, min_acres, scope, reach,
-                             patches, evt_gate=evt_gate, window=window)
+                             patches, evt_gate=evt_gate, window=window,
+                             landuse_rejected=landuse_rejected, landuse_years=landuse_years)
     summary["pad_px"] = pad
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary
 
 
+def _landuse_years(gate_json: Path) -> int:
+    from pipeline.s1_initial_state.landuse_prototype_gate import PrototypeGate
+
+    return PrototypeGate.load(gate_json).years
+
+
 def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_acres,
                    scope, reach, patches: pd.DataFrame, *, evt_gate: EvtGatePolicy,
-                   window: DisturbanceWindow = DEFAULT_WINDOW) -> dict:
+                   window: DisturbanceWindow = DEFAULT_WINDOW,
+                   landuse_rejected: np.ndarray | None = None,
+                   landuse_years: int | None = None) -> dict:
+    """``landuse_rejected`` is the land-use gate's share of ``r.gate_rejected``; the rest is EVT's."""
     inside = ~outside
+    if landuse_rejected is None:
+        landuse_rejected = np.zeros(r.provenance.shape, dtype=bool)
 
     def c(a):  # crop to the county
         return a[crop] & inside
@@ -617,9 +670,10 @@ def county_summary(fips, r: BlockResult, strata, land, crop, outside, rule, min_
         "evt_gate": {
             "policy": str(evt_gate),
             "raw_proposal_acres": _acres(c(r.method_bits_raw > 0)),
-            "rejected_acres": _acres(c(r.gate_rejected)),
+            "rejected_acres": _acres(c(r.gate_rejected & ~landuse_rejected)),
             "patch_rejected_acres": _acres(patch_rejected),
         },
+        "landuse_gate": {"years": landuse_years, "rejected_acres": _acres(c(landuse_rejected))},
     }
 
 
@@ -758,6 +812,10 @@ def sum_county_summaries(summaries: list[dict]) -> dict:
     total["evt_gate"] = {"policy": first["evt_gate"]["policy"], **{
         k: round(sum(s["evt_gate"][k] for s in summaries), 1)
         for k in first["evt_gate"] if k != "policy"}}
+    # A summary from before the land-use gate counts as ungated.
+    landuse = [s.get("landuse_gate", {"years": None, "rejected_acres": 0.0}) for s in summaries]
+    total["landuse_gate"] = {"years": landuse[0]["years"],
+                             "rejected_acres": round(sum(g["rejected_acres"] for g in landuse), 1)}
     return total
 
 
@@ -818,12 +876,15 @@ def main() -> None:
     parser.add_argument("--disturbance-window", type=DisturbanceWindow,
                         default=DEFAULT_WINDOW, choices=list(DisturbanceWindow),
                         help="years Obata cuts and Hansen loss must fall in (default: v4's, 2012-2022)")
+    parser.add_argument("--landuse-gate", type=Path, default=None,
+                        help="landuse_prototype_gate's landuse_gate.json, its .tif beside it "
+                             "(rejects persistent non-forest land use; default: off)")
     parser.add_argument("--stitch-name", default=AOI_NAME,
                         help="folder under --out-root the stitched rasters go in")
     parser.add_argument("--stage", type=Stage, default=Stage.ALL, choices=list(Stage))
     args = parser.parse_args()
 
-    inputs = Inputs(obata=args.obata_tif, hansen=args.hansen_tif)
+    inputs = Inputs(obata=args.obata_tif, hansen=args.hansen_tif, landuse_gate=args.landuse_gate)
     if args.stage is Stage.ALL:
         for fips in args.counties:
             s = improve_county(fips, inputs, args.out_root, rule=args.rule,
