@@ -40,8 +40,10 @@ from pipeline.leto_stage import (
     UnknownCounty,
     PlotInventory,
     UnknownYoungPlotIds,
+    CountyCells,
     assemble_inventory,
     load_settings,
+    parent_traits,
     run_leto,
 )
 from pipeline.run import LayoutMismatch, main, read_stands
@@ -430,6 +432,29 @@ def test_keep_replays_letos_own_units(world):
     qa = _speckle_qa(world)
     assert qa["units_before"] == qa["units_after"] == len(_units(world))
     assert qa["speckle_kept"] == qa["speckle_before"] > 0
+
+
+def test_a_young_parent_stand_has_a_lower_standardized_age_than_its_mature_neighbour():
+    """The speckle cost sees add-back land as young: what keeps a young speckle on young land."""
+    shape = (4, 8)
+    seg = np.ones(shape, dtype=np.int32)
+    seg[:, 4:] = 2                                          # parent 1 young, parent 2 mature
+    age = np.where(seg == 1, 4.0, 35.0)
+    grids = {"STDAGE": age, "BALIVE": np.where(seg == 1, 10.0, 110.0),
+             "QMD": np.where(seg == 1, 2.0, 9.0), "TPA": np.where(seg == 1, 600.0, 200.0),
+             "FORTYPCD": np.where(seg == 1, 161, 503).astype(float)}
+    seg[3, 7] = 0                                           # a non-forest cell
+    valid = seg > 0
+    cells = CountyCells(treemap=np.zeros(shape, np.int64), harris=np.full(shape, 4),
+                        harris_nodata=np.zeros(shape, bool), valid=valid,
+                        added_back=seg == 1, transform=TRANSFORM, crs=project_crs())
+
+    traits = parent_traits(seg, cells, grids, load_settings(ALPHA))
+
+    assert list(traits.index) == [1, 2]
+    assert traits.loc[1, "STDAGE"] < traits.loc[2, "STDAGE"]
+    assert traits.loc[1, "BALIVE"] < traits.loc[2, "BALIVE"]
+    assert list(traits["FORTYPCD"]) == [161, 503]
 
 
 def _parent_acres(world, county):

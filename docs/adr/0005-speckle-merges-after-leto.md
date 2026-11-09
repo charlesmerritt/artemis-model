@@ -54,3 +54,8 @@ weights, representative plot and age, and acres are conserved.
   as `force_merge`'s four-neighbour adjacency has it.
 - `parent_stands.tif` is LETO's parent-stand raster before the splits and is not relabelled.
   A unit's parent stand is its `SEG_ID` in the units layer.
+- On Union (12125, v4 run) the step order usually leaves a young-plot speckle a single
+  candidate, so the cost rarely chooses: 90 of 128 merged young speckle (15.7 of 5,250
+  add-back ac) join mature land, 71 of them grow-only riparian units. Accepted as small;
+  `tests/test_leto_t3_sanity.py` bounds the add-back acres that join mature managed land
+  at 1%.
