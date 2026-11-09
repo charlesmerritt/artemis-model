@@ -1,0 +1,6 @@
+MATCH_LEVEL,AGE_GAP,new_ids,young_plots,acres,acres_share
+group,0,29,17,85.8,0.00116
+group,1,82,2,554.0,0.00748
+type,0,2597,398,69319.6,0.93589
+type,1,279,62,3921.8,0.05295
+type,2,48,11,186.8,0.00252

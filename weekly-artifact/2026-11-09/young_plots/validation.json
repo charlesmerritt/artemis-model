@@ -1,0 +1,49 @@
+{
+  "checks": {
+    "every_add_back_pixel_resolves_to_a_vat_row": true,
+    "every_vat_row_is_full": true,
+    "every_new_id_has_trees": true,
+    "no_new_id_is_a_treemap_value": true,
+    "vat_counts_match_the_raster": true,
+    "other_pixels_unchanged": true
+  },
+  "counts": {
+    "add_back_pixels": 333040,
+    "new_ids": 3035,
+    "young_plots": 418,
+    "neighbour_plots": 199
+  },
+  "acres_by_stand_age": {
+    "0": 1272.7952,
+    "1": 287.3408,
+    "2": 658.9712,
+    "3": 761.2752,
+    "4": 951.4272,
+    "5": 14040.3344,
+    "6": 13590.6416,
+    "7": 15049.5856,
+    "8": 14047.4512,
+    "9": 3881.3248,
+    "10": 2228.2256,
+    "11": 2196.6448,
+    "12": 801.752,
+    "13": 781.9584,
+    "14": 1026.8208,
+    "15": 548.4384,
+    "16": 434.792,
+    "17": 552.664,
+    "18": 386.7536,
+    "19": 304.2432,
+    "20": 264.656
+  },
+  "acres_by_match_level": {
+    "group": 639.8448,
+    "type": 73428.2512
+  },
+  "acres_by_age_source": {
+    "hansen": 22591.8368,
+    "obata": 14959.9584,
+    "obata_hansen": 32279.5808,
+    "stratum_median": 4236.72
+  }
+}

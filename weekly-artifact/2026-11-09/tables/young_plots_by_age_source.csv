@@ -1,0 +1,5 @@
+AGE_SOURCE,new_ids,pixels,acres,min_cut_year,max_cut_year,acres_share
+hansen,1412,101582,22591.8,2001.0,2022.0,0.30501
+obata,677,67266,14960.0,2010.0,2022.0,0.20198
+obata_hansen,650,145142,32279.6,2010.0,2022.0,0.43581
+stratum_median,296,19050,4236.7,,,0.0572
