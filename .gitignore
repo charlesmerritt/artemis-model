@@ -20,6 +20,16 @@ data/processed/
 data/build/
 # Local copies pulled from R2 by pipeline/data_access.py
 data/r2_cache/
+# Region inputs region_prep builds per state (fia_extract.db, hydrography.gpkg): rebuilt
+# from the FIADB and NHD, kept on R2, never in git (and never Git LFS)
+data/regions/
+# An experiment's working data; commit its code, README and small outputs only
+experiments/*/work/
+# Experiments whose code is on a local-only branch (experiment/fl5-leto-stands): only
+# their generated data is here
+experiments/2026-10-05_fl5-harvest-deck/
+experiments/2026-10-08_permissive-menus/
+experiments/2026-10-19_fl-statewide-leto/
 
 # GEE credentials
 .config/earthengine/
@@ -31,7 +41,9 @@ fvs/build/
 # (`git clone ForestVegetationSimulator fvs/src`, ~159 MB of third-party Fortran).
 # It is somebody else's repository and is rebuilt on demand, never vendored here.
 fvs/src/
-*.db          # SQLite FVS runs (large); keep fvs_input.db path in versions.lock
+# SQLite FVS runs (large); keep fvs_input.db path in versions.lock. Git has no inline
+# comments: a comment after the pattern made it match nothing.
+*.db
 *.log
 
 # Jupyter
