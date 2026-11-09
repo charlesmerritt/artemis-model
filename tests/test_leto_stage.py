@@ -12,6 +12,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import stat
 
 import geopandas as gpd
 import numpy as np
@@ -25,6 +26,7 @@ from shapely.geometry import LineString, box, shape
 from pipeline import leto_riparian
 from pipeline.leto_stage import (
     AddBackWithoutYoungPlots,
+    MissingRepresentativePlots,
     NeighbourIdOnAddBack,
     UnknownCounty,
     UnknownYoungPlotIds,
@@ -90,16 +92,27 @@ def _fia_extract(path):
         CREATE TABLE COND (PLT_CN TEXT, CONDID INTEGER, COND_STATUS_CD INTEGER,
                            CONDPROP_UNADJ REAL, STDAGE REAL, FORTYPCD REAL, BALIVE REAL);
         CREATE TABLE TREE (PLT_CN TEXT, CONDID INTEGER, STATUSCD INTEGER, DIA REAL, TPA_UNADJ REAL);
-        CREATE TABLE FVS_STANDINIT_PLOT (STAND_CN TEXT, AGE REAL);
+        CREATE TABLE FVS_STANDINIT_PLOT (STAND_CN TEXT, STAND_ID TEXT, VARIANT TEXT,
+                                         INV_YEAR REAL, AGE REAL, LATITUDE REAL, SITE_INDEX REAL,
+                                         BASAL_AREA_FACTOR REAL, INV_PLOT_SIZE REAL, BRK_DBH REAL,
+                                         NUM_PLOTS REAL, NONSTK_PLOTS REAL);
+        CREATE TABLE FVS_TREEINIT_PLOT (STAND_CN TEXT, STAND_ID TEXT, PLOT_ID REAL, TREE_ID REAL,
+                                        TREE_COUNT REAL, HISTORY REAL, SPECIES TEXT,
+                                        DIAMETER REAL, HT REAL, CRRATIO REAL);
     """)
-    for cn, age, fortyp, ba, dia, tpa, start_age in (
-            (PLOT_11, 30, 161, 80.0, 8.0, 230.0, 28),
-            (PLOT_22, 60, 503, 120.0, 12.0, 150.0, 58),
-            (PLOT_33, 45, 161, 90.0, 9.0, 200.0, 44)):
+    for cn, age, fortyp, ba, dia, tpa, start_age, lat in (
+            (PLOT_11, 30, 161, 80.0, 8.0, 230.0, 28, 30.1),
+            (PLOT_22, 60, 503, 120.0, 12.0, 150.0, 58, 30.2),
+            (PLOT_33, 45, 161, 90.0, 9.0, 200.0, 44, 30.3)):
         con.execute("INSERT INTO PLOT VALUES (?)", (cn,))
         con.execute("INSERT INTO COND VALUES (?, 1, 1, 1.0, ?, ?, ?)", (cn, age, fortyp, ba))
         con.execute("INSERT INTO TREE VALUES (?, 1, 1, ?, ?)", (cn, dia, tpa))
-        con.execute("INSERT INTO FVS_STANDINIT_PLOT VALUES (?, ?)", (cn, start_age))
+        # FIA's design (subplot and microplot) and its own inventory year, 2009
+        con.execute("INSERT INTO FVS_STANDINIT_PLOT VALUES (?, ?, 'SN', 2009, ?, ?, 70, "
+                    "24, -24, 5, 4, 0)", (cn, f"FIA{cn}", start_age, lat))
+        for tree in (1, 2):
+            con.execute("INSERT INTO FVS_TREEINIT_PLOT VALUES (?, ?, 1, ?, 6.0, 1, '131', ?, 50, 40)",
+                        (cn, f"FIA{cn}", tree, dia))
     con.commit()
     con.close()
 
@@ -142,8 +155,10 @@ def _young_plots(repair, young_tm=None):
                   "YOUNG_PLT_CN": [PLOT_44], "NEIGHBOUR_TM_ID": ["33"],
                   "NEIGHBOUR_PLT_CN": [PLOT_33]}).to_csv(
         young / "treemap2022_improved_vat_extension.csv", index=False)
-    pd.DataFrame({"TM_ID": [YOUNG_ID, YOUNG_ID], "PLT_CN": [PLOT_44, PLOT_44], "STATUSCD": [1, 1],
-                  "TPA_UNADJ": [300.0, 300.0], "SPCD": [111, 111], "DIA": [1.2, 1.8]}).to_csv(
+    pd.DataFrame({"TM_ID": [YOUNG_ID] * 4, "PLT_CN": [PLOT_44] * 4, "STATUSCD": [1, 1, 2, 1],
+                  "TPA_UNADJ": [300.0, 250.0, 75.0, 0.0], "SPCD": [111, 121, 111, 111],
+                  "DIA": [1.2, 1.8, 2.0, 0.5], "HT": [9.0, 12.0, 14.0, 4.0],
+                  "CR": [60, 55, 0, 50]}).to_csv(
         young / "treemap2022_improved_tree_extension.csv", index=False)
 
 
@@ -247,6 +262,21 @@ def test_a_treemap_units_stand_age_is_its_representative_plots_fvs_start_age(wor
     assert {cn: list(a) for cn, a in ages.items()} == {PLOT_11: [28], PLOT_22: [58]}
 
 
+@pytest.mark.parametrize("age", [None, -1])
+def test_a_unit_without_a_usable_age_is_left_blank_and_its_acres_reported(world, age):
+    with sqlite3.connect(world["region"] / "fia_extract.db") as con:
+        con.execute("UPDATE FVS_STANDINIT_PLOT SET AGE = ? WHERE STAND_CN = ?", (age, PLOT_22))
+    _run(world)
+
+    stands = _stands(world)
+    blank = stands["PLT_CN"] == PLOT_22
+    assert stands.loc[blank, "stand_age"].isna().all()
+    assert stands.loc[~blank, "stand_age"].notna().all()
+    table = pd.read_csv(world["run_dir"] / "qa" / "leto" / "area_accounting.csv")
+    assert table["no_age_acres"].item() == pytest.approx(stands.loc[blank, "acres"].sum(), abs=0.01)
+    assert table["no_age_acres"].item() > 0
+
+
 def test_the_units_layer_and_the_run_record_are_written(world):
     _run(world)
 
@@ -283,6 +313,55 @@ def test_the_area_accounting_splits_unit_acres_into_managed_riparian_unknown_and
     stands = _stands(world)
     assert row["managed_acres"] + row["unknown_flagged_acres"] + row["riparian_acres"] == \
         pytest.approx(stands["acres"].sum(), abs=0.01)
+
+
+def _fvs(world, table):
+    with sqlite3.connect(world["run_dir"] / "FVS_Data.db") as con:
+        frame = pd.read_sql(f"SELECT * FROM {table}", con)
+    frame["STAND_CN"] = frame["STAND_CN"].astype(str)
+    return frame
+
+
+def test_fvs_data_holds_one_plot_layout_stand_per_distinct_representative_plot(world):
+    _run(world)
+
+    stand, trees = _fvs(world, "FVS_StandInit_Plot"), _fvs(world, "FVS_TreeInit_Plot")
+    assert sorted(stand["STAND_CN"]) == sorted(set(_stands(world)["PLT_CN"]))
+    assert sorted(stand["STAND_CN"]) == sorted([PLOT_11, PLOT_22, f"Y{YOUNG_ID}"])
+    assert set(trees["STAND_CN"]) == set(stand["STAND_CN"])
+
+
+def test_an_fia_plot_stand_is_its_extract_rows_anchored_to_2022(world):
+    _run(world)
+
+    stand = _fvs(world, "FVS_StandInit_Plot").set_index("STAND_CN")
+    plot = stand.loc[PLOT_22]                                  # 19 digits, intact
+    assert plot["INV_YEAR"] == 2022
+    assert plot["STAND_ID"] == f"S{PLOT_22}"
+    assert plot["AGE"] == 58 and plot["LATITUDE"] == 30.2
+    assert (plot["BASAL_AREA_FACTOR"], plot["INV_PLOT_SIZE"], plot["NUM_PLOTS"]) == (24, -24, 4)
+    trees = _fvs(world, "FVS_TreeInit_Plot")
+    assert trees.loc[trees["STAND_CN"] == PLOT_22, "DIAMETER"].tolist() == [12.0, 12.0]
+
+
+def test_a_young_plot_stand_has_its_neighbours_site_its_dated_age_and_letos_design(world):
+    _run(world)
+
+    young = _fvs(world, "FVS_StandInit_Plot").set_index("STAND_CN").loc[f"Y{YOUNG_ID}"]
+    assert young["LATITUDE"] == 30.3                           # neighbour plot 33's site
+    assert young["SITE_INDEX"] == 70
+    assert young["AGE"] == 7 and young["INV_YEAR"] == 2022
+    assert young["STAND_ID"] == f"SY{YOUNG_ID}"
+    design = ["BASAL_AREA_FACTOR", "INV_PLOT_SIZE", "BRK_DBH", "NUM_PLOTS", "NONSTK_PLOTS"]
+    assert young[design].tolist() == [-1, 1, 0, 1, 0]
+    trees = _fvs(world, "FVS_TreeInit_Plot")
+    trees = trees[trees["STAND_CN"] == f"Y{YOUNG_ID}"].sort_values("TREE_ID")
+    assert trees["TREE_COUNT"].tolist() == [300.0, 250.0]      # TPA; dead and zero-TPA trees left out
+    assert trees["SPECIES"].astype(str).tolist() == ["111", "121"]
+    assert trees["DIAMETER"].tolist() == [1.2, 1.8]
+    assert trees["HT"].tolist() == [9.0, 12.0]
+    assert trees["CRRATIO"].tolist() == [60, 55]
+    assert (trees["PLOT_ID"] == 1).all() and (trees["HISTORY"] == 1).all()
 
 
 # ── invariants ─────────────────────────────────────────────────────────────────────────
@@ -363,6 +442,37 @@ def test_a_young_plot_id_missing_from_the_young_plot_tables_fails_closed(world):
         _run(world)
 
 
+def _delete_from_extract(world, table, cn):
+    with sqlite3.connect(world["region"] / "fia_extract.db") as con:
+        con.execute(f"DELETE FROM {table} WHERE STAND_CN = ?", (cn,))
+
+
+@pytest.mark.parametrize("table", ["FVS_STANDINIT_PLOT", "FVS_TREEINIT_PLOT"])
+def test_a_representative_plot_missing_from_the_extract_fails_closed(world, table):
+    _delete_from_extract(world, table, PLOT_22)
+
+    with pytest.raises(MissingRepresentativePlots, match=PLOT_22):
+        _run(world)
+    assert not (world["run_dir"] / "stands.csv").exists()
+    assert not (world["run_dir"] / "FVS_Data.db").exists()
+
+
+def test_a_young_plots_neighbour_missing_from_the_extract_fails_closed(world):
+    _delete_from_extract(world, "FVS_STANDINIT_PLOT", PLOT_33)
+
+    with pytest.raises(MissingRepresentativePlots, match=f"neighbour plots .*{PLOT_33}"):
+        _run(world)
+
+
+def test_a_young_plot_id_without_live_trees_fails_closed(world):
+    trees = world["repair"] / "young_plots" / "treemap2022_improved_tree_extension.csv"
+    frame = pd.read_csv(trees)
+    frame.assign(STATUSCD=2).to_csv(trees, index=False)
+
+    with pytest.raises(UnknownYoungPlotIds, match=f"{YOUNG_ID}.*no live tree"):
+        _run(world)
+
+
 def test_a_folder_without_a_run_manifest_fails_closed(world):
     (world["repair"] / "manifest.json").unlink()
 
@@ -417,3 +527,23 @@ def test_main_leto_defaults_to_the_declared_sources_under_a_data_root(world, tmp
           "--region-dir", str(world["region"]), "--data-root", str(root)])
 
     assert len(read_stands(world["run_dir"])) > 0
+
+
+def test_a_leto_run_folder_feeds_the_library_stage(world, tmp_path):
+    """The chain: ``leto`` then ``library`` with a fake FVS binary, every keyfile on a stand it wrote."""
+    _run(world)
+    fake = tmp_path / "FVSsn"
+    fake.write_text("#!/bin/sh\nexit 2\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+
+    main(["library", str(world["run_dir"]), "--workers", "1", "--fvs-bin", str(fake)])
+
+    library = pd.read_csv(world["run_dir"] / "library.csv", dtype={"PLT_CN": str, "unit_id": str})
+    assert set(library["unit_id"]) == set(_stands(world)["unit_id"])
+    written = set(_fvs(world, "FVS_StandInit_Plot")["STAND_CN"])
+    keyfiles = list((world["run_dir"] / "keyfiles").glob("*.key"))
+    assert len(keyfiles) == library["run_hash"].nunique()
+    for keyfile in keyfiles:
+        lines = keyfile.read_text().splitlines()
+        assert lines[lines.index("StandCN") + 1] in written
+        assert "FROM FVS_StandInit_Plot WHERE" in keyfile.read_text()

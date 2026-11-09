@@ -14,9 +14,8 @@ A run directory holds one landscape. Upstream stages write its inputs:
   unit that may only grow.
 * ``FVS_Data.db`` — the FVS input database those stands live in.
 
-``leto`` (`pipeline.leto_stage`) writes ``stands.csv`` from a raster-repair run, one county at a
-time; ``FVS_Data.db`` for the plot layout is still the FL5 experiment's
-(`experiments/2026-10-19_fl5-leto-stands` step 2) until #164.
+``leto`` (`pipeline.leto_stage`) writes ``stands.csv`` and the plot layout's ``FVS_Data.db``
+from a raster-repair run, one county at a time, so ``library`` runs straight on its run folder.
 
 ``library`` enumerates every stand's regime-library options (`trajectory_library.OPEN_LIBRARY`)
 and runs the FVS keyfiles not yet cached. ``schedule`` selects one trajectory per stand against the TPO

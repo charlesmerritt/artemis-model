@@ -25,6 +25,14 @@ county's cells are read, so no parent stand crosses it. In order:
    weight are dropped, but each parent keeps its largest.
 7. **The representative plot**: each parent's largest donor plot, ties to the lower TreeMap
    value. Every unit of a parent runs on it.
+8. **The plot layout's FVS tables** (:func:`plot_inventory`), one stand per distinct
+   representative plot of a scheduled unit. An FIA plot is its extract rows, anchored to 2022
+   as the FL5 golden run was. A young plot is its neighbour plot's StandInit row (the site)
+   at its dated 2022 age, with its own live trees under LETO's sampling design (BAF -1, plot
+   size 1, breakpoint 0, one plot, ``TREE_COUNT`` = TPA). A representative plot without
+   StandInit or tree rows in the extract, or a young plot whose neighbour has no StandInit
+   row, is :class:`MissingRepresentativePlots`; a young-plot ID without a live tree is
+   :class:`UnknownYoungPlotIds`.
 
 Writes into ``<run_dir>``:
 
@@ -33,15 +41,20 @@ Writes into ``<run_dir>``:
   (:class:`Origin`), ``tm_id`` (the representative plot's TreeMap value) and ``parent_stand``.
   ``PLT_CN`` is the representative plot's control number, exact, or ``Y<ID>`` for a young plot.
   ``stand_age`` is a young plot's dated 2022 age, else the representative plot's FVS StandInit
-  ``AGE``, else blank. Harris 0 is owner class ``unknown`` (the Private owner group) with
+  ``AGE`` (what FVS starts from), else blank: an age :func:`usable_stand_age` rejects is left
+  to the harvest-eligibility policy, never guessed. Harris 0 is owner class ``unknown`` (the Private owner group) with
   ``unknown_ownership`` set; Harris 1-2 are masked: in the units layer, not in ``stands.csv``.
+- ``FVS_Data.db``: the plot layout's ``FVS_StandInit_Plot`` and ``FVS_TreeInit_Plot``
+  (:data:`pipeline.run.InventoryLayout.PLOT`), keyed by the exact ``STAND_CN``: a ``PLT_CN``
+  or ``Y<ID>``.
 - ``management_units.gpkg``, layer ``units``: every unit, masked ones too, with its ``Acres``
   (geodesic, as LETO), ``owner_class`` and ``unit_class``.
 - ``leto/<FIPS>/parent_stands.tif`` and ``donor_weights.csv``: the county's parent stands and
   their filtered donor weights.
 - ``qa/leto/area_accounting.csv``: per county, forest cells, parent stands and units, the unit
   acres split into managed, unknown-flagged (managed, Harris 0), riparian and masked, the drift,
-  and the forest cells the Harris raster has no value for (read as unknown). A drift over
+  the scheduled acres with no usable stand age, and the forest cells the Harris raster has no
+  value for (read as unknown). A drift over
   :data:`MAX_DRIFT_ACRES` fails the county (:class:`AcreDrift`) before anything is written.
 - ``leto.json``: the raster run's ``manifest.json`` sha256, the FIA extract and hydrography
   (path and sha256), the resolved settings, and the county's status.
@@ -71,9 +84,11 @@ from shapely.geometry import box, shape
 
 from pipeline import leto_attributes as la
 from pipeline import leto_ca, leto_donors, leto_riparian
+from pipeline.leto_database import SamplingDesign
+from pipeline.harvest_eligibility import usable_stand_age
 from pipeline.ids import as_id_series, read_id_csv
 from pipeline.leto_riparian import SQUARE_METERS_PER_ACRE, BufferRules
-from pipeline.run import STAND_COLUMNS, STANDS, InventoryLayout
+from pipeline.run import FVS_DATA, STAND_COLUMNS, STANDS, InventoryLayout
 from pipeline.s1_initial_state.add_back_ids import (
     EXTENSION_ID_COLUMNS,
     NEW_ID_START,
@@ -93,6 +108,7 @@ from pipeline.s1_initial_state.region_prep import (
 from pipeline.s1_initial_state.young_stand_profiles import BA_FACTOR
 from pipeline.s3_management.owner_classes import MASKED, classify_owner
 from pipeline.s3_management.regime_assignment import forest_type_branch
+from pipeline.s4_fvs.regime_templates import DEFAULT_INV_YEAR
 from pipeline.spatial_ref import to_project_crs
 
 REPO = Path(__file__).resolve().parents[1]
@@ -106,7 +122,11 @@ PARENT_STANDS = "parent_stands.tif"
 DONOR_WEIGHTS = "donor_weights.csv"
 QA_DIR = Path("qa") / "leto"
 AREA_ACCOUNTING = "area_accounting.csv"
-LAYOUT = InventoryLayout.PLOT                 # the plot layout (ADR 0004); #164 writes its tables
+LAYOUT = InventoryLayout.PLOT                 # the plot layout (ADR 0004)
+INV_YEAR = DEFAULT_INV_YEAR                   # every FVS stand starts in TreeMap's year, 2022
+VARIANT = "SN"
+FIA_STAND_INIT, FIA_TREE_INIT = "FVS_STANDINIT_PLOT", "FVS_TREEINIT_PLOT"   # in the extract
+YOUNG_DESIGN = SamplingDesign()               # LETO's per-acre design: BAF -1, plot size 1, ...
 
 CONTINUOUS = ("STDAGE", "BALIVE", "QMD", "TPA")
 YOUNG_STAND_PREFIX = "Y"
@@ -141,6 +161,10 @@ class NeighbourIdOnAddBack(ValueError):
 
 class UnknownYoungPlotIds(ValueError):
     """A young-plot ID the raster maps is not in the young-plot VAT extension."""
+
+
+class MissingRepresentativePlots(ValueError):
+    """A representative plot (or a young plot's neighbour site) has no FVS rows in the FIA extract."""
 
 
 class UnknownCounty(ValueError):
@@ -297,6 +321,7 @@ class Attributes:
     records: pd.DataFrame                     # leto_attributes.value_records, indexed by Value
     young: pd.DataFrame                       # the young-plot VAT extension, indexed by Value
     start_age: pd.Series                      # FVS StandInit AGE by PLT_CN
+    young_trees: pd.DataFrame                 # the young plots' live trees, per acre, by Value
 
     def stand_cn(self, value: int) -> str:
         return f"{YOUNG_STAND_PREFIX}{value}" if value >= NEW_ID_START else self.records.at[value, "PLT_CN"]
@@ -306,13 +331,14 @@ def _plot_rows(con, table: str, columns: str, key: str, plots: list[str]) -> pd.
     con.execute("DROP TABLE IF EXISTS temp.wanted")
     con.execute("CREATE TEMP TABLE wanted (PLT_CN TEXT PRIMARY KEY)")
     con.executemany("INSERT INTO temp.wanted VALUES (?)", [(cn,) for cn in plots])
-    frame = pd.read_sql(f'SELECT CAST("{key}" AS TEXT) AS {key}, {columns} FROM "{table}" '
+    frame = pd.read_sql(f'SELECT CAST("{key}" AS TEXT) AS _EXACT_KEY, {columns} FROM "{table}" '
                         f'WHERE CAST("{key}" AS TEXT) IN (SELECT PLT_CN FROM temp.wanted)', con)
-    frame[key] = as_id_series(frame[key], column=key)
+    frame[key] = as_id_series(frame.pop("_EXACT_KEY"), column=key)
     return frame
 
 
-def _young_records(young_dir: Path, values: np.ndarray) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _young_records(young_dir: Path, values: np.ndarray
+                   ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     ext = read_id_csv(young_dir / VAT_EXTENSION_CSV, id_columns=EXTENSION_ID_COLUMNS)
     ext.index = pd.to_numeric(ext["TM_ID"]).astype(np.int64).to_numpy()
     ext.index.name = "Value"
@@ -323,8 +349,13 @@ def _young_records(young_dir: Path, values: np.ndarray) -> tuple[pd.DataFrame, p
     ext = ext.loc[values]
     trees = read_id_csv(young_dir / TREE_EXTENSION_CSV, id_columns=("TM_ID", "PLT_CN"))
     trees["Value"] = pd.to_numeric(trees["TM_ID"]).astype(np.int64)
-    live = trees[(trees["STATUSCD"] == la.LIVE_TREE_STATUS) & (trees["DIA"] > 0)
-                 & (trees["TPA_UNADJ"] > 0)]
+    trees = trees[trees["Value"].isin(ext.index) & (trees["STATUSCD"] == la.LIVE_TREE_STATUS)
+                  & (trees["TPA_UNADJ"] > 0)]
+    treeless = sorted(set(ext.index) - set(trees["Value"]))
+    if treeless:
+        raise UnknownYoungPlotIds(f"young-plot IDs {treeless[:10]} have no live tree in "
+                                  f"{young_dir / TREE_EXTENSION_CSV}")
+    live = trees[trees["DIA"] > 0]
     live = live.assign(TPA_D2=live["TPA_UNADJ"] * live["DIA"] ** 2)
     per_id = live.groupby("Value").agg(TPA=("TPA_UNADJ", "sum"), TPA_D2=("TPA_D2", "sum"))
     records = pd.DataFrame({"PLT_CN": [f"{YOUNG_STAND_PREFIX}{v}" for v in ext.index],
@@ -336,7 +367,7 @@ def _young_records(young_dir: Path, values: np.ndarray) -> tuple[pd.DataFrame, p
     for field in la.FIELDS:
         records[f"SOURCE_{field}"] = np.where(records[field].isna(), la.Provenance.MISSING,
                                               la.Provenance.FIA)
-    return records, ext
+    return records, ext, trees
 
 
 def attributes(values: np.ndarray, vat: pd.DataFrame, extract: Path, young_dir: Path) -> Attributes:
@@ -358,12 +389,12 @@ def attributes(values: np.ndarray, vat: pd.DataFrame, extract: Path, young_dir: 
         con.close()
     records = la.value_records(rows, la.plot_lookup(cond, trees))
     young_values = values[values >= NEW_ID_START]
-    young = pd.DataFrame()
+    young, young_trees = pd.DataFrame(), pd.DataFrame()
     if len(young_values):
-        young_records, young = _young_records(young_dir, young_values)
+        young_records, young, young_trees = _young_records(young_dir, young_values)
         records = pd.concat([records, young_records[records.columns]])
     start_age = start.drop_duplicates("STAND_CN").set_index("STAND_CN")["AGE"]
-    return Attributes(records, young, start_age)
+    return Attributes(records, young, start_age, young_trees)
 
 
 # ── steps 3-7: parents, units, donors ──────────────────────────────────────────────────
@@ -451,7 +482,8 @@ def unit_layer(pieces: gpd.GeoDataFrame, top: pd.DataFrame, attrs: Attributes,
     units["PLT_CN"] = units["SEG_ID"].map(top["PLT_CN"])
     units["FORTYPCD"] = rep.map(attrs.records["FORTYPCD"])
     dated = rep.map(attrs.young["STAND_AGE_2022"]) if len(attrs.young) else np.nan
-    units["stand_age"] = np.where(young, dated, units["PLT_CN"].map(attrs.start_age))
+    age = pd.Series(np.where(young, dated, units["PLT_CN"].map(attrs.start_age)), index=units.index)
+    units["stand_age"] = age.map(usable_stand_age).astype(float)   # unusable: blank
     return units
 
 
@@ -485,9 +517,102 @@ def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.Ge
             "unknown_flagged_acres": acres(~masked & ~riparian & unknown),
             "riparian_acres": acres(~masked & riparian),
             "masked_acres": acres(masked),
+            "no_age_acres": acres(~masked & units["stand_age"].isna()),   # harvest eligibility decides
             "add_back_cells": int(cells.added_back.sum()),
             "harris_nodata_cells": int(cells.harris_nodata.sum()),   # read as unknown, as LETO does
             "drift_acres": round(unit_acres - parent_acres, 4)}
+
+
+# ── step 8: the plot layout's FVS tables ───────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class PlotInventory:
+    """``FVS_Data.db``'s plot-layout tables: one stand per distinct representative plot."""
+
+    stand: pd.DataFrame
+    tree: pd.DataFrame
+
+    def write(self, path: Path) -> None:
+        tables = LAYOUT.tables
+        path.unlink(missing_ok=True)
+        with sqlite3.connect(path) as con:
+            self.stand.to_sql(tables.stand, con, index=False)
+            self.tree.to_sql(tables.tree, con, index=False)
+            con.execute(f"CREATE INDEX ix_stand ON {tables.stand}(STAND_CN)")
+            con.execute(f"CREATE INDEX ix_tree ON {tables.tree}(STAND_CN)")
+        con.close()
+
+
+def _anchored(stand: pd.DataFrame) -> pd.DataFrame:
+    return stand.assign(STAND_ID="S" + stand["STAND_CN"],
+                        VARIANT=VARIANT, INV_YEAR=INV_YEAR)
+
+
+def _young_stands(site: pd.DataFrame, young: pd.DataFrame) -> pd.DataFrame:
+    """A young plot at its dated age, on the site (StandInit row) of the neighbour plot it replaces."""
+    stand = site.loc[young["NEIGHBOUR_PLT_CN"]].reset_index()
+    stand["STAND_CN"] = [f"{YOUNG_STAND_PREFIX}{v}" for v in young.index]
+    stand["AGE"] = young["STAND_AGE_2022"].astype(float).to_numpy()
+    design = YOUNG_DESIGN
+    return stand.assign(BASAL_AREA_FACTOR=design.basal_area_factor,
+                        INV_PLOT_SIZE=design.inv_plot_size, BRK_DBH=design.brk_dbh,
+                        NUM_PLOTS=design.num_plots, NONSTK_PLOTS=design.nonstk_plots)
+
+
+def _young_tree_rows(trees: pd.DataFrame) -> pd.DataFrame:
+    """The young plots' per-acre trees under LETO's design: one plot, ``TREE_COUNT`` = TPA."""
+    trees = trees.sort_values(["Value", "SPCD", "DIA"], kind="stable")
+    height = trees["HT"] if "HT" in trees else pd.Series(np.nan, index=trees.index)
+    if "ACTUALHT" in trees:
+        height = height.where(height.notna(), trees["ACTUALHT"])
+    stand_cn = YOUNG_STAND_PREFIX + trees["Value"].astype(str)
+    return pd.DataFrame({
+        "STAND_CN": stand_cn, "STAND_ID": "S" + stand_cn, "PLOT_ID": 1,
+        "TREE_ID": trees.groupby("Value").cumcount() + 1, "TREE_COUNT": trees["TPA_UNADJ"],
+        "HISTORY": 1, "SPECIES": trees["SPCD"].astype(np.int64).astype(str),
+        "DIAMETER": trees["DIA"], "HT": height,
+        "CRRATIO": trees["CR"] if "CR" in trees else np.nan}).reset_index(drop=True)
+
+
+def plot_inventory(plots: pd.Series, attrs: Attributes, extract: Path) -> PlotInventory:
+    """The FVS stand and trees of each distinct representative plot (a ``PLT_CN`` or ``Y<ID>``).
+
+    An FIA plot is its extract rows, anchored to 2022. A young plot (ADR 0003) takes its
+    neighbour plot's StandInit row (the site of the pixels it replaces) at its dated 2022 age,
+    with its own per-acre trees under LETO's sampling design. A plot without a StandInit row
+    or tree rows in the extract, or a young plot whose neighbour has no StandInit row, is
+    :class:`MissingRepresentativePlots`.
+    """
+    plots = sorted(set(plots))
+    young_cns = [cn for cn in plots if cn.startswith(YOUNG_STAND_PREFIX)]
+    fia = [cn for cn in plots if not cn.startswith(YOUNG_STAND_PREFIX)]
+    young = attrs.young.loc[[int(cn[len(YOUNG_STAND_PREFIX):]) for cn in young_cns]]
+    neighbours = sorted(set(young["NEIGHBOUR_PLT_CN"]) if len(young) else set())
+    con = sqlite3.connect(f"{extract.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        site = _plot_rows(con, FIA_STAND_INIT, "*", "STAND_CN", sorted(set(fia) | set(neighbours)))
+        tree = _plot_rows(con, FIA_TREE_INIT, "*", "STAND_CN", fia)
+    finally:
+        con.close()
+    site = site.drop_duplicates("STAND_CN").set_index("STAND_CN")
+    missing = sorted((set(fia) - set(site.index)) | (set(fia) - set(tree["STAND_CN"])))
+    if missing:
+        raise MissingRepresentativePlots(
+            f"representative plots {missing[:10]} ({len(missing)}) have no {FIA_STAND_INIT} or "
+            f"{FIA_TREE_INIT} rows in {extract}: no unit may reach FVS without trees")
+    no_site = sorted(set(neighbours) - set(site.index))
+    if no_site:
+        raise MissingRepresentativePlots(
+            f"neighbour plots {no_site[:10]} of young plots have no {FIA_STAND_INIT} row in "
+            f"{extract}: a young plot takes its neighbour's site")
+    stand = site.loc[fia].reset_index()
+    if len(young):
+        stand = pd.concat([stand, _young_stands(site, young)], ignore_index=True)
+        young_trees = _young_tree_rows(attrs.young_trees[attrs.young_trees["Value"].isin(young.index)])
+        tree = pd.concat([tree, young_trees[[c for c in young_trees if c in tree.columns]]],
+                         ignore_index=True)
+    return PlotInventory(_anchored(stand), tree)
 
 
 # ── the stage ──────────────────────────────────────────────────────────────────────────
@@ -538,6 +663,7 @@ def run_leto(run_dir: Path, *, repair: Path, county: str, vat: pd.DataFrame, cou
     weights, top = representative_plots(seg, cells, attrs, settings)
     units = unit_layer(pieces, top, attrs, place)
     stands = stand_rows(units)
+    inventory = plot_inventory(stands["PLT_CN"], attrs, extract)
     accounting = area_accounting(cells, parents, units, place)
     if abs(accounting["drift_acres"]) > MAX_DRIFT_ACRES:
         raise AcreDrift(f"county {place.fips}: units hold {accounting['unit_acres']} ac, parent "
@@ -548,6 +674,7 @@ def run_leto(run_dir: Path, *, repair: Path, county: str, vat: pd.DataFrame, cou
     weights.to_csv(county_dir / DONOR_WEIGHTS, index=False)
     units.to_file(run_dir / UNITS_GPKG, layer=UNITS_LAYER, driver="GPKG", mode="w")
     stands.to_csv(run_dir / STANDS, index=False)
+    inventory.write(run_dir / FVS_DATA)
     (run_dir / QA_DIR).mkdir(parents=True, exist_ok=True)
     pd.DataFrame([accounting]).to_csv(run_dir / QA_DIR / AREA_ACCOUNTING, index=False)
     record = {
