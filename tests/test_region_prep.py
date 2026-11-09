@@ -578,3 +578,17 @@ def test_an_extract_edited_by_hand_or_missing_its_table_is_rebuilt(tmp_path):
     (region / "fia_extract_missing.csv").unlink()
     write_fia_extract(region, fiadb=fiadb, runs=[run], vat=VAT)
     assert (region / "fia_extract_missing.csv").exists()
+
+
+def test_the_command_takes_a_relative_region_dir(tmp_path, monkeypatch):
+    # e.g. `--region-dir data/regions/fl` from the repo root, as config/leto.yaml names it.
+    fiadb = _fiadb(tmp_path / "fiadb.db")
+    vat_dbf = _vat_dbf(tmp_path / "TreeMap2022_CONUS.tif.vat.dbf", [(11, PLOT_11)])
+    run = _run(tmp_path / "v4" / "aoi_5county", [[11]])
+    monkeypatch.chdir(tmp_path)
+
+    main(["fia", "--region-dir", "regions/fl", "--repair", str(run),
+          "--fiadb", str(fiadb), "--vat", str(vat_dbf)])
+
+    assert [r[0] for r in _rows(tmp_path / "regions" / "fl" / "fia_extract.db",
+                                "SELECT CN FROM PLOT")] == [PLOT_11]

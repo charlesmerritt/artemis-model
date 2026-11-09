@@ -291,7 +291,7 @@ def _extract(out: Path, fiadb: Path, plots: list[str]) -> tuple[dict[str, int], 
     One scan per table: the FIADB has no index on its control numbers. They compare as
     text, so an integer-typed column matches by its exact digits, never through a float.
     """
-    con = sqlite3.connect(out.as_uri(), uri=True)
+    con = sqlite3.connect(out.resolve().as_uri(), uri=True)
     try:
         con.execute("ATTACH DATABASE ? AS fia", (f"{Path(fiadb).resolve().as_uri()}?mode=ro&immutable=1",))
         con.execute("CREATE TEMP TABLE wanted (PLT_CN TEXT PRIMARY KEY)")
