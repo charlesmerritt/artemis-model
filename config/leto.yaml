@@ -20,6 +20,9 @@
 #   deletes what cannot merge; `merge` keeps it; `keep` replays LETO's own output (the Maine
 #   baseline replay runs with `keep` and force_merge).
 # inventory.minimum_plot_weight: LETO's donor-plot filter (5%; the largest donor is kept).
+# database.mode: upstream's (`grouped`, `combined` or `both`), read by the LETO layout only.
+#   The run's FVS_Data.db is always the combined database; `grouped` and `both` also write
+#   one FVS_Inventory_<DB_GROUP>.db per owner class and Riparian under fvs_groups/.
 # inputs: the region inputs folder region_prep writes (fia_extract.db, hydrography.gpkg),
 #   relative to the repo root. `main.py leto --region-dir` overrides it.
 
@@ -67,3 +70,5 @@ regions:
       minimum_unit_acres: 1.0
     inventory:
       minimum_plot_weight: 0.05
+    database:
+      mode: combined

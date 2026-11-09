@@ -94,6 +94,12 @@ raw:
     #   FVS_PLOTINIT_PLOT  — plot-level initialization
     #   FVS_GROUPADDFILESANDKEYWORDS — keyword group assignments
 
+  fvs_species_crosswalk:
+    xls:        "/mnt/d/FVS_SpeciesCrosswalk.xls"
+    # FIA SPCD -> FVS species per variant (sheet EasternSpeciesTranslator, SN_Mapped_To), as
+    # LETO reads it. On R2 at r2:artemis-r2/data/FVS_SpeciesCrosswalk.xls (68 KB): `main.py
+    # leto --layout leto` fetches it into data/r2_cache/ when the drive is not mounted.
+
   landfire:
     # Existing Vegetation Type
     evt_tif:    "/mnt/d/LF2022_EVT_CONUS/LF2022_EVT_CONUS/Tif/LF2022_EVT_CONUS.tif"

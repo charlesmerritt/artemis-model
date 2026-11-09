@@ -1,7 +1,7 @@
 """The ``leto`` stage: repaired rasters to management units and ``stands.csv``, county by county.
 
-One county (#163), its plot layout's ``FVS_Data.db`` (#164), and many counties: resume,
-workers and the recorded layout (#165).
+One county (#163), its plot layout's ``FVS_Data.db`` (#164), many counties: resume, workers
+and the recorded layout (#165), and the LETO layout's per-unit inventory (#170).
 
 The fixture is a tiny raster-repair run folder over two counties side by side, Alpha (12001)
 and Beta (12003). A band of plot 11 runs across the county line, so a whole-window
@@ -30,6 +30,9 @@ from shapely.geometry import LineString, box, shape
 
 from pipeline import leto_riparian
 from pipeline.leto_ca import ProximityMergeNotPorted, SmallStandAction
+from pipeline.ids import read_id_csv
+from pipeline.leto_database import DatabaseMode
+from pipeline.leto_layout import unit_stdage_means
 from pipeline.leto_speckle import SpeckleAction, SpeckleSettings
 from pipeline.leto_stage import (
     CONFIG_PATH,
@@ -45,11 +48,13 @@ from pipeline.leto_stage import (
     UnknownYoungPlotIds,
     CountyCells,
     assemble_inventory,
+    clip_county,
+    read_county,
     load_settings,
     parent_traits,
     run_leto,
 )
-from pipeline.run import LayoutMismatch, main, read_stands
+from pipeline.run import InventoryLayout, LayoutMismatch, main, read_stands
 from pipeline.s1_initial_state.add_back_ids import VAT_COLUMNS
 from pipeline.spatial_ref import project_crs
 
@@ -65,6 +70,11 @@ PLOT_11 = "100000000000011"
 PLOT_22 = "1234567890123456789"           # 19 digits: a float64 would round it
 PLOT_33 = "100000000000033"               # the neighbour plot: only ever on add-back pixels
 PLOT_44 = "100000000000044"               # the young plot behind ID 1,000,000
+TREE_11 = "9000000000000000111"           # 19-digit tree control numbers
+TREE_22 = "9000000000000000222"
+# FIA code -> SN alpha, as the crosswalk's EasternSpeciesTranslator maps them
+SPECIES = {"131": "LP", "611": "SU", "111": "SA", "121": "LL"}
+LIVE_TPA = {PLOT_11: 230.0, PLOT_22: 150.0, f"Y{YOUNG_ID}": 550.0}   # a donor's live trees per acre
 
 TRANSFORM = Affine(CELL, 0, X0, 0, -CELL, Y0)
 PUBLISHED, ADDED_BACK_YOUNG = 1, 4
@@ -107,7 +117,8 @@ def _fia_extract(path):
         CREATE TABLE PLOT (CN TEXT);
         CREATE TABLE COND (PLT_CN TEXT, CONDID INTEGER, COND_STATUS_CD INTEGER,
                            CONDPROP_UNADJ REAL, STDAGE REAL, FORTYPCD REAL, BALIVE REAL);
-        CREATE TABLE TREE (PLT_CN TEXT, CONDID INTEGER, STATUSCD INTEGER, DIA REAL, TPA_UNADJ REAL);
+        CREATE TABLE TREE (CN TEXT, PLT_CN TEXT, CONDID INTEGER, STATUSCD INTEGER, SPCD INTEGER,
+                           DIA REAL, HT REAL, ACTUALHT REAL, CR REAL, TPA_UNADJ REAL);
         CREATE TABLE FVS_STANDINIT_PLOT (STAND_CN TEXT, STAND_ID TEXT, VARIANT TEXT,
                                          INV_YEAR REAL, AGE REAL, LATITUDE REAL, SITE_INDEX REAL,
                                          BASAL_AREA_FACTOR REAL, INV_PLOT_SIZE REAL, BRK_DBH REAL,
@@ -116,13 +127,14 @@ def _fia_extract(path):
                                         TREE_COUNT REAL, HISTORY REAL, SPECIES TEXT,
                                         DIAMETER REAL, HT REAL, CRRATIO REAL);
     """)
-    for cn, age, fortyp, ba, dia, tpa, start_age, lat in (
-            (PLOT_11, 30, 161, 80.0, 8.0, 230.0, 28, 30.1),
-            (PLOT_22, 60, 503, 120.0, 12.0, 150.0, 58, 30.2),
-            (PLOT_33, 45, 161, 90.0, 9.0, 200.0, 44, 30.3)):
+    for cn, age, fortyp, ba, dia, tpa, start_age, lat, (tree_cn, spcd, ht, actual) in (
+            (PLOT_11, 30, 161, 80.0, 8.0, 230.0, 28, 30.1, (TREE_11, 131, None, 55.0)),
+            (PLOT_22, 60, 503, 120.0, 12.0, 150.0, 58, 30.2, (TREE_22, 611, 70.0, 68.0)),
+            (PLOT_33, 45, 161, 90.0, 9.0, 200.0, 44, 30.3, ("100000000000331", 131, 60.0, 60.0))):
         con.execute("INSERT INTO PLOT VALUES (?)", (cn,))
         con.execute("INSERT INTO COND VALUES (?, 1, 1, 1.0, ?, ?, ?)", (cn, age, fortyp, ba))
-        con.execute("INSERT INTO TREE VALUES (?, 1, 1, ?, ?)", (cn, dia, tpa))
+        con.execute("INSERT INTO TREE VALUES (?, ?, 1, 1, ?, ?, ?, ?, 40, ?)",
+                    (tree_cn, cn, spcd, dia, ht, actual, tpa))
         # FIA's design (subplot and microplot) and its own inventory year, 2009
         con.execute("INSERT INTO FVS_STANDINIT_PLOT VALUES (?, ?, 'SN', 2009, ?, ?, 70, "
                     "24, -24, 5, 4, 0)", (cn, f"FIA{cn}", start_age, lat))
@@ -215,7 +227,8 @@ def _units(world):
 
 def _stands(world):
     return pd.read_csv(world["run_dir"] / "stands.csv", dtype={"county_fips": str, "PLT_CN": str,
-                                                               "unit_id": str})
+                                                               "unit_id": str,
+                                                               "representative_plot": str})
 
 
 # ── settings ───────────────────────────────────────────────────────────────────────────
@@ -351,6 +364,17 @@ def test_the_units_layer_and_the_run_record_are_written(world):
     assert record["counties"][ALPHA]["status"] == "done"
     assert len(record["counties"][ALPHA]["input_sha256"]) == 64
     assert record["layout"] == "plot"
+
+
+def test_the_plot_layout_writes_no_leto_layout_tables(world):
+    _run(world)
+
+    assert "DB_GROUP" not in _stands(world).columns
+    assert not (world["run_dir"] / "fvs_groups").exists()
+    assert not list((world["run_dir"] / "qa" / "leto").glob("imputation*"))
+    with sqlite3.connect(world["run_dir"] / "FVS_Data.db") as con:
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert tables == {"FVS_StandInit_Plot", "FVS_TreeInit_Plot"}
 
 
 def test_the_area_accounting_splits_unit_acres_into_managed_riparian_unknown_and_masked(world):
@@ -919,7 +943,7 @@ def test_a_plot_with_different_standinit_rows_in_two_counties_fails_closed(tmp_p
 def test_library_with_another_layout_than_the_run_was_built_with_fails_closed(world, tmp_path):
     _run(world)
 
-    with pytest.raises(LayoutMismatch, match="built with the plot layout.*--inventory leto"):
+    with pytest.raises(LayoutMismatch, match="built with the plot layout.*--layout leto"):
         main(["library", str(world["run_dir"]), "--inventory", "leto", "--workers", "1",
               "--fvs-bin", str(tmp_path / "never-run")])
     assert not (world["run_dir"] / "library.csv").exists()
@@ -988,3 +1012,224 @@ def test_a_leto_run_folder_feeds_the_library_stage(world, tmp_path):
         lines = keyfile.read_text().splitlines()
         assert lines[lines.index("StandCN") + 1] in written
         assert "FROM FVS_StandInit_Plot WHERE" in keyfile.read_text()
+
+
+# ── the LETO layout (#170) ─────────────────────────────────────────────────────────────
+
+
+def _run_leto(world, county=ALPHA, **kwargs):
+    kwargs.setdefault("species_lookup", SPECIES)
+    return _run(world, county, layout=InventoryLayout.LETO, **kwargs)
+
+
+def _qa(world, name):
+    return pd.read_csv(world["run_dir"] / "qa" / "leto" / name,
+                       dtype={"county_fips": str, "STAND_ID": str, "PLT_CN": str})
+
+
+def test_a_units_stand_age_mean_is_its_parent_stands_ages_weighted_by_acres():
+    # upstream read_stand_polygons; leto_inventory.prepare_stands rounds it half to even
+    units = pd.DataFrame({"unit_id": ["a", "b", "c", "c", "d"], "SEG_ID": [1, 2, 1, 2, 3],
+                          "Acres": [1.0, 1.0, 3.0, 1.0, 2.0]})
+    parent_age = pd.Series({1: 6.5, 2: 7.5})                 # parent 3 has no age
+
+    means = unit_stdage_means(units, parent_age)
+
+    assert means.loc[["a", "b", "c"]].to_dict() == {"a": 6.5, "b": 7.5, "c": 6.75}
+    assert np.isnan(means.loc["d"])
+
+
+def test_the_leto_layout_writes_one_fvs_stand_per_scheduled_unit_under_letos_table_names(world):
+    _run_leto(world)
+
+    stands = read_stands(world["run_dir"])
+    assert (stands["PLT_CN"] == stands["unit_id"]).all()      # each unit is its own FVS stand
+    assert set(_stands(world)["representative_plot"]) <= {PLOT_11, PLOT_22, f"Y{YOUNG_ID}"}
+    stand = _fvs(world, "FVS_StandInit")
+    assert sorted(stand["STAND_CN"]) == sorted(stands["unit_id"])
+    assert (stand["STAND_ID"] == stand["STAND_CN"]).all()
+    assert set(stand["INV_YEAR"]) == {2022} and set(stand["VARIANT"]) == {"SN"}
+    assert set(stand["STATE"]) == {12} and set(stand["GROUPS"]) == {"All_Stands"}
+    design = ["BASAL_AREA_FACTOR", "INV_PLOT_SIZE", "BRK_DBH", "NUM_PLOTS", "NONSTK_PLOTS"]
+    assert stand[design].drop_duplicates().values.tolist() == [[-1, 1, 0, 1, 0]]
+    assert set(_fvs(world, "FVS_TreeInit")["STAND_CN"]) == set(stand["STAND_CN"])
+    with sqlite3.connect(world["run_dir"] / "FVS_Data.db") as con:
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert tables == {"FVS_StandInit", "FVS_TreeInit"}
+    assert json.loads((world["run_dir"] / "leto.json").read_text())["layout"] == "leto"
+
+
+def test_a_units_trees_are_its_donors_live_trees_at_tpa_times_weight(world):
+    _run_leto(world)
+
+    stands = _stands(world)
+    weights = read_id_csv(world["run_dir"] / "leto" / ALPHA / "donor_weights.csv")
+    weights["TPA"] = weights["PLT_CN"].map(LIVE_TPA)
+    expected = (weights["WEIGHT"] * weights["TPA"]).groupby(weights["SEG_ID"].astype(int)).sum()
+    trees = _fvs(world, "FVS_TreeInit").groupby("STAND_CN")["TREE_COUNT"].sum()
+    for unit in stands.itertuples():
+        assert trees[unit.unit_id] == pytest.approx(expected[unit.parent_stand]), unit.unit_id
+
+
+def test_species_go_through_the_crosswalk_and_height_falls_back_to_actualht(world):
+    _run_leto(world)
+
+    trees = _fvs(world, "FVS_TreeInit")
+    by_diameter = trees.groupby("DIAMETER")[["SPECIES", "HT", "CRRATIO"]].first()
+    assert by_diameter.loc[8.0].tolist() == ["LP", 55.0, 40]      # plot 11: no HT, ACTUALHT 55
+    assert by_diameter.loc[12.0].tolist() == ["SU", 70.0, 40]     # plot 22: HT kept
+    assert by_diameter.loc[1.2].tolist() == ["SA", 9.0, 60]       # the young plot's own trees
+    assert by_diameter.loc[1.8].tolist() == ["LL", 12.0, 55]
+    assert 9.0 not in set(trees["DIAMETER"])                      # neighbour plot 33: never joined
+
+
+def test_a_leto_units_stand_age_is_its_parent_stands_age_mean_rounded_half_to_even(world):
+    _run_leto(world)
+
+    cells = clip_county(world["repair"], read_county(world["counties_path"], ALPHA))
+    ages = np.vectorize({11: 30.0, 22: 60.0, YOUNG_ID: 7.0}.get)(cells.treemap[cells.valid])
+    with rasterio.open(world["run_dir"] / "leto" / ALPHA / "parent_stands.tif") as src:
+        seg = src.read(1)[cells.valid]
+    expected = pd.Series(ages).groupby(seg).mean().round()
+    stands = _stands(world)
+    assert stands["stand_age"].tolist() == expected.loc[stands["parent_stand"]].tolist()
+    start = _fvs(world, "FVS_StandInit").set_index("STAND_CN")["AGE"]
+    assert stands["stand_age"].tolist() == start.loc[stands["unit_id"]].tolist()
+
+
+def test_a_unit_whose_donors_have_no_mapped_live_tree_takes_its_nearest_units_trees(world):
+    _run_leto(world, species_lookup={k: v for k, v in SPECIES.items() if k != "611"})
+
+    diagnostics = _qa(world, "imputation_diagnostics.csv")
+    assert len(diagnostics) > 0 and (diagnostics["county_fips"] == ALPHA).all()
+    assert set(diagnostics["FAILURE_REASON"]) == {"SPECIES_MAPPING_FAILURE"}
+    trees = _fvs(world, "FVS_TreeInit")
+    imputed = trees[trees["STAND_CN"].isin(diagnostics["STAND_ID"])]
+    assert set(imputed["SPECIES"]) <= {"LP", "SA", "LL"}          # a direct unit's trees
+    assert set(trees["STAND_CN"]) == set(_stands(world)["unit_id"])
+    summary = _qa(world, "imputation_summary.csv")
+    overall = summary[summary["SECTION"] == "OVERALL"].iloc[0]
+    assert overall["IMPUTED_MUS"] == len(diagnostics)
+    missing = _qa(world, "missing_species.csv")
+    assert missing["Species_FIA"].tolist() == [611]
+    by_stand = _qa(world, "missing_species_by_stand.csv")
+    assert set(by_stand["STAND_ID"]) <= set(_stands(world)["unit_id"])
+
+
+def test_every_species_mapping_leaves_the_qa_tables_empty_but_written(world):
+    _run_leto(world)
+
+    assert _qa(world, "imputation_diagnostics.csv").empty
+    assert _qa(world, "missing_species.csv").empty
+    assert len(_qa(world, "imputation_summary.csv")) > 0
+
+
+def test_a_county_with_no_usable_tree_at_all_fails_closed(world):
+    with pytest.raises(ValueError, match="No runnable stands"):
+        _run_leto(world, species_lookup={})
+
+
+def test_stands_keep_their_db_group_and_per_group_databases_are_written_only_when_asked(world):
+    _run_leto(world)
+
+    stands = _stands(world)
+    riparian = stands["unit_class"] == "riparian"
+    assert (stands.loc[riparian, "DB_GROUP"] == "Riparian").all()
+    assert (stands.loc[~riparian, "DB_GROUP"] == stands.loc[~riparian, "owner_class"]).all()
+    assert not (world["run_dir"] / "fvs_groups").exists()
+
+    settings = load_settings(ALPHA)
+    grouped = dataclasses.replace(settings, database_mode=DatabaseMode.GROUPED)
+    _run_leto(world, settings=grouped)
+
+    groups = world["run_dir"] / "fvs_groups"
+    names = sorted(p.name for p in groups.glob("*.db"))
+    assert names == sorted(f"FVS_Inventory_{g}.db" for g in set(_stands(world)["DB_GROUP"]))
+    with sqlite3.connect(groups / "FVS_Inventory_Riparian.db") as con:
+        ids = set(pd.read_sql("SELECT STAND_CN FROM FVS_StandInit", con)["STAND_CN"])
+    assert ids == set(stands.loc[riparian, "unit_id"])
+    assert (world["run_dir"] / "FVS_Data.db").exists()         # the combined one, always
+
+
+def test_florida_writes_only_the_combined_database_by_default():
+    assert load_settings(ALPHA).database_mode is DatabaseMode.COMBINED
+
+
+def test_the_leto_layout_assembles_every_countys_units_and_qa(world):
+    _run_leto(world, [ALPHA, BETA])
+
+    stands = _stands(world)
+    assert set(stands["county_fips"]) == {ALPHA, BETA}
+    assert sorted(_fvs(world, "FVS_StandInit")["STAND_CN"]) == sorted(stands["unit_id"])
+    summary = _qa(world, "imputation_summary.csv")
+    assert set(summary["county_fips"]) == {ALPHA, BETA}
+
+
+def test_changing_the_layout_redoes_the_county(world):
+    _run(world)
+    result = _run_leto(world)
+
+    assert result.outcomes == {ALPHA: CountyOutcome.RAN}
+    assert len(_fvs(world, "FVS_StandInit")) == len(_stands(world))
+
+
+def test_a_changed_crosswalk_redoes_the_county(world):
+    _run_leto(world)
+    assert _run_leto(world).outcomes == {ALPHA: CountyOutcome.SKIPPED}
+
+    result = _run_leto(world, species_lookup={**SPECIES, "131": "SA"})
+
+    assert result.outcomes == {ALPHA: CountyOutcome.RAN}
+
+
+def test_the_leto_layout_needs_a_species_crosswalk(world):
+    with pytest.raises(ValueError, match="species crosswalk"):
+        _run_leto(world, species_lookup=None)
+
+
+def test_library_on_a_leto_layout_run_with_the_plot_layout_fails_closed(world, tmp_path):
+    _run_leto(world)
+
+    with pytest.raises(LayoutMismatch, match="built with the leto layout"):
+        main(["library", str(world["run_dir"]), "--workers", "1",
+              "--fvs-bin", str(tmp_path / "never-run")])
+
+
+def _crosswalk(path):
+    pd.DataFrame({"FIA CODE": list(SPECIES), "SN_Mapped_To": list(SPECIES.values())}).to_excel(
+        path, sheet_name="EasternSpeciesTranslator", index=False)
+    return path
+
+
+def test_main_leto_layout_reads_the_species_crosswalk(world, tmp_path):
+    vat = tmp_path / "vat.csv"
+    VAT.reindex(columns=VAT_COLUMNS, fill_value=0).to_csv(vat, index=False)
+
+    main(["leto", str(world["run_dir"]), "--repair", str(world["repair"]), "--county", ALPHA,
+          "--layout", "leto", "--species-crosswalk", str(_crosswalk(tmp_path / "xw.xlsx")),
+          "--region-dir", str(world["region"]), "--vat", str(vat),
+          "--counties", str(world["counties_path"])])
+
+    assert set(_fvs(world, "FVS_TreeInit")["SPECIES"]) == {"LP", "SU", "SA", "LL"}
+
+
+def test_library_layout_leto_runs_on_a_leto_layout_run_folder(world, tmp_path):
+    """The chain: ``leto --layout leto`` then ``library --layout leto`` with a fake FVS binary."""
+    _run_leto(world)
+    fake = tmp_path / "FVSsn"
+    fake.write_text("#!/bin/sh\nexit 2\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+
+    main(["library", str(world["run_dir"]), "--layout", "leto", "--workers", "1",
+          "--fvs-bin", str(fake)])
+
+    library = pd.read_csv(world["run_dir"] / "library.csv", dtype={"PLT_CN": str, "unit_id": str})
+    assert set(library["unit_id"]) == set(_stands(world)["unit_id"])
+    written = set(_fvs(world, "FVS_StandInit")["STAND_CN"])
+    keyfiles = list((world["run_dir"] / "keyfiles").glob("*.key"))
+    assert len(keyfiles) == library["run_hash"].nunique() > 0
+    for keyfile in keyfiles:
+        text = keyfile.read_text()
+        lines = text.splitlines()
+        assert lines[lines.index("StandCN") + 1] in written
+        assert "FROM FVS_StandInit WHERE" in text and "FROM FVS_TreeInit WHERE" in text

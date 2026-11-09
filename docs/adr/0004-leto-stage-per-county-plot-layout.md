@@ -21,7 +21,9 @@ make management units, and only the `leto_*` modules follow LETO v1.
   segmentation: no parent stand crosses one. Counties run independently.
 - **Plot layout by default.** Each unit runs on its parent stand's representative plot
   (`InventoryLayout.PLOT`). The per-unit LETO inventory (`InventoryLayout.LETO`) is built only
-  on request. `stands.csv` always names the representative plot.
+  on request (`main.py leto --layout leto`, `pipeline.leto_layout`). `stands.csv` always names
+  the representative plot: in `PLT_CN` under the plot layout, and in `representative_plot`
+  under the LETO layout, where `PLT_CN` is the unit's own FVS stand (its `unit_id`).
 - **Inputs are fixed upstream.** Young plots (`add_back_ids`) are the last step of raster
   repair. The stage refuses a run whose provenance raster holds add-back pixels without
   `young_plots/`. FIA rows come from a per-region extract of the full FIADB, never the

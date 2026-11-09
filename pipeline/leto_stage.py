@@ -1,7 +1,7 @@
 """The ``leto`` stage: a raster-repair run's counties to management units and ``stands.csv``.
 
     uv run python main.py leto <run_dir> --repair <raster run> [--county FIPS ...] [--workers N]
-                               [--region-dir <dir>]
+                               [--region-dir <dir>] [--layout plot|leto] [--species-crosswalk <xls>]
 
 Without ``--county`` it runs every county the raster run's ``manifest.json`` lists
 (:class:`NoCountiesInManifest` when it lists none). Each county is its own job
@@ -10,7 +10,8 @@ depend on which process ran it, so a parallel run's files equal a serial run's.
 
 **Resume.** ``leto.json`` records each county's status (:class:`CountyStatus`) and input hash
 (:func:`input_sha256`: the county, the raster run's manifest, repaired rasters and
-``young_plots/``, the VAT, the region inputs, the resolved settings and the layout). A county asked for again whose hash
+``young_plots/``, the VAT, the region inputs, the resolved settings, the layout and, under the
+LETO layout, the species crosswalk). A county asked for again whose hash
 matches, with its outputs on disk, is skipped (:class:`CountyOutcome`); a changed input or
 setting redoes it. A county finished earlier and not asked for stays in the run if its hash
 still matches, else it is marked ``stale`` and left out, so outputs of different settings never
@@ -57,9 +58,19 @@ county's cells are read, so no parent stand crosses it. In order:
    :class:`AmbiguousStandInit`; a young-plot ID without a live tree is
    :class:`UnknownYoungPlotIds`.
 
+   **Or the LETO layout's** (``--layout leto``, :mod:`pipeline.leto_layout`): LETO stages 4-5
+   per scheduled unit, ``STAND_CN`` its ``unit_id``. Its trees are its parent stand's donors'
+   live trees from the extract's TREE table (a young plot's from ``young_plots/``),
+   ``TREE_COUNT`` = TPA x weight, species through the FVS crosswalk, HT falling back to
+   ACTUALHT; a unit with no usable live tree takes its nearest unit's
+   (:class:`pipeline.leto_layout.UnitsWithoutTrees` if none can). Its ``AGE``, and its
+   ``stand_age``, is the acre-weighted mean of its parent stands' mean ``STDAGE``
+   (:func:`parent_ages`), rounded half to even.
+
 Writes into ``<run_dir>/leto/<FIPS>/``, per county: ``parent_stands.tif``,
 ``donor_weights.csv`` (its filtered parent donor weights), ``units.gpkg``, ``stands.csv``,
-``FVS_Data.db`` and ``area_accounting.csv``. The run-level files are assembled from every
+``FVS_Data.db`` and ``area_accounting.csv``, and under the LETO layout its stage 4 QA tables
+and, when ``database.mode`` asks, ``fvs_groups/``. The run-level files are assembled from every
 finished county (:func:`assemble`), in FIPS order:
 
 - ``stands.csv``: the runner's columns (:data:`pipeline.run.STAND_COLUMNS`) for every unit not
@@ -74,6 +85,13 @@ finished county (:func:`assemble`), in FIPS order:
 - ``FVS_Data.db``: the plot layout's ``FVS_StandInit_Plot`` and ``FVS_TreeInit_Plot``
   (:data:`pipeline.run.InventoryLayout.PLOT`), keyed by the exact ``STAND_CN``: a ``PLT_CN``
   or ``Y<ID>``. A plot in several counties is one stand (:func:`assemble_inventory`).
+  Under the LETO layout, LETO's ``FVS_StandInit`` and ``FVS_TreeInit``: upstream's combined
+  database, one stand per unit. ``stands.csv`` then has ``PLT_CN`` = ``unit_id``, the
+  ``representative_plot`` and ``DB_GROUP`` (owner class, or ``Riparian``).
+- ``fvs_groups/FVS_Inventory_<DB_GROUP>.db``: the LETO layout's per-group databases, written
+  only under ``database.mode`` ``grouped`` or ``both`` (``config/leto.yaml``).
+- ``qa/leto/imputation_diagnostics.csv``, ``imputation_summary.csv``, ``missing_species.csv``,
+  ``missing_species_by_stand.csv``: the LETO layout's stage 4 QA, per county.
 - ``management_units.gpkg``, layer ``units``: every unit, masked ones too, with its ``Acres``
   (geodesic, as LETO), ``owner_class`` and ``unit_class``. Unit IDs are ``<FIPS>-<n>``.
 - ``qa/leto/area_accounting.csv``: per county, forest cells, the stands, cells and acres the
@@ -102,8 +120,9 @@ import math
 import shutil
 import sqlite3
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import dataclasses
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -119,8 +138,8 @@ from rasterio.windows import Window
 from shapely.geometry import box, shape
 
 from pipeline import leto_attributes as la
-from pipeline import leto_ca, leto_donors, leto_riparian
-from pipeline.leto_database import SamplingDesign
+from pipeline import leto_ca, leto_donors, leto_layout, leto_riparian
+from pipeline.leto_database import DatabaseMode, SamplingDesign
 from pipeline.leto_speckle import MergeCost, SpeckleSettings, UnitClass, merge_speckle
 from pipeline.harvest_eligibility import usable_stand_age
 from pipeline.ids import as_id_series, read_id_csv
@@ -165,7 +184,6 @@ REPAIRED_RASTERS = (IMPROVED_TREEMAP, PROVENANCE, OWNERSHIP)
 COUNTY_OUTPUTS = (PARENT_STANDS, DONOR_WEIGHTS, COUNTY_UNITS, STANDS, FVS_DATA, AREA_ACCOUNTING,
                   SPECKLE)
 OUTPUT_VERSION = 3                            # bump when a county's outputs change shape: redoes every county
-LAYOUT = InventoryLayout.PLOT                 # the plot layout (ADR 0004)
 INV_YEAR = DEFAULT_INV_YEAR                   # every FVS stand starts in TreeMap's year, 2022
 VARIANT = "SN"
 FIA_STAND_INIT, FIA_TREE_INIT = "FVS_STANDINIT_PLOT", "FVS_TREEINIT_PLOT"   # in the extract
@@ -253,6 +271,7 @@ class LetoSettings:
     buffer_rules: BufferRules
     minimum_plot_weight: float
     speckle: SpeckleSettings
+    database_mode: DatabaseMode = DatabaseMode.COMBINED   # the LETO layout's; FVS_Data.db is combined
 
     def record(self) -> dict:
         """The settings as JSON, for ``leto.json``."""
@@ -262,7 +281,7 @@ class LetoSettings:
                 "segmentation": {k: str(v) if isinstance(v, StrEnum) else v
                                  for k, v in self.segmentation.items()},
                 "riparian": rules, "minimum_plot_weight": self.minimum_plot_weight,
-                "speckle": self.speckle.record()}
+                "speckle": self.speckle.record(), "database": {"mode": self.database_mode.value}}
 
 
 def load_settings(county_fips: str, path: Path = CONFIG_PATH) -> LetoSettings:
@@ -285,7 +304,8 @@ def _settings(name: str, spec: dict) -> LetoSettings:
         segmentation={**leto_ca.DEFAULT_CFG, **spec["segmentation"],
                       "remaining_small_stand_action": action},
         buffer_rules=rules, minimum_plot_weight=float(spec["inventory"]["minimum_plot_weight"]),
-        speckle=SpeckleSettings.from_config(spec["speckle"]))
+        speckle=SpeckleSettings.from_config(spec["speckle"]),
+        database_mode=DatabaseMode(spec["database"]["mode"]))
 
 
 # ── step 1: the county's cells ─────────────────────────────────────────────────────────
@@ -529,15 +549,32 @@ def riparian_split(parents: gpd.GeoDataFrame, hydrography: Path, rules: BufferRu
     return pieces
 
 
+@dataclass(frozen=True)
+class DonorPlots:
+    """Each parent stand's donor weights, before and after the minimum-weight filter, and its
+    representative plot (``TREEMAP_VALUE``, ``PLT_CN``, ``WEIGHT``, indexed by ``SEG_ID``)."""
+
+    weights: pd.DataFrame
+    kept: pd.DataFrame
+    top: pd.DataFrame
+
+
 def representative_plots(seg: np.ndarray, cells: CountyCells, attrs: Attributes,
-                         settings: LetoSettings) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Filtered donor weights per parent, and each parent's representative plot (indexed by SEG_ID)."""
+                         settings: LetoSettings) -> DonorPlots:
+    """Donor weights per parent, and each parent's largest kept donor, ties to the lower value."""
     value_to_plt = {int(v): attrs.stand_cn(int(v)) for v in attrs.records.index}
     weights = leto_donors.parent_weights(seg, cells.treemap, value_to_plt)
     kept = leto_donors.filter_weights(weights, settings.minimum_plot_weight, key="SEG_ID")
     top = (kept.sort_values(["SEG_ID", "WEIGHT", "TREEMAP_VALUE"], ascending=[True, False, True])
            .drop_duplicates("SEG_ID").set_index("SEG_ID"))
-    return kept, top[["TREEMAP_VALUE", "PLT_CN", "WEIGHT"]]
+    return DonorPlots(weights, kept, top[["TREEMAP_VALUE", "PLT_CN", "WEIGHT"]])
+
+
+def parent_ages(seg: np.ndarray, grids: dict[str, np.ndarray]) -> pd.Series:
+    """Each parent stand's mean ``STDAGE`` over its cells (equal-area, so acre-weighted), by ``SEG_ID``."""
+    age = grids["STDAGE"]
+    known = (seg > 0) & np.isfinite(age)
+    return pd.Series(age[known]).groupby(seg[known]).mean()
 
 
 def parent_traits(seg: np.ndarray, cells: CountyCells, grids: dict[str, np.ndarray],
@@ -589,13 +626,24 @@ def unit_layer(pieces: gpd.GeoDataFrame, top: pd.DataFrame, attrs: Attributes,
     return units
 
 
-def stand_rows(units: gpd.GeoDataFrame) -> pd.DataFrame:
+def scheduled(units: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """The units ``stands.csv`` schedules: every one not masked."""
-    stands = units[units["owner_class"] != MASKED].drop(columns="geometry")
+    return units[units["owner_class"] != MASKED]
+
+
+def stand_rows(units: gpd.GeoDataFrame, layout: InventoryLayout = InventoryLayout.PLOT) -> pd.DataFrame:
+    """``stands.csv``'s rows. Under the LETO layout ``PLT_CN`` is the unit's own FVS stand, its
+    ``unit_id``; ``representative_plot`` keeps the plot it would run on under the plot layout,
+    and ``DB_GROUP`` is its database group."""
+    stands = scheduled(units).drop(columns="geometry")
     stands = stands.assign(acres=stands["Acres"], parent_stand=stands["SEG_ID"],
                            forest_branch=[forest_type_branch({"OWN_CODE": o, "FORTYPCD": f})
                                           for o, f in zip(stands["OWN_CODE"], stands["FORTYPCD"])])
     extra = ["county_fips", "unknown_ownership", "origin", "tm_id", "parent_stand"]
+    if layout is InventoryLayout.LETO:
+        stands = stands.assign(representative_plot=stands["PLT_CN"], PLT_CN=stands["unit_id"],
+                               DB_GROUP=leto_layout.database_groups(stands))
+        extra += ["representative_plot", "DB_GROUP"]
     return pd.DataFrame(stands[list(STAND_COLUMNS) + extra])
 
 
@@ -647,7 +695,7 @@ class PlotInventory:
     tree: pd.DataFrame
 
     def write(self, path: Path) -> None:
-        tables = LAYOUT.tables
+        tables = InventoryLayout.PLOT.tables
         path.unlink(missing_ok=True)
         with sqlite3.connect(path) as con:
             self.stand.to_sql(tables.stand, con, index=False)
@@ -732,6 +780,38 @@ def plot_inventory(plots: pd.Series, attrs: Attributes, extract: Path) -> PlotIn
     return PlotInventory(_anchored(stand), tree)
 
 
+# ── step 9, LETO layout: each unit's own FVS stand ─────────────────────────────────────
+
+
+def donor_trees(extract: Path, plots: pd.Series, attrs: Attributes) -> pd.DataFrame:
+    """The donor plots' TREE rows (:data:`pipeline.leto_layout.TREE_FIELDS`): an FIA plot's from
+    the extract, control numbers read as text; a young plot's own trees from ``young_plots/``."""
+    fia = sorted(cn for cn in set(plots) if not cn.startswith(YOUNG_STAND_PREFIX))
+    fields = ", ".join(f'"{f}"' for f in leto_layout.TREE_FIELDS if f not in ("CN", "PLT_CN"))
+    con = sqlite3.connect(f"{extract.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        trees = _plot_rows(con, "TREE", f'CAST("CN" AS TEXT) AS CN, {fields}', "PLT_CN", fia)
+    finally:
+        con.close()
+    trees["CN"] = as_id_series(trees["CN"], column="CN")
+    young = leto_layout.young_donor_trees(attrs.young_trees, YOUNG_STAND_PREFIX)
+    return pd.concat([trees[list(leto_layout.TREE_FIELDS)], young], ignore_index=True)
+
+
+def unit_inventory(units: gpd.GeoDataFrame, donors: DonorPlots, seg: np.ndarray,
+                   grids: dict[str, np.ndarray], attrs: Attributes, extract: Path,
+                   species_lookup: Mapping[str, str], settings: LetoSettings
+                   ) -> tuple[leto_layout.CountyInventory, gpd.GeoDataFrame]:
+    """LETO stage 4 for the county's scheduled units; their ``stand_age`` is its ``AGE``."""
+    inventory = leto_layout.build(scheduled(units), donors.weights, parent_ages(seg, grids),
+                                  donor_trees(extract, donors.weights["PLT_CN"], attrs),
+                                  species_lookup, settings.minimum_plot_weight)
+    age = units["unit_id"].map(leto_layout.stand_ages(inventory))
+    county = leto_layout.CountyInventory(inventory, str(units["county_fips"].iloc[0]),
+                                         settings.database_mode, int(settings.state_fips))
+    return county, units.assign(stand_age=age.map(usable_stand_age).astype(float))
+
+
 # ── one county ─────────────────────────────────────────────────────────────────────────
 
 
@@ -785,6 +865,8 @@ class CountyJob:
     settings: LetoSettings
     region: RegionInputs
     input_sha256: str
+    layout: InventoryLayout = InventoryLayout.PLOT
+    species_lookup: Mapping[str, str] = dataclasses.field(default_factory=dict)  # LETO layout: FVS crosswalk
 
 
 @dataclass(frozen=True)
@@ -813,13 +895,18 @@ def run_county(job: CountyJob) -> CountyResult:
                  place.fips, deleted.segments, deleted.cells, deleted.acres(cells.cell_acres))
     parents = parent_polygons(seg, cells)
     pieces = riparian_split(parents, job.region.hydrography, settings.buffer_rules)
-    weights, top = representative_plots(seg, cells, attrs, settings)
-    speckle = merge_speckle(unit_layer(pieces, top, attrs, place),
+    donors = representative_plots(seg, cells, attrs, settings)
+    speckle = merge_speckle(unit_layer(pieces, donors.top, attrs, place),
                             parent_traits(seg, cells, grids, settings), settings.speckle,
                             merge_cost(cells, settings))
     units = speckle.units
-    stands = stand_rows(units)
-    inventory = plot_inventory(stands["PLT_CN"], attrs, extract)
+    inventory: PlotInventory | leto_layout.CountyInventory
+    if job.layout is InventoryLayout.LETO:
+        inventory, units = unit_inventory(units, donors, seg, grids, attrs, extract,
+                                          job.species_lookup, settings)
+    else:
+        inventory = plot_inventory(stand_rows(units)["PLT_CN"], attrs, extract)
+    stands = stand_rows(units, job.layout)
     accounting = area_accounting(cells, parents, units, place, deleted, speckle.deleted)
     if abs(accounting["drift_acres"]) > MAX_DRIFT_ACRES:
         raise AcreDrift(f"county {place.fips}: units hold {accounting['unit_acres']} ac, parent "
@@ -827,7 +914,7 @@ def run_county(job: CountyJob) -> CountyResult:
 
     shutil.rmtree(job.out, ignore_errors=True)
     _write_parents(job.out / PARENT_STANDS, seg, cells)
-    weights.to_csv(job.out / DONOR_WEIGHTS, index=False)
+    donors.kept.to_csv(job.out / DONOR_WEIGHTS, index=False)
     units.to_file(job.out / COUNTY_UNITS, layer=UNITS_LAYER, driver="GPKG", mode="w")
     stands.to_csv(job.out / STANDS, index=False)
     inventory.write(job.out / FVS_DATA)
@@ -871,15 +958,26 @@ def _vat_sha256(vat: pd.DataFrame) -> str:
     return hashlib.sha256(rows.tobytes() + json.dumps(list(map(str, vat.columns))).encode()).hexdigest()
 
 
-def input_sha256(county: County, settings: LetoSettings, region: RegionInputs, shared: dict) -> str:
+def county_outputs(layout: InventoryLayout) -> tuple[str, ...]:
+    """The files a finished county holds."""
+    if layout is InventoryLayout.LETO:
+        return COUNTY_OUTPUTS + leto_layout.QA_TABLES
+    return COUNTY_OUTPUTS
+
+
+def input_sha256(county: County, settings: LetoSettings, region: RegionInputs, shared: dict,
+                 layout: InventoryLayout = InventoryLayout.PLOT) -> str:
     """The digest of what a county's outputs depend on: a match means they can be kept.
 
     The county (FIPS, name, geometry), the raster run (its manifest, its repaired rasters and
-    ``young_plots/``), the VAT, the region inputs, the resolved settings, the layout and :data:`OUTPUT_VERSION`.
+    ``young_plots/``), the VAT, the region inputs, the resolved settings, the layout and
+    :data:`OUTPUT_VERSION`; under the LETO layout the species crosswalk too (``shared``). The
+    database mode only shapes the LETO layout's outputs, so the plot layout leaves it out.
     """
-    settings_record = {k: v for k, v in settings.record().items() if k != "inputs"}
+    leaves_out = {"inputs"} | ({"database"} if layout is InventoryLayout.PLOT else set())
+    settings_record = {k: v for k, v in settings.record().items() if k not in leaves_out}
     return _digest({
-        "output_version": OUTPUT_VERSION, "layout": LAYOUT.value,
+        "output_version": OUTPUT_VERSION, "layout": layout.value,
         "county": {"fips": county.fips, "name": county.name,
                    "geometry": hashlib.sha256(county.geometry.wkb).hexdigest()},
         **shared, "settings": settings_record,
@@ -890,13 +988,19 @@ class _Planner:
     """Builds each county's job, reading every region's inputs once."""
 
     def __init__(self, run_dir: Path, repair: Path, vat: pd.DataFrame, counties: Path,
-                 region_dir: Path | None, settings: LetoSettings | None):
+                 region_dir: Path | None, settings: LetoSettings | None,
+                 layout: InventoryLayout, species_lookup: Mapping[str, str] | None):
         self.run_dir, self.repair, self.vat, self.counties = run_dir, repair, vat, counties
         self.region_dir, self.settings = region_dir, settings
+        self.layout, self.species_lookup = layout, species_lookup
         self.regions: dict[str, tuple[LetoSettings, RegionInputs]] = {}
         self.shared = {"repair_manifest": _sha256(repair / RUN_MANIFEST),
                        "rasters": _rasters_sha256(repair),
                        "young_plots": _young_plots_sha256(repair), "vat": _vat_sha256(vat)}
+        if layout is InventoryLayout.LETO:
+            if species_lookup is None:
+                raise ValueError("the LETO layout needs the FVS species crosswalk (species_lookup)")
+            self.shared["species_crosswalk"] = leto_layout.species_sha256(species_lookup)
 
     def region(self, fips: str) -> tuple[LetoSettings, RegionInputs]:
         settings = self.settings or load_settings(fips)
@@ -909,13 +1013,14 @@ class _Planner:
         settings, inputs = self.region(fips)
         place = read_county(self.counties, fips)
         return CountyJob(place, self.repair, self.run_dir / COUNTY_DIR / fips, self.vat, settings,
-                         inputs, input_sha256(place, settings, inputs, self.shared))
+                         inputs, input_sha256(place, settings, inputs, self.shared, self.layout),
+                         self.layout, self.species_lookup or {})
 
 
 def _finished(entry: dict | None, job: CountyJob) -> bool:
     return (entry is not None and entry.get("status") == CountyStatus.DONE
             and entry.get("input_sha256") == job.input_sha256
-            and all((job.out / name).exists() for name in COUNTY_OUTPUTS))
+            and all((job.out / name).exists() for name in county_outputs(job.layout)))
 
 
 def _attempt(job: CountyJob) -> CountyResult | Exception:
@@ -954,7 +1059,7 @@ def _concat_csv(paths: list[Path], out: Path) -> None:
 
 
 def _fvs_tables(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    tables = LAYOUT.tables
+    tables = InventoryLayout.PLOT.tables
     with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as con:
         frames = tuple(pd.read_sql(f'SELECT * FROM "{t}"', con) for t in (tables.stand, tables.tree))
     con.close()
@@ -987,16 +1092,21 @@ def assemble_inventory(paths: list[Path]) -> PlotInventory:
 def _remove_run_outputs(run_dir: Path) -> None:
     for name in (STANDS, FVS_DATA, UNITS_GPKG, QA_DIR / AREA_ACCOUNTING, QA_DIR / SPECKLE):
         (run_dir / name).unlink(missing_ok=True)
+    leto_layout.remove_run_outputs(run_dir, run_dir / QA_DIR)
 
 
-def assemble(run_dir: Path, counties: list[str]) -> pd.DataFrame:
+def assemble(run_dir: Path, counties: list[str],
+             layout: InventoryLayout = InventoryLayout.PLOT) -> pd.DataFrame:
     """The run-level outputs from the finished ``counties``' own; return the area accounting."""
     dirs = [run_dir / COUNTY_DIR / fips for fips in counties]
     _concat_csv([d / STANDS for d in dirs], run_dir / STANDS)
     (run_dir / QA_DIR).mkdir(parents=True, exist_ok=True)
     _concat_csv([d / AREA_ACCOUNTING for d in dirs], run_dir / QA_DIR / AREA_ACCOUNTING)
     _concat_csv([d / SPECKLE for d in dirs], run_dir / QA_DIR / SPECKLE)
-    assemble_inventory([d / FVS_DATA for d in dirs]).write(run_dir / FVS_DATA)
+    if layout is InventoryLayout.LETO:
+        leto_layout.assemble(dirs, run_dir, run_dir / FVS_DATA, run_dir / QA_DIR)
+    else:
+        assemble_inventory([d / FVS_DATA for d in dirs]).write(run_dir / FVS_DATA)
     units = pd.concat([gpd.read_file(d / COUNTY_UNITS, layer=UNITS_LAYER) for d in dirs],
                       ignore_index=True)
     gpd.GeoDataFrame(units, crs=units.crs).to_file(run_dir / UNITS_GPKG, layer=UNITS_LAYER,
@@ -1045,20 +1155,23 @@ def _restale(previous: dict[str, dict], requested: set[str], planner: _Planner) 
 
 def run_leto(run_dir: Path, *, repair: Path, vat: pd.DataFrame, counties: Path,
              fips: Sequence[str] | None = None, region_dir: Path | None = None,
-             settings: LetoSettings | None = None, workers: int = 1) -> LetoRun:
+             settings: LetoSettings | None = None, workers: int = 1,
+             layout: InventoryLayout = InventoryLayout.PLOT,
+             species_lookup: Mapping[str, str] | None = None) -> LetoRun:
     """Run the counties ``fips`` of ``repair`` (default: every one its manifest lists) into ``run_dir``.
 
     ``vat`` is TreeMap's value table (:func:`add_back_ids.read_vat`) and ``counties`` the county
     layer. ``region_dir`` defaults to each region's configured inputs, ``settings`` to each
     county's region's. A county whose recorded input hash matches is skipped; the rest run,
     ``workers`` at a time. A county that fails is recorded as failed, the others still finish,
-    and the first failure is raised with no run-level output written.
+    and the first failure is raised with no run-level output written. The LETO ``layout`` needs
+    ``species_lookup``, the FVS species crosswalk (FIA code -> SN species).
     """
     repair, run_dir = Path(repair), Path(run_dir)
     if not (repair / RUN_MANIFEST).exists():
         raise FileNotFoundError(f"{repair / RUN_MANIFEST} is missing: not a raster-repair run folder")
     requested = sorted(set(fips or manifest_counties(repair)))
-    planner = _Planner(run_dir, repair, vat, counties, region_dir, settings)
+    planner = _Planner(run_dir, repair, vat, counties, region_dir, settings, layout, species_lookup)
     jobs = [planner.job(f) for f in requested]          # every input checked before any work
 
     previous = _previous_counties(run_dir)
@@ -1073,7 +1186,7 @@ def run_leto(run_dir: Path, *, repair: Path, vat: pd.DataFrame, counties: Path,
         else:
             todo.append(job)
     record = {
-        "stage": "leto", "layout": LAYOUT.value,
+        "stage": "leto", "layout": layout.value,
         "repair": {"path": str(repair.resolve()), "young_plots": (repair / YOUNG_PLOTS).is_dir(),
                    "manifest_sha256": planner.shared["repair_manifest"]},
         "regions": {name: {"settings": s.record(), **inputs.record()}
@@ -1104,4 +1217,4 @@ def run_leto(run_dir: Path, *, repair: Path, vat: pd.DataFrame, counties: Path,
         raise failures[0][1]
 
     done = [f for f, e in sorted(entries.items()) if e.get("status") == CountyStatus.DONE]
-    return LetoRun(dict(sorted(outcomes.items())), assemble(run_dir, done))
+    return LetoRun(dict(sorted(outcomes.items())), assemble(run_dir, done, layout))

@@ -206,14 +206,16 @@ FINAL_STAND_COLUMNS = [
 def prepare_stands(units: pd.DataFrame, *, inventory_year: int = 2022, variant: str = "SN",
                    state: str = "FL") -> pd.DataFrame:
     """One FVS stand row per management unit (stage3 `read_stand_polygons` +
-    pipeline `_prepare_stands_dataframe`, single-part units).
+    pipeline `_prepare_stands_dataframe`, single-part units). ``STAND_ID`` is ``MU_<MU_ID>``
+    unless the units carry their own.
 
     AGE is STDAGE_MEAN rounded half to even: LETO sets it with `Series.round()` before
     `_prepare_stands_dataframe` would apply `floor(x + 0.5)`, so the floor never runs.
     """
     stands = units.copy()
     stands["SEG_ID"] = pd.to_numeric(stands["MU_ID"], errors="raise").astype("int64")
-    stands["STAND_ID"] = "MU_" + stands["SEG_ID"].astype(str)
+    if "STAND_ID" not in stands.columns:
+        stands["STAND_ID"] = "MU_" + stands["SEG_ID"].astype(str)
     stands["Stand_ID"] = stands["SEG_ID"].astype(str)
     stands["MU_ID"] = stands["SEG_ID"].astype(str)
     stands["Acres"] = pd.to_numeric(stands["Acres"], errors="coerce")
@@ -278,7 +280,9 @@ def build_inventory(units, weights: pd.DataFrame, fia_trees: pd.DataFrame,
                             state=state)
     original = weights.copy()
     original["SEG_ID"] = pd.to_numeric(original["MU_ID"], errors="raise").astype("int64")
-    original["STAND_ID"] = "MU_" + original["SEG_ID"].astype(str)
+    stand_of = pd.Series(stands["STAND_ID"].to_numpy(), index=stands["SEG_ID"].to_numpy())
+    original["STAND_ID"] = original["SEG_ID"].map(stand_of).fillna(
+        "MU_" + original["SEG_ID"].astype(str))
     original["PLT_CN"] = as_id_series(original["PLT_CN"], column="PLT_CN")
     retained = filter_weights(original, minimum_weight, key="SEG_ID")
 

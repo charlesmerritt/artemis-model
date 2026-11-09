@@ -49,7 +49,7 @@ from pipeline.s4_fvs.regime_templates import (
     render_estab_block,
     render_schedule_block,
 )
-from pipeline.s4_fvs.sn_species import FIA_TO_SN
+from pipeline.s4_fvs.sn_species import FIA_TO_SN, SN_JSP
 
 log = logging.getLogger("trajectory_library")
 
@@ -95,6 +95,7 @@ class FvsTables:
     tree: str
 
 
+SN_ALPHA = frozenset(SN_JSP)
 PLOT_TABLES = FvsTables("FVS_StandInit_Plot", "FVS_TreeInit_Plot")   # FIA per-plot inputs
 LETO_TABLES = FvsTables("FVS_StandInit", "FVS_TreeInit")             # `leto_database`
 
@@ -239,13 +240,17 @@ def stand_sdi_tables(trees: pd.DataFrame) -> dict[str, dict[str, float]]:
 
     Natural regeneration is apportioned across the stand's own species by SDI share (Diaz et
     al. 2015), rather than one loblolly record that would regenerate every bottomland hardwood
-    clearcut as pine plantation. Keyed by the exact ``STAND_CN`` (`as_id_series`).
+    clearcut as pine plantation. Keyed by the exact ``STAND_CN`` (`as_id_series`). ``SPECIES``
+    is an FIA code (the plot layout) or an SN alpha code (the LETO layout's crosswalk).
     """
     t = trees.copy()
     t["STAND_CN"] = as_id_series(t["STAND_CN"], column="STAND_CN")
-    t["SN_SP"] = t["SPECIES"].astype(str).str.split(".").str[0].str.zfill(3).map(FIA_TO_SN)
+    species = t["SPECIES"].astype(str).str.strip()
+    alpha = species.isin(SN_ALPHA)
+    t["SN_SP"] = species.where(alpha, species.str.split(".").str[0].str.zfill(3).map(FIA_TO_SN))
     t = t.dropna(subset=["SN_SP"])
-    live = t[(t["HISTORY"].fillna(1) <= 5) & (t["TREE_COUNT"] > 0)]
+    history = t["HISTORY"].fillna(1) if "HISTORY" in t else 1    # LETO's TreeInit has none: live
+    live = t[(history <= 5) & (t["TREE_COUNT"] > 0)]
     live = live.assign(
         SDI=live["TREE_COUNT"] * (live["DIAMETER"].fillna(1.0).clip(lower=0.5) / 10.0) ** 1.6
     )
