@@ -1,0 +1,46 @@
+county_fips,county,layer,fcode,label,buffer_feet,pieces,acres
+12003,Baker,flowline,46000,Unclassified Stream,35.0,40,137.9852
+12003,Baker,flowline,46003,Intermittent Stream,35.0,74,175.2432
+12003,Baker,flowline,46006,Perennial Stream,75.0,832,3713.3199
+12003,Baker,flowline,55800,Artificial Path (NHDArea stand-in),75.0,611,3407.7302
+12003,Baker,none,,outside every buffer,,19,26.8989
+12003,Baker,waterbody,39001,Intermittent Lake/Pond,35.0,3,7.0666
+12003,Baker,waterbody,39004,Perennial Lake/Pond,75.0,214,1385.8063
+12003,Baker,waterbody,39006,Intermittent Lake/Pond,35.0,1,11.8056
+12003,Baker,waterbody,39009,Perennial Lake/Pond,75.0,42,141.4542
+12023,Columbia,flowline,46000,Unclassified Stream,35.0,10,40.3246
+12023,Columbia,flowline,46003,Intermittent Stream,35.0,251,681.7684
+12023,Columbia,flowline,46006,Perennial Stream,75.0,797,3583.3081
+12023,Columbia,flowline,55800,Artificial Path (NHDArea stand-in),75.0,543,2494.7395
+12023,Columbia,none,,outside every buffer,,19,30.4226
+12023,Columbia,waterbody,39000,Unclassified Lake/Pond,35.0,8,15.4861
+12023,Columbia,waterbody,39001,Intermittent Lake/Pond,35.0,8,13.4547
+12023,Columbia,waterbody,39004,Perennial Lake/Pond,75.0,636,2850.9489
+12023,Columbia,waterbody,39009,Perennial Lake/Pond,75.0,20,94.6312
+12047,Hamilton,flowline,46000,Unclassified Stream,35.0,41,133.6127
+12047,Hamilton,flowline,46003,Intermittent Stream,35.0,151,412.3549
+12047,Hamilton,flowline,46006,Perennial Stream,75.0,572,2763.2351
+12047,Hamilton,flowline,55800,Artificial Path (NHDArea stand-in),75.0,295,1084.6902
+12047,Hamilton,none,,outside every buffer,,27,49.9088
+12047,Hamilton,waterbody,39000,Unclassified Lake/Pond,35.0,7,10.555
+12047,Hamilton,waterbody,39001,Intermittent Lake/Pond,35.0,15,45.0172
+12047,Hamilton,waterbody,39004,Perennial Lake/Pond,75.0,267,695.3813
+12047,Hamilton,waterbody,39009,Perennial Lake/Pond,75.0,7,15.1432
+12121,Suwannee,flowline,46003,Intermittent Stream,35.0,129,388.758
+12121,Suwannee,flowline,46006,Perennial Stream,75.0,251,1349.1427
+12121,Suwannee,flowline,55800,Artificial Path (NHDArea stand-in),75.0,130,500.4282
+12121,Suwannee,none,,outside every buffer,,18,56.7534
+12121,Suwannee,waterbody,39000,Unclassified Lake/Pond,35.0,5,8.7472
+12121,Suwannee,waterbody,39001,Intermittent Lake/Pond,35.0,56,100.4438
+12121,Suwannee,waterbody,39004,Perennial Lake/Pond,75.0,515,1143.9398
+12121,Suwannee,waterbody,39005,Intermittent Lake/Pond,35.0,11,20.0732
+12121,Suwannee,waterbody,39009,Perennial Lake/Pond,75.0,12,53.3377
+12125,Union,flowline,46000,Unclassified Stream,35.0,39,117.4913
+12125,Union,flowline,46003,Intermittent Stream,35.0,65,161.2493
+12125,Union,flowline,46006,Perennial Stream,75.0,789,3474.8537
+12125,Union,flowline,55800,Artificial Path (NHDArea stand-in),75.0,449,2287.0881
+12125,Union,none,,outside every buffer,,37,77.6873
+12125,Union,waterbody,39000,Unclassified Lake/Pond,35.0,2,4.2424
+12125,Union,waterbody,39001,Intermittent Lake/Pond,35.0,1,1.078
+12125,Union,waterbody,39004,Perennial Lake/Pond,75.0,133,288.5639
+12125,Union,waterbody,39009,Perennial Lake/Pond,75.0,50,135.0065

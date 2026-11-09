@@ -1,0 +1,6 @@
+county_fips,county,clip_seconds,attributes_seconds,segment_seconds,polygons_seconds,riparian_seconds,donors_seconds,speckle_seconds,inventory_seconds,qa_tables_seconds,write_seconds,maps_seconds,total_seconds,peak_rss_mb,memory_scope
+12003,Baker,0.157,1.341,37.232,5.9,16.438,0.253,7.719,0.299,0.735,1.376,15.276,86.723,1129.6,county
+12023,Columbia,0.158,1.418,41.824,10.643,32.786,0.321,10.032,0.247,1.299,2.339,9.708,110.773,940.6,county
+12047,Hamilton,0.129,0.741,25.425,5.855,20.956,0.26,8.052,0.318,0.513,1.637,6.179,70.064,706.9,county
+12121,Suwannee,0.191,0.816,33.133,11.522,48.822,0.437,6.208,0.23,0.851,1.773,21.525,125.509,1311.5,county
+12125,Union,0.076,0.595,15.179,2.151,9.007,0.24,2.675,0.131,0.718,0.788,13.424,44.985,698.3,county
