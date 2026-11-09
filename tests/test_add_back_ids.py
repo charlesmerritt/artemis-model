@@ -405,3 +405,57 @@ def test_a_county_that_is_not_five_digits_is_refused_before_the_layer_is_read(tm
     write_add_back_ids(run, **sources)
     with pytest.raises(ValueError, match="5 digits"):
         acres_by_county(run, tmp_path / "missing.shp", ["12001", "12001' OR '1'='1"])
+
+
+def _three_rows(path):
+    """Rewrite a one-row test raster as three copies of that row, every band."""
+    with rasterio.open(path) as src:
+        bands, nodata = src.read(), src.nodata
+    _write(path, np.repeat(bands, 3, axis=1), nodata)
+
+
+def _run_three_rows(tmp_path):
+    tmp_path.mkdir()
+    run, sources = _run(tmp_path)
+    for name in ("treemap2022_provenance.tif", "treemap2022_improved.tif", "bookend_strata.tif"):
+        _three_rows(run / name)
+    _three_rows(sources["obata"])
+    _three_rows(sources["hansen"])
+    counties = tmp_path / "counties.shp"
+    import geopandas as gpd
+    from shapely.geometry import box
+    gpd.GeoDataFrame({"ADMIN_FIPS": ["12001", "12077"], "NAME": ["Alachua", "Liberty"]},
+                     geometry=[box(0, 0, 90, 30), box(0, -60, 180, 0)],   # row 0 west; rows 1-2
+                     crs="EPSG:5070").to_file(counties)
+    _manifest(run, ["12001 12001", "12077 12077"], obata=str(sources["obata"]),
+              hansen=str(sources["hansen"]), counties=str(counties))
+    return run, sources
+
+
+def _outputs(run):
+    out = run / "young_plots"
+    return {p.name: (_read(p).tolist() if p.suffix == ".tif" else p.read_text())
+            for p in sorted(out.iterdir())}
+
+
+def test_the_outputs_do_not_depend_on_how_many_rows_are_read_at_a_time(tmp_path, monkeypatch):
+    import pipeline.s1_initial_state.add_back_ids as module
+
+    whole, sources = _run_three_rows(tmp_path / "whole")
+    write_add_back_ids(whole, **sources)
+    monkeypatch.setattr(module, "STRIP_ROWS", 1)
+    by_row, sources = _run_three_rows(tmp_path / "by_row")
+    write_add_back_ids(by_row, **sources)
+
+    expected, got = _outputs(whole), _outputs(by_row)
+    assert sorted(got) == sorted(expected)
+    for name in expected:
+        if name != "validation.json":   # it records the detector paths, which differ
+            assert got[name] == expected[name], name
+    report = json.loads((by_row / "young_plots" / "validation.json").read_text())
+    assert all(report["checks"].values())
+    assert report["counts"]["add_back_pixels"] == 12
+    # Row 0's pixels 1-2 are in 12001 and 3-4 in no county; rows 1-2 are all 12077.
+    table = pd.read_csv(by_row / "young_plots" / "add_back_acres_by_county.csv",
+                        dtype={"county_fips": str}, keep_default_na=False)
+    assert table.groupby("county_fips")["pixels"].sum().to_dict() == {"": 2, "12001": 2, "12077": 8}

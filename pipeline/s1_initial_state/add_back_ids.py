@@ -39,7 +39,7 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -47,6 +47,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import rasterio
+from rasterio import windows
+from rasterio.transform import Affine
+from rasterio.windows import Window
 
 from pipeline.ids import as_id_series, read_id_csv
 from pipeline.s1_initial_state.add_back_methods import AddBackMethod
@@ -56,12 +59,9 @@ from pipeline.s1_initial_state.add_back_stand_age import (
     read_cut_year,
     stand_age,
 )
-from pipeline.s1_initial_state.county_improvement import (
-    Grid,
-    TreeMapProvenance,
-    _write,
-)
+from pipeline.s1_initial_state.county_improvement import Grid, TreeMapProvenance
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL
+from pipeline.spatial_ref import project_crs
 from pipeline.s1_initial_state.young_plot_library import (
     MatchLevel,
     YoungPlotLibrary,
@@ -77,6 +77,9 @@ TREE_EXTENSION_CSV = "treemap2022_improved_tree_extension.csv"
 COUNTY_CSV = "add_back_acres_by_county.csv"
 OUTSIDE_COUNTIES = "outside listed counties"   # the county of an add-back pixel in no listed county
 UNRESOLVED = "unresolved"   # the age source of an add-back pixel whose ID has no VAT extension row
+IMPROVED = "treemap2022_improved.tif"
+PROVENANCE = "treemap2022_provenance.tif"
+STRIP_ROWS = 1024            # rows read at a time: a statewide grid is never held whole (#172)
 NEW_ID_START = 1_000_000     # above TreeMap 2022's own values (at most 70,035)
 YOUNG_PLOTS_PROVENANCE = ("0 water, 1 published, 3 unmapped land, "
                           "4 added back: a young plot under a new TM_ID (ADR 0003)")
@@ -292,16 +295,11 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
     folder of LANDFIRE disturbance products, dates pixels only when given.
     """
     obata, hansen = run_detectors(run_dir, obata, hansen)
-    with rasterio.open(run_dir / "treemap2022_provenance.tif") as src:
-        provenance = src.read(1)
-        grid = Grid(src.transform, provenance.shape)
-    with rasterio.open(run_dir / "treemap2022_improved.tif") as src:
-        improved, nodata = src.read(1), src.nodata
-    strata = _band(run_dir / "bookend_strata.tif")
-    added = TreeMapProvenance.added_back(provenance)
-    years, detector = read_cut_year(grid, obata=obata, hansen=hansen, landfire=landfire, where=added)
-    ages, sources = pixel_stand_ages(years, detector, strata[added])
-    pixels = pd.DataFrame({"NEIGHBOUR_TM_ID": as_id_series(pd.Series(improved[added]), column="TM_ID"),
+    added = AddBackPixels.of(run_dir / PROVENANCE, TreeMapProvenance.added_back)
+    years, detector = added.cut_years(obata=obata, hansen=hansen, landfire=landfire)
+    ages, sources = pixel_stand_ages(years, detector, added.gather(run_dir / "bookend_strata.tif"))
+    neighbours = added.gather(run_dir / IMPROVED)
+    pixels = pd.DataFrame({"NEIGHBOUR_TM_ID": as_id_series(pd.Series(neighbours), column="TM_ID"),
                            "STAND_AGE_2022": ages,
                            "CUT_YEAR": pd.Series(years, dtype="Int64").where(years > 0),
                            "AGE_SOURCE": sources})
@@ -310,12 +308,13 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
 
     out = run_dir / OUT_DIR
     out.mkdir(exist_ok=True)
-    improved[added] = ids.values
-    provenance[added] = TreeMapProvenance.ADDED_BACK_YOUNG
-    _write(out / "treemap2022_improved.tif", improved, grid.transform, nodata,
-           "TreeMap 2022 TM_ID; an add-back pixel's new TM_ID resolves in " + VAT_EXTENSION_CSV)
-    _write(out / "treemap2022_provenance.tif", provenance, grid.transform, 255,
-           YOUNG_PLOTS_PROVENANCE)
+    with rasterio.open(run_dir / IMPROVED) as src:
+        nodata = src.nodata
+    added.rewrite(run_dir / IMPROVED, out / IMPROVED, ids.values, nodata=nodata,
+                  description="TreeMap 2022 TM_ID; an add-back pixel's new TM_ID resolves in "
+                              + VAT_EXTENSION_CSV)
+    added.rewrite(run_dir / PROVENANCE, out / PROVENANCE, TreeMapProvenance.ADDED_BACK_YOUNG,
+                  nodata=255, description=YOUNG_PLOTS_PROVENANCE)
     ids.vat_extension.to_csv(out / VAT_EXTENSION_CSV, index=False)
     ids.tree_extension.to_csv(out / TREE_EXTENSION_CSV, index=False)
     report = validate(run_dir, vat["TM_ID"])
@@ -357,20 +356,16 @@ def acres_by_county(run_dir: Path, counties: Path, fips: list[str]) -> pd.DataFr
     if malformed:
         raise ValueError(f"a county FIPS is 5 digits, not {malformed[0]!r}")
     import geopandas as gpd
-    from rasterio import features
 
     from pipeline.spatial_ref import to_project_crs
 
     out = run_dir / OUT_DIR
-    with rasterio.open(out / "treemap2022_provenance.tif") as src:
-        added = src.read(1) == TreeMapProvenance.ADDED_BACK_YOUNG
-        transform, shape = src.transform, (src.height, src.width)
-    values = _band(out / "treemap2022_improved.tif")[added]
+    added = AddBackPixels.of(out / PROVENANCE, _young)
+    values = added.gather(out / IMPROVED)
     quoted = ", ".join(f"'{f}'" for f in fips)
     layer = to_project_crs(gpd.read_file(counties, where=f"ADMIN_FIPS IN ({quoted})"))
     layer = layer.dissolve(by="ADMIN_FIPS", aggfunc="first").reset_index()
-    index = features.rasterize(((geom, i + 1) for i, geom in enumerate(layer.geometry)),
-                               out_shape=shape, transform=transform, fill=0, dtype="uint16")[added]
+    index = added.rasterized([(geom, i + 1) for i, geom in enumerate(layer.geometry)])
     fips_of = np.array([""] + layer["ADMIN_FIPS"].astype(str).tolist(), dtype=object)
     name_of = np.array([OUTSIDE_COUNTIES] + layer["NAME"].astype(str).tolist(), dtype=object)
     vat = read_id_csv(out / VAT_EXTENSION_CSV, id_columns=EXTENSION_ID_COLUMNS)
@@ -386,11 +381,10 @@ def acres_by_county(run_dir: Path, counties: Path, fips: list[str]) -> pd.DataFr
 def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
     """Read ``<run_dir>/young_plots/`` back: does it join, and how many acres by age and match?"""
     out = run_dir / OUT_DIR
-    improved = _band(out / "treemap2022_improved.tif")
-    added = _band(out / "treemap2022_provenance.tif") == TreeMapProvenance.ADDED_BACK_YOUNG
+    added = AddBackPixels.of(out / PROVENANCE, _young)
     vat = read_id_csv(out / VAT_EXTENSION_CSV, id_columns=EXTENSION_ID_COLUMNS)
     trees = read_id_csv(out / TREE_EXTENSION_CSV)
-    values, pixels = np.unique(improved[added], return_counts=True)
+    values, pixels = np.unique(added.gather(out / IMPROVED), return_counts=True)
     checks = {
         "every_add_back_pixel_resolves_to_a_vat_row": bool(np.isin(values, vat["Value"]).all()),
         "every_vat_row_is_full": bool(vat[VAT_COLUMNS].notna().all(axis=None)),
@@ -398,8 +392,7 @@ def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
         "no_new_id_is_a_treemap_value": not set(vat["TM_ID"]) & set(treemap_ids),
         "vat_counts_match_the_raster":
             pd.Series(pixels, index=values).reindex(vat["Value"]).tolist() == vat["Count"].tolist(),
-        "other_pixels_unchanged":
-            bool((improved[~added] == _band(run_dir / "treemap2022_improved.tif")[~added]).all()),
+        "other_pixels_unchanged": added.others_equal(out / IMPROVED, run_dir / IMPROVED),
     }
 
     def acres(column: str) -> dict[str, float]:
@@ -408,7 +401,7 @@ def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
 
     return {
         "checks": checks,
-        "counts": {"add_back_pixels": int(added.sum()), "new_ids": len(vat),
+        "counts": {"add_back_pixels": added.count, "new_ids": len(vat),
                    "young_plots": int(vat["YOUNG_TM_ID"].nunique()),
                    "neighbour_plots": int(vat["NEIGHBOUR_TM_ID"].nunique())},
         "acres_by_stand_age": acres("STAND_AGE_2022"),
@@ -417,9 +410,106 @@ def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
     }
 
 
-def _band(path: Path) -> np.ndarray:
-    with rasterio.open(path) as src:
-        return src.read(1)
+def _young(provenance: np.ndarray) -> np.ndarray:
+    return provenance == TreeMapProvenance.ADDED_BACK_YOUNG
+
+
+def _strips(height: int, width: int) -> Iterator[Window]:
+    """Full-width bands of :data:`STRIP_ROWS` rows, top to bottom."""
+    for row in range(0, height, STRIP_ROWS):
+        yield Window(0, row, width, min(STRIP_ROWS, height - row))
+
+
+@dataclass(frozen=True)
+class AddBackPixels:
+    """Where a run's add-back pixels are, one strip of rows at a time.
+
+    Every raster is read a strip at a time and only these pixels are kept, so a statewide
+    grid (618M pixels) is never held whole. Values come back in row-major order, as
+    indexing a whole band by a mask would give them.
+    """
+
+    transform: Affine
+    strips: tuple[tuple[Window, np.ndarray], ...]   # each strip and its pixels' flat indices in it
+
+    @classmethod
+    def of(cls, provenance: Path, chosen: Callable[[np.ndarray], np.ndarray]) -> AddBackPixels:
+        """The pixels of ``provenance`` that ``chosen`` (a mask of a provenance block) picks."""
+        with rasterio.open(provenance) as src:
+            strips = tuple((w, np.flatnonzero(chosen(src.read(1, window=w))))
+                           for w in _strips(src.height, src.width))
+            return cls(src.transform, strips)
+
+    @property
+    def count(self) -> int:
+        return sum(len(index) for _, index in self.strips)
+
+    def gather(self, path: Path) -> np.ndarray:
+        """Band 1 of ``path`` (on this grid) at these pixels."""
+        with rasterio.open(path) as src:
+            parts = [src.read(1, window=w).ravel()[index] for w, index in self.strips]
+            return np.concatenate(parts) if parts else np.empty(0, dtype=src.dtypes[0])
+
+    def cut_years(self, **detectors: Path | None) -> tuple[np.ndarray, np.ndarray]:
+        """:func:`read_cut_year` at these pixels, strip by strip."""
+        years, detector = [np.empty(0, np.uint16)], [np.empty(0, np.uint8)]
+        for w, index in self.strips:
+            if not len(index):
+                continue
+            where = np.zeros(int(w.height) * int(w.width), dtype=bool)
+            where[index] = True
+            grid = Grid(windows.transform(w, self.transform), (int(w.height), int(w.width)))
+            y, d = read_cut_year(grid, where=where.reshape(grid.shape), **detectors)
+            years.append(y)
+            detector.append(d)
+        return np.concatenate(years), np.concatenate(detector)
+
+    def rasterized(self, shapes: list) -> np.ndarray:
+        """``shapes`` (geometry, value) burnt onto the grid by pixel centre, at these pixels; 0 off them."""
+        from rasterio import features
+
+        return np.concatenate([np.empty(0, np.uint16)] + [
+            features.rasterize(shapes, out_shape=(int(w.height), int(w.width)), fill=0, dtype="uint16",
+                               transform=windows.transform(w, self.transform)).ravel()[index]
+            for w, index in self.strips])
+
+    def others_equal(self, a: Path, b: Path) -> bool:
+        """Whether ``a`` and ``b`` agree everywhere but these pixels."""
+        with rasterio.open(a) as one, rasterio.open(b) as other:
+            for w, index in self.strips:
+                keep = np.ones(int(w.height) * int(w.width), dtype=bool)
+                keep[index] = False
+                if not (one.read(1, window=w).ravel()[keep] == other.read(1, window=w).ravel()[keep]).all():
+                    return False
+        return True
+
+    def rewrite(self, source: Path, path: Path, values: np.ndarray | int, *, nodata,
+                description: str) -> None:
+        """``source`` with these pixels set to ``values``, as a Cloud Optimized GeoTIFF at ``path``.
+
+        Written a strip at a time to a tiled scratch file beside ``path``, then copied to a
+        COG (overviews nearest: the values are classes), so neither is held whole.
+        """
+        from rasterio.shutil import copy as rio_copy
+
+        values = np.asarray(values)
+        scratch = path.with_name(path.stem + ".partial.tif")
+        with rasterio.open(source) as src:
+            profile = dict(driver="GTiff", height=src.height, width=src.width, count=1,
+                           dtype=src.dtypes[0], crs=project_crs(), transform=self.transform,
+                           nodata=nodata, tiled=True, blockxsize=256, blockysize=256,
+                           compress="DEFLATE", BIGTIFF="IF_SAFER")
+            start = 0
+            with rasterio.open(scratch, "w", **profile) as dst:
+                for w, index in self.strips:
+                    block = src.read(1, window=w)
+                    block.reshape(-1)[index] = values if values.ndim == 0 else values[start:start + len(index)]
+                    start += len(index)
+                    dst.write(block, 1, window=w)
+                dst.update_tags(description=description)
+        rio_copy(scratch, path, driver="COG", compress="DEFLATE", blocksize=256,
+                 overview_resampling="NEAREST", resampling="NEAREST")
+        scratch.unlink()
 
 
 def read_vat(path: Path) -> pd.DataFrame:
