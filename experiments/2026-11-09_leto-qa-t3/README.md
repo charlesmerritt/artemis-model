@@ -2,7 +2,8 @@
 
 `report/` is `qa/leto/` from `main.py leto` on Union County (12125, the T3 county), v4 FL5
 raster run, run on 2026-11-09 with the default settings: `force_merge`, then the speckle
-merge with the speckle that cannot merge deleted (`merge_delete`, ADR 0005 amendment). Open `report/index.html` offline. The run folder itself is `work/run/`, which
+merge with the speckle that cannot merge deleted (`merge_delete`, ADR 0005 amendment). Open `report/index.html` offline. `report/viewer/12125.html` is the interactive unit
+viewer (`pipeline/leto_viewer.py`). The run folder itself is `work/run/`, which
 is gitignored.
 
 Run:
@@ -44,3 +45,18 @@ What the report shows:
 - **Add-back cells in TreeMap units** (pink on `figures/12125_young_plots.png`): add-back
   cells whose parent's representative plot is a mature TreeMap plot. They run as that
   plot, not as young stands.
+
+The viewer is for tuning the CA, so it shows the CA's stands next to its inputs:
+
+- **Units** coloured by owner class, unit class, forest type, origin, stand age,
+  representative share, acres or parent stand.
+- **Parent stands** (the CA's stands, before the riparian split and the speckle merge) as
+  outlines.
+- **The CA's inputs per 30 m cell** underneath (forest type, stand age, basal area, QMD,
+  TPA) and the add-back cells.
+- **Clicking a unit** shows its attributes, its parent stand's cells, acres and owner, the
+  mean, standard deviation and coefficient of variation of each CA input over the parent's
+  cells, and its donor plots with exact `PLT_CN`.
+- **The run's CA and speckle settings** are listed in the panel.
+
+To compare settings, run `leto` into two run folders and open each one's viewer.

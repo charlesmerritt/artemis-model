@@ -7,8 +7,10 @@ and maps by relative path and fetches nothing). It follows the ``qa/<stage>/`` c
 **Per county** (:func:`write_county_qa`, inside the county's job so it runs in parallel and is
 kept on resume), ``<run_dir>/leto/<FIPS>/qa/`` holds:
 
-- ``parent_sizes.csv``: each parent stand's cells and geodesic acres;
-- ``qa_cells.tif``: band 1 each forest cell's forest type, band 2 its add-back flag;
+- ``parents.csv``: each parent stand's cells, geodesic acres and owner, and the mean and
+  spread of the CA's inputs over its cells;
+- ``qa_cells.tif``: per forest cell, its forest type, add-back flag and the CA's inputs;
+- ``viewer.html``: the interactive unit viewer (:mod:`pipeline.leto_viewer`);
 - ``donor_plots_missing.csv``: the county's TreeMap plots with no ``COND`` row in the FIA
   extract (their attributes fell back to TreeMap's value table), exact ``PLT_CN``;
 - ``riparian_by_source.csv`` (:func:`riparian_by_source`);
@@ -29,6 +31,7 @@ kept on resume), ``<run_dir>/leto/<FIPS>/qa/`` holds:
 - ``donor_plots_missing.csv``, ``riparian_by_source.csv`` and ``timings.csv``: the counties'
   tables, joined;
 - ``figures/``: the counties' maps, and ``region_<map>.png``, the region overview;
+- ``viewer/<FIPS>.html``: each county's interactive unit viewer, linked from the index;
 - ``index.html`` (:func:`write_index`): every CSV and PNG in the folder, so a table a later
   ticket adds shows up without touching this module.
 """
@@ -53,7 +56,7 @@ from matplotlib.patches import Patch
 from rasterio import features
 from rasterio.merge import merge
 
-from pipeline import leto_layout, qa_report
+from pipeline import leto_layout, leto_viewer, qa_report
 from pipeline.ids import read_id_csv
 from pipeline.leto_riparian import FEET_TO_METERS, SQUARE_METERS_PER_ACRE, BufferRules
 from pipeline.leto_speckle import UnitClass
@@ -63,7 +66,7 @@ QA_SUBDIR = "qa"                              # inside a county's folder
 AREA_ACCOUNTING = "area_accounting.csv"       # written by the stage, per county and per run
 DONOR_WEIGHTS = "donor_weights.csv"           # the stage's filtered parent donor weights
 SPECKLE = "speckle.csv"                       # the stage's speckle-merge QA (#167)
-PARENT_SIZES = "parent_sizes.csv"
+PARENTS = "parents.csv"
 QA_CELLS = "qa_cells.tif"
 MISSING_PLOTS = "donor_plots_missing.csv"
 RIPARIAN_SOURCES = "riparian_by_source.csv"
@@ -73,8 +76,10 @@ INDEX = qa_report.INDEX
 ACRES_BY_CLASS = "acres_by_class.csv"
 SIZE_DISTRIBUTION = "size_distribution.csv"
 DONOR_QA = "donor_qa.csv"
-COUNTY_QA = tuple(Path(QA_SUBDIR) / n for n in (PARENT_SIZES, QA_CELLS, MISSING_PLOTS,
-                                                RIPARIAN_SOURCES, TIMINGS))
+VIEWER = "viewer.html"                        # a county's interactive unit viewer
+VIEWERS = "viewer"                            # the run's: viewer/<FIPS>.html
+COUNTY_QA = tuple(Path(QA_SUBDIR) / n for n in (PARENTS, QA_CELLS, MISSING_PLOTS,
+                                                RIPARIAN_SOURCES, VIEWER, TIMINGS))
 REGION = "region"                             # the scope of a whole-run row or map
 MAX_MAP_PIXELS = 2000                         # a map's long side; larger grids are coarsened
 MAX_BOUNDARY_FACTOR = 2                       # parent boundaries drawn up to this coarsening
@@ -455,15 +460,18 @@ def render_maps(grid: MapGrid, out: Path, scope: str, title: str) -> list[Path]:
 # ── one county ─────────────────────────────────────────────────────────────────────────
 
 
-def write_qa_cells(path: Path, forest_type: np.ndarray, added_back: np.ndarray, transform, crs) -> None:
+def write_qa_cells(path: Path, forest_type: np.ndarray, added_back: np.ndarray, transform, crs,
+                   inputs: dict[str, np.ndarray]) -> None:
+    """``qa_cells.tif``: forest type, the add-back flag, then the CA's continuous inputs
+    (``inputs``, e.g. STDAGE, BALIVE, QMD, TPA), 0 off the forest."""
+    bands = [("forest type", forest_type), ("add-back", added_back), *inputs.items()]
     path.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(path, "w", driver="GTiff", height=forest_type.shape[0],
-                       width=forest_type.shape[1], count=2, dtype="int16", crs=crs,
+                       width=forest_type.shape[1], count=len(bands), dtype="float32", crs=crs,
                        transform=transform, nodata=0, compress="deflate") as dst:
-        dst.write(forest_type.astype(np.int16), 1)
-        dst.write(added_back.astype(np.int16), 2)
-        dst.set_band_description(1, "forest type")
-        dst.set_band_description(2, "add-back")
+        for i, (name, band) in enumerate(bands, start=1):
+            dst.write(np.nan_to_num(np.asarray(band, dtype=np.float32), nan=0.0), i)
+            dst.set_band_description(i, name)
 
 
 def with_representative_share(units: gpd.GeoDataFrame, weights: pd.DataFrame) -> gpd.GeoDataFrame:
@@ -474,18 +482,21 @@ def with_representative_share(units: gpd.GeoDataFrame, weights: pd.DataFrame) ->
 
 def write_county_qa(out: Path, *, fips: str, name: str, units: gpd.GeoDataFrame,
                     weights: pd.DataFrame, riparian: pd.DataFrame, missing: pd.DataFrame,
-                    parent_sizes: pd.DataFrame) -> None:
-    """A county's QA files under ``out`` (``<county>/qa``), its maps included.
+                    parents: pd.DataFrame, parent_shapes: gpd.GeoDataFrame, settings: dict) -> None:
+    """A county's QA files under ``out`` (``<county>/qa``), its maps and viewer included.
 
     ``qa_cells.tif`` must already be there; timings are written last, by the stage.
     """
     out.mkdir(parents=True, exist_ok=True)
-    parent_sizes.to_csv(out / PARENT_SIZES, index=False)
+    parents.to_csv(out / PARENTS, index=False)
     missing.to_csv(out / MISSING_PLOTS, index=False)
     riparian.assign(county_fips=fips, county=name)[["county_fips", "county", *RIPARIAN_COLUMNS]] \
         .to_csv(out / RIPARIAN_SOURCES, index=False)
     mapped = with_representative_share(units, weights.assign(county_fips=fips))
     render_maps(map_grid(mapped, [out / QA_CELLS]), out / MAPS, fips, f"{name} ({fips})")
+    leto_viewer.write_viewer(out / VIEWER, leto_viewer.viewer_data(
+        fips=fips, name=name, units=mapped, parents=parents, parent_shapes=parent_shapes,
+        weights=weights, qa_cells=out / QA_CELLS, settings=settings))
 
 
 def write_timings(path: Path, fips: str, name: str, clock: Stopwatch, scope: MemoryScope) -> None:
@@ -518,7 +529,7 @@ def write_report(qa: Path, counties: dict[str, Path], units: gpd.GeoDataFrame) -
     ids = {"id_columns": ("county_fips", "PLT_CN")}
     acres_by_class(units).to_csv(qa / ACRES_BY_CLASS, index=False)
 
-    parents = {fips: pd.read_csv(d / PARENT_SIZES) for fips, d in county_qa.items()}
+    parents = {fips: pd.read_csv(d / PARENTS) for fips, d in county_qa.items()}
     cell_acres = {fips: _cell_acres(d / QA_CELLS) for fips, d in county_qa.items()}
     size_distribution(parents, units, cell_acres).to_csv(qa / SIZE_DISTRIBUTION, index=False)
 
@@ -537,9 +548,11 @@ def write_report(qa: Path, counties: dict[str, Path], units: gpd.GeoDataFrame) -
 
     maps = qa / MAPS
     maps.mkdir(parents=True, exist_ok=True)
-    for d in county_qa.values():
+    (qa / VIEWERS).mkdir(parents=True, exist_ok=True)
+    for fips, d in county_qa.items():
         for png in sorted((d / MAPS).glob("*.png")):
             shutil.copy2(png, maps / png.name)
+        shutil.copy2(d / VIEWER, qa / VIEWERS / f"{fips}.html")
     mapped = units.join(shares, on=["county_fips", "SEG_ID"])
     render_maps(map_grid(mapped, [d / QA_CELLS for d in county_qa.values()]), maps, REGION,
                 "Region overview")
@@ -580,6 +593,9 @@ def write_index(qa: Path) -> Path:
 
     pngs = (qa / MAPS).glob("*.png") if (qa / MAPS).is_dir() else []
     captions = {png.name: MAP_TITLES.get(_map_scope(png)[1], _map_scope(png)[1]) for png in pngs}
+    viewers = sorted((qa / VIEWERS).glob("*.html")) if (qa / VIEWERS).is_dir() else []
+    pages = {f"{VIEWERS}/{p.name}": f"{p.stem} {names.get(p.stem, '')}".strip() for p in viewers}
     return qa_report.write_index(qa, "LETO QA", {**TABLE_NOTES, **captions},
                                  summary="The leto stage's tables and maps, per county and for "
-                                         "the region.", group=group)
+                                         "the region.", group=group,
+                                 pages=qa_report.Pages("Interactive unit viewers", pages))

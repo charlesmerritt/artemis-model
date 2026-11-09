@@ -5,7 +5,8 @@ top of the folder and PNG figures under ``figures/``. :func:`write_index` lays t
 ``index.html``, which links them by relative path and fetches nothing, so the folder opens
 from disk, a zip or a file share. A table or figure a later change adds shows up without
 touching this module; ``notes`` only puts the known ones first and captions them. ``group``
-sorts figures into collapsible sections (:class:`FigureGroup`), e.g. one per county.
+sorts figures into collapsible sections (:class:`FigureGroup`), e.g. one per county, and
+``pages`` lists other pages in the folder first (:class:`Pages`), e.g. interactive viewers.
 
     from pipeline.qa_report import write_index
     write_index(run_dir / "qa" / "outputs", "Outputs QA", {"harvest.csv": "Removals by group"})
@@ -50,6 +51,21 @@ class FigureGroup(NamedTuple):
     heading: str
 
 
+class Pages(NamedTuple):
+    """Other pages in the folder, linked at the top under ``heading``: href → label."""
+
+    heading: str
+    links: dict[str, str]
+
+
+def _pages_html(pages: Pages | None) -> str:
+    if not pages or not pages.links:
+        return ""
+    items = "".join(f'<li><a href="{html.escape(href)}">{html.escape(label)}</a></li>'
+                    for href, label in pages.links.items())
+    return f"<h2>{html.escape(pages.heading)}</h2><ul>{items}</ul>"
+
+
 def _ordered(paths: list[Path], notes: dict[str, str]) -> list[Path]:
     known = list(notes)
     return sorted(paths, key=lambda p: (known.index(p.name) if p.name in known else len(known), p.name))
@@ -90,7 +106,8 @@ def _figures_html(pngs: list[Path], notes: dict[str, str],
 
 
 def write_index(qa: Path, title: str, notes: dict[str, str] | None = None,
-                summary: str = "", group: Callable[[Path], FigureGroup] | None = None) -> Path:
+                summary: str = "", group: Callable[[Path], FigureGroup] | None = None,
+                pages: Pages | None = None) -> Path:
     """``qa/index.html``: every CSV in ``qa`` and every PNG in ``qa/figures``, known ones first.
 
     ``group`` gives each figure its section; without it the figures are one grid.
@@ -105,7 +122,7 @@ def write_index(qa: Path, title: str, notes: dict[str, str] | None = None,
     page = (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width, initial-scale=1">'
             f"<title>{html.escape(title)}</title><style>{STYLE}</style></head><body>"
-            f"<h1>{html.escape(title)}</h1><p>{html.escape(summary or str(qa))}</p>"
+            f"<h1>{html.escape(title)}</h1><p>{html.escape(summary or str(qa))}</p>{_pages_html(pages)}"
             f"<h2>Figures</h2>{figures}<h2>Tables</h2>{tables}</body></html>\n")
     path = qa / INDEX
     path.write_text(page)

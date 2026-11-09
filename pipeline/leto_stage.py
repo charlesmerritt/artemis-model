@@ -186,7 +186,7 @@ SPECKLE = leto_qa.SPECKLE
 REPAIRED_RASTERS = (IMPROVED_TREEMAP, PROVENANCE, OWNERSHIP)
 COUNTY_OUTPUTS = (PARENT_STANDS, DONOR_WEIGHTS, COUNTY_UNITS, STANDS, FVS_DATA, AREA_ACCOUNTING,
                   SPECKLE, *leto_qa.COUNTY_QA)
-OUTPUT_VERSION = 4                            # bump when a county's outputs change shape: redoes every county
+OUTPUT_VERSION = 5                            # bump when a county's outputs change shape: redoes every county
 INV_YEAR = DEFAULT_INV_YEAR                   # every FVS stand starts in TreeMap's year, 2022
 VARIANT = "SN"
 FIA_STAND_INIT, FIA_TREE_INIT = "FVS_STANDINIT_PLOT", "FVS_TREEINIT_PLOT"   # in the extract
@@ -699,13 +699,33 @@ def missing_plots(cells: CountyCells, attrs: Attributes, county: County) -> pd.D
     return frame.assign(acres=(frame["cells"] * cells.cell_acres).round(4)).reset_index(drop=True)
 
 
-def parent_sizes(seg: np.ndarray, parents: gpd.GeoDataFrame) -> pd.DataFrame:
-    """Each parent stand's cells and geodesic acres."""
-    cells = np.bincount(seg.ravel())
-    return pd.DataFrame({"SEG_ID": parents["SEG_ID"].to_numpy(),
-                         "OWN_CODE": parents["OWN_CODE"].to_numpy(),
-                         "cells": cells[parents["SEG_ID"].to_numpy()],
-                         "acres": parents["Acres"].to_numpy()})
+def parent_table(seg: np.ndarray, parents: gpd.GeoDataFrame, cells: CountyCells,
+                 grids: dict[str, np.ndarray]) -> pd.DataFrame:
+    """Each parent stand's cells, geodesic acres and owner, the mean and standard deviation of
+    each of the CA's inputs over its cells, and its dominant forest type and that type's share."""
+    ids = parents["SEG_ID"].to_numpy()
+    flat = seg.ravel()
+    size = int(flat.max()) + 1
+    counts = np.bincount(flat, minlength=size)
+    table = pd.DataFrame({"SEG_ID": ids, "OWN_CODE": parents["OWN_CODE"].to_numpy(),
+                          "cells": counts[ids], "acres": parents["Acres"].to_numpy()})
+    for name in CONTINUOUS:
+        values = grids[name].ravel().astype(float)
+        ok = (flat > 0) & np.isfinite(values)
+        n = np.bincount(flat[ok], minlength=size)[ids]
+        total = np.bincount(flat[ok], values[ok], minlength=size)[ids]
+        squares = np.bincount(flat[ok], values[ok] ** 2, minlength=size)[ids]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = total / n
+            table[f"{name}_mean"] = mean
+            table[f"{name}_sd"] = np.sqrt(np.maximum(squares / n - mean ** 2, 0.0))
+    types = pd.DataFrame({"SEG_ID": flat, "FORTYPCD": _forest_type(cells, grids).ravel()})
+    types = types[types["SEG_ID"] > 0].value_counts().reset_index(name="n")
+    top = types.sort_values(["SEG_ID", "n", "FORTYPCD"], ascending=[True, False, True]) \
+        .drop_duplicates("SEG_ID").set_index("SEG_ID")
+    table["dominant_forest_type"] = top["FORTYPCD"].reindex(ids).to_numpy()
+    table["dominant_forest_type_share"] = top["n"].reindex(ids).to_numpy() / table["cells"]
+    return table
 
 
 # ── step 8: the plot layout's FVS tables ───────────────────────────────────────────────
@@ -960,10 +980,11 @@ def run_county(job: CountyJob) -> CountyResult:
     clock.lap("write")
     qa = job.out / leto_qa.QA_SUBDIR
     leto_qa.write_qa_cells(qa / leto_qa.QA_CELLS, _forest_type(cells, grids), cells.added_back,
-                           cells.transform, cells.crs)
+                           cells.transform, cells.crs, {n: grids[n] for n in CONTINUOUS})
     leto_qa.write_county_qa(qa, fips=place.fips, name=place.name, units=units, weights=donors.kept,
                             riparian=riparian_sources, missing=missing_plots(cells, attrs, place),
-                            parent_sizes=parent_sizes(seg, parents))
+                            parents=parent_table(seg, parents, cells, grids), parent_shapes=parents,
+                            settings={k: v for k, v in settings.record().items() if k != "inputs"})
     clock.lap("maps")
     leto_qa.write_timings(qa / leto_qa.TIMINGS, place.fips, place.name, clock, job.memory_scope)
     return CountyResult(place.fips, accounting, len(units), len(stands), round(clock.total(), 1))

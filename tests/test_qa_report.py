@@ -62,3 +62,14 @@ def test_the_summary_replaces_the_folder_path(tmp_path):
     html = qa_report.write_index(tmp_path, "QA", summary="Union County").read_text()
 
     assert "Union County" in html and str(tmp_path) not in html
+
+
+def test_linked_pages_are_listed_first_under_their_heading(tmp_path):
+    pd.DataFrame({"a": [1]}).to_csv(tmp_path / "t.csv", index=False)
+
+    html = qa_report.write_index(tmp_path, "QA", pages=qa_report.Pages(
+        "Viewers", {"viewer/12001.html": "12001 Alpha", "viewer/a&b.html": "<b>"})).read_text()
+
+    assert html.index("<h2>Viewers</h2>") < html.index('href="viewer/12001.html"') < html.index('href="t.csv"')
+    assert ">12001 Alpha</a>" in html
+    assert 'href="viewer/a&amp;b.html"' in html and "&lt;b&gt;" in html
