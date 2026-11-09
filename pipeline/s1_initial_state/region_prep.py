@@ -5,7 +5,7 @@ once per region (a state) into its region inputs folder, so no run reads the 70 
 Southeast-wide NHD again (ADR 0004):
 
     uv run python -m pipeline.s1_initial_state.region_prep --data-root <mirror> fia \\
-        --region-dir <regions>/fl --repair <v4>/aoi_5county --repair <v5>/fl_statewide
+        --region-dir <regions>/fl --repair <v4>/aoi_5county --repair <v4>/fl_statewide
     uv run python -m pipeline.s1_initial_state.region_prep --data-root <mirror> hydrography \\
         --region-dir <regions>/fl --state FL
 

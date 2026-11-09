@@ -127,7 +127,7 @@ def test_the_extract_covers_every_run_and_leaves_out_young_plot_ids(tmp_path):
     # run's young_plots/, so it names no plot to extract.
     fiadb = _fiadb(tmp_path / "fiadb.db")
     fl5 = _run(tmp_path / "v4" / "aoi_5county" / "young_plots", [[11, 1_000_000, 1_000_001]])
-    statewide = _run(tmp_path / "v5" / "fl_statewide", [[22, 22]])
+    statewide = _run(tmp_path / "v4" / "fl_statewide", [[22, 22]])
 
     write_fia_extract(tmp_path / "region", fiadb=fiadb, runs=[fl5, statewide], vat=VAT)
 
@@ -137,7 +137,7 @@ def test_the_extract_covers_every_run_and_leaves_out_young_plot_ids(tmp_path):
 
 def test_a_value_neither_treemap_nor_young_plot_fails_closed_and_writes_nothing(tmp_path):
     fiadb = _fiadb(tmp_path / "fiadb.db")
-    run = _run(tmp_path / "v5" / "fl_statewide", [[11, 44, 44, 0]])
+    run = _run(tmp_path / "v4" / "fl_statewide", [[11, 44, 44, 0]])
 
     with pytest.raises(UnknownTreeMapValues, match=r"fl_statewide.*: 0 \(1 px\), 44 \(2 px\)"):
         write_fia_extract(tmp_path / "region", fiadb=fiadb, runs=[run], vat=VAT)
@@ -151,7 +151,7 @@ def test_the_missing_table_lists_each_plot_absent_from_the_fiadb_or_without_live
                    dead_only=(PLOT_66,), no_fvs=(PLOT_77,))
     vat = _vat([("11", PLOT_11), ("55", PLOT_55), ("66", PLOT_66), ("77", PLOT_77)])
     fl5 = _run(tmp_path / "improved-rasters-evt2022-gate-v4" / "aoi_5county", [[11, 55, 66]])
-    statewide = _run(tmp_path / "v5" / "fl_statewide", [[55, 77]])
+    statewide = _run(tmp_path / "v4" / "fl_statewide", [[55, 77]])
 
     write_fia_extract(tmp_path / "region", fiadb=fiadb, runs=[fl5, statewide], vat=vat)
 
@@ -159,12 +159,12 @@ def test_the_missing_table_lists_each_plot_absent_from_the_fiadb_or_without_live
     assert missing.to_dict("records") == [
         {"PLT_CN": PLOT_55, "TM_ID": "55", "status": PlotCoverage.NOT_IN_FIADB, "plot_rows": 0,
          "live_trees": 0, "fvs_stand_rows": 0, "fvs_tree_rows": 0,
-         "runs": "improved-rasters-evt2022-gate-v4/aoi_5county; v5/fl_statewide"},
+         "runs": "improved-rasters-evt2022-gate-v4/aoi_5county; v4/fl_statewide"},
         {"PLT_CN": PLOT_66, "TM_ID": "66", "status": PlotCoverage.NO_LIVE_TREES, "plot_rows": 1,
          "live_trees": 0, "fvs_stand_rows": 1, "fvs_tree_rows": 1,
          "runs": "improved-rasters-evt2022-gate-v4/aoi_5county"},
         {"PLT_CN": PLOT_77, "TM_ID": "77", "status": PlotCoverage.NO_FVS_STAND, "plot_rows": 1,
-         "live_trees": 1, "fvs_stand_rows": 0, "fvs_tree_rows": 0, "runs": "v5/fl_statewide"},
+         "live_trees": 1, "fvs_stand_rows": 0, "fvs_tree_rows": 0, "runs": "v4/fl_statewide"},
     ]
 
 
@@ -176,7 +176,7 @@ def test_a_19_digit_control_number_round_trips_through_the_extract_exactly(tmp_p
     cn_19_missing = "9876543210987654321"
     fiadb = _fiadb(tmp_path / "fiadb.db")
     vat = _vat([("11", PLOT_11), ("22", PLOT_22), ("88", cn_19_missing)])
-    run = _run(tmp_path / "v5" / "fl_statewide", [[22, 88]])
+    run = _run(tmp_path / "v4" / "fl_statewide", [[22, 88]])
 
     write_fia_extract(tmp_path / "region", fiadb=fiadb, runs=[run], vat=vat)
 
@@ -196,8 +196,8 @@ def test_the_manifest_records_the_fiadb_each_run_and_what_the_extract_holds(tmp_
     fiadb = _fiadb(tmp_path / "fiadb.db", plots=(PLOT_11, PLOT_22, PLOT_66), dead_only=(PLOT_66,))
     vat = _vat([("11", PLOT_11), ("22", PLOT_22), ("55", PLOT_55), ("66", PLOT_66)])
     fl5 = _run(tmp_path / "v4" / "aoi_5county" / "young_plots", [[11, 11, 55, 1_000_000, 1_000_000]])
-    statewide = _run(tmp_path / "v5" / "fl_statewide", [[22, 66, 66, NODATA]])
-    (statewide / "manifest.json").write_text('{"recipe": "v5"}\n')
+    statewide = _run(tmp_path / "v4" / "fl_statewide", [[22, 66, 66, NODATA]])
+    (statewide / "manifest.json").write_text('{"recipe": "v4"}\n')
 
     manifest = write_fia_extract(tmp_path / "region", fiadb=fiadb, runs=[fl5, statewide], vat=vat)
 
@@ -211,9 +211,9 @@ def test_the_manifest_records_the_fiadb_each_run_and_what_the_extract_holds(tmp_
         "young_plot_ids_excluded": 1, "young_plot_pixels": 2,
         "plots_by_status": {"complete": 1, "not_in_fiadb": 1},
         "pixels_by_status": {"complete": 2, "not_in_fiadb": 1}}
-    assert by_label["v5/fl_statewide"]["manifest_sha256"] == (
-        "57d6b2e11941ddb4390edae87fade4b05e9c11a38e8d7a55a60ffba3a1fe5b87")
-    assert by_label["v5/fl_statewide"]["plots_by_status"] == {"complete": 1, "no_live_trees": 1}
+    assert by_label["v4/fl_statewide"]["manifest_sha256"] == (
+        "e2e3d6216f64162e259272f468f0c5c7b848046be57025e20219bd18c1dbb567")
+    assert by_label["v4/fl_statewide"]["plots_by_status"] == {"complete": 1, "no_live_trees": 1}
     assert manifest["plots"] == 4
     assert manifest["plots_by_status"] == {"complete": 2, "no_live_trees": 1, "not_in_fiadb": 1}
     assert manifest["tables"] == {"PLOT": 3, "COND": 3, "TREE": 5, "FVS_STANDINIT_PLOT": 3,
@@ -232,7 +232,7 @@ def test_a_rerun_keeps_the_extract_until_its_inputs_change(tmp_path):
     assert write_fia_extract(region, fiadb=fiadb, runs=[fl5], vat=VAT) == first
     assert (region / "fia_extract.db").stat().st_mtime_ns == built   # the FIADB was not read again
 
-    statewide = _run(tmp_path / "v5" / "fl_statewide", [[22]])   # a new run, a new plot: rebuilt
+    statewide = _run(tmp_path / "v4" / "fl_statewide", [[22]])   # a new run, a new plot: rebuilt
     second = write_fia_extract(region, fiadb=fiadb, runs=[fl5, statewide], vat=VAT)
     assert second["plots"] == 2
     assert sorted(r[0] for r in _rows(region / "fia_extract.db", "SELECT CN FROM PLOT")) == sorted(
@@ -400,7 +400,7 @@ def test_the_command_builds_both_region_inputs_from_the_declared_kinds_of_source
     # TreeMap's VAT stores Value and TM_ID as numbers; a 19-digit PLT_CN only survives as text.
     vat_dbf = _vat_dbf(tmp_path / "TreeMap2022_CONUS.tif.vat.dbf", [(11, PLOT_11), (22, PLOT_22)])
     fl5 = _run(tmp_path / "v4" / "aoi_5county", [[11]])
-    statewide = _run(tmp_path / "v5" / "fl_statewide", [[22]])
+    statewide = _run(tmp_path / "v4" / "fl_statewide", [[22]])
     flowlines, waterbodies = _hydro_source(tmp_path / "nhd.gpkg")
     region = tmp_path / "regions" / "fl"
 
@@ -414,7 +414,7 @@ def test_the_command_builds_both_region_inputs_from_the_declared_kinds_of_source
     assert sorted(r[0] for r in _rows(region / "fia_extract.db", "SELECT CN FROM PLOT")) == sorted(
         [PLOT_11, PLOT_22])
     assert [run["label"] for run in json.loads((region / "fia_extract.json").read_text())["runs"]] == [
-        "v4/aoi_5county", "v5/fl_statewide"]
+        "v4/aoi_5county", "v4/fl_statewide"]
     # Florida here is the two county boxes: Gainesville's stream, and the L inside Baker County.
     assert gpd.read_file(region / "hydrography.gpkg", layer="flowline")["fcode"].tolist() == [46006, 46000]
 
@@ -427,7 +427,7 @@ def test_a_fiadb_without_an_extracted_table_fails_closed_naming_it(tmp_path):
     con = sqlite3.connect(fiadb)
     con.execute("DROP TABLE FVS_TREEINIT_PLOT")
     con.close()
-    run = _run(tmp_path / "v5" / "fl_statewide", [[11]])
+    run = _run(tmp_path / "v4" / "fl_statewide", [[11]])
 
     with pytest.raises(ValueError, match="no FVS_TREEINIT_PLOT table"):
         write_fia_extract(tmp_path / "region", fiadb=fiadb, runs=[run], vat=VAT)
@@ -449,7 +449,7 @@ def test_pixels_are_counted_once_across_a_rasters_blocks(tmp_path):
     # 40 x 40 in 16 x 16 tiles: nine blocks. Plot 11 fills the top 30 rows, 22 the rest.
     values = np.full((40, 40), 22, dtype=np.uint32)
     values[:30] = 11
-    run = _run(tmp_path / "v5" / "fl_statewide", values, tiled=True, blockxsize=16, blockysize=16)
+    run = _run(tmp_path / "v4" / "fl_statewide", values, tiled=True, blockxsize=16, blockysize=16)
 
     manifest = write_fia_extract(tmp_path / "region", fiadb=_fiadb(tmp_path / "fiadb.db"),
                                  runs=[run], vat=VAT)
@@ -459,7 +459,7 @@ def test_pixels_are_counted_once_across_a_rasters_blocks(tmp_path):
 
 
 def test_an_extract_removed_by_hand_or_a_new_fiadb_is_rebuilt(tmp_path):
-    run = _run(tmp_path / "v5" / "fl_statewide", [[11, 22]])
+    run = _run(tmp_path / "v4" / "fl_statewide", [[11, 22]])
     region = tmp_path / "region"
     first = write_fia_extract(region, fiadb=_fiadb(tmp_path / "fiadb.db"), runs=[run], vat=VAT)
 
@@ -513,7 +513,7 @@ def test_the_command_defaults_to_the_declared_sources_under_a_data_root(tmp_path
     for folder, name in ((streams, "nhdplus_epasnapshot2022_fl.gdb"), (lakes, "US SE Streams.gdb")):
         folder.mkdir(parents=True)
         shutil.copy(flowlines.path, folder / name)   # GDAL reads a GeoPackage by its content
-    run = _run(tmp_path / "v5" / "fl_statewide", [[11]])
+    run = _run(tmp_path / "v4" / "fl_statewide", [[11]])
     region = tmp_path / "regions" / "fl"
 
     main(["--data-root", str(root), "fia", "--region-dir", str(region), "--repair", str(run)])
@@ -564,7 +564,7 @@ def test_a_feature_without_a_usable_fcode_fails_closed(tmp_path):
 
 
 def test_an_extract_edited_by_hand_or_missing_its_table_is_rebuilt(tmp_path):
-    run = _run(tmp_path / "v5" / "fl_statewide", [[11]])
+    run = _run(tmp_path / "v4" / "fl_statewide", [[11]])
     fiadb, region = _fiadb(tmp_path / "fiadb.db"), tmp_path / "region"
     write_fia_extract(region, fiadb=fiadb, runs=[run], vat=VAT)
 
