@@ -17,7 +17,7 @@ Declared in `config/data_paths.yaml`; the config key is the last column.
 | Folder | Size | Objects | What it is | Key |
 |---|--:|--:|---|---|
 | `SQLite_FIADB_ENTIRE/` | 70.70 GB | 1 | Entire FIA database as one SQLite file, including the FVS-ready STANDINIT/TREEINIT tables | `raw.fia_sqlite` |
-| `landfire/` | 22.41 GB | 133 | LANDFIRE CONUS rasters grouped under one prefix: LF2022 EVT and VCC (the declared inputs), LF2024 EVT, and the pre-Remap LF2016 EVT and FRI with their source zips. LF2016 class codes differ from LF2022's | `raw.landfire` |
+| `landfire/` | 36.45 GB | 809 | LANDFIRE CONUS rasters grouped under one prefix: LF2022 EVT and VCC (the declared inputs), LF2024 EVT, and the pre-Remap LF2016 EVT and FRI with their source zips. LF2016 class codes differ from LF2022's. Also LANDFIRE Annual Disturbance 1999–2025, added 2026-11-09 and declared as `raw.landfire.dist_dir`: 27 `LF<version>_Dist<yy>_CONUS/` folders (`Dist99` is 1999) in the EVT layout, each with its own VAT and `CSV_Data/` legend; DIST_TYPE includes Clearcut, Harvest and Thinning. The grid, nodata and legend columns vary by version, so align before stacking years | `raw.landfire` |
 | `US SE Waterbodies Final/` | 18.03 GB | 178 | Southeast waterbodies/streams gdb; two tables carry 13 of the 18 GB | `raw.nhd` |
 | `All_FL_Parcels/` | 7.34 GB | 69 | Statewide Florida parcels with land-use class — a single 7.1 GB gdb table | `raw.parcels` |
 | `US SE Streams - FINAL/` | 6.51 GB | 990 | EPA NHDPlus 2022 snapshot, per-state stream geodatabases | `raw.nhd` |

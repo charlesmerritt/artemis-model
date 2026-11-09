@@ -4,9 +4,10 @@ After this step an add-back pixel holds everything any other TreeMap pixel does:
 with a full VAT row and a tree list. It is a second pass over a finished run folder, like
 :mod:`add_back_stand_age`, and never changes the run's own files:
 
-    uv run python -m pipeline.s1_initial_state.add_back_ids <run>/aoi_5county [--obata-tif <lastDist.tif>] [--hansen-tif <hansen.tif>]
+    uv run python -m pipeline.s1_initial_state.add_back_ids <run>/aoi_5county [--obata-tif <lastDist.tif>] [--hansen-tif <hansen.tif>] [--landfire-dist-dir <landfire/>]
 
 Each detector the run used dates its pixels: one not passed comes from the run's ``manifest.json``.
+LANDFIRE disturbance proposes no pixel, so no run uses it: it dates only when passed.
 
 Every add-back pixel of the run (provenance 2 or 4: either ADR 0002 mode) gets:
 
@@ -25,8 +26,8 @@ Writes into ``<run>/young_plots/``:
 - ``treemap2022_improved_vat_extension.csv``: one row per new ID, the :data:`VAT_COLUMNS`
   of its young plot, then :data:`EXTENSION_COLUMNS`. ``TM_ID`` equals ``Value``.
 - ``treemap2022_improved_tree_extension.csv``: each new ID's trees (:meth:`YoungPlotLibrary.tree_list`).
-- ``validation.json``: whether the four join (:func:`validate`), and the acres by stand age,
-  match level and age source.
+- ``validation.json``: whether the four join (:func:`validate`), the acres by stand age,
+  match level and age source, and the detector inputs that dated the cut years.
 
 Control numbers stay strings end to end: read the CSVs with :func:`pipeline.ids.read_id_csv`
 and :data:`EXTENSION_ID_COLUMNS`.
@@ -52,14 +53,13 @@ from pipeline.s1_initial_state.add_back_methods import AddBackMethod
 from pipeline.s1_initial_state.add_back_stand_age import (
     UNDATED,
     CutYearDetector,
-    cut_year,
+    read_cut_year,
     stand_age,
 )
 from pipeline.s1_initial_state.county_improvement import (
     Grid,
     TreeMapProvenance,
     _write,
-    read_on_grid,
 )
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL
 from pipeline.s1_initial_state.young_plot_library import (
@@ -101,15 +101,21 @@ class AgeSource(StrEnum):
     OBATA = "obata"
     HANSEN = "hansen"
     OBATA_HANSEN = "obata_hansen"
+    LANDFIRE = "landfire"
+    OBATA_LANDFIRE = "obata_landfire"
+    HANSEN_LANDFIRE = "hansen_landfire"
+    OBATA_HANSEN_LANDFIRE = "obata_hansen_landfire"
     STRATUM_MEDIAN = "stratum_median"
 
 
-AGE_SOURCE_BY_DETECTOR = {
-    CutYearDetector(0): AgeSource.STRATUM_MEDIAN,     # undated
-    CutYearDetector.OBATA: AgeSource.OBATA,
-    CutYearDetector.HANSEN: AgeSource.HANSEN,
-    CutYearDetector.OBATA | CutYearDetector.HANSEN: AgeSource.OBATA_HANSEN,
-}
+def _age_source(bits: CutYearDetector) -> AgeSource:
+    """The detectors' names joined in bit order; undated (no bit) is a stratum median."""
+    names = [str(d.name).lower() for d in CutYearDetector if d in bits]
+    return AgeSource("_".join(names)) if names else AgeSource.STRATUM_MEDIAN
+
+
+AGE_SOURCE_BY_DETECTOR = {CutYearDetector(bits): _age_source(CutYearDetector(bits))
+                          for bits in range(1 << len(CutYearDetector))}
 
 
 def pixel_stand_ages(years: np.ndarray, detector: np.ndarray,
@@ -275,11 +281,12 @@ def run_detectors(run_dir: Path, obata: Path | None,
 
 def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLibrary,
                        tree_table: Path, obata: Path | None = None,
-                       hansen: Path | None = None) -> dict:
+                       hansen: Path | None = None, landfire: Path | None = None) -> dict:
     """Give a run folder's add-back pixels new IDs; write them under ``<run_dir>/young_plots/``.
 
-    Returns :func:`validate`'s report, also written as ``validation.json``. Detectors not
-    passed come from the run's manifest (:func:`run_detectors`).
+    Returns :func:`validate`'s report, also written as ``validation.json``. Obata and Hansen
+    not passed come from the run's manifest (:func:`run_detectors`). ``landfire``, the
+    folder of LANDFIRE disturbance products, dates pixels only when given.
     """
     obata, hansen = run_detectors(run_dir, obata, hansen)
     with rasterio.open(run_dir / "treemap2022_provenance.tif") as src:
@@ -289,9 +296,7 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
         improved, nodata = src.read(1), src.nodata
     strata = _band(run_dir / "bookend_strata.tif")
     added = TreeMapProvenance.added_back(provenance)
-    years, detector = cut_year(
-        None if obata is None else read_on_grid(obata, grid, fill=0)[added],
-        None if hansen is None else read_on_grid(hansen, grid, fill=0)[added])  # band 1 lossyear
+    years, detector = read_cut_year(grid, obata=obata, hansen=hansen, landfire=landfire, where=added)
     ages, sources = pixel_stand_ages(years, detector, strata[added])
     pixels = pd.DataFrame({"NEIGHBOUR_TM_ID": as_id_series(pd.Series(improved[added]), column="TM_ID"),
                            "STAND_AGE_2022": ages,
@@ -311,6 +316,8 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
     ids.vat_extension.to_csv(out / VAT_EXTENSION_CSV, index=False)
     ids.tree_extension.to_csv(out / TREE_EXTENSION_CSV, index=False)
     report = validate(run_dir, vat["TM_ID"])
+    report["cut_year_detectors"] = {name: None if path is None else str(path) for name, path in
+                                    (("obata", obata), ("hansen", hansen), ("landfire", landfire))}
     (out / "validation.json").write_text(json.dumps(report, indent=2))
     return report
 
@@ -379,6 +386,10 @@ def main() -> None:
     parser.add_argument("--hansen-tif", type=Path, default=None,
                         help="Hansen GFC raster on the TreeMap grid, band 1 lossyear "
                              "(default: the run's manifest)")
+    parser.add_argument("--landfire-dist-dir", type=Path, default=None,
+                        help="folder of LANDFIRE annual disturbance products "
+                             "(LF<version>_Dist<yy>_CONUS/); its clearcuts and harvests date pixels "
+                             "(default: not used)")
     parser.add_argument("--vat", type=Path, default=Path(treemap["tif"] + ".vat.dbf"))
     parser.add_argument("--tree-table", type=Path, default=Path(treemap["tree_table"]))
     parser.add_argument("--db", type=Path, default=Path(raw["fia_sqlite"]["db"]))
@@ -389,7 +400,7 @@ def main() -> None:
     report = write_add_back_ids(
         args.run_dir, vat=read_vat(args.vat),
         library=read_young_plot_library(args.vat, args.db, args.tree_table),
-        tree_table=args.tree_table, obata=obata, hansen=hansen)
+        tree_table=args.tree_table, obata=obata, hansen=hansen, landfire=args.landfire_dist_dir)
     print(json.dumps(report, indent=2))
     if not all(report["checks"].values()):
         sys.exit("a check failed: the young_plots outputs do not join")

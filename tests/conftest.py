@@ -97,3 +97,34 @@ def data_access():
 # subprocess under an ArcGIS Pro Python (see test_s1_leto_arcpy_parity.py), never
 # imported by the test suite itself. --doctest-modules would import it and fail.
 collect_ignore = ["arcpy_reference"]
+
+
+@pytest.fixture
+def landfire_dist(tmp_path):
+    """Write one LANDFIRE annual disturbance product in its CONUS folder layout; return the root.
+
+    ``landfire_dist(version, yy, codes, legend, transform=..., nodata=32767)``: ``codes`` is
+    the int16 raster and ``legend`` the rows of ``CSV_Data/<name>.csv`` as a DataFrame,
+    written in ``encoding`` (LF2024 and LF2025 are ``"utf-8-sig"``: they start with a BOM).
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.transform import Affine
+
+    root = tmp_path / "landfire"
+
+    def write(version, yy, codes, legend, *, transform=Affine(30, 0, 0, 0, -30, 30),
+              nodata=32767, encoding="utf-8"):
+        name = f"LF{version}_Dist{yy}"
+        product = root / f"{name}_CONUS" / f"{name}_CONUS"
+        (product / "Tif").mkdir(parents=True)
+        (product / "CSV_Data").mkdir()
+        codes = np.atleast_2d(np.asarray(codes, dtype=np.int16))
+        with rasterio.open(product / "Tif" / f"{name}_CONUS.tif", "w", driver="GTiff",
+                           height=codes.shape[0], width=codes.shape[1], count=1, dtype="int16",
+                           crs="EPSG:5070", transform=transform, nodata=nodata) as dst:
+            dst.write(codes, 1)
+        legend.to_csv(product / "CSV_Data" / f"{name}.csv", index=False, encoding=encoding)
+        return root
+
+    return write

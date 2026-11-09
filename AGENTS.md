@@ -32,6 +32,13 @@ Any time one of these passes through a float64 (e.g. a numeric field read out of
 
 This was flagged as a real bug in PR #40 (`make_leto_figure.py` in the LETO CA research demo), where `str(int(rec.PLT_CN))` was used to join TreeMap VAT records to `fvs_trajectory.csv` instead of `as_id_series`.
 
+### LANDFIRE disturbance: Clearcut and Harvest barely cover Florida's private harvests
+
+`landfire_disturbance.py` dates a cut only from `DIST_TYPE` Clearcut or Harvest (#171).
+Over Florida, LANDFIRE labels almost all forest change Unknown or Fire, so it dates 322 of
+~186,000 undated statewide add-back acres (`experiments/2026-11-09_landfire-cut-year/`).
+Codes, grids and nodata vary by product version: read each product's own legend.
+
 ### Mutation runs require successful collection and a fresh cache
 After collection fails or tests change, rebuild the `mutants/` workspace before measuring.
 `scripts/quality.py mutate` can exit successfully with an undefined score after failure;

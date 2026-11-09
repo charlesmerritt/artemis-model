@@ -36,6 +36,16 @@ def test_a_dated_pixels_stand_age_counts_from_the_year_after_the_cut_and_a_2022_
                                 AgeSource.HANSEN]
 
 
+def test_every_combination_of_the_three_detectors_names_its_age_source():
+    years = np.array([2014] * 7)
+    detector = np.array([D.LANDFIRE, D.OBATA | D.LANDFIRE, D.HANSEN | D.LANDFIRE,
+                         D.OBATA | D.HANSEN | D.LANDFIRE, D.OBATA, D.HANSEN, D.OBATA | D.HANSEN])
+    _, sources = pixel_stand_ages(years, detector, strata=np.ones(7, dtype=int))
+    assert sources.tolist() == ["landfire", "obata_landfire", "hansen_landfire",
+                                "obata_hansen_landfire", "obata", "hansen", "obata_hansen"]
+    assert all(isinstance(s, AgeSource) for s in sources)
+
+
 def test_an_undated_pixel_takes_the_median_stand_age_of_its_stratums_dated_pixels():
     # Stratum 1's dated ages are 2, 7, 7, 9 (cut 2019, 2014, 2014, 2012): the lower median, 7,
     # is an age a dated pixel has. Stratum 3's only dated age is 0, and stratum 4's are 4, 6:
@@ -272,6 +282,25 @@ def test_a_detector_not_passed_falls_back_to_the_path_the_runs_manifest_records(
     report = write_add_back_ids(run, **{**sources, "obata": None, "hansen": None})
     assert report["acres_by_age_source"] == pytest.approx(
         {"hansen": 2 * PX, "obata": PX, "stratum_median": PX})
+
+
+def test_landfire_dates_an_otherwise_undated_pixel_instead_of_a_stratum_median(tmp_path, landfire_dist):
+    # Pixel 4 is undated by Obata and Hansen. A 2021 LANDFIRE clearcut dates it: age 0, and
+    # the age-0 loblolly plot is its young plot.
+    run, sources = _run(tmp_path)
+    root = landfire_dist("2022", "21", [[0, 0, 0, 0, 421, 0]],
+                         pd.DataFrame([(421, 2021, "Clearcut")],
+                                      columns=["VALUE", "DIST_YEAR", "DIST_TYPE"]),
+                         transform=Affine(30, 0, 0, 0, -30, 30))
+    report = write_add_back_ids(run, **sources, landfire=root)
+    assert report["acres_by_age_source"] == pytest.approx(
+        {"hansen": 2 * PX, "obata": PX, "landfire": PX})
+    vat = read_id_csv(run / "young_plots" / "treemap2022_improved_vat_extension.csv",
+                      id_columns=EXTENSION_ID_COLUMNS)
+    dated = vat[vat["AGE_SOURCE"] == "landfire"].iloc[0]
+    assert (dated["CUT_YEAR"], dated["STAND_AGE_2022"]) == (2021, 0)
+    assert report["cut_year_detectors"] == {"obata": str(sources["obata"]),
+                                            "hansen": str(sources["hansen"]), "landfire": str(root)}
 
 
 def test_a_young_plot_with_no_trees_is_an_error_and_nothing_is_written(tmp_path):

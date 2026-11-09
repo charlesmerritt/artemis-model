@@ -93,6 +93,13 @@ raw:
     evt_tif:    "/mnt/d/LF2022_EVT_CONUS/LF2022_EVT_CONUS/Tif/LF2022_EVT_CONUS.tif"
     # Vegatation Condition Class
     vcc_tif:    "/mnt/d/LF2022_VCC_CONUS/LF2022_VCC_CONUS/Tif/LF2022_VCC_CONUS.tif"
+    # Annual Disturbance 1999-2025 (Dist, not HDist; DOI 10.5066/P974JF8W): 27
+    # LF<version>_Dist<yy>_CONUS/ folders, each with Tif/ and its own CSV_Data/ legend.
+    # Staged 2026-11-09 in the bucket (r2:artemis-r2/data/landfire/) and a local mirror;
+    # not yet on the work laptop's drive. The add-back steps take it only when passed
+    # --landfire-dist-dir (FL5 keeps its Obata/Hansen ages, ADR 0003); the legend test
+    # reads it from here, or from ARTEMIS_LANDFIRE_DIST.
+    dist_dir:   "/mnt/d/landfire"
 
   nhd:
     fl_gdb:     "/mnt/d/US SE Streams - FINAL/US SE Streams - FINAL/Streams By State/nhdplus_epasnapshot2022_fl.gdb"
