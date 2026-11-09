@@ -311,3 +311,74 @@ def test_a_young_plot_with_no_trees_is_an_error_and_nothing_is_written(tmp_path)
     with pytest.raises(TreelessYoungPlots, match=rf"1 add-back pixels .* {treeless}"):
         write_add_back_ids(run, **sources)
     assert not (run / "young_plots").exists()
+
+
+def _counties(tmp_path, *polygons):
+    """A county layer in the project CRS: (ADMIN_FIPS, NAME, x0, x1) strips over the run's row."""
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    path = tmp_path / "counties.shp"
+    gpd.GeoDataFrame({"ADMIN_FIPS": [p[0] for p in polygons], "NAME": [p[1] for p in polygons]},
+                     geometry=[box(x0, 0, x1, 30) for _, _, x0, x1 in polygons],
+                     crs="EPSG:5070").to_file(path)
+    return path
+
+
+def test_a_run_with_counties_reports_add_back_acres_by_county_and_age_source(tmp_path):
+    # Pixels 1-2 (obata, hansen) fall in 12001, pixels 3-4 (hansen, stratum median) in 12077.
+    # 12003 is listed but has no add-back pixel; it still gets no row, not a zero row.
+    run, sources = _run(tmp_path)
+    counties = _counties(tmp_path, ("12001", "Alachua", 0, 90), ("12077", "Liberty", 90, 180))
+    _manifest(run, obata=str(sources["obata"]), hansen=str(sources["hansen"]), counties=str(counties))
+    manifest = json.loads((run / "manifest.json").read_text())
+    manifest["counties"] = ["12001 12001", "12003 Baker", "12077 12077"]   # names as the run wrote them
+    (run / "manifest.json").write_text(json.dumps(manifest))
+
+    write_add_back_ids(run, **sources)
+
+    table = pd.read_csv(run / "young_plots" / "add_back_acres_by_county.csv", dtype={"county_fips": str})
+    assert table.to_dict("records") == [
+        {"county_fips": "12001", "county": "Alachua", "age_source": "hansen", "pixels": 1, "acres": PX},
+        {"county_fips": "12001", "county": "Alachua", "age_source": "obata", "pixels": 1, "acres": PX},
+        {"county_fips": "12077", "county": "Liberty", "age_source": "hansen", "pixels": 1, "acres": PX},
+        {"county_fips": "12077", "county": "Liberty", "age_source": "stratum_median", "pixels": 1,
+         "acres": PX},
+    ]
+
+
+def test_add_back_pixels_outside_every_listed_county_are_reported_not_dropped(tmp_path):
+    run, sources = _run(tmp_path)
+    counties = _counties(tmp_path, ("12001", "Alachua", 0, 90))
+    _manifest(run, obata=str(sources["obata"]), hansen=str(sources["hansen"]), counties=str(counties))
+    manifest = json.loads((run / "manifest.json").read_text())
+    manifest["counties"] = ["12001 Alachua"]
+    (run / "manifest.json").write_text(json.dumps(manifest))
+
+    write_add_back_ids(run, **sources)
+
+    table = pd.read_csv(run / "young_plots" / "add_back_acres_by_county.csv",
+                        dtype={"county_fips": str}, keep_default_na=False)
+    outside = table[table["county_fips"] == ""]
+    assert outside[["county", "age_source", "pixels"]].to_dict("records") == [
+        {"county": "outside listed counties", "age_source": "hansen", "pixels": 1},
+        {"county": "outside listed counties", "age_source": "stratum_median", "pixels": 1}]
+    assert table["pixels"].sum() == 4
+
+
+def test_a_run_without_counties_in_its_manifest_writes_no_county_table(tmp_path):
+    run, sources = _run(tmp_path)
+    write_add_back_ids(run, **sources)
+    assert not (run / "young_plots" / "add_back_acres_by_county.csv").exists()
+
+
+def test_default_inputs_are_the_declared_drive_paths_or_their_place_under_a_mirror(tmp_path):
+    from pipeline.s1_initial_state.add_back_ids import default_inputs
+
+    on_drive = default_inputs(None)
+    assert on_drive["db"].as_posix() == "/mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"
+    mirrored = default_inputs(tmp_path)
+    assert mirrored == {
+        "vat": tmp_path / "TreeMap-2022/Data/TreeMap2022_CONUS.tif.vat.dbf",
+        "tree_table": tmp_path / "TreeMap-2022/Data/TreeMap2022_CONUS_Tree_Table.csv",
+        "db": tmp_path / "SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"}

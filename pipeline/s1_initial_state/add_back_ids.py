@@ -4,7 +4,7 @@ After this step an add-back pixel holds everything any other TreeMap pixel does:
 with a full VAT row and a tree list. It is a second pass over a finished run folder, like
 :mod:`add_back_stand_age`, and never changes the run's own files:
 
-    uv run python -m pipeline.s1_initial_state.add_back_ids <run>/aoi_5county [--obata-tif <lastDist.tif>] [--hansen-tif <hansen.tif>] [--landfire-dist-dir <landfire/>]
+    uv run python -m pipeline.s1_initial_state.add_back_ids <run>/aoi_5county [--obata-tif <lastDist.tif>] [--hansen-tif <hansen.tif>] [--landfire-dist-dir <landfire/>] [--data-root data/r2_cache]
 
 Each detector the run used dates its pixels: one not passed comes from the run's ``manifest.json``.
 LANDFIRE disturbance proposes no pixel, so no run uses it: it dates only when passed.
@@ -74,6 +74,8 @@ from pipeline.s1_initial_state.young_plot_library import (
 OUT_DIR = "young_plots"
 VAT_EXTENSION_CSV = "treemap2022_improved_vat_extension.csv"
 TREE_EXTENSION_CSV = "treemap2022_improved_tree_extension.csv"
+COUNTY_CSV = "add_back_acres_by_county.csv"
+OUTSIDE_COUNTIES = "outside listed counties"   # the county of an add-back pixel in none of the run's
 NEW_ID_START = 1_000_000     # above TreeMap 2022's own values (at most 70,035)
 YOUNG_PLOTS_PROVENANCE = ("0 water, 1 published, 3 unmapped land, "
                           "4 added back: a young plot under a new TM_ID (ADR 0003)")
@@ -319,7 +321,61 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
     report["cut_year_detectors"] = {name: None if path is None else str(path) for name, path in
                                     (("obata", obata), ("hansen", hansen), ("landfire", landfire))}
     (out / "validation.json").write_text(json.dumps(report, indent=2))
+    counties = manifest_counties(run_dir)
+    if counties is not None:
+        acres_by_county(run_dir, *counties).to_csv(out / COUNTY_CSV, index=False,
+                                                   float_format="%.4f")
     return report
+
+
+def manifest_counties(run_dir: Path) -> tuple[Path, list[str]] | None:
+    """The county layer and FIPS a run's ``manifest.json`` records; ``None`` if it records none.
+
+    The manifest lists counties as ``"<FIPS> <name>"``, where the name may be the FIPS again:
+    only the FIPS is read, and names come from the layer.
+    """
+    path = run_dir / "manifest.json"
+    if not path.exists():
+        return None
+    manifest = json.loads(path.read_text())
+    layer, listed = manifest.get("inputs", {}).get("counties"), manifest.get("counties")
+    if not layer or not listed:
+        return None
+    return Path(layer), [str(entry).split()[0] for entry in listed]
+
+
+def acres_by_county(run_dir: Path, counties: Path, fips: list[str]) -> pd.DataFrame:
+    """``<run_dir>/young_plots/``'s add-back acres by county and :class:`AgeSource`.
+
+    Read back from the written raster and VAT extension, so it counts what ``leto`` will
+    read. A pixel belongs to the county its centre falls in; one in no listed county keeps
+    an empty ``county_fips`` and :data:`OUTSIDE_COUNTIES`, so the rows sum to every add-back pixel.
+    """
+    import geopandas as gpd
+    from rasterio import features
+
+    from pipeline.spatial_ref import to_project_crs
+
+    out = run_dir / OUT_DIR
+    with rasterio.open(out / "treemap2022_provenance.tif") as src:
+        added = src.read(1) == TreeMapProvenance.ADDED_BACK_YOUNG
+        transform, shape = src.transform, (src.height, src.width)
+    values = _band(out / "treemap2022_improved.tif")[added]
+    quoted = ", ".join(f"'{f}'" for f in fips)
+    layer = to_project_crs(gpd.read_file(counties, where=f"ADMIN_FIPS IN ({quoted})"))
+    layer = layer.dissolve(by="ADMIN_FIPS", aggfunc="first").reset_index()
+    index = features.rasterize(((geom, i + 1) for i, geom in enumerate(layer.geometry)),
+                               out_shape=shape, transform=transform, fill=0, dtype="uint16")[added]
+    fips_of = np.array([""] + layer["ADMIN_FIPS"].astype(str).tolist(), dtype=object)
+    name_of = np.array([OUTSIDE_COUNTIES] + layer["NAME"].astype(str).tolist(), dtype=object)
+    vat = read_id_csv(out / VAT_EXTENSION_CSV, id_columns=EXTENSION_ID_COLUMNS)
+    source_of = pd.Series(vat["AGE_SOURCE"].to_numpy(), index=vat["Value"].astype(np.int64))
+    pixels = pd.DataFrame({"county_fips": fips_of[index], "county": name_of[index],
+                           "age_source": source_of.reindex(values.astype(np.int64)).to_numpy()})
+    table = (pixels.groupby(["county_fips", "county", "age_source"]).size()
+             .rename("pixels").reset_index())
+    table["acres"] = table["pixels"] * ACRES_PER_PIXEL
+    return table
 
 
 def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
@@ -371,11 +427,19 @@ def read_vat(path: Path) -> pd.DataFrame:
     return vat[VAT_COLUMNS]
 
 
-def main() -> None:
-    from pipeline.data_access import data_paths
+def default_inputs(data_root: Path | None) -> dict[str, Path]:
+    """The TreeMap VAT, tree table and entire FIADB ``config/data_paths.yaml`` declares,
+    moved under ``data_root`` (a mirror of the drive, e.g. ``data/r2_cache``) when given."""
+    from pipeline.data_access import data_paths, under_data_root
 
     raw = data_paths()["raw"]
     treemap = raw["treemap_2022"]
+    return {"vat": under_data_root(treemap["tif"] + ".vat.dbf", data_root),
+            "tree_table": under_data_root(treemap["tree_table"], data_root),
+            "db": under_data_root(raw["fia_sqlite"]["db"], data_root)}
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("run_dir", type=Path,
@@ -390,9 +454,15 @@ def main() -> None:
                         help="folder of LANDFIRE annual disturbance products "
                              "(LF<version>_Dist<yy>_CONUS/); its clearcuts and harvests date pixels "
                              "(default: not used)")
-    parser.add_argument("--vat", type=Path, default=Path(treemap["tif"] + ".vat.dbf"))
-    parser.add_argument("--tree-table", type=Path, default=Path(treemap["tree_table"]))
-    parser.add_argument("--db", type=Path, default=Path(raw["fia_sqlite"]["db"]))
+    parser.add_argument("--vat", type=Path, default=None,
+                        help="TreeMap's VAT (default: raw.treemap_2022.tif + .vat.dbf)")
+    parser.add_argument("--tree-table", type=Path, default=None,
+                        help="TreeMap's tree table (default: raw.treemap_2022.tree_table)")
+    parser.add_argument("--db", type=Path, default=None,
+                        help="the entire FIADB SQLite (default: raw.fia_sqlite.db)")
+    parser.add_argument("--data-root", type=Path, default=None,
+                        help="a mirror of the drive the defaults name, e.g. data/r2_cache")
+    parser.set_defaults(**default_inputs(parser.parse_known_args()[0].data_root))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
