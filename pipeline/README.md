@@ -9,12 +9,12 @@ the usage examples. `uv run pytest` runs those doctests alongside `tests/`.
 
 ```bash
 uv run python -c "import pipeline.s4_fvs.build_fvs_inputs as m; help(m)"   # any module
-uv run python main.py --help   # the runner (pipeline/run.py): library, then schedule
+uv run python main.py --help   # the runner (pipeline/run.py): leto, library, then schedule
 ```
 
 | Stage | Modules | Entry point |
 |---|---|---|
-| shared | `ids` (exact-string join keys), `spatial_ref` (the one CRS), `data_access` (drive, then R2), `raster_clip`, `raster_windows`, `leto_*` (LETO v1 stages 1-5, `research/leto_parity/README.md`) | `python -m pipeline.spatial_ref` |
+| shared | `ids` (exact-string join keys), `spatial_ref` (the one CRS), `data_access` (drive, then R2), `raster_clip`, `raster_windows`, `leto_*` (LETO v1 stages 1-5, `research/leto_parity/README.md`), `leto_stage` (the `leto` stage: one county of a raster-repair run to `stands.csv` and `management_units.gpkg`, ADR 0004, `config/leto.yaml`) | `python -m pipeline.spatial_ref` |
 | `s1_initial_state/` | TreeMap hole stratification, sampling, embedding, classification, add-back, FIA and LCMS validation; `region_prep` (a region's FIA extract from the full FIADB and its hydrography, built once per state) | each module's `--help` |
 | `s3_management/` | `sketch_management_units` → `sliver_merge` → `assign_plt_cn`; `owner_classes`, `regime_assignment`, `tpo_targets`, `harvest_scheduler` (greedy baseline), `annealer` (simulated-annealing selection) | `python -m pipeline.s3_management.regime_assignment` |
 | `s4_fvs/` | `trajectory_library` (regime-library options, FVS runs), `build_fvs_inputs`, `regime_templates` / `regime_library` (keyfiles), `fallback_treelists`, `paint_fvs_to_raster` | `python -m pipeline.s4_fvs.fallback_treelists` |

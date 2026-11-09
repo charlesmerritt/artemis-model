@@ -1,6 +1,7 @@
 """
 The ARTEMIS runner: a run directory's stands, through the trajectory library, to a plan.
 
+    uv run python -m pipeline.run leto     <run_dir> --repair <raster run> --county <FIPS>
     uv run python -m pipeline.run library  <run_dir> [--workers N] [--inventory plot|leto]
     uv run python -m pipeline.run schedule <run_dir> [--restarts N] [--workers N]
 
@@ -13,9 +14,9 @@ A run directory holds one landscape. Upstream stages write its inputs:
   unit that may only grow.
 * ``FVS_Data.db`` — the FVS input database those stands live in.
 
-The raster repair (`pipeline.s1_initial_state.county_improvement`) and the LETO stages
-(`pipeline.leto_ca`, `leto_riparian`, `leto_donors`, `leto_inventory`, `leto_database`) produce
-them; their FL5 driver is still `experiments/2026-10-19_fl5-leto-stands` steps 1-2 and 8.
+``leto`` (`pipeline.leto_stage`) writes ``stands.csv`` from a raster-repair run, one county at a
+time; ``FVS_Data.db`` for the plot layout is still the FL5 experiment's
+(`experiments/2026-10-19_fl5-leto-stands` step 2) until #164.
 
 ``library`` enumerates every stand's regime-library options (`trajectory_library.OPEN_LIBRARY`)
 and runs the FVS keyfiles not yet cached. ``schedule`` selects one trajectory per stand against the TPO
@@ -51,7 +52,7 @@ SUMMARY = "summary.json"
 
 STAND_COLUMNS = ("unit_id", "PLT_CN", "county", "owner_class", "OWN_CODE", "FORTYPCD",
                  "forest_branch", "stand_age", "acres", "unit_class")
-ID_DTYPES = {"unit_id": str, "PLT_CN": str}
+ID_DTYPES = {"unit_id": str, "PLT_CN": str, "county_fips": str}   # FIPS keep a leading zero
 COOLING = 0.98                 # 2026-09-28's converged setting, which every schedule since ran
 
 log = logging.getLogger("artemis")
@@ -125,6 +126,20 @@ def schedule(run_dir: Path, restarts: int, workers: int, cooling: float) -> dict
     return summary
 
 
+def run_leto_stage(args: argparse.Namespace) -> None:
+    from pipeline.data_access import data_paths
+    from pipeline.leto_stage import run_leto
+    from pipeline.s1_initial_state.add_back_ids import read_vat
+
+    raw = data_paths()["raw"]
+    vat = read_vat(args.vat or Path(raw["treemap_2022"]["tif"] + ".vat.dbf"))
+    accounting = run_leto(args.run_dir, repair=args.repair, county=args.county, vat=vat,
+                          counties=args.counties or Path(raw["counties"]["p010g_shp"]),
+                          region_dir=args.region_dir)
+    log.info("leto: county %s, %d units, %.1f ac (drift %.2f ac)", args.county,
+             accounting["units"], accounting["unit_acres"], accounting["drift_acres"])
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="artemis", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -137,6 +152,19 @@ def main(argv: list[str] | None = None) -> None:
                      choices=list(InventoryLayout))
     lib.add_argument("--fvs-bin", type=Path, default=tl.RunPaths.fvs_bin)
 
+    leto = stages.add_parser("leto", help="one county of a raster-repair run to management units")
+    leto.add_argument("run_dir", type=Path)
+    leto.add_argument("--repair", type=Path, required=True,
+                      help="a raster-repair run folder (and its young_plots/)")
+    leto.add_argument("--county", required=True, help="the county's 5-digit FIPS, e.g. 12125")
+    leto.add_argument("--region-dir", type=Path, default=None,
+                      help="region inputs (fia_extract.db, hydrography.gpkg); "
+                           "default: the region's in config/leto.yaml")
+    leto.add_argument("--vat", type=Path, default=None,
+                      help="TreeMap's value table; default: raw.treemap_2022.tif + .vat.dbf")
+    leto.add_argument("--counties", type=Path, default=None,
+                      help="the county layer; default: raw.counties.p010g_shp")
+
     sch = stages.add_parser("schedule", help="anneal one trajectory per stand")
     sch.add_argument("run_dir", type=Path)
     sch.add_argument("--restarts", type=int, default=11)
@@ -145,7 +173,9 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    if args.stage == "library":
+    if args.stage == "leto":
+        run_leto_stage(args)
+    elif args.stage == "library":
         build_library(args.run_dir, args.workers, args.inventory, args.fvs_bin)
     else:
         schedule(args.run_dir, args.restarts, args.workers, args.cooling)
