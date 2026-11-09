@@ -89,3 +89,13 @@ separate age raster is produced.
   from 1,000,000. LETO creates management units only after add-back.
 - **Provenance 4 is redefined:** an add-back pixel carrying a young plot under a new ID.
   Rasters written before this keep the old meaning. Regenerate them; don't reinterpret them.
+
+## Amendment, 2026-11-09 (ADR 0004)
+
+- **LANDFIRE disturbance is a third detector.** Its stand-replacing harvest events (clearcut,
+  harvest) date a pixel as Obata and Hansen do, and the latest year among the three wins.
+  Thinning, fire and the other causes it records do not date a cut. Statewide, Obata covers
+  only Landsat path 17 / row 39, so without LANDFIRE most Florida add-back pixels would be
+  dated by Hansen alone or take a stratum median.
+- **FL5 keeps its ages.** The FL5 validation of the LETO stage uses the golden v4 run, dated
+  by Obata and Hansen only.

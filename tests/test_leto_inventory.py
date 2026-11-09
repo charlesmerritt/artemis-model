@@ -1,4 +1,4 @@
-"""Stage 4 inventory pinned to LETO v1 (aauslander480/Leto, LETO_v1_project @ d2b92ee).
+"""Stage 4 inventory pinned to LETO v1 (aauslander480/Leto, LETO_v1_project), at the pin in research/leto_parity/README.md.
 
 Each test names the `leto/stage4_inventory.py` or `leto/pipeline.py` function it reproduces.
 """

@@ -1,4 +1,4 @@
-"""Behaviours pinned to LETO v1 (aauslander480/Leto, LETO_v1_project @ d2b92ee).
+"""Behaviours pinned to LETO v1 (aauslander480/Leto, LETO_v1_project), at the pin in research/leto_parity/README.md.
 
 Each test names the LETO function it reproduces; research/leto_parity/README.md lists the gaps.
 """
@@ -143,12 +143,22 @@ def test_management_units_inherit_their_parent_segments_donor_weights():
 
 
 def test_donor_filter_keeps_the_largest_donor_when_all_fall_below_threshold():
-    # pipeline._filter_weights
+    # donor_weights.filter_weights
     w = pd.DataFrame({"SEG_ID": [1, 1, 1, 2, 2], "PLT_CN": ["a", "b", "c", "d", "e"],
                       "WEIGHT": [0.03, 0.04, 0.93, 0.04, 0.02]})
     out = leto_donors.filter_weights(w, 0.05, key="SEG_ID")
     assert out[out["SEG_ID"] == 1].set_index("PLT_CN")["WEIGHT"].to_dict() == {"c": 1.0}
     assert out[out["SEG_ID"] == 2].set_index("PLT_CN")["WEIGHT"].to_dict() == {"d": 1.0}
+
+
+def test_donor_filter_discards_rows_missing_an_id_before_choosing_donor_plots():
+    # leto/donor_weights.filter_weights drops rows with no SEG_ID or PLT_CN first, so a keyless
+    # row is never kept as the largest donor plot and never forms a group of its own.
+    w = pd.DataFrame({"MU_ID": ["1", "1", "2", None],
+                      "PLT_CN": ["a", None, "b", "c"],
+                      "WEIGHT": [0.02, 0.90, 0.04, 0.50]})
+    out = leto_donors.filter_weights(w, 0.05, key="MU_ID")
+    assert out[["MU_ID", "PLT_CN", "WEIGHT"]].values.tolist() == [["1", "a", 1.0], ["2", "b", 1.0]]
 
 
 # --- Stage 2: vector riparian split ------------------------------------------------------
@@ -177,7 +187,7 @@ def test_split_explodes_parents_into_singlepart_riparian_and_upland_pieces():
 
 
 def test_production_donor_filters_keep_the_largest_donor():
-    # Both production paths must follow pipeline._filter_weights, not drop the whole unit.
+    # Both production paths must follow donor_weights.filter_weights, not drop the whole unit.
     from pipeline.s1_initial_state.leto_initial_state import filter_and_normalize_weights
     from pipeline.s4_fvs.build_fvs_inputs import filter_and_renormalize_weights
 

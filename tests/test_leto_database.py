@@ -1,5 +1,5 @@
 """Stage 5 FVS databases pinned to LETO v1 `leto/stage5_database.py` and `pipeline._build_databases`
-(aauslander480/Leto @ d2b92ee)."""
+(aauslander480/Leto), at the pin in research/leto_parity/README.md."""
 
 import sqlite3
 

@@ -65,7 +65,7 @@ def filter_and_renormalize_weights(weights: pd.DataFrame, min_weight: float = MI
     """Drop PLT_CNs below ``min_weight`` within a unit, then renormalise weights to sum to 1.
 
     A unit whose donors all fall below ``min_weight`` keeps its largest one (LETO v1
-    ``pipeline._filter_weights``, via ``pipeline.leto_donors.filter_weights``).
+    ``donor_weights.filter_weights``, via ``pipeline.leto_donors.filter_weights``).
     """
     w = weights.copy()
     # Both are join keys; see ``pipeline.ids`` for why ``.astype(str)`` is wrong here.

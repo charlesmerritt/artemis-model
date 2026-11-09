@@ -1,4 +1,4 @@
-"""Imputation QA pinned to LETO v1 `leto/imputation_qa.py` (aauslander480/Leto @ d2b92ee)."""
+"""Imputation QA pinned to LETO v1 `leto/imputation_qa.py` (aauslander480/Leto), at the pin in research/leto_parity/README.md."""
 
 import pandas as pd
 import pytest
