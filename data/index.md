@@ -41,7 +41,7 @@ Declared in `config/data_paths.yaml`; the config key is the last column.
 
 | Folder | Size | Objects | What it is |
 |---|--:|--:|---|
-| `Artemis_data/` | 1.79 GB | 229 | The repo's gitignored `data/` tree: `interim/` (`clearcut_ag`, `management_units_pilot`, `management_units_smoke_union`, `no_management_fl5co_fvs_output`, `similarity_finder`, `treemap_county_summary`) and `processed/no_management_fl5co_rasters`; and `runs/`, the runner's run folders (`leto`, `library` and their `qa/`): `fl5_v4_leto_173_merge` and, once its `library` run finishes, `fl5_v4_leto_173` (#173's FL5 acceptance runs) and `leto_t3_qa_12125` (Union, the QA report and unit viewer demo of #166; `experiments/2026-11-09_leto-qa-t3/`). Maps to `<repo>/data/`, not to `/mnt/d`. |
+| `Artemis_data/` | 2.21 GB | 51,486 | The repo's gitignored `data/` tree: `interim/` (`clearcut_ag`, `management_units_pilot`, `management_units_smoke_union`, `no_management_fl5co_fvs_output`, `similarity_finder`, `treemap_county_summary`) and `processed/no_management_fl5co_rasters`; and `runs/`, the runner's run folders (`leto`, `library` and their `qa/`): `fl5_v4_leto_173` (its `library` outputs, 51,112 FVS runs) and `fl5_v4_leto_173_merge` (#173's FL5 acceptance runs) and `leto_t3_qa_12125` (Union, the QA report and unit viewer demo of #166; `experiments/2026-11-09_leto-qa-t3/`). Maps to `<repo>/data/`, not to `/mnt/d`. |
 
 ## Referenced by the repo, not by `data_paths.yaml`
 
