@@ -40,6 +40,7 @@ from pipeline.leto_management_units import (
     assign_final_mu_ids,
     summarize_chain_run,
     summarize_mu_chain,
+    validate_final_units,
 )
 from pipeline.leto_small_stands import aggregate_management_unit_weights, plan_proximity_merges
 
@@ -56,10 +57,19 @@ class ProximityMatch(StrEnum):
 
 
 class Unmatched(StrEnum):
-    """A small parent stand with no eligible candidate (upstream's ``retain_when_no_candidate``)."""
+    """What becomes of a small parent stand with no eligible candidate (upstream's
+    ``retain_when_no_candidate``)."""
 
     RETAIN = "retain"
     ERROR = "error"
+
+
+def _flag(spec: dict, key: str) -> bool:
+    """One of upstream's boolean keys, true when unset; anything but a YAML boolean fails closed."""
+    value = spec.get(key, True)
+    if not isinstance(value, bool):
+        raise ValueError(f"small_stands.{key} must be true or false, not {value!r}.")
+    return value
 
 
 @dataclass(frozen=True)
@@ -76,18 +86,21 @@ class ProximitySettings:
     def from_config(cls, small_stands: dict | None, segmentation: dict | None,
                     chain_qa: dict | None = None) -> ProximitySettings:
         """Upstream's ``load_config`` defaults (``config.py``), its keys and its checks."""
-        small, seg = dict(small_stands or {}), dict(segmentation or {})
+        small, seg, default = dict(small_stands or {}), dict(segmentation or {}), cls()
         match = tuple(m for m, key in ((ProximityMatch.OWNER, "require_same_ownership"),
                                        (ProximityMatch.FOREST_TYPE, "require_same_forest_type"))
-                      if bool(small.get(key, True)))
+                      if _flag(small, key))
         settings = cls(
-            maximum_distance_meters=float(small.get("maximum_distance_meters", 60.0)),
+            maximum_distance_meters=float(small.get("maximum_distance_meters",
+                                                    default.maximum_distance_meters)),
             maximum_combined_acres=float(small.get("maximum_combined_acres",
-                                                   seg.get("maximum_stand_acres", 300.0))),
+                                                   seg.get("maximum_stand_acres",
+                                                           default.maximum_combined_acres))),
             match=match,
-            unmatched=Unmatched.RETAIN if bool(small.get("retain_when_no_candidate", True))
+            unmatched=Unmatched.RETAIN if _flag(small, "retain_when_no_candidate")
             else Unmatched.ERROR,
-            warning_chain_ratio=float((chain_qa or {}).get("warning_chain_ratio", 2.0)))
+            warning_chain_ratio=float((chain_qa or {}).get("warning_chain_ratio",
+                                                           default.warning_chain_ratio)))
         if settings.warning_chain_ratio <= 0:
             raise ValueError("proximity_chain_qa.warning_chain_ratio must be positive.")
         return settings
@@ -182,7 +195,7 @@ def final_identity(pieces: gpd.GeoDataFrame, fips: str, *, groups: pd.Series | N
                                 proximity_enabled=groups is not None)
     frame = frame.sort_values(["MU_ID", "MU_PART"], kind="stable").reset_index(drop=True)
     frame.insert(0, "unit_id", fips + "-" + frame["MU_ID"].astype(str))
-    return gpd.GeoDataFrame(frame.drop(columns=["SOURCE_OID", "MGMT_CLASS"]),
+    return gpd.GeoDataFrame(frame.drop(columns=["SOURCE_OID"]),
                             geometry="geometry", crs=pieces.crs)
 
 
@@ -193,7 +206,8 @@ def dissolve_units(segments: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """One feature per ``unit_id``: its first part's row, its pieces' union and summed ``Acres``.
 
     ``SEG_ID`` is its first part's parent stand; ``SEG_IDS`` lists them all, ``PART_COUNT``
-    counts its pieces.
+    counts its pieces. Upstream's ``validate_final_units`` checks one row and one compatibility
+    class per unit.
     """
     first = segments.sort_values(["unit_id", "MU_PART"], kind="stable").drop_duplicates("unit_id")
     by_unit = segments.groupby("unit_id", sort=False)
@@ -203,6 +217,7 @@ def dissolve_units(segments: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     units = units.assign(Acres=by_unit["Acres"].sum(), SEG_IDS=seg_ids,
                          PART_COUNT=by_unit.size(), geometry=geometry)
     units = units.loc[pd.unique(segments["unit_id"])].reset_index()
+    validate_final_units(units, segments, compatibility_fields=list(COMPATIBILITY))
     return gpd.GeoDataFrame(units, geometry="geometry", crs=segments.crs)
 
 

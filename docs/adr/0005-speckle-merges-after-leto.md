@@ -48,12 +48,14 @@ weights, representative plot and age, and acres are conserved.
 
 - Masked units (Harris 1-2) are neither speckle nor receivers, so forest never becomes masked
   and non-forest never becomes scheduled.
-- A unit's cost terms are its parent stand's: the CA's robust-standardized means and dominant
-  forest type. A shared edge is a cell side's length (30 m) of common vector boundary, so
+- A unit's cost terms are its parent stands': the CA's robust-standardized means weighted by
+  its pieces' acres, and the dominant forest type by acres (#169). For a unit of one parent
+  stand, that parent's own. A shared edge is a cell side's length (30 m) of common vector boundary, so
   slivers cut by a buffer score fractional edges. Contact under 1 m is a corner, not an edge,
   as `force_merge`'s four-neighbour adjacency has it.
 - `parent_stands.tif` is LETO's parent-stand raster before the splits and is not relabelled.
-  A unit's parent stand is its `SEG_ID` in the units layer.
+  A unit's parent stands are its `SEG_IDS` in the units layer (`SEG_ID` is its first part's),
+  and each piece's in the `segments` layer.
 - On Union (12125, v4 run) the step order usually leaves a young-plot speckle a single
   candidate, so the cost rarely chooses: 90 of 128 merged young speckle (15.7 of 5,250
   add-back ac) join mature land, 71 of them grow-only riparian units. Accepted as small;

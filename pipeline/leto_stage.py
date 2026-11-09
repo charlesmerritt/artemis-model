@@ -637,15 +637,18 @@ def merge_cost(cells: CountyCells, settings: LetoSettings) -> MergeCost:
                      edge_length=abs(cells.transform.a))
 
 
-def proximity_plan(parents: gpd.GeoDataFrame, traits: pd.DataFrame, ages: pd.Series,
-                   settings: LetoSettings) -> ProximityPlan | None:
+def proximity_plan(seg: np.ndarray, cells: CountyCells, parents: gpd.GeoDataFrame,
+                   traits: pd.DataFrame, ages: pd.Series, settings: LetoSettings
+                   ) -> ProximityPlan | None:
     """LETO's proximity groups of the parent stands, under ``proximity_merge`` only.
 
     ``traits``: :func:`parent_traits` (its dominant ``FORTYPCD``); ``ages``: :func:`parent_ages`.
+    A parent's acres are its cells x cell acres, as upstream's segment summary has them.
     """
     if settings.small_stand_action is not leto_ca.SmallStandAction.PROXIMITY_MERGE:
         return None
     ids = parents["SEG_ID"].to_numpy()
+    parents = parents.assign(Acres=np.bincount(seg.ravel())[ids] * cells.cell_acres)
     traits = pd.DataFrame({"FORTYPCD_DOM": traits["FORTYPCD"].reindex(ids).to_numpy(),
                            "STDAGE_MEAN": ages.reindex(ids).to_numpy()},
                           index=pd.Index(ids, name="SEG_ID"))
@@ -759,7 +762,7 @@ def stand_rows(units: gpd.GeoDataFrame, layout: InventoryLayout = InventoryLayou
 
 def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.GeoDataFrame,
                     county: County, deleted: leto_ca.DeletedSmallStands,
-                    speckle: gpd.GeoDataFrame, segments: int = 0) -> dict:
+                    speckle: gpd.GeoDataFrame, segments: int) -> dict:
     """One county's line: forest cells → parent stands → units, the unit acres split four ways.
 
     Forest cells the ``delete`` small-stand action removed are in no parent stand; they are
@@ -1053,7 +1056,7 @@ def run_county(job: CountyJob) -> CountyResult:
     clock.lap("segment")
     parents = parent_polygons(seg, cells)
     traits, ages = parent_traits(seg, cells, grids, settings), parent_ages(seg, grids)
-    plan = proximity_plan(parents, traits, ages, settings)
+    plan = proximity_plan(seg, cells, parents, traits, ages, settings)
     clock.lap("polygons")
     pieces = riparian_split(parents, job.region.hydrography, settings.buffer_rules)
     clock.lap("riparian")

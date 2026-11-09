@@ -19,8 +19,9 @@ make management units, and only the `leto_*` modules follow LETO v1.
   `leto_initial_state`, and `sketch_management_units` → `sliver_merge` → `assign_plt_cn`.
 - **Per county.** The county is the unit of work, and county lines are hard edges for
   segmentation: no parent stand crosses one. Counties run independently.
-- **Plot layout by default.** Each unit runs on its parent stand's representative plot
-  (`InventoryLayout.PLOT`). The per-unit LETO inventory (`InventoryLayout.LETO`) is built only
+- **Plot layout by default.** Each unit runs on its representative plot
+  (`InventoryLayout.PLOT`): its parent stands' donor weights combined by acreage, its largest
+  (#169; for a unit of one parent stand, that parent's largest). The per-unit LETO inventory (`InventoryLayout.LETO`) is built only
   on request (`main.py leto --layout leto`, `pipeline.leto_layout`). `stands.csv` always names
   the representative plot: in `PLT_CN` under the plot layout, and in `representative_plot`
   under the LETO layout, where `PLT_CN` is the unit's own FVS stand (its `unit_id`).

@@ -310,6 +310,16 @@ def test_proximity_limits_are_read_from_the_regional_config(tmp_path):
     assert proximity.unmatched is Unmatched.ERROR
 
 
+def test_a_proximity_flag_that_is_not_a_yaml_boolean_fails_closed(tmp_path):
+    config = yaml.safe_load(CONFIG_PATH.read_text())
+    config["regions"]["florida"]["small_stands"]["retain_when_no_candidate"] = "false"
+    path = tmp_path / "leto.yaml"
+    path.write_text(yaml.safe_dump(config))
+
+    with pytest.raises(ValueError, match="retain_when_no_candidate must be true or false"):
+        load_settings(ALPHA, path)
+
+
 def test_a_combined_cap_under_the_minimum_stand_size_fails_closed(tmp_path):
     config = yaml.safe_load(CONFIG_PATH.read_text())
     config["regions"]["florida"]["small_stands"].update(

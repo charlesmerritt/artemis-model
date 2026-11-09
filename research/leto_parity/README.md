@@ -208,6 +208,8 @@ It needs `ME_5_Co_Dissolve`, the ME/MA/NH/NY FIA TREE and COND CSVs, and NHDPlus
   - Under `proximity_merge` the CA output is split into connected segments and renumbered,
     as for `retain`; upstream's branch skips both, so a disconnected segment would be one
     parent there and its parts separate parents here.
+  - The planner reads a parent's acres as its cells x cell acres, as upstream's segment
+    summary does; units' `Acres` are geodesic, as elsewhere.
   - Distances are planar metres in the project CRS (EPSG:5070 Albers); upstream's near table
     is geodesic. Candidate pairs are taken from the small parents only, the only sources
     upstream's planner reads.
@@ -220,6 +222,8 @@ It needs `ME_5_Co_Dissolve`, the ME/MA/NH/NY FIA TREE and COND CSVs, and NHDPlus
   - Upstream dissolves units and then writes acre-weighted biology per unit; ours keeps the
     representative plot's attributes (the plot layout) and computes the acre-weighted traits
     only for the speckle cost and the LETO layout's age.
+- **Not ported:** upstream's check that dissolving keeps acreage. A unit's `Acres` is the sum of
+  its pieces' geodesic acres, by construction; `validate_final_units` runs on every dissolve.
 - **After LETO.** The speckle merge (ADR 0005) measures a whole multipart unit against the
   minimum unit area. A unit that takes in speckle keeps its own row, weights and age; the
   `segments` layer records each piece's LETO unit (`leto_unit_id`) and its unit now.
