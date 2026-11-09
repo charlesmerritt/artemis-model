@@ -1,7 +1,7 @@
 """
 The ARTEMIS runner: a run directory's stands, through the trajectory library, to a plan.
 
-    uv run python -m pipeline.run leto     <run_dir> --repair <raster run> --county <FIPS>
+    uv run python -m pipeline.run leto     <run_dir> --repair <raster run> [--county FIPS ...] [--workers N]
     uv run python -m pipeline.run library  <run_dir> [--workers N] [--inventory plot|leto]
     uv run python -m pipeline.run schedule <run_dir> [--restarts N] [--workers N]
 
@@ -15,7 +15,10 @@ A run directory holds one landscape. Upstream stages write its inputs:
 * ``FVS_Data.db`` — the FVS input database those stands live in.
 
 ``leto`` (`pipeline.leto_stage`) writes ``stands.csv`` and the plot layout's ``FVS_Data.db``
-from a raster-repair run, one county at a time, so ``library`` runs straight on its run folder.
+from a raster-repair run, county by county (in parallel with ``--workers``, resuming the
+counties already done), so ``library`` runs straight on its run folder. Its ``leto.json``
+records the layout it built; ``library`` with another ``--inventory`` fails closed
+(:class:`LayoutMismatch`).
 
 ``library`` enumerates every stand's regime-library options (`trajectory_library.OPEN_LIBRARY`)
 and runs the FVS keyfiles not yet cached. ``schedule`` selects one trajectory per stand against the TPO
@@ -48,6 +51,7 @@ PLAN = "plan.csv.gz"
 DEVIATION = "deviation_by_cycle.csv"
 SEEDS = "seeds.csv"
 SUMMARY = "summary.json"
+LETO_RECORD = "leto.json"      # what the leto stage built the run folder from, its layout too
 
 STAND_COLUMNS = ("unit_id", "PLT_CN", "county", "owner_class", "OWN_CODE", "FORTYPCD",
                  "forest_branch", "stand_age", "acres", "unit_class")
@@ -67,6 +71,24 @@ class InventoryLayout(Enum):
         return tl.PLOT_TABLES if self is InventoryLayout.PLOT else tl.LETO_TABLES
 
 
+class LayoutMismatch(ValueError):
+    """``library`` asked for a layout other than the one the ``leto`` stage built the run with."""
+
+
+def check_layout(run_dir: Path, layout: InventoryLayout) -> None:
+    """Fail closed when ``run_dir``'s ``leto.json`` records another layout; a run without one passes."""
+    record = Path(run_dir) / LETO_RECORD
+    if not record.exists():
+        return
+    built = InventoryLayout(json.loads(record.read_text())["layout"])
+    if built is not layout:
+        raise LayoutMismatch(
+            f"{run_dir} was built with the {built.value} layout ({record}): its {FVS_DATA} holds "
+            f"{built.tables.stand}, not {layout.tables.stand}, so `library --inventory "
+            f"{layout.value}` would run keyfiles against tables that are not there. Pass "
+            f"--inventory {built.value}, or rebuild the run with the {layout.value} layout")
+
+
 def read_stands(run_dir: Path) -> pd.DataFrame:
     stands = pd.read_csv(run_dir / STANDS, dtype=ID_DTYPES)
     missing = [c for c in STAND_COLUMNS if c not in stands.columns]
@@ -79,6 +101,7 @@ def read_stands(run_dir: Path) -> pd.DataFrame:
 
 
 def build_library(run_dir: Path, workers: int, layout: InventoryLayout, fvs_bin: Path) -> None:
+    check_layout(run_dir, layout)
     stands = read_stands(run_dir)
     with sqlite3.connect(run_dir / FVS_DATA) as con:
         trees = pd.read_sql(f"SELECT * FROM {layout.tables.tree}", con)
@@ -132,12 +155,14 @@ def run_leto_stage(args: argparse.Namespace) -> None:
 
     raw = data_paths()["raw"]
     vat = read_vat(args.vat or under_data_root(raw["treemap_2022"]["tif"] + ".vat.dbf", args.data_root))
-    accounting = run_leto(args.run_dir, repair=args.repair, county=args.county, vat=vat,
-                          counties=args.counties or under_data_root(raw["counties"]["p010g_shp"],
-                                                                    args.data_root),
-                          region_dir=args.region_dir)
-    log.info("leto: county %s, %d units, %.1f ac (drift %.2f ac)", args.county,
-             accounting["units"], accounting["unit_acres"], accounting["drift_acres"])
+    result = run_leto(args.run_dir, repair=args.repair, fips=args.county, vat=vat,
+                      counties=args.counties or under_data_root(raw["counties"]["p010g_shp"],
+                                                                args.data_root),
+                      region_dir=args.region_dir, workers=args.workers)
+    for line in result.accounting.itertuples():
+        log.info("leto: county %s (%s), %d units, %.1f ac (drift %.2f ac)", line.county_fips,
+                 result.outcomes[line.county_fips], line.units, line.unit_acres,
+                 line.drift_acres)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -152,11 +177,14 @@ def main(argv: list[str] | None = None) -> None:
                      choices=list(InventoryLayout))
     lib.add_argument("--fvs-bin", type=Path, default=tl.RunPaths.fvs_bin)
 
-    leto = stages.add_parser("leto", help="one county of a raster-repair run to management units")
+    leto = stages.add_parser("leto", help="a raster-repair run's counties to management units")
     leto.add_argument("run_dir", type=Path)
     leto.add_argument("--repair", type=Path, required=True,
                       help="a raster-repair run folder (and its young_plots/)")
-    leto.add_argument("--county", required=True, help="the county's 5-digit FIPS, e.g. 12125")
+    leto.add_argument("--county", nargs="+", default=None, metavar="FIPS",
+                      help="5-digit county FIPS, e.g. 12125 12077; default: every county the "
+                           "raster run's manifest.json lists")
+    leto.add_argument("--workers", type=int, default=1, help="counties run at once")
     leto.add_argument("--region-dir", type=Path, default=None,
                       help="region inputs (fia_extract.db, hydrography.gpkg); "
                            "default: the region's in config/leto.yaml")

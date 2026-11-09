@@ -1,8 +1,23 @@
-"""The ``leto`` stage: one county of a raster-repair run to management units and ``stands.csv``.
+"""The ``leto`` stage: a raster-repair run's counties to management units and ``stands.csv``.
 
-    uv run python main.py leto <run_dir> --repair <raster run> --county <FIPS> [--region-dir <dir>]
+    uv run python main.py leto <run_dir> --repair <raster run> [--county FIPS ...] [--workers N]
+                               [--region-dir <dir>]
 
-It composes the LETO v1 modules (ADR 0004) under the county's regional settings
+Without ``--county`` it runs every county the raster run's ``manifest.json`` lists
+(:class:`NoCountiesInManifest` when it lists none). Each county is its own job
+(:func:`run_county`), ``--workers`` at a time in separate processes; a county's outputs do not
+depend on which process ran it, so a parallel run's files equal a serial run's.
+
+**Resume.** ``leto.json`` records each county's status (:class:`CountyStatus`) and input hash
+(:func:`input_sha256`: the county, the raster run's manifest, repaired rasters and
+``young_plots/``, the VAT, the region inputs, the resolved settings and the layout). A county asked for again whose hash
+matches, with its outputs on disk, is skipped (:class:`CountyOutcome`); a changed input or
+setting redoes it. A county finished earlier and not asked for stays in the run if its hash
+still matches, else it is marked ``stale`` and left out, so outputs of different settings never
+mix. A county that fails is recorded as ``failed`` with its error; the others still finish, the
+first failure is raised, and no run-level output is written.
+
+**One county** composes the LETO v1 modules (ADR 0004) under its regional settings
 (``config/leto.yaml``, chosen by the FIPS's state) and region inputs (``region_prep``'s
 ``fia_extract.db`` and ``hydrography.gpkg``). The county line is a hard edge: only the
 county's cells are read, so no parent stand crosses it. In order:
@@ -35,7 +50,10 @@ county's cells are read, so no parent stand crosses it. In order:
    :class:`AmbiguousStandInit`; a young-plot ID without a live tree is
    :class:`UnknownYoungPlotIds`.
 
-Writes into ``<run_dir>``:
+Writes into ``<run_dir>/leto/<FIPS>/``, per county: ``parent_stands.tif``,
+``donor_weights.csv`` (its filtered parent donor weights), ``units.gpkg``, ``stands.csv``,
+``FVS_Data.db`` and ``area_accounting.csv``. The run-level files are assembled from every
+finished county (:func:`assemble`), in FIPS order:
 
 - ``stands.csv``: the runner's columns (:data:`pipeline.run.STAND_COLUMNS`) for every unit not
   masked, plus ``county_fips`` (5-digit string), ``unknown_ownership``, ``origin``
@@ -45,20 +63,21 @@ Writes into ``<run_dir>``:
   ``AGE`` (what FVS starts from), else blank: an age :func:`usable_stand_age` rejects is left
   to the harvest-eligibility policy, never guessed. Harris 0 is owner class ``unknown`` (the Private owner group) with
   ``unknown_ownership`` set; Harris 1-2 are masked: in the units layer, not in ``stands.csv``.
+  The counties' files are joined as text, so control numbers never pass through a parser.
 - ``FVS_Data.db``: the plot layout's ``FVS_StandInit_Plot`` and ``FVS_TreeInit_Plot``
   (:data:`pipeline.run.InventoryLayout.PLOT`), keyed by the exact ``STAND_CN``: a ``PLT_CN``
-  or ``Y<ID>``.
+  or ``Y<ID>``. A plot in several counties is one stand (:func:`assemble_inventory`).
 - ``management_units.gpkg``, layer ``units``: every unit, masked ones too, with its ``Acres``
-  (geodesic, as LETO), ``owner_class`` and ``unit_class``.
-- ``leto/<FIPS>/parent_stands.tif`` and ``donor_weights.csv``: the county's parent stands and
-  their filtered donor weights.
+  (geodesic, as LETO), ``owner_class`` and ``unit_class``. Unit IDs are ``<FIPS>-<n>``.
 - ``qa/leto/area_accounting.csv``: per county, forest cells, parent stands and units, the unit
   acres split into managed, unknown-flagged (managed, Harris 0), riparian and masked, the drift,
   the scheduled acres with no usable stand age, and the forest cells the Harris raster has no
   value for (read as unknown). A drift over
   :data:`MAX_DRIFT_ACRES` fails the county (:class:`AcreDrift`) before anything is written.
-- ``leto.json``: the raster run's ``manifest.json`` sha256, the FIA extract and hydrography
-  (path and sha256), the resolved settings, and the county's status.
+- ``leto.json``: the layout (``library`` checks it: :func:`pipeline.run.check_layout`), the
+  raster run's ``manifest.json`` sha256, per region the resolved settings and the FIA extract
+  and hydrography (path and sha256), and per county its status, input hash, unit and stand
+  counts and seconds.
 """
 
 from __future__ import annotations
@@ -67,8 +86,11 @@ import hashlib
 import json
 import logging
 import math
+import shutil
 import sqlite3
 import time
+from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -89,7 +111,7 @@ from pipeline.leto_database import SamplingDesign
 from pipeline.harvest_eligibility import usable_stand_age
 from pipeline.ids import as_id_series, read_id_csv
 from pipeline.leto_riparian import SQUARE_METERS_PER_ACRE, BufferRules
-from pipeline.run import FVS_DATA, STAND_COLUMNS, STANDS, InventoryLayout
+from pipeline.run import FVS_DATA, LETO_RECORD, STAND_COLUMNS, STANDS, InventoryLayout
 from pipeline.s1_initial_state.add_back_ids import (
     EXTENSION_ID_COLUMNS,
     NEW_ID_START,
@@ -117,12 +139,16 @@ CONFIG_PATH = REPO / "config" / "leto.yaml"
 OWNERSHIP = "nwos2022_improved.tif"          # the repaired Harris raster
 UNITS_GPKG = "management_units.gpkg"
 UNITS_LAYER = "units"
-RECORD = "leto.json"
+RECORD = LETO_RECORD
 COUNTY_DIR = "leto"
 PARENT_STANDS = "parent_stands.tif"
 DONOR_WEIGHTS = "donor_weights.csv"
+COUNTY_UNITS = "units.gpkg"
 QA_DIR = Path("qa") / "leto"
 AREA_ACCOUNTING = "area_accounting.csv"
+REPAIRED_RASTERS = (IMPROVED_TREEMAP, PROVENANCE, OWNERSHIP)
+COUNTY_OUTPUTS = (PARENT_STANDS, DONOR_WEIGHTS, COUNTY_UNITS, STANDS, FVS_DATA, AREA_ACCOUNTING)
+OUTPUT_VERSION = 1                            # bump when a county's outputs change shape: redoes every county
 LAYOUT = InventoryLayout.PLOT                 # the plot layout (ADR 0004)
 INV_YEAR = DEFAULT_INV_YEAR                   # every FVS stand starts in TreeMap's year, 2022
 VARIANT = "SN"
@@ -134,6 +160,8 @@ YOUNG_STAND_PREFIX = "Y"
 UNKNOWN_OWNER = 0                             # Harris unknown forest
 OUTSIDE = -1                                  # the CA's ownership sentinel off the forest
 MAX_DRIFT_ACRES = 0.1                         # unit acres must equal parent-stand acres this closely
+
+log = logging.getLogger("artemis.leto")
 
 
 class Origin(StrEnum):
@@ -149,7 +177,19 @@ class UnitClass(StrEnum):
 
 
 class CountyStatus(StrEnum):
+    """A county's line in ``leto.json``."""
+
     DONE = "done"
+    FAILED = "failed"
+    STALE = "stale"                           # done under inputs that have since changed: left out
+
+
+class CountyOutcome(StrEnum):
+    """What a run did with a county it was asked for."""
+
+    RAN = "ran"
+    SKIPPED = "skipped"                       # asked for, done under the same inputs: kept as it was
+    KEPT = "kept"                             # not asked for, done earlier under the same inputs
 
 
 class AddBackWithoutYoungPlots(ValueError):
@@ -174,6 +214,14 @@ class AmbiguousStandInit(ValueError):
 
 class UnknownCounty(ValueError):
     """A FIPS that names no county in the county layer."""
+
+
+class NoCountiesInManifest(ValueError):
+    """No ``--county`` list, and the raster run's manifest lists no counties to default to."""
+
+
+class ConflictingPlotRows(ValueError):
+    """One plot with different StandInit rows in two counties' FVS tables."""
 
 
 class AcreDrift(ValueError):
@@ -624,7 +672,7 @@ def plot_inventory(plots: pd.Series, attrs: Attributes, extract: Path) -> PlotIn
     return PlotInventory(_anchored(stand), tree)
 
 
-# ── the stage ──────────────────────────────────────────────────────────────────────────
+# ── one county ─────────────────────────────────────────────────────────────────────────
 
 
 def _sha256(path: Path) -> str:
@@ -643,32 +691,65 @@ def _write_parents(path: Path, seg: np.ndarray, cells: CountyCells) -> None:
         dst.write(seg.astype(np.int32), 1)
 
 
-def run_leto(run_dir: Path, *, repair: Path, county: str, vat: pd.DataFrame, counties: Path,
-             region_dir: Path | None = None, settings: LetoSettings | None = None) -> dict:
-    """Run one county of ``repair`` into ``run_dir``; return its area-accounting line.
+@dataclass(frozen=True)
+class RegionInputs:
+    """A region's ``region_prep`` outputs, each with its sha256."""
 
-    ``vat`` is TreeMap's value table (:func:`add_back_ids.read_vat`). ``region_dir`` defaults
-    to the region's configured inputs. Every input is checked before anything is written.
+    extract: Path
+    hydrography: Path
+    extract_sha256: str
+    hydrography_sha256: str
+
+    @classmethod
+    def read(cls, region_dir: Path) -> RegionInputs:
+        extract, hydrography = region_dir / FIA_EXTRACT_DB, region_dir / HYDROGRAPHY_GPKG
+        for needed in (extract, hydrography):
+            if not needed.exists():
+                raise FileNotFoundError(f"{needed} is missing: run pipeline.s1_initial_state.region_prep")
+        return cls(extract, hydrography, _sha256(extract), _sha256(hydrography))
+
+    def record(self) -> dict:
+        return {"fia_extract": {"path": str(self.extract.resolve()), "sha256": self.extract_sha256},
+                "hydrography": {"path": str(self.hydrography.resolve()),
+                                "sha256": self.hydrography_sha256}}
+
+
+@dataclass(frozen=True)
+class CountyJob:
+    """Everything one county's run reads; ``input_sha256`` digests all of it."""
+
+    county: County
+    repair: Path
+    out: Path                                 # <run_dir>/leto/<FIPS>
+    vat: pd.DataFrame
+    settings: LetoSettings
+    region: RegionInputs
+    input_sha256: str
+
+
+@dataclass(frozen=True)
+class CountyResult:
+    fips: str
+    accounting: dict
+    units: int
+    stands: int
+    seconds: float
+
+
+def run_county(job: CountyJob) -> CountyResult:
+    """One county of the raster run into ``job.out``: its units, stands, FVS tables and accounting.
+
+    Every input is checked before anything is written; ``job.out`` is replaced whole.
     """
     started = time.perf_counter()
-    settings = settings or load_settings(county)
-    region_dir = Path(region_dir or settings.inputs)
-    repair, run_dir = Path(repair), Path(run_dir)
-    extract, hydrography = region_dir / FIA_EXTRACT_DB, region_dir / HYDROGRAPHY_GPKG
-    for needed in (extract, hydrography):
-        if not needed.exists():
-            raise FileNotFoundError(f"{needed} is missing: run pipeline.s1_initial_state.region_prep")
-
-    manifest = repair / RUN_MANIFEST
-    if not manifest.exists():
-        raise FileNotFoundError(f"{manifest} is missing: not a raster-repair run folder")
-    place = read_county(counties, county)
+    place, repair, settings = job.county, job.repair, job.settings
+    extract = job.region.extract
     cells = clip_county(repair, place)
-    attrs = attributes(np.unique(cells.treemap[cells.valid]), vat, extract, repair / YOUNG_PLOTS)
+    attrs = attributes(np.unique(cells.treemap[cells.valid]), job.vat, extract, repair / YOUNG_PLOTS)
     grids, _sources = la.attribute_rasters(cells.treemap, cells.valid, attrs.records)
     seg = segment(cells, grids, settings)
     parents = parent_polygons(seg, cells)
-    pieces = riparian_split(parents, hydrography, settings.buffer_rules)
+    pieces = riparian_split(parents, job.region.hydrography, settings.buffer_rules)
     weights, top = representative_plots(seg, cells, attrs, settings)
     units = unit_layer(pieces, top, attrs, place)
     stands = stand_rows(units)
@@ -678,24 +759,281 @@ def run_leto(run_dir: Path, *, repair: Path, county: str, vat: pd.DataFrame, cou
         raise AcreDrift(f"county {place.fips}: units hold {accounting['unit_acres']} ac, parent "
                         f"stands {accounting['parent_stand_acres']} ac")
 
-    county_dir = run_dir / COUNTY_DIR / place.fips
-    _write_parents(county_dir / PARENT_STANDS, seg, cells)
-    weights.to_csv(county_dir / DONOR_WEIGHTS, index=False)
-    units.to_file(run_dir / UNITS_GPKG, layer=UNITS_LAYER, driver="GPKG", mode="w")
-    stands.to_csv(run_dir / STANDS, index=False)
-    inventory.write(run_dir / FVS_DATA)
+    shutil.rmtree(job.out, ignore_errors=True)
+    _write_parents(job.out / PARENT_STANDS, seg, cells)
+    weights.to_csv(job.out / DONOR_WEIGHTS, index=False)
+    units.to_file(job.out / COUNTY_UNITS, layer=UNITS_LAYER, driver="GPKG", mode="w")
+    stands.to_csv(job.out / STANDS, index=False)
+    inventory.write(job.out / FVS_DATA)
+    pd.DataFrame([accounting]).to_csv(job.out / AREA_ACCOUNTING, index=False)
+    return CountyResult(place.fips, accounting, len(units), len(stands),
+                        round(time.perf_counter() - started, 1))
+
+
+# ── many counties: the plan, resume, assembly ──────────────────────────────────────────
+
+
+def manifest_counties(repair: Path) -> list[str]:
+    """The FIPS the raster run's ``manifest.json`` lists (``"12125 Union"`` entries)."""
+    listed = json.loads((repair / RUN_MANIFEST).read_text()).get("counties")
+    if not listed:
+        raise NoCountiesInManifest(f"{repair / RUN_MANIFEST} lists no counties: name them with "
+                                   "--county")
+    return [str(entry).split()[0] for entry in listed]
+
+
+def _digest(payload: dict) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _young_plots_sha256(repair: Path) -> str | None:
+    young = repair / YOUNG_PLOTS
+    if not young.is_dir():
+        return None
+    return _digest({str(f.relative_to(young)): _sha256(f)
+                    for f in sorted(young.rglob("*")) if f.is_file()})
+
+
+def _rasters_sha256(repair: Path) -> dict[str, str]:
+    """The repaired rasters a county reads: the manifest records their paths, not their contents."""
+    return {name: _sha256(repair / name) for name in REPAIRED_RASTERS}
+
+
+def _vat_sha256(vat: pd.DataFrame) -> str:
+    rows = pd.util.hash_pandas_object(vat.astype(str), index=False).to_numpy()
+    return hashlib.sha256(rows.tobytes() + json.dumps(list(map(str, vat.columns))).encode()).hexdigest()
+
+
+def input_sha256(county: County, settings: LetoSettings, region: RegionInputs, shared: dict) -> str:
+    """The digest of what a county's outputs depend on: a match means they can be kept.
+
+    The county (FIPS, name, geometry), the raster run (its manifest, its repaired rasters and
+    ``young_plots/``), the VAT, the region inputs, the resolved settings, the layout and :data:`OUTPUT_VERSION`.
+    """
+    settings_record = {k: v for k, v in settings.record().items() if k != "inputs"}
+    return _digest({
+        "output_version": OUTPUT_VERSION, "layout": LAYOUT.value,
+        "county": {"fips": county.fips, "name": county.name,
+                   "geometry": hashlib.sha256(county.geometry.wkb).hexdigest()},
+        **shared, "settings": settings_record,
+        "fia_extract": region.extract_sha256, "hydrography": region.hydrography_sha256})
+
+
+class _Planner:
+    """Builds each county's job, reading every region's inputs once."""
+
+    def __init__(self, run_dir: Path, repair: Path, vat: pd.DataFrame, counties: Path,
+                 region_dir: Path | None, settings: LetoSettings | None):
+        self.run_dir, self.repair, self.vat, self.counties = run_dir, repair, vat, counties
+        self.region_dir, self.settings = region_dir, settings
+        self.regions: dict[str, tuple[LetoSettings, RegionInputs]] = {}
+        self.shared = {"repair_manifest": _sha256(repair / RUN_MANIFEST),
+                       "rasters": _rasters_sha256(repair),
+                       "young_plots": _young_plots_sha256(repair), "vat": _vat_sha256(vat)}
+
+    def region(self, fips: str) -> tuple[LetoSettings, RegionInputs]:
+        settings = self.settings or load_settings(fips)
+        if settings.region not in self.regions:
+            inputs = RegionInputs.read(Path(self.region_dir or settings.inputs))
+            self.regions[settings.region] = (settings, inputs)
+        return self.regions[settings.region]
+
+    def job(self, fips: str) -> CountyJob:
+        settings, inputs = self.region(fips)
+        place = read_county(self.counties, fips)
+        return CountyJob(place, self.repair, self.run_dir / COUNTY_DIR / fips, self.vat, settings,
+                         inputs, input_sha256(place, settings, inputs, self.shared))
+
+
+def _finished(entry: dict | None, job: CountyJob) -> bool:
+    return (entry is not None and entry.get("status") == CountyStatus.DONE
+            and entry.get("input_sha256") == job.input_sha256
+            and all((job.out / name).exists() for name in COUNTY_OUTPUTS))
+
+
+def _attempt(job: CountyJob) -> CountyResult | Exception:
+    try:
+        return run_county(job)
+    except Exception as error:                # recorded, then re-raised once every county ran
+        return error
+
+
+def _execute(jobs: list[CountyJob], workers: int):
+    """Yield ``(job, result or exception)`` as counties finish, ``workers`` at a time."""
+    if workers <= 1 or len(jobs) <= 1:
+        for job in jobs:
+            yield job, _attempt(job)
+        return
+    with ProcessPoolExecutor(max_workers=min(workers, len(jobs))) as pool:
+        futures = {pool.submit(_attempt, job): job for job in jobs}
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+            except Exception as error:        # the worker died (BrokenProcessPool, e.g. out of memory)
+                result = error
+            yield futures[future], result
+
+
+def _concat_csv(paths: list[Path], out: Path) -> None:
+    """The counties' CSVs as one, byte for byte: control numbers never pass through a parser."""
+    header, bodies = None, []
+    for path in paths:
+        first, _, body = path.read_text().partition("\n")
+        if header is not None and first != header:
+            raise ValueError(f"{path} has columns {first!r}, not {header!r}")
+        header = first
+        bodies.append(body)
+    out.write_text(header + "\n" + "".join(bodies))
+
+
+def _fvs_tables(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    tables = LAYOUT.tables
+    with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as con:
+        frames = tuple(pd.read_sql(f'SELECT * FROM "{t}"', con) for t in (tables.stand, tables.tree))
+    con.close()
+    for frame in frames:
+        frame["STAND_CN"] = as_id_series(frame["STAND_CN"], column="STAND_CN")
+    return frames
+
+
+def assemble_inventory(paths: list[Path]) -> PlotInventory:
+    """One stand per distinct plot over the counties, its trees from the first county holding it.
+
+    A plot in two counties is the same extract (or ``young_plots/``) rows; different StandInit
+    rows for one plot are :class:`ConflictingPlotRows`.
+    """
+    stands, trees = zip(*(_fvs_tables(p) for p in paths))
+    owner: dict[str, int] = {}
+    for i, frame in enumerate(stands):
+        for cn in frame["STAND_CN"]:
+            owner.setdefault(cn, i)
+    stand = pd.concat(stands, ignore_index=True).drop_duplicates(ignore_index=True)
+    conflicting = sorted(set(stand.loc[stand["STAND_CN"].duplicated(), "STAND_CN"]))
+    if conflicting:
+        raise ConflictingPlotRows(f"plots {conflicting[:10]} have different StandInit rows in "
+                                  "two counties")
+    tree = pd.concat([t[t["STAND_CN"].map(owner) == i] for i, t in enumerate(trees)],
+                     ignore_index=True)
+    return PlotInventory(stand, tree)
+
+
+def _remove_run_outputs(run_dir: Path) -> None:
+    for name in (STANDS, FVS_DATA, UNITS_GPKG, QA_DIR / AREA_ACCOUNTING):
+        (run_dir / name).unlink(missing_ok=True)
+
+
+def assemble(run_dir: Path, counties: list[str]) -> pd.DataFrame:
+    """The run-level outputs from the finished ``counties``' own; return the area accounting."""
+    dirs = [run_dir / COUNTY_DIR / fips for fips in counties]
+    _concat_csv([d / STANDS for d in dirs], run_dir / STANDS)
     (run_dir / QA_DIR).mkdir(parents=True, exist_ok=True)
-    pd.DataFrame([accounting]).to_csv(run_dir / QA_DIR / AREA_ACCOUNTING, index=False)
+    _concat_csv([d / AREA_ACCOUNTING for d in dirs], run_dir / QA_DIR / AREA_ACCOUNTING)
+    assemble_inventory([d / FVS_DATA for d in dirs]).write(run_dir / FVS_DATA)
+    units = pd.concat([gpd.read_file(d / COUNTY_UNITS, layer=UNITS_LAYER) for d in dirs],
+                      ignore_index=True)
+    gpd.GeoDataFrame(units, crs=units.crs).to_file(run_dir / UNITS_GPKG, layer=UNITS_LAYER,
+                                                    driver="GPKG", mode="w")
+    return pd.read_csv(run_dir / QA_DIR / AREA_ACCOUNTING, dtype={"county_fips": str})
+
+
+# ── the stage ──────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class LetoRun:
+    outcomes: dict[str, CountyOutcome]        # every finished county: ran, skipped or kept
+    accounting: pd.DataFrame                  # every finished county's area-accounting line
+
+
+def _write_record(run_dir: Path, record: dict) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    tmp = run_dir / f"{RECORD}.tmp"
+    tmp.write_text(json.dumps(record, indent=2) + "\n")
+    tmp.replace(run_dir / RECORD)
+
+
+def _previous_counties(run_dir: Path) -> dict[str, dict]:
+    path = run_dir / RECORD
+    return json.loads(path.read_text()).get("counties", {}) if path.exists() else {}
+
+
+def _restale(previous: dict[str, dict], requested: set[str], planner: _Planner) -> dict[str, dict]:
+    """Earlier counties not asked for: kept if done under today's inputs, else marked stale."""
+    kept = {}
+    for fips, entry in sorted(previous.items()):
+        if fips in requested:
+            continue
+        if entry.get("status") == CountyStatus.DONE:
+            try:
+                current = _finished(entry, planner.job(fips))
+            except (ValueError, FileNotFoundError):   # its county, region or inputs are gone
+                current = False
+            if not current:
+                entry = {**entry, "status": CountyStatus.STALE.value}
+                log.warning("leto: county %s was finished under other inputs: left out", fips)
+        kept[fips] = entry
+    return kept
+
+
+def run_leto(run_dir: Path, *, repair: Path, vat: pd.DataFrame, counties: Path,
+             fips: Sequence[str] | None = None, region_dir: Path | None = None,
+             settings: LetoSettings | None = None, workers: int = 1) -> LetoRun:
+    """Run the counties ``fips`` of ``repair`` (default: every one its manifest lists) into ``run_dir``.
+
+    ``vat`` is TreeMap's value table (:func:`add_back_ids.read_vat`) and ``counties`` the county
+    layer. ``region_dir`` defaults to each region's configured inputs, ``settings`` to each
+    county's region's. A county whose recorded input hash matches is skipped; the rest run,
+    ``workers`` at a time. A county that fails is recorded as failed, the others still finish,
+    and the first failure is raised with no run-level output written.
+    """
+    repair, run_dir = Path(repair), Path(run_dir)
+    if not (repair / RUN_MANIFEST).exists():
+        raise FileNotFoundError(f"{repair / RUN_MANIFEST} is missing: not a raster-repair run folder")
+    requested = sorted(set(fips or manifest_counties(repair)))
+    planner = _Planner(run_dir, repair, vat, counties, region_dir, settings)
+    jobs = [planner.job(f) for f in requested]          # every input checked before any work
+
+    previous = _previous_counties(run_dir)
+    entries = _restale(previous, set(requested), planner)
+    outcomes = {f: CountyOutcome.KEPT for f, e in entries.items() if e.get("status") == CountyStatus.DONE}
+    todo = []
+    for job in jobs:
+        county_fips = job.county.fips
+        if _finished(previous.get(county_fips), job):
+            outcomes[county_fips] = CountyOutcome.SKIPPED
+            entries[county_fips] = previous[county_fips]
+        else:
+            todo.append(job)
     record = {
         "stage": "leto", "layout": LAYOUT.value,
         "repair": {"path": str(repair.resolve()), "young_plots": (repair / YOUNG_PLOTS).is_dir(),
-                   "manifest_sha256": _sha256(manifest)},
-        "fia_extract": {"path": str(extract.resolve()), "sha256": _sha256(extract)},
-        "hydrography": {"path": str(hydrography.resolve()), "sha256": _sha256(hydrography)},
-        "settings": settings.record(),
-        "counties": {place.fips: {"name": place.name, "status": CountyStatus.DONE.value,
-                                  "units": len(units), "stands": len(stands),
-                                  "seconds": round(time.perf_counter() - started, 1)}},
+                   "manifest_sha256": planner.shared["repair_manifest"]},
+        "regions": {name: {"settings": s.record(), **inputs.record()}
+                    for name, (s, inputs) in sorted(planner.regions.items())},
+        "counties": entries,
     }
-    (run_dir / RECORD).write_text(json.dumps(record, indent=2) + "\n")
-    return accounting
+    _remove_run_outputs(run_dir)
+    _write_record(run_dir, record)
+
+    failures = []
+    for job, result in _execute(todo, workers):
+        base = {"name": job.county.name, "region": job.settings.region,
+                "input_sha256": job.input_sha256}
+        if isinstance(result, Exception):
+            failures.append((job.county.fips, result))
+            entries[job.county.fips] = {**base, "status": CountyStatus.FAILED.value,
+                                        "error": f"{type(result).__name__}: {result}"}
+        else:
+            outcomes[job.county.fips] = CountyOutcome.RAN
+            entries[job.county.fips] = {**base, "status": CountyStatus.DONE.value,
+                                        "units": result.units, "stands": result.stands,
+                                        "seconds": result.seconds}
+        record["counties"] = dict(sorted(entries.items()))
+        _write_record(run_dir, record)
+    if failures:
+        failures.sort(key=lambda f: f[0])
+        log.error("leto: counties %s failed; see %s", [f for f, _ in failures], run_dir / RECORD)
+        raise failures[0][1]
+
+    done = [f for f, e in sorted(entries.items()) if e.get("status") == CountyStatus.DONE]
+    return LetoRun(dict(sorted(outcomes.items())), assemble(run_dir, done))

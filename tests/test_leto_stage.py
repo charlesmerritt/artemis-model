@@ -1,4 +1,7 @@
-"""The ``leto`` stage, one county: repaired rasters to management units and ``stands.csv`` (#163).
+"""The ``leto`` stage: repaired rasters to management units and ``stands.csv``, county by county.
+
+One county (#163), its plot layout's ``FVS_Data.db`` (#164), and many counties: resume,
+workers and the recorded layout (#165).
 
 The fixture is a tiny raster-repair run folder over two counties side by side, Alpha (12001)
 and Beta (12003). A band of plot 11 runs across the county line, so a whole-window
@@ -8,6 +11,7 @@ ID 1,000,000. A perennial stream and a pond run through Alpha; Beta has only an 
 stream, which is never buffered.
 """
 
+import dataclasses
 import hashlib
 import json
 import shutil
@@ -27,14 +31,19 @@ from pipeline import leto_riparian
 from pipeline.leto_stage import (
     AddBackWithoutYoungPlots,
     AmbiguousStandInit,
+    ConflictingPlotRows,
+    CountyOutcome,
     MissingRepresentativePlots,
+    NoCountiesInManifest,
     NeighbourIdOnAddBack,
     UnknownCounty,
+    PlotInventory,
     UnknownYoungPlotIds,
+    assemble_inventory,
     load_settings,
     run_leto,
 )
-from pipeline.run import main, read_stands
+from pipeline.run import LayoutMismatch, main, read_stands
 from pipeline.s1_initial_state.add_back_ids import VAT_COLUMNS
 from pipeline.spatial_ref import project_crs
 
@@ -187,9 +196,11 @@ def world(tmp_path):
             "counties": counties, "run_dir": tmp_path / "run"}
 
 
-def _run(world, county=ALPHA):
-    return run_leto(world["run_dir"], repair=world["repair"], county=county, vat=VAT,
-                    counties=world["counties_path"], region_dir=world["region"])
+def _run(world, county=ALPHA, **kwargs):
+    fips = [county] if isinstance(county, str) else county
+    kwargs.setdefault("run_dir", world["run_dir"])
+    return run_leto(repair=world["repair"], fips=fips, vat=VAT, counties=world["counties_path"],
+                    region_dir=world["region"], **kwargs)
 
 
 def _units(world):
@@ -292,11 +303,14 @@ def test_the_units_layer_and_the_run_record_are_written(world):
     record = json.loads((world["run_dir"] / "leto.json").read_text())
     manifest = (world["repair"] / "manifest.json").read_bytes()
     assert record["repair"]["manifest_sha256"] == hashlib.sha256(manifest).hexdigest()
-    assert record["fia_extract"]["path"] == str((world["region"] / "fia_extract.db").resolve())
-    assert len(record["fia_extract"]["sha256"]) == 64
-    assert record["settings"]["segmentation"]["shared_edge_bonus"] == 0.2
-    assert record["settings"]["region"] == "florida"
+    florida = record["regions"]["florida"]
+    assert florida["fia_extract"]["path"] == str((world["region"] / "fia_extract.db").resolve())
+    assert len(florida["fia_extract"]["sha256"]) == 64
+    assert florida["settings"]["segmentation"]["shared_edge_bonus"] == 0.2
+    assert record["counties"][ALPHA]["region"] == "florida"
     assert record["counties"][ALPHA]["status"] == "done"
+    assert len(record["counties"][ALPHA]["input_sha256"]) == 64
+    assert record["layout"] == "plot"
 
 
 def test_the_area_accounting_splits_unit_acres_into_managed_riparian_unknown_and_masked(world):
@@ -506,6 +520,214 @@ def test_a_fips_not_in_the_county_layer_fails_closed(world):
         _run(world, "12999")
 
 
+# ── many counties: resume, workers, the layout ─────────────────────────────────────────
+
+
+def _record(world, run_dir=None):
+    return json.loads(((run_dir or world["run_dir"]) / "leto.json").read_text())
+
+
+def _county_stands(world, county):
+    return world["run_dir"] / "leto" / county / "stands.csv"
+
+
+def test_without_a_county_list_the_stage_runs_every_county_the_raster_run_covers(world):
+    result = _run(world, None)
+
+    assert result.outcomes == {ALPHA: CountyOutcome.RAN, BETA: CountyOutcome.RAN}
+    assert set(_stands(world)["county_fips"]) == {ALPHA, BETA}
+    assert {c: e["status"] for c, e in _record(world)["counties"].items()} == \
+        {ALPHA: "done", BETA: "done"}
+
+
+def test_a_raster_run_whose_manifest_names_no_counties_needs_a_county_list(world):
+    (world["repair"] / "manifest.json").write_text(json.dumps({"rule": "v4"}))
+
+    with pytest.raises(NoCountiesInManifest, match="--county"):
+        _run(world, None)
+
+
+def test_the_run_level_outputs_are_assembled_from_every_finished_county(world):
+    result = _run(world, [ALPHA, BETA])
+
+    stands, units = read_stands(world["run_dir"]), _units(world)
+    assert set(stands["county_fips"]) == {ALPHA, BETA}
+    assert set(units["county_fips"]) == {ALPHA, BETA}
+    assert stands["unit_id"].is_unique and units["unit_id"].is_unique
+    for county in (ALPHA, BETA):
+        own = pd.read_csv(_county_stands(world, county), dtype={"unit_id": str})
+        assert set(own["unit_id"]) == set(stands.loc[stands["county_fips"] == county, "unit_id"])
+    stand = _fvs(world, "FVS_StandInit_Plot")
+    assert stand["STAND_CN"].is_unique                      # plot 11 is in both counties, once
+    assert set(stand["STAND_CN"]) == set(stands["PLT_CN"])
+    trees = _fvs(world, "FVS_TreeInit_Plot")
+    assert (trees.groupby("STAND_CN").size() == 2).loc[[PLOT_11, PLOT_22]].all()
+    table = pd.read_csv(world["run_dir"] / "qa" / "leto" / "area_accounting.csv",
+                        dtype={"county_fips": str})
+    assert table["county_fips"].tolist() == [ALPHA, BETA]
+    assert table.set_index("county_fips")["units"].to_dict() == \
+        units.groupby("county_fips").size().to_dict()
+    assert result.accounting["county_fips"].tolist() == [ALPHA, BETA]
+
+
+def test_a_rerun_skips_a_county_whose_inputs_match(world):
+    _run(world)
+    own = _county_stands(world, ALPHA)
+    before, written = own.stat().st_mtime_ns, (world["run_dir"] / "stands.csv").read_text()
+
+    result = _run(world)
+
+    assert result.outcomes == {ALPHA: CountyOutcome.SKIPPED}
+    assert own.stat().st_mtime_ns == before
+    assert (world["run_dir"] / "stands.csv").read_text() == written
+
+
+def test_widening_the_county_list_runs_only_the_new_county(world):
+    _run(world)
+
+    result = _run(world, [ALPHA, BETA])
+
+    assert result.outcomes == {ALPHA: CountyOutcome.SKIPPED, BETA: CountyOutcome.RAN}
+    assert set(_stands(world)["county_fips"]) == {ALPHA, BETA}
+
+
+def test_a_county_finished_earlier_stays_in_the_run_level_outputs(world):
+    _run(world, ALPHA)
+
+    _run(world, BETA)
+
+    assert set(_stands(world)["county_fips"]) == {ALPHA, BETA}
+
+
+def test_a_changed_setting_redoes_the_county(world):
+    _run(world)
+    first = _record(world)["counties"][ALPHA]["input_sha256"]
+    changed = dataclasses.replace(load_settings(ALPHA), minimum_plot_weight=0.2)
+
+    result = _run(world, settings=changed)
+
+    assert result.outcomes == {ALPHA: CountyOutcome.RAN}
+    record = _record(world)
+    assert record["counties"][ALPHA]["input_sha256"] != first
+    assert record["regions"]["florida"]["settings"]["minimum_plot_weight"] == 0.2
+
+
+def test_a_changed_input_redoes_the_county(world):
+    _run(world)
+    with sqlite3.connect(world["region"] / "fia_extract.db") as con:
+        con.execute("UPDATE FVS_STANDINIT_PLOT SET AGE = 61 WHERE STAND_CN = ?", (PLOT_22,))
+
+    result = _run(world)
+
+    assert result.outcomes == {ALPHA: CountyOutcome.RAN}
+    stands = _stands(world)
+    assert (stands.loc[stands["PLT_CN"] == PLOT_22, "stand_age"] == 61).all()
+
+
+def test_a_raster_regenerated_in_place_redoes_the_county(world):
+    """The manifest records paths, not contents: a repaired raster rewritten under it still counts."""
+    _run(world)
+    harris = _harris()
+    harris[:, :20] = 5                                     # another owner, same manifest
+    _tif(world["repair"] / "nwos2022_improved.tif", harris, "uint8", HARRIS_NODATA)
+
+    result = _run(world)
+
+    assert result.outcomes == {ALPHA: CountyOutcome.RAN}
+
+
+def test_a_county_finished_earlier_is_reported_as_kept(world):
+    _run(world, ALPHA)
+
+    result = _run(world, BETA)
+
+    assert result.outcomes == {ALPHA: CountyOutcome.KEPT, BETA: CountyOutcome.RAN}
+
+
+def test_a_county_finished_under_other_inputs_is_marked_stale_and_left_out(world):
+    _run(world, [ALPHA, BETA])
+    changed = dataclasses.replace(load_settings(ALPHA), minimum_plot_weight=0.2)
+
+    _run(world, BETA, settings=changed)
+
+    assert set(_stands(world)["county_fips"]) == {BETA}     # never mix settings
+    assert set(_units(world)["county_fips"]) == {BETA}
+    assert _record(world)["counties"][ALPHA]["status"] == "stale"
+
+
+def test_a_failed_county_is_recorded_beside_the_finished_ones_and_nothing_is_assembled(world):
+    shutil.rmtree(world["repair"] / "young_plots")           # Alpha has add-back pixels; Beta not
+
+    with pytest.raises(AddBackWithoutYoungPlots):
+        _run(world, [ALPHA, BETA])
+
+    counties = _record(world)["counties"]
+    assert counties[ALPHA]["status"] == "failed"
+    assert "young_plots" in counties[ALPHA]["error"]
+    assert counties[BETA]["status"] == "done"
+    assert not (world["run_dir"] / "stands.csv").exists()
+    assert not (world["run_dir"] / "FVS_Data.db").exists()
+
+
+def _gpkg(path):
+    frame = gpd.read_file(path, layer="units")
+    return pd.DataFrame(frame.drop(columns="geometry")).assign(wkt=frame.geometry.to_wkt())
+
+
+def test_workers_run_counties_in_parallel_and_the_outputs_equal_a_serial_run(world, tmp_path):
+    serial, parallel = tmp_path / "serial", tmp_path / "parallel"
+
+    _run(world, None, run_dir=serial, workers=1)
+    _run(world, None, run_dir=parallel, workers=2)
+
+    for name in ("stands.csv", "qa/leto/area_accounting.csv", "leto/12001/donor_weights.csv",
+                 "leto/12003/donor_weights.csv"):
+        assert (parallel / name).read_text() == (serial / name).read_text(), name
+    pd.testing.assert_frame_equal(_gpkg(parallel / "management_units.gpkg"),
+                                  _gpkg(serial / "management_units.gpkg"))
+    for table in ("FVS_StandInit_Plot", "FVS_TreeInit_Plot"):
+        frames = []
+        for run in (serial, parallel):
+            with sqlite3.connect(run / "FVS_Data.db") as con:
+                frames.append(pd.read_sql(f"SELECT * FROM {table}", con))
+        pd.testing.assert_frame_equal(frames[1], frames[0])
+    hashes = [{c: e["input_sha256"] for c, e in _record(world, run)["counties"].items()}
+              for run in (serial, parallel)]
+    assert hashes[0] == hashes[1]
+
+
+def _county_inventory(path, age):
+    stand = pd.DataFrame({"STAND_CN": [PLOT_22], "AGE": [age]})
+    tree = pd.DataFrame({"STAND_CN": [PLOT_22, PLOT_22], "TREE_ID": [1, 2]})
+    PlotInventory(stand, tree).write(path)
+    return path
+
+
+def test_a_plot_in_two_counties_is_one_stand_with_one_counties_trees(tmp_path):
+    paths = [_county_inventory(tmp_path / f"{c}.db", 58) for c in (ALPHA, BETA)]
+
+    inventory = assemble_inventory(paths)
+
+    assert inventory.stand["STAND_CN"].tolist() == [PLOT_22]       # 19 digits, intact
+    assert inventory.tree["TREE_ID"].tolist() == [1, 2]
+
+
+def test_a_plot_with_different_standinit_rows_in_two_counties_fails_closed(tmp_path):
+    paths = [_county_inventory(tmp_path / "a.db", 58), _county_inventory(tmp_path / "b.db", 59)]
+
+    with pytest.raises(ConflictingPlotRows, match=PLOT_22):
+        assemble_inventory(paths)
+
+
+def test_library_with_another_layout_than_the_run_was_built_with_fails_closed(world, tmp_path):
+    _run(world)
+
+    with pytest.raises(LayoutMismatch, match="built with the plot layout.*--inventory leto"):
+        main(["library", str(world["run_dir"]), "--inventory", "leto", "--workers", "1",
+              "--fvs-bin", str(tmp_path / "never-run")])
+    assert not (world["run_dir"] / "library.csv").exists()
+
+
 # ── the command ────────────────────────────────────────────────────────────────────────
 
 
@@ -518,6 +740,17 @@ def test_main_leto_runs_one_county(world, tmp_path):
           "--counties", str(world["counties_path"])])
 
     assert len(read_stands(world["run_dir"])) > 0
+
+
+def test_main_leto_takes_a_county_list_and_workers(world, tmp_path):
+    vat = tmp_path / "vat.csv"
+    VAT.reindex(columns=VAT_COLUMNS, fill_value=0).to_csv(vat, index=False)
+
+    main(["leto", str(world["run_dir"]), "--repair", str(world["repair"]), "--county", ALPHA, BETA,
+          "--workers", "2", "--region-dir", str(world["region"]), "--vat", str(vat),
+          "--counties", str(world["counties_path"])])
+
+    assert set(read_stands(world["run_dir"])["county_fips"]) == {ALPHA, BETA}
 
 
 def test_main_leto_defaults_to_the_declared_sources_under_a_data_root(world, tmp_path):
