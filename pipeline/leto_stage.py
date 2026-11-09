@@ -31,7 +31,8 @@ county's cells are read, so no parent stand crosses it. In order:
    at its dated 2022 age, with its own live trees under LETO's sampling design (BAF -1, plot
    size 1, breakpoint 0, one plot, ``TREE_COUNT`` = TPA). A representative plot without
    StandInit or tree rows in the extract, or a young plot whose neighbour has no StandInit
-   row, is :class:`MissingRepresentativePlots`; a young-plot ID without a live tree is
+   row, is :class:`MissingRepresentativePlots`; one with two StandInit rows is
+   :class:`AmbiguousStandInit`; a young-plot ID without a live tree is
    :class:`UnknownYoungPlotIds`.
 
 Writes into ``<run_dir>``:
@@ -165,6 +166,10 @@ class UnknownYoungPlotIds(ValueError):
 
 class MissingRepresentativePlots(ValueError):
     """A representative plot (or a young plot's neighbour site) has no FVS rows in the FIA extract."""
+
+
+class AmbiguousStandInit(ValueError):
+    """A plot with more than one StandInit row in the extract: its start age and FVS row could differ."""
 
 
 class UnknownCounty(ValueError):
@@ -595,7 +600,11 @@ def plot_inventory(plots: pd.Series, attrs: Attributes, extract: Path) -> PlotIn
         tree = _plot_rows(con, FIA_TREE_INIT, "*", "STAND_CN", fia)
     finally:
         con.close()
-    site = site.drop_duplicates("STAND_CN").set_index("STAND_CN")
+    repeated = sorted(set(site.loc[site["STAND_CN"].duplicated(), "STAND_CN"]))
+    if repeated:
+        raise AmbiguousStandInit(f"plots {repeated[:10]} have more than one {FIA_STAND_INIT} row "
+                                 f"in {extract}")
+    site = site.set_index("STAND_CN")
     missing = sorted((set(fia) - set(site.index)) | (set(fia) - set(tree["STAND_CN"])))
     if missing:
         raise MissingRepresentativePlots(

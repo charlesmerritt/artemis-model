@@ -26,6 +26,7 @@ from shapely.geometry import LineString, box, shape
 from pipeline import leto_riparian
 from pipeline.leto_stage import (
     AddBackWithoutYoungPlots,
+    AmbiguousStandInit,
     MissingRepresentativePlots,
     NeighbourIdOnAddBack,
     UnknownCounty,
@@ -455,6 +456,16 @@ def test_a_representative_plot_missing_from_the_extract_fails_closed(world, tabl
         _run(world)
     assert not (world["run_dir"] / "stands.csv").exists()
     assert not (world["run_dir"] / "FVS_Data.db").exists()
+
+
+def test_a_representative_plot_with_two_standinit_rows_fails_closed(world):
+    """stand_age and FVS's start row must be the same row; two rows leave that open."""
+    with sqlite3.connect(world["region"] / "fia_extract.db") as con:
+        con.execute("INSERT INTO FVS_STANDINIT_PLOT SELECT * FROM FVS_STANDINIT_PLOT "
+                    "WHERE STAND_CN = ?", (PLOT_22,))
+
+    with pytest.raises(AmbiguousStandInit, match=f"{PLOT_22}.*more than one"):
+        _run(world)
 
 
 def test_a_young_plots_neighbour_missing_from_the_extract_fails_closed(world):
