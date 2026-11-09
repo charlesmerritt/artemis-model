@@ -55,7 +55,7 @@ MARKDOWN_BUDGET = {
     "docs/config-policy.md": (427, "convert"),                # -> policy deck
     "docs/ownership-regimes.md": (183, "convert"),            # -> policy deck (per-class regime tables)
     "docs/research/leto-vs-boundary-overlay.md": (120, "record"),      # dated comparison record
-    "research/leto_parity/README.md": (170, "record"),             # LETO v1 parity audit, 2026-10-19; 136->170 2026-11-09 pin moved to 13bcf13 (#161)
+    "research/leto_parity/README.md": (173, "record"),             # LETO v1 parity audit, 2026-10-19; 136->173 2026-11-09 pin moved to 13bcf13 (#161, #168)
     "docs/superpowers/plans/2026-07-20-leto-initial-state.md": (649, "record"),
     "docs/superpowers/plans/2026-07-20-s1-segmentation-strategies.md": (570, "record"),
     "docs/superpowers/specs/2026-07-19-leto-initial-state-design.md": (232, "record"),

@@ -151,9 +151,12 @@ It needs `ME_5_Co_Dissolve`, the ME/MA/NH/NY FIA TREE and COND CSVs, and NHDPlus
 - **Small-stand gaps.** `retain`, `delete` and `proximity_merge` already existed at `d2b92ee`,
   unchanged at `13bcf13` (`stage2_segmentation.py:2148-2166`,
   `small_stands.plan_proximity_merges`). `leto_ca.resolve_small_stands` already has
-  `RETAIN` and `DELETE` with upstream's label rules (`test_delete_and_retain_actions`). Still
-  missing: upstream's deleted segment and cell counts, and the regional-config choice and
-  deleted-acre accounting #168 asks for. `proximity_merge` and its unit IDs are #169.
+  `RETAIN` and `DELETE` with upstream's label rules (`test_delete_and_retain_actions`) and its
+  minimum-cell rule. Still missing (#168): choosing the action under upstream's config key
+  `small_stands.remaining_small_stand_action`, validated as `config.py:96-136` does, and
+  `delete`'s segment, cell and acre counts (`stage2_segmentation.py:1025-1034, 2152-2157`).
+  Upstream defaults to `retain` when the key is unset. Its verified Maine config sets
+  `force_merge`, so ours must state it too. `proximity_merge` and its unit IDs are #169.
 - **Upstream tests.** `tests/test_leto_upstream.py` runs upstream's `test_weight_math.py` (1)
   and `test_imputation_qa.py` (3) verbatim against `leto_donors` and `leto_imputation_qa`.
   The other 11 wait for their ports: `test_small_stands.py` and `test_management_units.py`
