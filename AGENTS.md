@@ -2,6 +2,9 @@
 
 ## Data access
 Data may be available on an external hard drive under /mnt/d/ symlinked to data on the work laptop, otherwise it is available in Cloudflare R2.
+The entire FIADB is on R2 (`artemis-r2/data/SQLite_FIADB_ENTIRE/`, 70.7 GB): fetch it into
+`data/r2_cache/` (see `config/data_paths.yaml`) rather than building region inputs from the
+five-county consolidated DB, which ADR 0004 rules out.
 
 ## Gotchas
 ### Regeneration has multiple paths; a rendered clearcut does not prove reestablishment

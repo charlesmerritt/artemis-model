@@ -80,6 +80,12 @@ raw:
 
   fia_sqlite:
     db:         "/mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"
+    # The entire FIADB (70.7 GB) is on R2 at r2:artemis-r2/data/SQLite_FIADB_ENTIRE/. It is far
+    # over ARTEMIS_R2_MAX_FETCH_MB, so fetch it once by hand into the cache, which mirrors /mnt/d:
+    #   rclone copyto --multi-thread-streams 16 \
+    #     r2:artemis-r2/data/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db \
+    #     data/r2_cache/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db
+    # then pass `--data-root data/r2_cache` to region_prep and `main.py leto`.
     # FVS-Ready tables present in this DB (no FIA2FVS conversion needed):
     #   FVS_TREEINIT_PLOT  — tree list records keyed to plot
     #   FVS_TREEINIT_COND  — tree list records keyed to condition
