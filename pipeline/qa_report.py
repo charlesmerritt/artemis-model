@@ -4,7 +4,8 @@ Each runner stage writes its visual checkpoint to ``<run_dir>/qa/<stage>/``: CSV
 top of the folder and PNG figures under ``figures/``. :func:`write_index` lays them all out in
 ``index.html``, which links them by relative path and fetches nothing, so the folder opens
 from disk, a zip or a file share. A table or figure a later change adds shows up without
-touching this module; ``notes`` only puts the known ones first and captions them.
+touching this module; ``notes`` only puts the known ones first and captions them. ``group``
+sorts figures into collapsible sections (:class:`FigureGroup`), e.g. one per county.
 
     from pipeline.qa_report import write_index
     write_index(run_dir / "qa" / "outputs", "Outputs QA", {"harvest.csv": "Removals by group"})
@@ -13,7 +14,9 @@ touching this module; ``notes`` only puts the known ones first and captions them
 from __future__ import annotations
 
 import html
+from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
 import pandas as pd
 
@@ -36,7 +39,15 @@ th { background: var(--bg); position: sticky; top: 0; }
 .figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
 figure { margin: 0; } img { width: 100%; height: auto; border: 1px solid var(--rule); background: #fcfcfb; }
 figcaption { font-size: 12px; color: var(--muted); }
+details { margin: 8px 0; } summary { cursor: pointer; font-weight: 600; }
 """
+
+
+class FigureGroup(NamedTuple):
+    """A figure's section: sections are ordered by ``key`` and titled ``heading``."""
+
+    key: str
+    heading: str
 
 
 def _ordered(paths: list[Path], notes: dict[str, str]) -> list[Path]:
@@ -63,16 +74,34 @@ def _figure_html(png: Path, notes: dict[str, str]) -> str:
             f"<figcaption>{caption}</figcaption></figure>")
 
 
+def _figures_html(pngs: list[Path], notes: dict[str, str],
+                  group: Callable[[Path], FigureGroup] | None) -> str:
+    def grid(files):
+        return f'<div class="figures">{"".join(_figure_html(p, notes) for p in files)}</div>'
+
+    if group is None:
+        return grid(pngs)
+    sections: dict[FigureGroup, list[Path]] = {}
+    for png in pngs:
+        sections.setdefault(group(png), []).append(png)
+    return "".join(f'<details{" open" if i == 0 else ""}><summary>{html.escape(g.heading)}'
+                   f"</summary>{grid(files)}</details>"
+                   for i, (g, files) in enumerate(sorted(sections.items())))
+
+
 def write_index(qa: Path, title: str, notes: dict[str, str] | None = None,
-                summary: str = "") -> Path:
-    """``qa/index.html``: every CSV in ``qa`` and every PNG in ``qa/figures``, known ones first."""
+                summary: str = "", group: Callable[[Path], FigureGroup] | None = None) -> Path:
+    """``qa/index.html``: every CSV in ``qa`` and every PNG in ``qa/figures``, known ones first.
+
+    ``group`` gives each figure its section; without it the figures are one grid.
+    """
     notes = notes or {}
     tables = "".join(
         f'<section><h3><a href="{html.escape(p.name)}">{html.escape(p.name)}</a></h3>'
         f"<p>{html.escape(notes.get(p.name, ''))}</p>{_table_html(p)}</section>"
         for p in _ordered(list(qa.glob("*.csv")), notes))
     pngs = _ordered(list((qa / FIGURES).glob("*.png")), notes) if (qa / FIGURES).is_dir() else []
-    figures = f'<div class="figures">{"".join(_figure_html(p, notes) for p in pngs)}</div>'
+    figures = _figures_html(pngs, notes, group)
     page = (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width, initial-scale=1">'
             f"<title>{html.escape(title)}</title><style>{STYLE}</style></head><body>"

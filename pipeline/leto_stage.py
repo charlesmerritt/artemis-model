@@ -69,8 +69,9 @@ county's cells are read, so no parent stand crosses it. In order:
 
 Writes into ``<run_dir>/leto/<FIPS>/``, per county: ``parent_stands.tif``,
 ``donor_weights.csv`` (its filtered parent donor weights), ``units.gpkg``, ``stands.csv``,
-``FVS_Data.db`` and ``area_accounting.csv``, and under the LETO layout its stage 4 QA tables
-and, when ``database.mode`` asks, ``fvs_groups/``. The run-level files are assembled from every
+``FVS_Data.db``, ``area_accounting.csv``, ``qa/`` (:mod:`pipeline.leto_qa`: its QA tables,
+maps, step timings and peak memory), and under the LETO layout its stage 4 QA tables and,
+when ``database.mode`` asks, ``fvs_groups/``. The run-level files are assembled from every
 finished county (:func:`assemble`), in FIPS order:
 
 - ``stands.csv``: the runner's columns (:data:`pipeline.run.STAND_COLUMNS`) for every unit not
@@ -105,6 +106,9 @@ finished county (:func:`assemble`), in FIPS order:
   per owner class (``owner_drift_acres_<class>``) that step 2 moves. Under ``merge_delete``
   (the default) the speckle that could not merge is deleted: counted here and in
   ``area_accounting.csv`` (``deleted_speckle``, ``deleted_speckle_acres``), and in no layer.
+- the rest of ``qa/leto/`` (:func:`pipeline.leto_qa.write_report`): acres by county × owner
+  class × unit class, size distributions, donor QA, riparian acres by buffer source, timings
+  and peak memory, maps per county and for the region, and an offline ``index.html``.
 - ``leto.json``: the layout (``library`` checks it: :func:`pipeline.run.check_layout`), the
   raster run's ``manifest.json`` sha256, per region the resolved settings and the FIA extract
   and hydrography (path and sha256), and per county its status, input hash, unit and stand
@@ -119,11 +123,10 @@ import logging
 import math
 import shutil
 import sqlite3
-import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -138,7 +141,7 @@ from rasterio.windows import Window
 from shapely.geometry import box, shape
 
 from pipeline import leto_attributes as la
-from pipeline import leto_ca, leto_donors, leto_layout, leto_riparian
+from pipeline import leto_ca, leto_donors, leto_layout, leto_qa, leto_riparian
 from pipeline.leto_database import DatabaseMode, SamplingDesign
 from pipeline.leto_speckle import MergeCost, SpeckleSettings, UnitClass, merge_speckle
 from pipeline.harvest_eligibility import usable_stand_age
@@ -175,15 +178,15 @@ UNITS_LAYER = "units"
 RECORD = LETO_RECORD
 COUNTY_DIR = "leto"
 PARENT_STANDS = "parent_stands.tif"
-DONOR_WEIGHTS = "donor_weights.csv"
+DONOR_WEIGHTS = leto_qa.DONOR_WEIGHTS
 COUNTY_UNITS = "units.gpkg"
 QA_DIR = Path("qa") / "leto"
-AREA_ACCOUNTING = "area_accounting.csv"
-SPECKLE = "speckle.csv"
+AREA_ACCOUNTING = leto_qa.AREA_ACCOUNTING
+SPECKLE = leto_qa.SPECKLE
 REPAIRED_RASTERS = (IMPROVED_TREEMAP, PROVENANCE, OWNERSHIP)
 COUNTY_OUTPUTS = (PARENT_STANDS, DONOR_WEIGHTS, COUNTY_UNITS, STANDS, FVS_DATA, AREA_ACCOUNTING,
-                  SPECKLE)
-OUTPUT_VERSION = 3                            # bump when a county's outputs change shape: redoes every county
+                  SPECKLE, *leto_qa.COUNTY_QA)
+OUTPUT_VERSION = 4                            # bump when a county's outputs change shape: redoes every county
 INV_YEAR = DEFAULT_INV_YEAR                   # every FVS stand starts in TreeMap's year, 2022
 VARIANT = "SN"
 FIA_STAND_INIT, FIA_TREE_INIT = "FVS_STANDINIT_PLOT", "FVS_TREEINIT_PLOT"   # in the extract
@@ -409,6 +412,7 @@ class Attributes:
     young: pd.DataFrame                       # the young-plot VAT extension, indexed by Value
     start_age: pd.Series                      # FVS StandInit AGE by PLT_CN
     young_trees: pd.DataFrame                 # the young plots' live trees, per acre, by Value
+    fia_plots: frozenset[str]                 # the plots with a COND row in the FIA extract
 
     def stand_cn(self, value: int) -> str:
         return f"{YOUNG_STAND_PREFIX}{value}" if value >= NEW_ID_START else self.records.at[value, "PLT_CN"]
@@ -481,7 +485,7 @@ def attributes(values: np.ndarray, vat: pd.DataFrame, extract: Path, young_dir: 
         young_records, young, young_trees = _young_records(young_dir, young_values)
         records = pd.concat([records, young_records[records.columns]])
     start_age = start.drop_duplicates("STAND_CN").set_index("STAND_CN")["AGE"]
-    return Attributes(records, young, start_age, young_trees)
+    return Attributes(records, young, start_age, young_trees, frozenset(cond["PLT_CN"]))
 
 
 # ── steps 3-7: parents, units, donors ──────────────────────────────────────────────────
@@ -684,6 +688,26 @@ def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.Ge
             "drift_acres": round(unit_acres + speckle_acres - parent_acres, 4)}
 
 
+def missing_plots(cells: CountyCells, attrs: Attributes, county: County) -> pd.DataFrame:
+    """The county's TreeMap plots with no COND row in the FIA extract, and their cells."""
+    values, counts = np.unique(cells.treemap[cells.valid], return_counts=True)
+    treemap = values < NEW_ID_START
+    frame = pd.DataFrame({"TREEMAP_VALUE": values[treemap], "cells": counts[treemap]})
+    frame.insert(0, "PLT_CN", frame["TREEMAP_VALUE"].map(attrs.records["PLT_CN"]))
+    frame = frame[~frame["PLT_CN"].isin(attrs.fia_plots)]
+    frame.insert(0, "county_fips", county.fips)
+    return frame.assign(acres=(frame["cells"] * cells.cell_acres).round(4)).reset_index(drop=True)
+
+
+def parent_sizes(seg: np.ndarray, parents: gpd.GeoDataFrame) -> pd.DataFrame:
+    """Each parent stand's cells and geodesic acres."""
+    cells = np.bincount(seg.ravel())
+    return pd.DataFrame({"SEG_ID": parents["SEG_ID"].to_numpy(),
+                         "OWN_CODE": parents["OWN_CODE"].to_numpy(),
+                         "cells": cells[parents["SEG_ID"].to_numpy()],
+                         "acres": parents["Acres"].to_numpy()})
+
+
 # ── step 8: the plot layout's FVS tables ───────────────────────────────────────────────
 
 
@@ -867,6 +891,7 @@ class CountyJob:
     input_sha256: str
     layout: InventoryLayout = InventoryLayout.PLOT
     species_lookup: Mapping[str, str] = dataclasses.field(default_factory=dict)  # LETO layout: FVS crosswalk
+    memory_scope: leto_qa.MemoryScope = leto_qa.MemoryScope.PROCESS
 
 
 @dataclass(frozen=True)
@@ -883,23 +908,30 @@ def run_county(job: CountyJob) -> CountyResult:
 
     Every input is checked before anything is written; ``job.out`` is replaced whole.
     """
-    started = time.perf_counter()
+    clock = leto_qa.Stopwatch()
     place, repair, settings = job.county, job.repair, job.settings
     extract = job.region.extract
     cells = clip_county(repair, place)
+    clock.lap("clip")
     attrs = attributes(np.unique(cells.treemap[cells.valid]), job.vat, extract, repair / YOUNG_PLOTS)
     grids, _sources = la.attribute_rasters(cells.treemap, cells.valid, attrs.records)
+    clock.lap("attributes")
     seg, deleted = segment(cells, grids, settings)
     if deleted.segments:
         log.info("leto: county %s: deleted %d undersized stands, %d forest cells (%.2f ac)",
                  place.fips, deleted.segments, deleted.cells, deleted.acres(cells.cell_acres))
+    clock.lap("segment")
     parents = parent_polygons(seg, cells)
+    clock.lap("polygons")
     pieces = riparian_split(parents, job.region.hydrography, settings.buffer_rules)
+    clock.lap("riparian")
     donors = representative_plots(seg, cells, attrs, settings)
+    clock.lap("donors")
     speckle = merge_speckle(unit_layer(pieces, donors.top, attrs, place),
                             parent_traits(seg, cells, grids, settings), settings.speckle,
                             merge_cost(cells, settings))
     units = speckle.units
+    clock.lap("speckle")
     inventory: PlotInventory | leto_layout.CountyInventory
     if job.layout is InventoryLayout.LETO:
         inventory, units = unit_inventory(units, donors, seg, grids, attrs, extract,
@@ -907,10 +939,15 @@ def run_county(job: CountyJob) -> CountyResult:
     else:
         inventory = plot_inventory(stand_rows(units)["PLT_CN"], attrs, extract)
     stands = stand_rows(units, job.layout)
+    clock.lap("inventory")
     accounting = area_accounting(cells, parents, units, place, deleted, speckle.deleted)
     if abs(accounting["drift_acres"]) > MAX_DRIFT_ACRES:
         raise AcreDrift(f"county {place.fips}: units hold {accounting['unit_acres']} ac, parent "
                         f"stands {accounting['parent_stand_acres']} ac")
+    layers = _hydrography(job.region.hydrography, settings.buffer_rules, parents.total_bounds)
+    riparian_units = units[(units["unit_class"] == UnitClass.RIPARIAN) & (units["owner_class"] != MASKED)]
+    riparian_sources = leto_qa.riparian_by_source(riparian_units, layers, settings.buffer_rules)
+    clock.lap("qa_tables")
 
     shutil.rmtree(job.out, ignore_errors=True)
     _write_parents(job.out / PARENT_STANDS, seg, cells)
@@ -920,8 +957,16 @@ def run_county(job: CountyJob) -> CountyResult:
     inventory.write(job.out / FVS_DATA)
     pd.DataFrame([accounting]).to_csv(job.out / AREA_ACCOUNTING, index=False)
     speckle.qa.to_csv(job.out / SPECKLE, index=False)
-    return CountyResult(place.fips, accounting, len(units), len(stands),
-                        round(time.perf_counter() - started, 1))
+    clock.lap("write")
+    qa = job.out / leto_qa.QA_SUBDIR
+    leto_qa.write_qa_cells(qa / leto_qa.QA_CELLS, _forest_type(cells, grids), cells.added_back,
+                           cells.transform, cells.crs)
+    leto_qa.write_county_qa(qa, fips=place.fips, name=place.name, units=units, weights=donors.kept,
+                            riparian=riparian_sources, missing=missing_plots(cells, attrs, place),
+                            parent_sizes=parent_sizes(seg, parents))
+    clock.lap("maps")
+    leto_qa.write_timings(qa / leto_qa.TIMINGS, place.fips, place.name, clock, job.memory_scope)
+    return CountyResult(place.fips, accounting, len(units), len(stands), round(clock.total(), 1))
 
 
 # ── many counties: the plan, resume, assembly ──────────────────────────────────────────
@@ -1036,8 +1081,10 @@ def _execute(jobs: list[CountyJob], workers: int):
         for job in jobs:
             yield job, _attempt(job)
         return
-    with ProcessPoolExecutor(max_workers=min(workers, len(jobs))) as pool:
-        futures = {pool.submit(_attempt, job): job for job in jobs}
+    # a fresh process per county, so its peak memory is its own
+    with ProcessPoolExecutor(max_workers=min(workers, len(jobs)), max_tasks_per_child=1) as pool:
+        futures = {pool.submit(_attempt, replace(job, memory_scope=leto_qa.MemoryScope.COUNTY)): job
+                   for job in jobs}
         for future in as_completed(futures):
             try:
                 result = future.result()
@@ -1090,9 +1137,10 @@ def assemble_inventory(paths: list[Path]) -> PlotInventory:
 
 
 def _remove_run_outputs(run_dir: Path) -> None:
-    for name in (STANDS, FVS_DATA, UNITS_GPKG, QA_DIR / AREA_ACCOUNTING, QA_DIR / SPECKLE):
+    for name in (STANDS, FVS_DATA, UNITS_GPKG):
         (run_dir / name).unlink(missing_ok=True)
     leto_layout.remove_run_outputs(run_dir, run_dir / QA_DIR)
+    shutil.rmtree(run_dir / QA_DIR, ignore_errors=True)
 
 
 def assemble(run_dir: Path, counties: list[str],
@@ -1109,8 +1157,9 @@ def assemble(run_dir: Path, counties: list[str],
         assemble_inventory([d / FVS_DATA for d in dirs]).write(run_dir / FVS_DATA)
     units = pd.concat([gpd.read_file(d / COUNTY_UNITS, layer=UNITS_LAYER) for d in dirs],
                       ignore_index=True)
-    gpd.GeoDataFrame(units, crs=units.crs).to_file(run_dir / UNITS_GPKG, layer=UNITS_LAYER,
-                                                    driver="GPKG", mode="w")
+    units = gpd.GeoDataFrame(units, crs=units.crs)
+    units.to_file(run_dir / UNITS_GPKG, layer=UNITS_LAYER, driver="GPKG", mode="w")
+    leto_qa.write_report(run_dir / QA_DIR, dict(zip(counties, dirs)), units)
     return pd.read_csv(run_dir / QA_DIR / AREA_ACCOUNTING, dtype={"county_fips": str})
 
 
