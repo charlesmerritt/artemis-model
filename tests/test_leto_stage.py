@@ -23,13 +23,16 @@ import numpy as np
 import pandas as pd
 import pytest
 import rasterio
+import yaml
 from rasterio import features
 from rasterio.transform import Affine
 from shapely.geometry import LineString, box, shape
 
 from pipeline import leto_riparian
+from pipeline.leto_ca import ProximityMergeNotPorted, SmallStandAction
 from pipeline.leto_speckle import SpeckleAction, SpeckleSettings
 from pipeline.leto_stage import (
+    CONFIG_PATH,
     AddBackWithoutYoungPlots,
     AmbiguousStandInit,
     ConflictingPlotRows,
@@ -240,6 +243,38 @@ def test_a_county_in_no_configured_region_fails_closed():
         load_settings("99001")
 
 
+def test_every_region_states_its_small_stand_action_under_upstreams_key():
+    # Upstream falls back to `retain` when the key is unset; no region may rely on that.
+    config = yaml.safe_load(CONFIG_PATH.read_text())
+    for name, spec in config["regions"].items():
+        assert spec["small_stands"]["remaining_small_stand_action"], name
+    assert config["regions"]["florida"]["small_stands"]["remaining_small_stand_action"] == \
+        "force_merge"
+
+
+def _config_with_action(tmp_path, action):
+    config = yaml.safe_load(CONFIG_PATH.read_text())
+    config["regions"]["florida"]["small_stands"]["remaining_small_stand_action"] = action
+    path = tmp_path / "leto.yaml"
+    path.write_text(yaml.safe_dump(config))
+    return path
+
+
+def test_the_regional_action_is_normalised_as_upstream_does(tmp_path):
+    settings = load_settings(ALPHA, _config_with_action(tmp_path, " Delete "))
+    assert settings.segmentation["remaining_small_stand_action"] is SmallStandAction.DELETE
+
+
+def test_an_unknown_regional_action_fails_closed_and_names_the_allowed_ones(tmp_path):
+    with pytest.raises(ValueError, match="must be one of .*'force_merge'.*'retain'"):
+        load_settings(ALPHA, _config_with_action(tmp_path, "drop"))
+
+
+def test_a_regional_proximity_merge_fails_closed_until_it_is_ported(tmp_path):
+    with pytest.raises(ProximityMergeNotPorted, match="#169"):
+        load_settings(ALPHA, _config_with_action(tmp_path, "proximity_merge"))
+
+
 # ── outputs ────────────────────────────────────────────────────────────────────────────
 
 
@@ -333,6 +368,63 @@ def test_the_area_accounting_splits_unit_acres_into_managed_riparian_unknown_and
     stands = _stands(world)
     assert row["managed_acres"] + row["unknown_flagged_acres"] + row["riparian_acres"] == \
         pytest.approx(stands["acres"].sum(), abs=0.01)
+
+
+def _with_owner_patch(world):
+    """A 3 x 3 corporate patch inside Alpha's family land: a hard edge, so it stays under 5 ac."""
+    harris = _harris()
+    harris[5:8, 5:8] = 4
+    _tif(world["repair"] / "nwos2022_improved.tif", harris, "uint8", HARRIS_NODATA)
+
+
+def _with_action(action):
+    settings = load_settings(ALPHA)
+    return dataclasses.replace(settings, segmentation={**settings.segmentation,
+                                                       "remaining_small_stand_action": action})
+
+
+def _accounting(world):
+    table = pd.read_csv(world["run_dir"] / "qa" / "leto" / "area_accounting.csv",
+                        dtype={"county_fips": str})
+    return table.set_index("county_fips").loc[ALPHA]
+
+
+def test_delete_reports_its_deleted_acres_in_the_area_accounting(world):
+    _with_owner_patch(world)
+    _run(world, settings=_with_action(SmallStandAction.DELETE))
+
+    row = _accounting(world)
+    cell_acres = CELL * CELL / leto_riparian.SQUARE_METERS_PER_ACRE
+    assert (row["deleted_small_stands"], row["deleted_small_stand_cells"]) == (1, 9)  # the patch
+    assert row["deleted_small_stand_acres"] == \
+        pytest.approx(row["deleted_small_stand_cells"] * cell_acres, abs=1e-3)
+    assert abs(row["drift_acres"]) <= 0.1                 # units still equal parent stands
+    assert row["parent_stand_acres"] + row["deleted_small_stand_acres"] == \
+        pytest.approx(row["forest_cell_acres"], rel=0.01)
+    with rasterio.open(world["run_dir"] / "leto" / ALPHA / "parent_stands.tif") as src:
+        assert (src.read(1)[5:8, 5:8] == 0).all()        # the patch is no parent stand
+    assert not _units(world).intersects(
+        box(X0 + 5 * CELL + 1, Y0 - 8 * CELL + 1, X0 + 8 * CELL - 1, Y0 - 5 * CELL - 1)).any()
+
+
+def test_force_merge_keeps_an_isolated_patch_and_deletes_nothing(world):
+    _with_owner_patch(world)
+    _run(world)
+
+    row = _accounting(world)
+    assert (row["deleted_small_stands"], row["deleted_small_stand_cells"],
+            row["deleted_small_stand_acres"]) == (0, 0, 0)
+    with rasterio.open(world["run_dir"] / "leto" / ALPHA / "parent_stands.tif") as src:
+        assert (src.read(1)[5:8, 5:8] > 0).all()
+
+
+def test_the_stage_logs_what_delete_removed(world, caplog):
+    _with_owner_patch(world)
+    with caplog.at_level("INFO", logger="artemis.leto"):
+        _run(world, settings=_with_action(SmallStandAction.DELETE))
+    acres = 9 * CELL * CELL / leto_riparian.SQUARE_METERS_PER_ACRE
+    assert f"leto: county {ALPHA}: deleted 1 undersized stands, 9 forest cells ({acres:.2f} ac)" in \
+        caplog.messages
 
 
 def _fvs(world, table):

@@ -18,7 +18,7 @@ relative to the LETO repo (`LETO_v1_project/leto/…`) or to this repo.
 
 | # | Stage | LETO v1 (truth) | ARTEMIS today | Effect |
 |---|---|---|---|---|
-| 1 | 2 small stands | After the similar merge, `remaining_small_stand_action="force_merge"` runs `merge_small_segments(..., maximum_cells=None)`: ownership-compatible, no size cap (`stage2_segmentation.py:2134-2147`). Isolated fragments with no neighbour are **kept**. AGENTS.md: "Prefer preserving acreage over deleting stands." | No remaining-small step at all (`leto_ca.segment`). `s3_management/sliver_merge.py` defaults to `drop`, the opposite of v1. Legacy `scripts/` deleted (`02_segment_treemap.py:1970`). | Explains the FL5 run's 1.3-ac median parent stand. Fix: add `force_merge`, retire `drop` as the default. |
+| 1 | 2 small stands | After the similar merge, `small_stands.remaining_small_stand_action` (over the legacy `segmentation` key, else `retain`; lowercased, stripped, one of four: `config.py:96-136`) picks the branch (`stage2_segmentation.py:2134-2166`). `force_merge` runs `merge_small_segments(..., maximum_cells=None)`: ownership-compatible, no size cap; isolated fragments with no neighbour are **kept**. `retain` keeps every segment. `delete` zeroes them (`delete_small_segments`) and logs the segments, cells and acres. Each branch then splits disconnected segments and renumbers. AGENTS.md: "Prefer preserving acreage over deleting stands." | Matches for `force_merge`, `retain` and `delete` (#168): `leto_ca.small_stand_action` reads the key as upstream does, `resolve_small_stands` returns `delete`'s counts, and the `leto` stage writes them to `qa/leto/area_accounting.csv` as `deleted_small_stands`, `deleted_small_stand_cells` and `deleted_small_stand_acres`. Florida states `force_merge`. `proximity_merge` fails closed (#169). | Explained the FL5 run's 1.3-ac median parent stand before `force_merge`. Differences: see "Small-stand gaps". |
 | 2 | 2 CA config | Maine-verified: `maximum_iterations` 40, `convergence_threshold` 0.01, `shared_edge_bonus` **0.2**, `similar_merge_min_shared_edges` **2** | `DEFAULT_CFG`: 100, 0.001, 0.1, 1 (the legacy values plus our own tightening) | Different stands. The 100/0.001 values are ours alone; neither LETO version uses them. |
 | 3 | 1 attributes | STDAGE, FORTYPCD, BALIVE from the dominant FIA COND (`COND_STATUS_CD=1`, max `CONDPROP_UNADJ`, CONDID tie-break). TPA and QMD from live FIA TREE rows (`STATUSCD=1`, `DIA>0`, `TPA_UNADJ>0`) in that condition. The TreeMap RAT is a fallback only (`stage1_rasters.py:123-351, 397-650`). | FORTYPCD, BALIVE, QMD, TPA_LIVE from the TreeMap VAT; only STDAGE from COND (`cellular_automata._attribute_grids`, `02_build_attributes.py`) | Different feature rasters on every pixel. |
 | 4 | 1 gaps | A missing attribute is filled from the **nearest assigned cell** (`distance_transform_edt`), and provenance is written to QA rasters (`stage1_rasters.py:742-763`) | Missing STDAGE is filled with the landscape **median** | Wrong fill rule. |
@@ -148,15 +148,32 @@ It needs `ME_5_Co_Dissolve`, the ME/MA/NH/NY FIA TREE and COND CSVs, and NHDPlus
   `LETO_v1_project/data/templates/FVS_Data_Blank.db`. It holds four tables:
   `FVS_StandInit`, `FVS_TreeInit`, `FVS_PlotInit` and `FVS_GroupAddFilesAndKeywords`.
   `leto_database` still writes only the first two, into a fresh SQLite file.
-- **Small-stand gaps.** `retain`, `delete` and `proximity_merge` already existed at `d2b92ee`,
-  unchanged at `13bcf13` (`stage2_segmentation.py:2148-2166`,
-  `small_stands.plan_proximity_merges`). `leto_ca.resolve_small_stands` already has
-  `RETAIN` and `DELETE` with upstream's label rules (`test_delete_and_retain_actions`) and its
-  minimum-cell rule. Still missing (#168): choosing the action under upstream's config key
-  `small_stands.remaining_small_stand_action`, validated as `config.py:96-136` does, and
-  `delete`'s segment, cell and acre counts (`stage2_segmentation.py:1025-1034, 2152-2157`).
-  Upstream defaults to `retain` when the key is unset. Its verified Maine config sets
-  `force_merge`, so ours must state it too. `proximity_merge` and its unit IDs are #169.
+- **Small-stand gaps (closed by #168 except `proximity_merge`).** `retain`, `delete` and
+  `proximity_merge` already existed at `d2b92ee`, unchanged at `13bcf13`
+  (`stage2_segmentation.py:2148-2166`, `small_stands.plan_proximity_merges`).
+  - Done: `leto_ca.small_stand_action` reads `small_stands.remaining_small_stand_action`, then
+    the legacy `segmentation` key, then `retain`, lowercases and strips it, and rejects
+    anything outside upstream's four actions with upstream's message (`config.py:96-136`). The
+    `leto` stage takes the region's action through it.
+  - Done: `leto_ca.delete_small_segments` is upstream's verbatim and returns the deleted segment
+    and cell counts. `resolve_small_stands` returns them beside the labels, and `segment` puts
+    them in `info["deleted_small_stands"]`. Per county, the stage logs them with their acres
+    and writes them to the area accounting (`deleted_small_stands`,
+    `deleted_small_stand_cells`, `deleted_small_stand_acres` = cells × cell acres). Deleted
+    cells are in no parent stand, so unit acres still equal parent-stand acres.
+  - Other callers of `leto_ca.segment` (the `cellular_automata.py` adapter, dated experiments)
+    pass an action straight into `SmallStandAction` and default to `force_merge`; only the
+    `leto` stage reads upstream's key.
+  - Order: every action runs after the similar merge, then splits disconnected segments and
+    renumbers, as upstream's branches do.
+  - Every region in `config/leto.yaml` states its action; Florida's is `force_merge`, as
+    upstream's verified Maine config. `tests/test_leto_stage.py` checks no region relies on
+    upstream's `retain` default.
+  - Differences. `proximity_merge` is a valid upstream value but raises
+    `ProximityMergeNotPorted` (#169), where upstream defers it to after polygon creation.
+    Upstream logs its "remaining undersized-segment diagnostic" (no neighbour, size-blocked,
+    otherwise unmerged) before the action; ours does not. Deleted acres are planar cell acres,
+    as upstream's log reports them, while parent and unit acres are geodesic.
 - **Upstream tests.** `tests/test_leto_upstream.py` runs upstream's `test_weight_math.py` (1)
   and `test_imputation_qa.py` (3) verbatim against `leto_donors` and `leto_imputation_qa`.
   The other 11 wait for their ports: `test_small_stands.py` and `test_management_units.py`

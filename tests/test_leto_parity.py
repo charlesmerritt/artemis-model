@@ -41,28 +41,106 @@ def _features(labels):
     return {n: zeros for n in ("STDAGE", "BALIVE", "QMD", "TPA")}
 
 
+def _resolve(labels, action, minimum_cells=4):
+    return leto_ca.resolve_small_stands(
+        labels, _features(labels), np.ones_like(labels), np.zeros_like(labels),
+        minimum_cells=minimum_cells, action=action, cfg=leto_ca.DEFAULT_CFG)
+
+
 def test_force_merge_ignores_the_maximum_size_and_keeps_isolated_fragments():
     # stage2 main() "HANDLING REMAINING UNDERSIZED SEGMENTS": force_merge ->
     # merge_small_segments(..., maximum_cells=None); a fragment with no neighbour survives.
-    labels = _two_segments()
-    out = leto_ca.resolve_small_stands(
-        labels, _features(labels), np.ones_like(labels), np.zeros_like(labels),
-        minimum_cells=4, action=leto_ca.SmallStandAction.FORCE_MERGE, cfg=leto_ca.DEFAULT_CFG)
+    out, deleted = _resolve(_two_segments(), leto_ca.SmallStandAction.FORCE_MERGE)
     assert out[1, 4] == out[0, 0]           # sliver joined the big stand
     assert out[0, 5] > 0 and out[0, 5] != out[0, 0]   # isolated fragment kept as its own stand
+    assert deleted == leto_ca.DeletedSmallStands(segments=0, cells=0)
 
 
 def test_delete_and_retain_actions():
-    labels = _two_segments()
-    args = (_features(labels), np.ones_like(labels), np.zeros_like(labels))
-    deleted = leto_ca.resolve_small_stands(labels, *args, minimum_cells=4,
-                                           action=leto_ca.SmallStandAction.DELETE,
-                                           cfg=leto_ca.DEFAULT_CFG)
+    deleted, _ = _resolve(_two_segments(), leto_ca.SmallStandAction.DELETE)
     assert deleted[1, 4] == 0 and deleted[0, 5] == 0
-    retained = leto_ca.resolve_small_stands(labels, *args, minimum_cells=4,
-                                            action=leto_ca.SmallStandAction.RETAIN,
-                                            cfg=leto_ca.DEFAULT_CFG)
+    retained, _ = _resolve(_two_segments(), leto_ca.SmallStandAction.RETAIN)
     assert len(np.unique(retained[retained > 0])) == 3
+
+
+def test_delete_small_segments_returns_upstreams_segment_and_cell_counts():
+    # stage2 delete_small_segments: (labels, len(small), delete_mask.sum())
+    labels = _two_segments()
+    out, segments, cells = leto_ca.delete_small_segments(labels, 4)
+    assert (segments, cells) == (2, 3)                  # the 2-cell sliver and the 1-cell fragment
+    assert np.array_equal(out, np.where(labels == 1, 1, 0))
+    assert labels[1, 4] == 2                            # the input is not modified
+
+
+def test_delete_counts_come_back_with_the_labels():
+    out, deleted = _resolve(_two_segments(), leto_ca.SmallStandAction.DELETE)
+    assert deleted == leto_ca.DeletedSmallStands(segments=2, cells=3)
+    assert np.unique(out).tolist() == [0, 1]
+
+
+def test_retain_keeps_every_cell_and_deletes_nothing():
+    labels = _two_segments()
+    out, deleted = _resolve(labels, leto_ca.SmallStandAction.RETAIN)
+    assert deleted == leto_ca.DeletedSmallStands(segments=0, cells=0)
+    assert np.array_equal(out > 0, labels > 0)
+
+
+@pytest.mark.parametrize("action", list(leto_ca.SmallStandAction))
+def test_every_action_ends_by_splitting_disconnected_segments_and_renumbering(action):
+    # stage2 main(): each branch ends split_disconnected_segments, then renumber_segments.
+    labels = np.zeros((5, 5), dtype=np.int32)
+    labels[:, :2] = 7                   # 10 cells
+    labels[:, 3:] = 7                   # 10 more, not touching: two pieces of one label
+    out, _ = _resolve(labels, action, minimum_cells=4)
+    assert np.unique(out).tolist() == [0, 1, 2]
+    assert out[0, 0] != out[0, 4]
+
+
+def test_segment_reports_what_delete_removed():
+    shape = (6, 6)
+    valid = np.ones(shape, dtype=bool)
+    ownership = np.full(shape, 3, dtype=np.int16)
+    ownership[0, 0] = 4                 # a one-cell owner patch: a hard edge, never merged
+    zeros = np.zeros(shape, dtype=np.float32)
+    info = {}
+    labels = leto_ca.segment({n: zeros for n in ("STDAGE", "BALIVE", "QMD", "TPA")},
+                             np.full(shape, 161, dtype=np.int32), ownership, valid, 1.0,
+                             {"initial_seed_acres": 36.0, "minimum_stand_acres": 2.0,
+                              "remaining_small_stand_action": leto_ca.SmallStandAction.DELETE},
+                             similarity_raw={"STDAGE": zeros}, info=info, log=lambda *a: None)
+    assert labels[0, 0] == 0
+    assert (labels[valid & (ownership == 3)] > 0).all()
+    assert info["deleted_small_stands"] == leto_ca.DeletedSmallStands(segments=1, cells=1)
+
+
+# config.py load_config: small_stands.remaining_small_stand_action, then the legacy
+# segmentation key, then "retain"; lowercased and stripped; one of four actions.
+
+
+@pytest.mark.parametrize("small_stands, segmentation, expected", [
+    ({"remaining_small_stand_action": "force_merge"}, {}, "force_merge"),
+    ({"remaining_small_stand_action": "  DELETE "}, {}, "delete"),
+    ({"remaining_small_stand_action": "retain"},
+     {"remaining_small_stand_action": "delete"}, "retain"),     # small_stands wins
+    ({}, {"remaining_small_stand_action": "Delete"}, "delete"),  # the legacy key
+    ({}, {}, "retain"),                                          # upstream's default
+    (None, None, "retain"),
+])
+def test_the_action_is_read_and_normalised_as_upstream_does(small_stands, segmentation, expected):
+    action = leto_ca.small_stand_action(small_stands, segmentation)
+    assert action is leto_ca.SmallStandAction(expected)
+
+
+def test_an_unknown_action_fails_closed_and_names_the_allowed_ones():
+    with pytest.raises(ValueError, match=r"small_stands\.remaining_small_stand_action must be one "
+                                         r"of \['delete', 'force_merge', 'proximity_merge', "
+                                         r"'retain'\]\.$"):
+        leto_ca.small_stand_action({"remaining_small_stand_action": "drop"}, {})
+
+
+def test_proximity_merge_fails_closed_until_it_is_ported():
+    with pytest.raises(leto_ca.ProximityMergeNotPorted, match="#169"):
+        leto_ca.small_stand_action({"remaining_small_stand_action": " Proximity_Merge"}, {})
 
 
 # --- Stage 1: FIA-first segmentation attributes ------------------------------------------

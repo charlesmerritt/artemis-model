@@ -31,7 +31,9 @@ county's cells are read, so no parent stand crosses it. In order:
    value table as fallback, then the nearest-cell fill. A young-plot ID takes its dated 2022 age
    and forest type from the young-plot VAT extension and its BALIVE, TPA and QMD from its own
    trees; one missing from those tables is :class:`UnknownYoungPlotIds`.
-3. **The cellular automata, then the small-stand action** (:func:`pipeline.leto_ca.segment`).
+3. **The cellular automata, then the small-stand action** (:func:`pipeline.leto_ca.segment`):
+   the region's ``small_stands.remaining_small_stand_action``, read as upstream reads it
+   (:func:`pipeline.leto_ca.small_stand_action`). ``delete`` leaves its cells in no parent stand.
    Owner classes are hard edges: the repaired Harris raster, its nodata read as unknown (0),
    as LETO does. Harris 1-2 stay their own classes, so they can be masked (LETO folds them into 0).
 4. **Polygons**, one per parent stand.
@@ -74,7 +76,8 @@ finished county (:func:`assemble`), in FIPS order:
   or ``Y<ID>``. A plot in several counties is one stand (:func:`assemble_inventory`).
 - ``management_units.gpkg``, layer ``units``: every unit, masked ones too, with its ``Acres``
   (geodesic, as LETO), ``owner_class`` and ``unit_class``. Unit IDs are ``<FIPS>-<n>``.
-- ``qa/leto/area_accounting.csv``: per county, forest cells, parent stands and units, the unit
+- ``qa/leto/area_accounting.csv``: per county, forest cells, the stands, cells and acres the
+  ``delete`` small-stand action removed (zero under the other actions), parent stands and units, the unit
   acres split into managed, unknown-flagged (managed, Harris 0), riparian and masked, the drift,
   the scheduled acres with no usable stand age, and the forest cells the Harris raster has no
   value for (read as unknown). A drift over
@@ -271,7 +274,7 @@ def load_settings(county_fips: str, path: Path = CONFIG_PATH) -> LetoSettings:
 
 
 def _settings(name: str, spec: dict) -> LetoSettings:
-    action = leto_ca.SmallStandAction(spec["small_stands"]["remaining_small_stand_action"])
+    action = leto_ca.small_stand_action(spec.get("small_stands"), spec.get("segmentation"))
     rules = BufferRules(**{layer: {int(code): (str(label), float(feet))
                                    for code, (label, feet) in spec["riparian"][layer].items()}
                            for layer in ("flowline", "waterbody", "area")})
@@ -466,14 +469,20 @@ def _forest_type(cells: CountyCells, grids: dict[str, np.ndarray]) -> np.ndarray
     return np.where(cells.valid, np.nan_to_num(grids["FORTYPCD"], nan=0), 0).astype(np.int32)
 
 
-def segment(cells: CountyCells, grids: dict[str, np.ndarray], settings: LetoSettings) -> np.ndarray:
-    """LETO's CA and small-stand action, owner classes as hard edges; int32 parent labels."""
+def segment(cells: CountyCells, grids: dict[str, np.ndarray], settings: LetoSettings
+            ) -> tuple[np.ndarray, leto_ca.DeletedSmallStands]:
+    """LETO's CA and small-stand action, owner classes as hard edges.
+
+    Returns the int32 parent labels and what the ``delete`` action removed (nothing otherwise).
+    """
     forest_type = _forest_type(cells, grids)
     ownership = np.where(cells.valid, cells.harris, OUTSIDE).astype(np.int16)
-    return leto_ca.segment({n: grids[n] for n in CONTINUOUS}, forest_type, ownership, cells.valid,
-                           cells.cell_acres, cfg=settings.segmentation,
-                           similarity_raw={"STDAGE": np.nan_to_num(grids["STDAGE"], nan=0.0)},
-                           log=logging.getLogger("artemis.leto").debug)
+    info: dict = {}
+    seg = leto_ca.segment({n: grids[n] for n in CONTINUOUS}, forest_type, ownership, cells.valid,
+                          cells.cell_acres, cfg=settings.segmentation,
+                          similarity_raw={"STDAGE": np.nan_to_num(grids["STDAGE"], nan=0.0)},
+                          info=info, log=log.debug)
+    return seg, info["deleted_small_stands"]
 
 
 def parent_polygons(seg: np.ndarray, cells: CountyCells) -> gpd.GeoDataFrame:
@@ -589,8 +598,12 @@ def stand_rows(units: gpd.GeoDataFrame) -> pd.DataFrame:
 
 
 def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.GeoDataFrame,
-                    county: County) -> dict:
-    """One county's line: forest cells → parent stands → units, the unit acres split four ways."""
+                    county: County, deleted: leto_ca.DeletedSmallStands) -> dict:
+    """One county's line: forest cells → parent stands → units, the unit acres split four ways.
+
+    Forest cells the ``delete`` small-stand action removed are in no parent stand; they are
+    their own line, at ``cell_acres`` each.
+    """
     masked = units["owner_class"] == MASKED
     riparian = units["unit_class"] == UnitClass.RIPARIAN
     unknown = units["unknown_ownership"].astype(bool)
@@ -602,6 +615,9 @@ def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.Ge
     parent_acres, unit_acres = float(parents["Acres"].sum()), float(units["Acres"].sum())
     return {"county_fips": county.fips, "county": county.name, "forest_cells": forest_cells,
             "forest_cell_acres": round(forest_cells * cells.cell_acres, 4),
+            "deleted_small_stands": deleted.segments,
+            "deleted_small_stand_cells": deleted.cells,
+            "deleted_small_stand_acres": round(deleted.acres(cells.cell_acres), 4),
             "parent_stands": len(parents), "parent_stand_acres": round(parent_acres, 4),
             "units": len(units), "unit_acres": round(unit_acres, 4),
             "managed_acres": acres(~masked & ~riparian & ~unknown),
@@ -785,7 +801,10 @@ def run_county(job: CountyJob) -> CountyResult:
     cells = clip_county(repair, place)
     attrs = attributes(np.unique(cells.treemap[cells.valid]), job.vat, extract, repair / YOUNG_PLOTS)
     grids, _sources = la.attribute_rasters(cells.treemap, cells.valid, attrs.records)
-    seg = segment(cells, grids, settings)
+    seg, deleted = segment(cells, grids, settings)
+    if deleted.segments:
+        log.info("leto: county %s: deleted %d undersized stands, %d forest cells (%.2f ac)",
+                 place.fips, deleted.segments, deleted.cells, deleted.acres(cells.cell_acres))
     parents = parent_polygons(seg, cells)
     pieces = riparian_split(parents, job.region.hydrography, settings.buffer_rules)
     weights, top = representative_plots(seg, cells, attrs, settings)
@@ -795,7 +814,7 @@ def run_county(job: CountyJob) -> CountyResult:
     units = speckle.units
     stands = stand_rows(units)
     inventory = plot_inventory(stands["PLT_CN"], attrs, extract)
-    accounting = area_accounting(cells, parents, units, place)
+    accounting = area_accounting(cells, parents, units, place, deleted)
     if abs(accounting["drift_acres"]) > MAX_DRIFT_ACRES:
         raise AcreDrift(f"county {place.fips}: units hold {accounting['unit_acres']} ac, parent "
                         f"stands {accounting['parent_stand_acres']} ac")
