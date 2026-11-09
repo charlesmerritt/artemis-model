@@ -238,9 +238,10 @@ def main(argv: list[str] | None = None) -> None:
 
     out = stages.add_parser("outputs", help="the plan's trajectory table, per-timestep maps and QA")
     out.add_argument("run_dir", type=Path)
-    out.add_argument("--rasters", default="all", choices=["all", "activity", "vegetation", "none"],
+    from pipeline.outputs_stage import QaLevel, RasterSet
+    out.add_argument("--rasters", default=RasterSet.ALL.value, choices=[r.value for r in RasterSet],
                      help="which per-timestep COGs to write (default: all)")
-    out.add_argument("--qa", default="full", choices=["full", "tables", "none"],
+    out.add_argument("--qa", default=QaLevel.FULL.value, choices=[q.value for q in QaLevel],
                      help="qa/outputs/: tables, figures and maps with index.html (full), the "
                           "tables only, or nothing (default: full)")
     out.add_argument("--grid", type=Path, default=None,

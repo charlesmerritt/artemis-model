@@ -352,3 +352,38 @@ def test_main_outputs_runs_the_stage(run_dir):
     assert (run_dir / os_.QA_DIR / os_.HARVEST_QA).exists()
     record = json.loads((run_dir / os_.RECORD).read_text())
     assert record["cycles"] == list(range(N_CYCLES + 1)) and record["rasters"] == "none"
+
+
+def test_a_full_removal_inside_a_diameter_window_is_a_thinning():
+    text = _keyfile("2", [tl.Entry(ThinDBH(2032, 1.0, min_dbh=0.0, max_dbh=8.0)),
+                          tl.Entry(ThinDBH(2042, 1.0, species=131))])
+
+    assert os_.keyfile_activities(text) == {2: os_.Activity.THINNING, 4: os_.Activity.THINNING}
+
+
+def test_a_failed_rerun_leaves_no_stale_outputs(run_dir):
+    os_.run_outputs(run_dir, rasters=os_.RasterSet.NONE, qa=os_.QaLevel.TABLES)
+    (run_dir / "keyfiles" / "h-cut.key").unlink()
+
+    with pytest.raises(os_.MissingKeyfile):
+        os_.run_outputs(run_dir, rasters=os_.RasterSet.NONE, qa=os_.QaLevel.TABLES)
+
+    assert not (run_dir / os_.TABLE).exists() and not (run_dir / os_.QA_DIR).exists()
+
+
+def test_a_plot_and_prescription_with_two_runs_stops_the_stage(run_dir):
+    library = _library()
+    library.loc[library["unit_id"] == "12003-2", "run_hash"] = library.loc[
+        library["unit_id"] == "12003-2", "run_hash"] + "-other"
+    library.to_csv(run_dir / run.LIBRARY, index=False)
+
+    with pytest.raises(os_.AmbiguousRun, match=LONG_CN):
+        os_.run_outputs(run_dir, rasters=os_.RasterSet.NONE, qa=os_.QaLevel.NONE)
+
+
+def test_units_without_a_plan_are_listed_in_the_qa_report(run_dir):
+    os_.run_outputs(run_dir, rasters=os_.RasterSet.ACTIVITY, qa=os_.QaLevel.TABLES)
+
+    unplanned = pd.read_csv(run_dir / os_.QA_DIR / os_.UNPLANNED_QA, dtype={"unit_id": str})
+    assert unplanned["unit_id"].tolist() == ["12003-5"]
+    assert unplanned["owner_class"].tolist() == ["masked"]

@@ -31,6 +31,7 @@ from matplotlib.patches import Patch
 from matplotlib.ticker import FuncFormatter
 from rasterio.enums import Resampling
 
+from pipeline.outputs_stage import VEGETATION_MEASURES, Activity, cycle_luts, vegetation_by_cycle
 from pipeline.qa_report import FIGURES
 
 MAX_MAP_PIXELS = 900
@@ -39,8 +40,8 @@ INK, INK_MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 CATEGORICAL = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6",
                "#e34948")
 GROUP_ORDER = ("Private", "Federal (NF)", "Other public")      # config/tpo_targets.yaml's groups
-ACTIVITY_COLORS = ("#e4e3df", "#86b6ef", "#184f95")           # none, thinning, clearcut
-ACTIVITY_LABELS = ("none", "thinning", "clearcut")
+ACTIVITY_COLORS = {Activity.NONE: "#e4e3df", Activity.THINNING: "#86b6ef",
+                   Activity.CLEARCUT: "#184f95"}
 SEQUENTIAL = LinearSegmentedColormap.from_list(
     "blue", ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"])
 MEASURE_TITLES = {"Age": "Stand age (years)", "BA": "Basal area (ft²/ac)",
@@ -54,8 +55,7 @@ def group_colors(groups) -> dict[str, str]:
 
 
 def _figure(width: float, height: float) -> Figure:
-    fig = Figure(figsize=(width, height), dpi=130, facecolor=SURFACE)
-    return fig
+    return Figure(figsize=(width, height), dpi=130, facecolor=SURFACE)
 
 
 def _style(ax) -> None:
@@ -110,13 +110,13 @@ def _lines(ax, frame: pd.DataFrame, value: str, colors: dict[str, str]) -> None:
 
 
 def activity_figure(table: pd.DataFrame, out: Path) -> Path:
-    managed = table[table["activity"] != "none"]
+    managed = table[table["activity"] != Activity.NONE.label]
     years = sorted(table["calendar_year"].unique())
     groups = sorted(table["owner_group"].unique())
     colors = {g: c for g, c in group_colors(groups).items() if g in groups}
     fig = _figure(8.0, 3.0)
     axes = fig.subplots(1, 2, sharey=True)
-    for ax, kind in zip(axes, ("thinning", "clearcut")):
+    for ax, kind in zip(axes, (Activity.THINNING.label, Activity.CLEARCUT.label)):
         acres = (managed[managed["activity"] == kind]
                  .groupby(["owner_group", "calendar_year"])["acres"].sum()
                  .reindex(pd.MultiIndex.from_product([groups, years],
@@ -139,8 +139,6 @@ def _legend(fig: Figure, colors: dict[str, str]) -> None:
 
 
 def vegetation_figure(table: pd.DataFrame, out: Path) -> Path:
-    from pipeline.outputs_stage import vegetation_by_cycle
-
     veg = vegetation_by_cycle(table)
     veg = veg[veg["owner_group"] != "all"]
     groups = sorted(veg["owner_group"].unique())
@@ -202,34 +200,29 @@ def _map_grid(index: np.ndarray, years: list[int], values, cmap, norm, title: st
     return _save(fig, out)
 
 
+def _by_year(table: pd.DataFrame) -> tuple[list[int], dict[int, dict[str, np.ndarray]]]:
+    """Each timestep's year and its unit-index lookups (`outputs_stage.cycle_luts`)."""
+    luts = cycle_luts(table, int(table["index"].max()))
+    years = table.groupby("cycle")["calendar_year"].first().astype(int)
+    return years.tolist(), {int(years[c]): lut for c, lut in luts.items()}
+
+
 def activity_maps(index: np.ndarray, table: pd.DataFrame, out: Path) -> Path:
-    codes = {label: i for i, label in enumerate(ACTIVITY_LABELS)}
-    n = int(table["index"].max())
-    years, luts = [], {}
-    for year, frame in table.groupby("calendar_year"):
-        lut = np.zeros(n + 1, dtype=np.uint8)
-        lut[frame["index"].to_numpy(dtype=int)] = frame["activity"].map(codes).to_numpy()
-        years.append(int(year))
-        luts[int(year)] = lut
-    cmap = ListedColormap(ACTIVITY_COLORS)
+    years, luts = _by_year(table)
+    cmap = ListedColormap(list(ACTIVITY_COLORS.values()))
     norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
-    legend = [Patch(facecolor=c, label=lab) for c, lab in zip(ACTIVITY_COLORS, ACTIVITY_LABELS)]
-    return _map_grid(index, years, luts, cmap, norm, "Management activity per timestep",
-                     out / "map_activity.png", legend=legend)
+    legend = [Patch(facecolor=c, label=a.label) for a, c in ACTIVITY_COLORS.items()]
+    return _map_grid(index, years, {y: lut["activity"] for y, lut in luts.items()}, cmap, norm,
+                     "Management activity per timestep", out / "map_activity.png", legend=legend)
 
 
 def measure_maps(index: np.ndarray, table: pd.DataFrame, measure: str, out: Path) -> Path:
-    n = int(table["index"].max())
-    years, luts = [], {}
-    for year, frame in table.groupby("calendar_year"):
-        lut = np.zeros(n + 1, dtype=np.float32)
-        lut[frame["index"].to_numpy(dtype=int)] = frame[measure].to_numpy(dtype=np.float32)
-        years.append(int(year))
-        luts[int(year)] = lut
+    years, luts = _by_year(table)
     lo, hi = float(table[measure].min()), float(table[measure].max())
     norm = Normalize(vmin=lo, vmax=hi if hi > lo else lo + 1)
-    return _map_grid(index, years, luts, SEQUENTIAL, norm, f"{MEASURE_TITLES[measure]} per timestep",
-                     out / f"map_{measure}.png", colorbar_label=MEASURE_TITLES[measure])
+    return _map_grid(index, years, {y: lut[measure] for y, lut in luts.items()}, SEQUENTIAL, norm,
+                     f"{MEASURE_TITLES[measure]} per timestep", out / f"map_{measure}.png",
+                     colorbar_label=MEASURE_TITLES[measure])
 
 
 def _save(fig: Figure, path: Path) -> Path:
@@ -240,8 +233,6 @@ def _save(fig: Figure, path: Path) -> Path:
 
 def draw(index_tif: Path, table: pd.DataFrame, qa: Path, harvest: pd.DataFrame) -> list[Path]:
     """Every figure into ``qa/figures``: the charts, then the per-timestep maps."""
-    from pipeline.outputs_stage import VEGETATION_MEASURES
-
     out = qa / FIGURES
     paths = [harvest_figure(harvest, out), activity_figure(table, out), vegetation_figure(table, out)]
     placed = table.dropna(subset=["index"]).astype({"index": int})

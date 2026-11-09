@@ -32,13 +32,16 @@ smaller than a cell can miss every cell centre; the coverage table counts those.
 hold (masked land) are nodata. Rasters are written in strips, so a statewide grid never sits
 in memory whole.
 
-**Fails closed** on a planned unit with no run, cycle or keyfile (:class:`MissingTrajectory`,
-:class:`MissingKeyfile`), no polygon (:class:`UnitsMissingFromLayer`), on a riparian unit
-with any activity or removal (:class:`RiparianActivity`), and on removals that do not sum to
-the plan's per owner group and cycle (:class:`PlanMismatch`, checked whatever ``--qa`` says).
+**Fails closed**, leaving no ``outputs/`` or ``qa/outputs/`` behind, on a planned unit with no
+run, cycle or keyfile (:class:`MissingTrajectory`, :class:`MissingKeyfile`), a plot and
+prescription with two runs (:class:`AmbiguousRun`), no polygon
+(:class:`UnitsMissingFromLayer`), a riparian unit with any activity or removal
+(:class:`RiparianActivity`), and removals that do not sum to the plan's per owner group and
+cycle (:class:`PlanMismatch`, checked whatever ``--qa`` says; the QA tables are kept so the
+mismatch can be read).
 
 **QA** (``--qa``, :class:`QaLevel`) goes to ``<run_dir>/qa/outputs/`` (#160's ``qa/<stage>/``):
-the tables in :data:`QA_NOTES`, then with ``full`` the figures (removals per owner group
+the tables in :data:`QA_NOTES` (units without a plan listed in ``unplanned_units.csv``), then with ``full`` the figures (removals per owner group
 against the TPO target, activity acres, vegetation over time, and small-multiple maps of
 activity and of each vegetation measure per timestep) and ``index.html``
 (:func:`pipeline.qa_report.write_index`).
@@ -92,6 +95,7 @@ ACTIVITY_QA = "activity_by_cycle.csv"
 VEGETATION_QA = "vegetation_by_cycle.csv"
 CONSISTENCY_QA = "activity_vs_removals.csv"
 COVERAGE_QA = "raster_coverage.csv"
+UNPLANNED_QA = "unplanned_units.csv"
 QA_NOTES = {
     HARVEST_QA: "Merchantable removals per owner group and cycle, from the trajectory table, "
                 "against plan.csv.gz (they must agree) and the TPO target the schedule chased.",
@@ -103,19 +107,23 @@ QA_NOTES = {
                     "volume: a thinning with no removal took only sub-merchantable trees.",
     COVERAGE_QA: "How the planned units land on the raster grid: units smaller than a cell "
                  "can miss every cell centre.",
+    UNPLANNED_QA: "Units in management_units.gpkg with no row in plan.csv.gz (masked land, or "
+                  "units the schedule dropped): nodata on every map.",
     "harvest_by_owner_group.png": "Merchantable removals per cycle, each owner group on its "
                                   "own axis; the dashed line is its TPO target.",
     "activity_acres_by_cycle.png": "Acres thinned and clearcut per cycle, by owner group.",
     "vegetation_by_cycle.png": "Landscape vegetation over the horizon, by owner group.",
     "map_activity.png": "Management activity per timestep.",
+    "map_Age.png": "FVS stand age per timestep.",
+    "map_BA.png": "FVS basal area per timestep.",
+    "map_MCuFt.png": "FVS standing merchantable volume per timestep.",
 }
 
 VEGETATION_MEASURES = ("Age", "BA", "MCuFt")
-VEGETATION_UNITS = {"Age": "years", "BA": "ft²/ac", "MCuFt": "merch ft³/ac"}
 ACTIVITY_NODATA = 255
 VEGETATION_NODATA = -9999.0
 STRIP_ROWS = 1024                              # rows rasterised and written at once
-MAX_MAP_PIXELS = 900                           # a map panel's long side; larger grids are decimated
+WHOLE_STAND_DBH = 999.0                        # ThinDBH's open top of the diameter window
 TOLERANCE = 1e-6                               # relative: the plan's volumes and the table's
 
 log = logging.getLogger("artemis.outputs")
@@ -166,6 +174,11 @@ class MissingKeyfile(FileNotFoundError):
     """A selected run's keyfile is not in ``keyfiles/``: its activities cannot be read."""
 
 
+class AmbiguousRun(ValueError):
+    """``library.csv`` gives one plot and prescription two runs: which one the annealer scored
+    (it keeps one per pair, `annealer.build_landscape`) is undefined."""
+
+
 class UnitsMissingFromLayer(ValueError):
     """A planned unit has no polygon in ``management_units.gpkg``."""
 
@@ -184,17 +197,20 @@ class PlanMismatch(AssertionError):
 def keyfile_activities(text: str) -> dict[int, Activity]:
     """Each cycle a keyfile's ``ThinDBH`` records fall in, and the heaviest cut there.
 
-    A record removing every tree in its window (proportion 1) is a clearcut, the rule
-    `trajectory_library.build_entries` attaches regeneration by; any lighter one is a thinning.
+    A record removing every tree of every species and diameter (proportion 1 over the full
+    0-999 in window, species 0) is a clearcut; any other removal, a 100% cut of one species
+    or diameter class included, is a thinning.
     """
     out: dict[int, Activity] = {}
     for line in text.splitlines():
         if line[:FIELD_WIDTH].strip() != "ThinDBH":
             continue
         fields = [line[i:i + FIELD_WIDTH].strip() for i in range(FIELD_WIDTH, len(line), FIELD_WIDTH)]
-        year, proportion = int(fields[0]), float(fields[3])
+        year, low, high, proportion = int(fields[0]), *map(float, fields[1:4])
+        species = fields[4] if len(fields) > 4 else "0"
+        whole_stand = low <= 0.0 and high >= WHOLE_STAND_DBH and species in ("", "0")
         cycle = (year - tl.INV_YEAR) // tl.CYCLE_YEARS
-        kind = Activity.CLEARCUT if proportion >= 1.0 else Activity.THINNING
+        kind = Activity.CLEARCUT if proportion >= 1.0 and whole_stand else Activity.THINNING
         out[cycle] = max(out.get(cycle, Activity.NONE), kind)
     return out
 
@@ -227,8 +243,14 @@ def read_plan(run_dir: Path) -> pd.DataFrame:
 def trajectory_table(run_dir: Path, cycles: int) -> pd.DataFrame:
     """One row per planned unit and cycle ``0..cycles``: its regime, activity and vegetation."""
     plan = read_plan(run_dir)
-    library = pd.read_csv(run_dir / LIBRARY, usecols=["unit_id", "prescription", "run_hash"],
-                          dtype=str)
+    library = pd.read_csv(run_dir / LIBRARY,
+                          usecols=["unit_id", "PLT_CN", "prescription", "run_hash"], dtype=str)
+    runs_per_pair = library.groupby(["PLT_CN", "prescription"])["run_hash"].nunique()
+    if (runs_per_pair > 1).any():
+        pairs = runs_per_pair.index[runs_per_pair > 1].tolist()
+        raise AmbiguousRun(f"{len(pairs)} (PLT_CN, prescription) pairs have several runs in "
+                           f"{LIBRARY}: {pairs[:5]}")
+    library = library.drop(columns="PLT_CN")
     chosen = plan.merge(library, on=["unit_id", "prescription"], how="left", validate="1:1")
     lost = chosen.loc[chosen["run_hash"].isna(), "unit_id"]
     if len(lost):
@@ -298,7 +320,7 @@ def owner_targets(run_dir: Path) -> pd.DataFrame | None:
         return None
     dev = pd.read_csv(path)
     dev = dev[dev["dimension"] == "owner_group"]
-    return dev.rename(columns={"key": "owner_group", "target_cuft": "target_cuft"})[
+    return dev.rename(columns={"key": "owner_group"})[
         ["owner_group", "cycle", "target_cuft"]]
 
 
@@ -451,7 +473,7 @@ def cycle_luts(table: pd.DataFrame, n_units: int) -> dict[int, dict[str, np.ndar
             lut = np.full(n_units + 1, VEGETATION_NODATA, dtype=np.float32)
             lut[idx] = frame[m].to_numpy(dtype=np.float32)
             luts[m] = lut
-        out[int(str(cycle))] = luts
+        out[int(frame["cycle"].iloc[0])] = luts
     return out
 
 
@@ -489,14 +511,14 @@ def _write_rasters(run_dir: Path, table: pd.DataFrame, planned: gpd.GeoDataFrame
     _to_cog(index_tmp, run_dir / UNIT_INDEX_TIF, "NEAREST")
     planned[["index", "unit_id"]].to_csv(run_dir / UNIT_INDEX_CSV, index=False)
     luts = cycle_luts(table, len(planned))
-    for cycle, lut in luts.items():
+    for cycle, cycle_lut in luts.items():
         year = int(table.loc[table["cycle"] == cycle, "calendar_year"].iloc[0])
         if rasters.activity:
-            write_mapped(index_tmp, grid, [lut["activity"]],
+            write_mapped(index_tmp, grid, [cycle_lut["activity"]],
                          run_dir / ACTIVITY_DIR / f"activity_{year}.tif", "uint8",
                          ACTIVITY_NODATA, "NEAREST", scratch, ("activity",))
         if rasters.vegetation:
-            write_mapped(index_tmp, grid, [lut[m] for m in VEGETATION_MEASURES],
+            write_mapped(index_tmp, grid, [cycle_lut[m] for m in VEGETATION_MEASURES],
                          run_dir / VEGETATION_DIR / f"vegetation_{year}.tif", "float32",
                          VEGETATION_NODATA, "AVERAGE", scratch, VEGETATION_MEASURES)
     return counts
@@ -506,13 +528,13 @@ def run_outputs(run_dir: Path, *, rasters: RasterSet = RasterSet.ALL, qa: QaLeve
                 grid: Path | None = None) -> OutputsRun:
     """The stage: table, rasters and QA for a scheduled ``run_dir``; see the module docstring."""
     run_dir = Path(run_dir)
+    for stale in (run_dir / OUT_DIR, run_dir / QA_DIR):   # a failed rerun leaves nothing old
+        shutil.rmtree(stale, ignore_errors=True)
     horizon = n_cycles()
     table = trajectory_table(run_dir, horizon)
     plan = read_plan(run_dir)
     harvest = harvest_reconciliation(table, plan, horizon, owner_targets(run_dir))
 
-    for stale in (run_dir / OUT_DIR, run_dir / QA_DIR):
-        shutil.rmtree(stale, ignore_errors=True)
     qa_dir = run_dir / QA_DIR
     if qa is not QaLevel.NONE:          # written before the check, so a mismatch can be read
         qa_dir.mkdir(parents=True)
@@ -526,19 +548,20 @@ def run_outputs(run_dir: Path, *, rasters: RasterSet = RasterSet.ALL, qa: QaLeve
     table.to_csv(run_dir / TABLE, index=False)
     log.info("outputs: %d units x %d cycles -> %s", plan.shape[0], horizon + 1, run_dir / TABLE)
 
-    the_grid = None
+    map_grid = None
     if rasters is not RasterSet.NONE or qa is QaLevel.FULL:
         planned, unplanned = planned_units(run_dir, plan["unit_id"])
         bounds = pd.concat([planned.geometry, unplanned.geometry]).total_bounds  # the layer's
-        the_grid = run_grid(tuple(bounds), reference_alignment(run_dir, grid), str(planned.crs))
+        map_grid = run_grid(tuple(bounds), reference_alignment(run_dir, grid), str(planned.crs))
         table = table.merge(planned[["unit_id", "index"]], on="unit_id", how="left")
         (run_dir / RASTER_DIR).mkdir(parents=True)
         with tempfile.TemporaryDirectory(dir=run_dir / OUT_DIR) as tmp:
-            counts = _write_rasters(run_dir, table, planned, the_grid, rasters, Path(tmp))
+            counts = _write_rasters(run_dir, table, planned, map_grid, rasters, Path(tmp))
         if qa is not QaLevel.NONE:
             acres = plan.set_index("unit_id").loc[planned["unit_id"], "acres"]
-            coverage(planned, unplanned, counts, the_grid, acres).to_csv(qa_dir / COVERAGE_QA,
+            coverage(planned, unplanned, counts, map_grid, acres).to_csv(qa_dir / COVERAGE_QA,
                                                                          index=False)
+            unplanned.drop(columns="geometry").to_csv(qa_dir / UNPLANNED_QA, index=False)
         if qa is QaLevel.FULL:
             from pipeline import outputs_figures
             outputs_figures.draw(run_dir / UNIT_INDEX_TIF, table, qa_dir, harvest)
@@ -549,8 +572,8 @@ def run_outputs(run_dir: Path, *, rasters: RasterSet = RasterSet.ALL, qa: QaLeve
     record = {"cycles": cycles,
               "calendar_years": sorted(int(y) for y in table["calendar_year"].unique()),
               "units": int(len(plan)), "rasters": rasters.value, "qa": qa.value,
-              "grid": None if the_grid is None else {
-                  "crs": the_grid.crs, "transform": list(the_grid.transform)[:6],
-                  "width": the_grid.width, "height": the_grid.height}}
+              "grid": None if map_grid is None else {
+                  "crs": map_grid.crs, "transform": list(map_grid.transform)[:6],
+                  "width": map_grid.width, "height": map_grid.height}}
     (run_dir / RECORD).write_text(json.dumps(record, indent=2) + "\n")
-    return OutputsRun(table, cycles, the_grid)
+    return OutputsRun(table, cycles, map_grid)
