@@ -114,7 +114,7 @@ It needs `ME_5_Co_Dissolve`, the ME/MA/NH/NY FIA TREE and COND CSVs, and NHDPlus
 
 - `experiments/2026-08-24_leto-ca-forest-viz/work/staged/`: `FIA_5county_consolidated.db` (TREE and COND), `nhd_waterbody_fl5.gpkg`, `FL_5_Co_Streams`.
 - Species crosswalk: `FVS_SpeciesCrosswalk.xls` at the R2 bucket root (`r2:artemis-r2/data/FVS_SpeciesCrosswalk.xls`, `data/index.md`), which `ProductionDataPaths` expects at `<drive>/FVS_SpeciesCrosswalk.xls`. This machine has no rclone remote or `R2_*` env vars, so configure R2 before step 6.
-- LETO clone: `git clone https://github.com/aauslander480/Leto`, at `d2b92ee`.
+- LETO clone: `git clone https://github.com/aauslander480/Leto`, at the pin (`13bcf13`).
 
 ### Progress (2026-10-05, session 2)
 
