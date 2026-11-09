@@ -75,7 +75,8 @@ OUT_DIR = "young_plots"
 VAT_EXTENSION_CSV = "treemap2022_improved_vat_extension.csv"
 TREE_EXTENSION_CSV = "treemap2022_improved_tree_extension.csv"
 COUNTY_CSV = "add_back_acres_by_county.csv"
-OUTSIDE_COUNTIES = "outside listed counties"   # the county of an add-back pixel in none of the run's
+OUTSIDE_COUNTIES = "outside listed counties"   # the county of an add-back pixel in no listed county
+UNRESOLVED = "unresolved"   # the age source of an add-back pixel whose ID has no VAT extension row
 NEW_ID_START = 1_000_000     # above TreeMap 2022's own values (at most 70,035)
 YOUNG_PLOTS_PROVENANCE = ("0 water, 1 published, 3 unmapped land, "
                           "4 added back: a young plot under a new TM_ID (ADR 0003)")
@@ -349,8 +350,12 @@ def acres_by_county(run_dir: Path, counties: Path, fips: list[str]) -> pd.DataFr
 
     Read back from the written raster and VAT extension, so it counts what ``leto`` will
     read. A pixel belongs to the county its centre falls in; one in no listed county keeps
-    an empty ``county_fips`` and :data:`OUTSIDE_COUNTIES`, so the rows sum to every add-back pixel.
+    an empty ``county_fips`` and :data:`OUTSIDE_COUNTIES`, and one whose ID has no VAT
+    extension row the age source :data:`UNRESOLVED`, so the rows sum to every add-back pixel.
     """
+    malformed = [f for f in fips if not (len(f) == 5 and f.isdigit())]
+    if malformed:
+        raise ValueError(f"a county FIPS is 5 digits, not {malformed[0]!r}")
     import geopandas as gpd
     from rasterio import features
 
@@ -371,7 +376,7 @@ def acres_by_county(run_dir: Path, counties: Path, fips: list[str]) -> pd.DataFr
     vat = read_id_csv(out / VAT_EXTENSION_CSV, id_columns=EXTENSION_ID_COLUMNS)
     source_of = pd.Series(vat["AGE_SOURCE"].to_numpy(), index=vat["Value"].astype(np.int64))
     pixels = pd.DataFrame({"county_fips": fips_of[index], "county": name_of[index],
-                           "age_source": source_of.reindex(values.astype(np.int64)).to_numpy()})
+                           "age_source": source_of.reindex(values.astype(np.int64)).fillna(UNRESOLVED).to_numpy()})
     table = (pixels.groupby(["county_fips", "county", "age_source"]).size()
              .rename("pixels").reset_index())
     table["acres"] = table["pixels"] * ACRES_PER_PIXEL

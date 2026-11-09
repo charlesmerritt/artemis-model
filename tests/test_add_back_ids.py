@@ -262,9 +262,12 @@ def test_read_vat_keeps_treemaps_27_columns_with_its_ids_as_exact_strings(tmp_pa
     assert vat[["Value", "TM_ID", "PLT_CN"]].iloc[0].tolist() == ["36935", "36935", "200000000000010"]
 
 
-def _manifest(run, **inputs):
+def _manifest(run, listed=None, **inputs):
     methods = {"bookends": "run", "obata_disturbance": "run", "hansen_loss": "run"}
-    (run / "manifest.json").write_text(json.dumps({"methods": methods, "inputs": inputs}))
+    manifest = {"methods": methods, "inputs": inputs}
+    if listed is not None:
+        manifest["counties"] = listed
+    (run / "manifest.json").write_text(json.dumps(manifest))
 
 
 def test_a_detector_the_run_used_but_not_passed_or_found_is_an_error_not_undated_pixels(tmp_path):
@@ -330,10 +333,8 @@ def test_a_run_with_counties_reports_add_back_acres_by_county_and_age_source(tmp
     # 12003 is listed but has no add-back pixel; it still gets no row, not a zero row.
     run, sources = _run(tmp_path)
     counties = _counties(tmp_path, ("12001", "Alachua", 0, 90), ("12077", "Liberty", 90, 180))
-    _manifest(run, obata=str(sources["obata"]), hansen=str(sources["hansen"]), counties=str(counties))
-    manifest = json.loads((run / "manifest.json").read_text())
-    manifest["counties"] = ["12001 12001", "12003 Baker", "12077 12077"]   # names as the run wrote them
-    (run / "manifest.json").write_text(json.dumps(manifest))
+    _manifest(run, ["12001 12001", "12003 Baker", "12077 12077"],   # names as the run wrote them
+              obata=str(sources["obata"]), hansen=str(sources["hansen"]), counties=str(counties))
 
     write_add_back_ids(run, **sources)
 
@@ -350,10 +351,8 @@ def test_a_run_with_counties_reports_add_back_acres_by_county_and_age_source(tmp
 def test_add_back_pixels_outside_every_listed_county_are_reported_not_dropped(tmp_path):
     run, sources = _run(tmp_path)
     counties = _counties(tmp_path, ("12001", "Alachua", 0, 90))
-    _manifest(run, obata=str(sources["obata"]), hansen=str(sources["hansen"]), counties=str(counties))
-    manifest = json.loads((run / "manifest.json").read_text())
-    manifest["counties"] = ["12001 Alachua"]
-    (run / "manifest.json").write_text(json.dumps(manifest))
+    _manifest(run, ["12001 Alachua"], obata=str(sources["obata"]), hansen=str(sources["hansen"]),
+              counties=str(counties))
 
     write_add_back_ids(run, **sources)
 
@@ -382,3 +381,27 @@ def test_default_inputs_are_the_declared_drive_paths_or_their_place_under_a_mirr
         "vat": tmp_path / "TreeMap-2022/Data/TreeMap2022_CONUS.tif.vat.dbf",
         "tree_table": tmp_path / "TreeMap-2022/Data/TreeMap2022_CONUS_Tree_Table.csv",
         "db": tmp_path / "SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"}
+
+
+def test_an_add_back_pixel_with_no_vat_row_is_counted_as_unresolved_not_dropped(tmp_path):
+    from pipeline.s1_initial_state.add_back_ids import UNRESOLVED, acres_by_county
+
+    run, sources = _run(tmp_path)
+    counties = _counties(tmp_path, ("12001", "Alachua", 0, 180))
+    write_add_back_ids(run, **sources)
+    path = run / "young_plots" / "treemap2022_improved_vat_extension.csv"
+    vat = pd.read_csv(path, dtype=str)
+    vat[vat["Value"] != "1000001"].to_csv(path, index=False)   # pixel 1's row goes missing
+
+    table = acres_by_county(run, counties, ["12001"])
+    assert table["pixels"].sum() == 4
+    assert table.loc[table["age_source"] == UNRESOLVED, "pixels"].tolist() == [1]
+
+
+def test_a_county_that_is_not_five_digits_is_refused_before_the_layer_is_read(tmp_path):
+    from pipeline.s1_initial_state.add_back_ids import acres_by_county
+
+    run, sources = _run(tmp_path)
+    write_add_back_ids(run, **sources)
+    with pytest.raises(ValueError, match="5 digits"):
+        acres_by_county(run, tmp_path / "missing.shp", ["12001", "12001' OR '1'='1"])
