@@ -1,0 +1,15 @@
+speckle,size,units,acres
+keep,< 1 cell,4109,394.0
+keep,1 cell - 1 ac,3060,1441.2
+keep,1-5 ac,2312,5442.8
+keep,5-20 ac,1811,18414.5
+keep,20-100 ac,1138,49640.8
+keep,>= 100 ac,236,37273.0
+keep,all,12666,112606.3
+merge,< 1 cell,1053,153.8
+merge,1 cell - 1 ac,1384,607.7
+merge,1-5 ac,2420,5714.3
+merge,5-20 ac,1854,18838.1
+merge,20-100 ac,1143,49871.6
+merge,>= 100 ac,237,37420.7
+merge,all,8091,112606.3

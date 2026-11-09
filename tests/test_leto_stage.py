@@ -28,6 +28,7 @@ from rasterio.transform import Affine
 from shapely.geometry import LineString, box, shape
 
 from pipeline import leto_riparian
+from pipeline.leto_speckle import SpeckleAction, SpeckleSettings
 from pipeline.leto_stage import (
     AddBackWithoutYoungPlots,
     AmbiguousStandInit,
@@ -229,6 +230,7 @@ def test_florida_runs_the_maine_verified_ca_with_force_merge_and_its_first_pass_
     assert settings.buffer_rules.waterbody == first_pass.waterbody
     assert settings.buffer_rules.area == first_pass.area
     assert settings.minimum_plot_weight == 0.05
+    assert settings.speckle == SpeckleSettings(SpeckleAction.MERGE, minimum_unit_acres=1.0)
 
 
 def test_a_county_in_no_configured_region_fails_closed():
@@ -308,6 +310,7 @@ def test_the_units_layer_and_the_run_record_are_written(world):
     assert len(florida["fia_extract"]["sha256"]) == 64
     assert florida["settings"]["segmentation"]["shared_edge_bonus"] == 0.2
     assert record["counties"][ALPHA]["region"] == "florida"
+    assert florida["settings"]["speckle"] == {"action": "merge", "minimum_unit_acres": 1.0}
     assert record["counties"][ALPHA]["status"] == "done"
     assert len(record["counties"][ALPHA]["input_sha256"]) == 64
     assert record["layout"] == "plot"
@@ -380,6 +383,53 @@ def test_a_young_plot_stand_has_its_neighbours_site_its_dated_age_and_letos_desi
 
 
 # ── invariants ─────────────────────────────────────────────────────────────────────────
+
+
+def _with_edge_stream(world):
+    """A perennial stream 30 m inside Alpha's west edge: its buffer leaves upland speckle strips."""
+    path = world["region"] / "hydrography.gpkg"
+    flowlines = gpd.read_file(path, layer="flowline")
+    edge = LineString([(X0 + CELL, Y0), (X0 + CELL, Y0 - ROWS * CELL)])
+    flowlines = pd.concat([flowlines, gpd.GeoDataFrame({"fcode": [46006]}, geometry=[edge],
+                                                       crs=flowlines.crs)], ignore_index=True)
+    flowlines.to_file(path, layer="flowline", driver="GPKG", mode="w")
+
+
+def _speckle_qa(world):
+    return pd.read_csv(world["run_dir"] / "qa" / "leto" / "speckle.csv",
+                       dtype={"county_fips": str}).set_index("county_fips").loc[ALPHA]
+
+
+def test_speckle_merges_by_default_and_its_qa_table_matches_the_units_layer(world):
+    _with_edge_stream(world)
+    _run(world)
+
+    units, qa = _units(world), _speckle_qa(world)
+    open_units = units[units["owner_class"] != "masked"]
+    assert qa["units_after"] == len(units) < qa["units_before"]
+    merged = sum(qa[f"merged_{step}"] for step in ("same_owner", "other_owner", "riparian"))
+    assert merged == qa["units_before"] - qa["units_after"]
+    assert qa["speckle_kept"] == (open_units["Acres"] < 1.0).sum()
+    assert qa["speckle_kept"] < qa["speckle_before"]
+
+
+def test_a_many_county_run_assembles_every_countys_speckle_qa(world):
+    _run(world, county=[ALPHA, BETA])
+
+    qa = pd.read_csv(world["run_dir"] / "qa" / "leto" / "speckle.csv", dtype={"county_fips": str})
+    assert list(qa["county_fips"]) == [ALPHA, BETA]
+    assert qa["units_after"].sum() == len(_units(world))
+
+
+def test_keep_replays_letos_own_units(world):
+    _with_edge_stream(world)
+    keep = dataclasses.replace(load_settings(ALPHA),
+                               speckle=SpeckleSettings(SpeckleAction.KEEP, minimum_unit_acres=1.0))
+    _run(world, settings=keep)
+
+    qa = _speckle_qa(world)
+    assert qa["units_before"] == qa["units_after"] == len(_units(world))
+    assert qa["speckle_kept"] == qa["speckle_before"] > 0
 
 
 def _parent_acres(world, county):

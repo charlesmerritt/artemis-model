@@ -40,7 +40,12 @@ county's cells are read, so no parent stand crosses it. In order:
    weight are dropped, but each parent keeps its largest.
 7. **The representative plot**: each parent's largest donor plot, ties to the lower TreeMap
    value. Every unit of a parent runs on it.
-8. **The plot layout's FVS tables** (:func:`plot_inventory`), one stand per distinct
+8. **Speckle merge** (:mod:`pipeline.leto_speckle`, ADR 0005): a unit under the region's
+   minimum unit area joins a neighbour (same owner and class, then same class, then, if
+   managed, riparian), chosen by ``force_merge``'s cost on its parent stand's traits
+   (:func:`parent_traits`). It takes the receiver's row, so its parent stand, representative
+   plot and age; ``keep`` leaves LETO's units as they are.
+9. **The plot layout's FVS tables** (:func:`plot_inventory`), one stand per distinct
    representative plot of a scheduled unit. An FIA plot is its extract rows, anchored to 2022
    as the FL5 golden run was. A young plot is its neighbour plot's StandInit row (the site)
    at its dated 2022 age, with its own live trees under LETO's sampling design (BAF -1, plot
@@ -74,6 +79,9 @@ finished county (:func:`assemble`), in FIPS order:
   the scheduled acres with no usable stand age, and the forest cells the Harris raster has no
   value for (read as unknown). A drift over
   :data:`MAX_DRIFT_ACRES` fails the county (:class:`AcreDrift`) before anything is written.
+- ``qa/leto/speckle.csv``: per county, units and speckle before and after, merges and their
+  acres by step, the managed acres turned grow-only, the speckle kept, and the acre drift
+  per owner class (``owner_drift_acres_<class>``) that step 2 moves.
 - ``leto.json``: the layout (``library`` checks it: :func:`pipeline.run.check_layout`), the
   raster run's ``manifest.json`` sha256, per region the resolved settings and the FIA extract
   and hydrography (path and sha256), and per county its status, input hash, unit and stand
@@ -108,6 +116,7 @@ from shapely.geometry import box, shape
 from pipeline import leto_attributes as la
 from pipeline import leto_ca, leto_donors, leto_riparian
 from pipeline.leto_database import SamplingDesign
+from pipeline.leto_speckle import MergeCost, SpeckleSettings, UnitClass, merge_speckle
 from pipeline.harvest_eligibility import usable_stand_age
 from pipeline.ids import as_id_series, read_id_csv
 from pipeline.leto_riparian import SQUARE_METERS_PER_ACRE, BufferRules
@@ -146,9 +155,11 @@ DONOR_WEIGHTS = "donor_weights.csv"
 COUNTY_UNITS = "units.gpkg"
 QA_DIR = Path("qa") / "leto"
 AREA_ACCOUNTING = "area_accounting.csv"
+SPECKLE = "speckle.csv"
 REPAIRED_RASTERS = (IMPROVED_TREEMAP, PROVENANCE, OWNERSHIP)
-COUNTY_OUTPUTS = (PARENT_STANDS, DONOR_WEIGHTS, COUNTY_UNITS, STANDS, FVS_DATA, AREA_ACCOUNTING)
-OUTPUT_VERSION = 1                            # bump when a county's outputs change shape: redoes every county
+COUNTY_OUTPUTS = (PARENT_STANDS, DONOR_WEIGHTS, COUNTY_UNITS, STANDS, FVS_DATA, AREA_ACCOUNTING,
+                  SPECKLE)
+OUTPUT_VERSION = 2                            # bump when a county's outputs change shape: redoes every county
 LAYOUT = InventoryLayout.PLOT                 # the plot layout (ADR 0004)
 INV_YEAR = DEFAULT_INV_YEAR                   # every FVS stand starts in TreeMap's year, 2022
 VARIANT = "SN"
@@ -169,11 +180,6 @@ class Origin(StrEnum):
 
     TREEMAP = "treemap"
     YOUNG_PLOT = "young_plot"                 # an add-back young plot (ADR 0003)
-
-
-class UnitClass(StrEnum):
-    MANAGED = "managed"
-    RIPARIAN = "riparian"                     # grow only
 
 
 class CountyStatus(StrEnum):
@@ -241,6 +247,7 @@ class LetoSettings:
     segmentation: dict
     buffer_rules: BufferRules
     minimum_plot_weight: float
+    speckle: SpeckleSettings
 
     def record(self) -> dict:
         """The settings as JSON, for ``leto.json``."""
@@ -249,7 +256,8 @@ class LetoSettings:
         return {"region": self.region, "state_fips": self.state_fips, "inputs": str(self.inputs),
                 "segmentation": {k: str(v) if isinstance(v, StrEnum) else v
                                  for k, v in self.segmentation.items()},
-                "riparian": rules, "minimum_plot_weight": self.minimum_plot_weight}
+                "riparian": rules, "minimum_plot_weight": self.minimum_plot_weight,
+                "speckle": self.speckle.record()}
 
 
 def load_settings(county_fips: str, path: Path = CONFIG_PATH) -> LetoSettings:
@@ -271,7 +279,8 @@ def _settings(name: str, spec: dict) -> LetoSettings:
         region=name, state_fips=spec["state_fips"], inputs=REPO / spec["inputs"],
         segmentation={**leto_ca.DEFAULT_CFG, **spec["segmentation"],
                       "remaining_small_stand_action": action},
-        buffer_rules=rules, minimum_plot_weight=float(spec["inventory"]["minimum_plot_weight"]))
+        buffer_rules=rules, minimum_plot_weight=float(spec["inventory"]["minimum_plot_weight"]),
+        speckle=SpeckleSettings.from_config(spec["speckle"]))
 
 
 # ── step 1: the county's cells ─────────────────────────────────────────────────────────
@@ -453,9 +462,13 @@ def attributes(values: np.ndarray, vat: pd.DataFrame, extract: Path, young_dir: 
 # ── steps 3-7: parents, units, donors ──────────────────────────────────────────────────
 
 
+def _forest_type(cells: CountyCells, grids: dict[str, np.ndarray]) -> np.ndarray:
+    return np.where(cells.valid, np.nan_to_num(grids["FORTYPCD"], nan=0), 0).astype(np.int32)
+
+
 def segment(cells: CountyCells, grids: dict[str, np.ndarray], settings: LetoSettings) -> np.ndarray:
     """LETO's CA and small-stand action, owner classes as hard edges; int32 parent labels."""
-    forest_type = np.where(cells.valid, np.nan_to_num(grids["FORTYPCD"], nan=0), 0).astype(np.int32)
+    forest_type = _forest_type(cells, grids)
     ownership = np.where(cells.valid, cells.harris, OUTSIDE).astype(np.int16)
     return leto_ca.segment({n: grids[n] for n in CONTINUOUS}, forest_type, ownership, cells.valid,
                            cells.cell_acres, cfg=settings.segmentation,
@@ -514,6 +527,31 @@ def representative_plots(seg: np.ndarray, cells: CountyCells, attrs: Attributes,
     top = (kept.sort_values(["SEG_ID", "WEIGHT", "TREEMAP_VALUE"], ascending=[True, False, True])
            .drop_duplicates("SEG_ID").set_index("SEG_ID"))
     return kept, top[["TREEMAP_VALUE", "PLT_CN", "WEIGHT"]]
+
+
+def parent_traits(seg: np.ndarray, cells: CountyCells, grids: dict[str, np.ndarray],
+                  settings: LetoSettings) -> pd.DataFrame:
+    """Each parent stand's ``force_merge`` traits, indexed by ``SEG_ID``.
+
+    The CA's robust-standardized means of :data:`CONTINUOUS` and the dominant ``FORTYPCD``,
+    as :func:`pipeline.leto_ca.merge_small_segments` compares them.
+    """
+    clip = settings.segmentation["standardization_clip"]
+    std = {name: np.where(cells.valid, np.nan_to_num(
+               leto_ca.robust_standardize(grids[name], cells.valid, clip)[0], nan=0.0), 0.0)
+           for name in CONTINUOUS}
+    stats = leto_ca.segment_statistics_arrays(seg, std, _forest_type(cells, grids))
+    ids = np.flatnonzero(stats["counts"] > 0)
+    ids = ids[ids > 0]
+    return pd.DataFrame({**{n: stats["means"][n][ids] for n in CONTINUOUS},
+                         "FORTYPCD": stats["dominant_type"][ids]}, index=pd.Index(ids, name="SEG_ID"))
+
+
+def merge_cost(cells: CountyCells, settings: LetoSettings) -> MergeCost:
+    """``force_merge``'s cost under the region's segmentation settings; a cell edge per edge."""
+    return MergeCost(weights=dict(settings.segmentation["variable_weights"]),
+                     shared_edge_bonus=float(settings.segmentation["shared_edge_bonus"]),
+                     edge_length=abs(cells.transform.a))
 
 
 def unit_layer(pieces: gpd.GeoDataFrame, top: pd.DataFrame, attrs: Attributes,
@@ -751,7 +789,10 @@ def run_county(job: CountyJob) -> CountyResult:
     parents = parent_polygons(seg, cells)
     pieces = riparian_split(parents, job.region.hydrography, settings.buffer_rules)
     weights, top = representative_plots(seg, cells, attrs, settings)
-    units = unit_layer(pieces, top, attrs, place)
+    speckle = merge_speckle(unit_layer(pieces, top, attrs, place),
+                            parent_traits(seg, cells, grids, settings), settings.speckle,
+                            merge_cost(cells, settings))
+    units = speckle.units
     stands = stand_rows(units)
     inventory = plot_inventory(stands["PLT_CN"], attrs, extract)
     accounting = area_accounting(cells, parents, units, place)
@@ -766,6 +807,7 @@ def run_county(job: CountyJob) -> CountyResult:
     stands.to_csv(job.out / STANDS, index=False)
     inventory.write(job.out / FVS_DATA)
     pd.DataFrame([accounting]).to_csv(job.out / AREA_ACCOUNTING, index=False)
+    speckle.qa.to_csv(job.out / SPECKLE, index=False)
     return CountyResult(place.fips, accounting, len(units), len(stands),
                         round(time.perf_counter() - started, 1))
 
@@ -918,7 +960,7 @@ def assemble_inventory(paths: list[Path]) -> PlotInventory:
 
 
 def _remove_run_outputs(run_dir: Path) -> None:
-    for name in (STANDS, FVS_DATA, UNITS_GPKG, QA_DIR / AREA_ACCOUNTING):
+    for name in (STANDS, FVS_DATA, UNITS_GPKG, QA_DIR / AREA_ACCOUNTING, QA_DIR / SPECKLE):
         (run_dir / name).unlink(missing_ok=True)
 
 
@@ -928,6 +970,7 @@ def assemble(run_dir: Path, counties: list[str]) -> pd.DataFrame:
     _concat_csv([d / STANDS for d in dirs], run_dir / STANDS)
     (run_dir / QA_DIR).mkdir(parents=True, exist_ok=True)
     _concat_csv([d / AREA_ACCOUNTING for d in dirs], run_dir / QA_DIR / AREA_ACCOUNTING)
+    _concat_csv([d / SPECKLE for d in dirs], run_dir / QA_DIR / SPECKLE)
     assemble_inventory([d / FVS_DATA for d in dirs]).write(run_dir / FVS_DATA)
     units = pd.concat([gpd.read_file(d / COUNTY_UNITS, layer=UNITS_LAYER) for d in dirs],
                       ignore_index=True)

@@ -43,3 +43,14 @@ weights, representative plot and age, and acres are conserved.
 - Under `proximity_merge` a unit can be multipart, and the 1 ac test applies to the whole unit.
 - Step 2 moves acres between owner classes, and so between TPO owner groups. Step 3 turns
   managed acres into grow-only acres. The QA report shows both by county.
+
+## Implementation notes (#167, 2026-11-09)
+
+- Masked units (Harris 1-2) are neither speckle nor receivers, so forest never becomes masked
+  and non-forest never becomes scheduled.
+- A unit's cost terms are its parent stand's: the CA's robust-standardized means and dominant
+  forest type. A shared edge is a cell side's length (30 m) of common vector boundary, so
+  slivers cut by a buffer score fractional edges. Contact under 1 m is a corner, not an edge,
+  as `force_merge`'s four-neighbour adjacency has it.
+- `parent_stands.tif` is LETO's parent-stand raster before the splits and is not relabelled.
+  A unit's parent stand is its `SEG_ID` in the units layer.
