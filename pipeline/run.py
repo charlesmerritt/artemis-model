@@ -5,6 +5,8 @@ The ARTEMIS runner: a run directory's stands, through the trajectory library, to
                                            [--layout plot|leto]
     uv run python -m pipeline.run library  <run_dir> [--workers N] [--layout plot|leto]
     uv run python -m pipeline.run schedule <run_dir> [--restarts N] [--workers N]
+    uv run python -m pipeline.run outputs  <run_dir> [--rasters all|activity|vegetation|none]
+                                                     [--qa full|tables|none] [--grid <raster>]
 
 A run directory holds one landscape. Upstream stages write its inputs:
 
@@ -25,7 +27,9 @@ The LETO layout reads the FVS species crosswalk (``--species-crosswalk``, defaul
 ``library`` enumerates every stand's regime-library options (`trajectory_library.OPEN_LIBRARY`)
 and runs the FVS keyfiles not yet cached. ``schedule`` selects one trajectory per stand against the TPO
 even-flow targets by simulated annealing (`pipeline.s3_management.annealer`), best of
-``--restarts``.
+``--restarts``. ``outputs`` (`pipeline.outputs_stage`) joins the plan to its FVS cycles and the
+units layer: the per-unit, per-cycle trajectory table, an activity and a vegetation COG per
+timestep, and the ``qa/outputs/`` report, each part behind its own flag.
 """
 
 from __future__ import annotations
@@ -232,12 +236,27 @@ def main(argv: list[str] | None = None) -> None:
     sch.add_argument("--workers", type=int, default=11)
     sch.add_argument("--cooling", type=float, default=COOLING)
 
+    out = stages.add_parser("outputs", help="the plan's trajectory table, per-timestep maps and QA")
+    out.add_argument("run_dir", type=Path)
+    out.add_argument("--rasters", default="all", choices=["all", "activity", "vegetation", "none"],
+                     help="which per-timestep COGs to write (default: all)")
+    out.add_argument("--qa", default="full", choices=["full", "tables", "none"],
+                     help="qa/outputs/: tables, figures and maps with index.html (full), the "
+                          "tables only, or nothing (default: full)")
+    out.add_argument("--grid", type=Path, default=None,
+                     help="a raster whose cell size and alignment the maps take; default: the "
+                          "leto stage's parent_stands.tif, else the TreeMap snap grid")
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.stage == "leto":
         run_leto_stage(args)
     elif args.stage == "library":
         build_library(args.run_dir, args.workers, args.layout, args.fvs_bin)
+    elif args.stage == "outputs":
+        from pipeline import outputs_stage as stage
+        stage.run_outputs(args.run_dir, rasters=stage.RasterSet(args.rasters),
+                          qa=stage.QaLevel(args.qa), grid=args.grid)
     else:
         schedule(args.run_dir, args.restarts, args.workers, args.cooling)
 
