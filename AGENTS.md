@@ -35,8 +35,8 @@ This was flagged as a real bug in PR #40 (`make_leto_figure.py` in the LETO CA r
 ### LANDFIRE disturbance: Clearcut and Harvest barely cover Florida's private harvests
 
 `landfire_disturbance.py` dates a cut only from `DIST_TYPE` Clearcut or Harvest (#171).
-Over Florida, LANDFIRE labels almost all forest change Unknown or Fire, so it dates 322 of
-~186,000 undated statewide add-back acres (`experiments/2026-11-09_landfire-cut-year/`).
+Over Florida, LANDFIRE labels almost all forest change Unknown or Fire, so it dates 74 of
+~35,000 undated add-back acres in the v4 statewide run (`experiments/2026-11-09_landfire-cut-year/`).
 Codes, grids and nodata vary by product version: read each product's own legend.
 
 ### Mutation runs require successful collection and a fresh cache
