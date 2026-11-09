@@ -4,7 +4,11 @@
 raster run, run on 2026-11-09 with the default settings: `force_merge`, then the speckle
 merge with the speckle that cannot merge deleted (`merge_delete`, ADR 0005 amendment). Open `report/index.html` offline. `report/viewer/12125.html` is the interactive unit
 viewer (`pipeline/leto_viewer.py`). The run folder itself is `work/run/`, which
-is gitignored.
+is gitignored; it is stored on R2 at `r2:artemis-r2/data/Artemis_data/runs/leto_t3_qa_12125/`
+(44 MB: the county's parent-stand raster, units, FVS tables and QA files):
+
+    rclone copy r2:artemis-r2/data/Artemis_data/runs/leto_t3_qa_12125 \
+        experiments/2026-11-09_leto-qa-t3/work/run
 
 Run:
 
