@@ -15,14 +15,6 @@ resetting age alone would restore mature biomass. In a run folder's own rasters,
 pixels (provenance 2, 4) carry the neighbour plot's `TM_ID`: never join it to trees. Use
 `<run>/young_plots/` (`add_back_ids`): new IDs from 1,000,000, in its VAT/tree extensions (ADR 0003).
 
-### LETO ground truth is `aauslander480/Leto`'s `LETO_v1_project/`, not its legacy `scripts/`
-
-`pipeline/leto_ca.py` was ported from the legacy `Leto/scripts/Cellular_automata/02_segment_treemap.py`.
-Only the CA core matches v1. Small-stand handling (v1 `force_merge`, never delete), Stage 1
-attribute sources, parent-segment donor weights, the 5% donor filter, the vector riparian split
-and the FVS sampling design all differ. See `research/leto_parity/README.md` before changing
-initial state.
-
 ### FIA control numbers (`PLT_CN`, `STAND_CN`, etc.) must not be cast via `str(int(...))`
 
 `PLT_CN` and the other FIA control numbers (`STAND_CN`, `COND_CN`, `PLOT_CN`, `TREE_CN`, `SUBP_CN`, …) are up to 19-digit integers.
