@@ -29,7 +29,8 @@ from rasterio.transform import Affine
 from shapely.geometry import LineString, box, shape
 
 from pipeline import leto_riparian
-from pipeline.leto_ca import ProximityMergeNotPorted, SmallStandAction
+from pipeline.leto_ca import SmallStandAction
+from pipeline.leto_proximity import ProximityMatch, ProximitySettings, Unmatched
 from pipeline.ids import read_id_csv
 from pipeline.leto_database import DatabaseMode
 from pipeline.leto_layout import unit_stdage_means
@@ -283,9 +284,41 @@ def test_an_unknown_regional_action_fails_closed_and_names_the_allowed_ones(tmp_
         load_settings(ALPHA, _config_with_action(tmp_path, "drop"))
 
 
-def test_a_regional_proximity_merge_fails_closed_until_it_is_ported(tmp_path):
-    with pytest.raises(ProximityMergeNotPorted, match="#169"):
-        load_settings(ALPHA, _config_with_action(tmp_path, "proximity_merge"))
+def test_a_regional_proximity_merge_takes_upstreams_limits_from_the_regional_config(tmp_path):
+    settings = load_settings(ALPHA, _config_with_action(tmp_path, "proximity_merge"))
+
+    assert settings.segmentation["remaining_small_stand_action"] is SmallStandAction.PROXIMITY_MERGE
+    assert settings.proximity == ProximitySettings(
+        maximum_distance_meters=60.0, maximum_combined_acres=300.0,
+        match=(ProximityMatch.OWNER, ProximityMatch.FOREST_TYPE),
+        unmatched=Unmatched.RETAIN, warning_chain_ratio=2.0)
+    assert settings.record()["proximity"]["match"] == ["owner", "forest_type"]
+
+
+def test_proximity_limits_are_read_from_the_regional_config(tmp_path):
+    config = yaml.safe_load(CONFIG_PATH.read_text())
+    config["regions"]["florida"]["small_stands"].update(
+        remaining_small_stand_action="proximity_merge", maximum_distance_meters=90.0,
+        maximum_combined_acres=50.0, require_same_forest_type=False,
+        retain_when_no_candidate=False)
+    path = tmp_path / "leto.yaml"
+    path.write_text(yaml.safe_dump(config))
+
+    proximity = load_settings(ALPHA, path).proximity
+    assert (proximity.maximum_distance_meters, proximity.maximum_combined_acres) == (90.0, 50.0)
+    assert proximity.match == (ProximityMatch.OWNER,)
+    assert proximity.unmatched is Unmatched.ERROR
+
+
+def test_a_combined_cap_under_the_minimum_stand_size_fails_closed(tmp_path):
+    config = yaml.safe_load(CONFIG_PATH.read_text())
+    config["regions"]["florida"]["small_stands"].update(
+        remaining_small_stand_action="proximity_merge", maximum_combined_acres=4.0)
+    path = tmp_path / "leto.yaml"
+    path.write_text(yaml.safe_dump(config))
+
+    with pytest.raises(ValueError, match="maximum_combined_acres"):
+        load_settings(ALPHA, path)
 
 
 # ── outputs ────────────────────────────────────────────────────────────────────────────
@@ -498,6 +531,114 @@ def test_a_young_plot_stand_has_its_neighbours_site_its_dated_age_and_letos_desi
     assert trees["HT"].tolist() == [9.0, 12.0]
     assert trees["CRRATIO"].tolist() == [60, 55]
     assert (trees["PLOT_ID"] == 1).all() and (trees["HISTORY"] == 1).all()
+
+
+# ── proximity merge (#169) ─────────────────────────────────────────────────────────────
+
+
+def _with_two_corporate_patches(world):
+    """Two 3 x 3 corporate patches 30 m apart in Alpha's family land: small, same owner and type."""
+    harris = _harris()
+    harris[10:13, 3:6] = 4
+    harris[10:13, 7:10] = 4
+    _tif(world["repair"] / "nwos2022_improved.tif", harris, "uint8", HARRIS_NODATA)
+
+
+def _proximity_settings():
+    return _with_action(SmallStandAction.PROXIMITY_MERGE)
+
+
+def _segments(world):
+    return gpd.read_file(world["run_dir"] / "management_units.gpkg", layer="segments")
+
+
+def _corporate_unit(world):
+    units = _units(world)
+    corporate = units[(units["county_fips"] == ALPHA) & (units["owner_class"] == "corporate")]
+    assert len(corporate) == 1
+    return corporate.iloc[0]
+
+
+def test_proximity_merge_makes_one_multipart_unit_of_two_nearby_small_stands(world):
+    _with_two_corporate_patches(world)
+    _run(world, settings=_proximity_settings())
+
+    unit = _corporate_unit(world)
+    assert unit["PART_COUNT"] == 2 and unit.geometry.geom_type == "MultiPolygon"
+    segments = _segments(world)
+    parts = segments[segments["unit_id"] == unit["unit_id"]]
+    assert sorted(parts["MU_PART"]) == [1, 2]
+    assert parts["BIO_MU_ID"].nunique() == 1 and parts["SEG_ID"].nunique() == 2
+    assert (parts.geometry.geom_type == "Polygon").all()
+    assert unit["Acres"] == pytest.approx(parts["Acres"].sum())
+    stands = _stands(world)
+    assert (stands["unit_id"] == unit["unit_id"]).sum() == 1
+    assert not stands["unit_id"].duplicated().any()
+
+
+def test_the_units_layer_has_one_feature_per_unit_id_and_the_segments_cover_it(world):
+    _with_two_corporate_patches(world)
+    _run(world, settings=_proximity_settings())
+
+    units, segments = _units(world), _segments(world)
+    assert not units["unit_id"].duplicated().any()
+    assert set(segments["unit_id"]) == set(units["unit_id"])
+    by_unit = segments.groupby("unit_id")["Acres"].sum()
+    assert np.allclose(units.set_index("unit_id")["Acres"], by_unit.reindex(units["unit_id"]))
+
+
+def test_without_proximity_every_segment_is_its_own_unit(world):
+    _with_two_corporate_patches(world)
+    _run(world)
+
+    units, segments = _units(world), _segments(world)
+    assert len(units) == len(segments)
+    assert (units["PART_COUNT"] == 1).all() and (segments["MU_PART"] == 1).all()
+    assert (segments["unit_id"] == segments["leto_unit_id"]).sum() + \
+        int(_speckle_qa(world)[["merged_same_owner", "merged_other_owner", "merged_riparian"]].sum()) \
+        == len(segments)
+
+
+def _proximity_qa(world):
+    return pd.read_csv(world["run_dir"] / "qa" / "leto" / "proximity.csv",
+                       dtype={"county_fips": str}).set_index("county_fips").loc[ALPHA]
+
+
+def test_the_proximity_qa_reports_merges_distances_multipart_units_and_small_stands_left(world):
+    _with_two_corporate_patches(world)
+    _run(world, settings=_proximity_settings())
+
+    qa = _proximity_qa(world)
+    assert qa["small_stand_action"] == "proximity_merge"
+    assert qa["proximity_merges"] >= 1
+    assert 0.0 < qa["maximum_merge_distance_meters"] <= 60.0
+    assert qa["multipart_management_units"] >= 1
+    assert qa["small_stands_remaining"] >= 0
+    for column in ("average_merge_distance_meters", "average_segments_per_multipart_unit",
+                   "chain_flagged_units", "maximum_observed_span_meters"):
+        assert column in qa.index
+    merges = pd.read_csv(world["run_dir"] / "leto" / ALPHA / "qa" / "proximity_merges.csv")
+    assert len(merges) == qa["proximity_merges"]
+    assert {"SOURCE_SEG_ID", "TARGET_SEG_ID", "DISTANCE_METERS", "AGE_DIFFERENCE"} <= set(merges)
+
+
+def test_without_proximity_the_qa_reports_no_merge_and_the_small_stands_left(world):
+    _with_two_corporate_patches(world)
+    _run(world, settings=_with_action(SmallStandAction.RETAIN))
+
+    qa = _proximity_qa(world)
+    assert qa["small_stand_action"] == "retain"
+    assert (qa["proximity_merges"], qa["multipart_management_units"]) == (0, 0)
+    assert qa["small_stands_remaining"] >= 2                      # the two patches at least
+
+
+def test_a_proximity_run_keeps_its_acres(world):
+    _with_two_corporate_patches(world)
+    _run(world, settings=_proximity_settings())
+
+    line = _accounting(world)
+    assert abs(line["drift_acres"]) <= 0.1
+    assert line["segments"] >= line["units"]
 
 
 # ── invariants ─────────────────────────────────────────────────────────────────────────

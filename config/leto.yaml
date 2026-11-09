@@ -10,6 +10,13 @@
 #   two shared edges for the similar merge, 40 iterations, 1% convergence.
 # small_stands.remaining_small_stand_action: upstream's key. Upstream defaults to `retain`
 #   when it is unset, so every region states it (#168).
+# small_stands proximity limits, read only under `proximity_merge` (#169,
+#   pipeline.leto_proximity): candidates within maximum_distance_meters, of the same owner
+#   (require_same_ownership) and dominant forest type (require_same_forest_type), a group
+#   capped at maximum_combined_acres (at least segmentation.minimum_stand_acres); a small stand
+#   with no candidate is kept, or fails the county when retain_when_no_candidate is false.
+#   Values are upstream's defaults (configs/maine_test.py), stated so the limits sit in config.
+# proximity_chain_qa.warning_chain_ratio: upstream's chain QA warning, span / distance.
 # riparian: FCode -> [label, buffer feet] per NHD layer (pipeline.leto_riparian.BufferRules).
 #   Florida's are LETO's first-pass rules (legacy 02_segment_treemap.py), plus FCode 55800
 #   (artificial path) at 75 ft on flowlines: the stand-in for NHDArea river areas until
@@ -42,6 +49,13 @@ regions:
       similar_merge_min_shared_edges: 2
     small_stands:
       remaining_small_stand_action: force_merge
+      maximum_distance_meters: 60.0
+      require_same_ownership: true
+      require_same_forest_type: true
+      maximum_combined_acres: 300.0
+      retain_when_no_candidate: true
+    proximity_chain_qa:
+      warning_chain_ratio: 2.0
     riparian:
       flowline:
         46000: ["Unclassified Stream", 35.0]

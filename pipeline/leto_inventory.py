@@ -274,7 +274,7 @@ def build_inventory(units, weights: pd.DataFrame, fia_trees: pd.DataFrame,
     """LETO Stage 4 for single-part management units.
 
     ``units``: a projected GeoDataFrame with MU_ID, Acres, STDAGE_MEAN and DB_GROUP.
-    ``weights``: unfiltered MU_ID x PLT_CN donor weights (`leto_donors.expand_to_units`).
+    ``weights``: unfiltered MU_ID x PLT_CN donor weights (`leto_proximity.unit_weights`).
     """
     stands = prepare_stands(units, inventory_year=inventory_year, variant=variant,
                             state=state)

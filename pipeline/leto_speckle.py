@@ -19,6 +19,9 @@ less ``shared_edge_bonus`` × shared edges, where a shared edge is :attr:`MergeC
 metres of common boundary. Ties go to the lower ``unit_id`` (``<FIPS>-<n>``, by ``n``). The
 merge repeats, smallest speckle first, until no speckle can merge.
 
+A unit may be multipart (LETO's ``proximity_merge``, #169): its whole ``Acres`` are measured
+against the minimum, and any of its parts' edges count as its edges.
+
 A merge never crosses a county line and riparian area never joins a managed unit. Masked
 units (Harris 1-2) neither merge nor receive. The absorbed area takes the receiving unit's row
 (parent stand, owner and unit class, representative plot, age), so donor weights follow its
@@ -96,6 +99,7 @@ class SpeckleResult:
     units: gpd.GeoDataFrame
     qa: pd.DataFrame                           # one row per county
     deleted: gpd.GeoDataFrame                  # speckle MERGE_DELETE removed, as it stood
+    receiver: pd.Series                        # each input unit_id -> its unit_id now; None: deleted
 
 
 def _order(unit_ids: pd.Series) -> np.ndarray:
@@ -130,7 +134,7 @@ class _Merger:
     """Union-find over units: a component is its root unit's row, with the summed acres."""
 
     def __init__(self, units: gpd.GeoDataFrame, traits: pd.DataFrame, cost: MergeCost,
-                 minimum: float):
+                 minimum: float, key: str):
         self.owner = units["owner_class"].to_numpy()
         self.unit_class = units["unit_class"].to_numpy()
         self.acres = units["Acres"].to_numpy(dtype=float).copy()
@@ -138,7 +142,7 @@ class _Merger:
         self.open = self.owner != MASKED
         self.parent = np.arange(len(units))
         self.minimum, self.cost_terms = minimum, cost
-        rows = traits.reindex(units["SEG_ID"].to_numpy())
+        rows = traits.reindex(units[key].to_numpy())
         self.continuous = [n for n in cost.weights if n != FORTYPCD]
         self.traits = rows[self.continuous].to_numpy(dtype=float)
         self.forest_type = rows[FORTYPCD].to_numpy()
@@ -264,25 +268,34 @@ def _qa(before: gpd.GeoDataFrame, after: gpd.GeoDataFrame, deleted: gpd.GeoDataF
     return pd.DataFrame(rows)
 
 
+def _receiver(units: gpd.GeoDataFrame, root: np.ndarray, deleted: gpd.GeoDataFrame) -> pd.Series:
+    ids = units["unit_id"].to_numpy()
+    now = pd.Series(ids[root], index=pd.Index(ids, name="unit_id"), dtype=object)
+    return now.where(~now.isin(set(deleted["unit_id"])), None)
+
+
 def merge_speckle(units: gpd.GeoDataFrame, traits: pd.DataFrame, settings: SpeckleSettings,
-                  cost: MergeCost) -> SpeckleResult:
+                  cost: MergeCost, *, key: str = "SEG_ID") -> SpeckleResult:
     """Merge each speckle of ``units`` into a neighbour; return the units and their QA table.
 
-    ``units`` needs ``unit_id``, ``county_fips``, ``SEG_ID``, ``owner_class``, ``unit_class``,
-    ``Acres`` and a metric CRS. ``traits`` is indexed by ``SEG_ID``: the parent stand's
-    standardized continuous traits (the keys of ``cost.weights`` but ``FORTYPCD``) and its
-    dominant ``FORTYPCD``.
+    ``units`` needs ``unit_id``, ``county_fips``, ``owner_class``, ``unit_class``, ``Acres``,
+    ``key`` and a metric CRS; a unit may be multipart, and its ``Acres`` are measured whole.
+    ``traits`` is indexed by ``key`` (by default ``SEG_ID``, the parent stand): standardized
+    continuous traits (the keys of ``cost.weights`` but ``FORTYPCD``) and dominant ``FORTYPCD``.
     """
     minimum = settings.minimum_unit_acres
     none = units.iloc[:0]
     if settings.action is SpeckleAction.KEEP or units.empty:
-        return SpeckleResult(units, _qa(units, units, none, None, minimum), none)
+        return SpeckleResult(units, _qa(units, units, none, None, minimum), none,
+                             _receiver(units, np.arange(len(units)), none))
     units = units.reset_index(drop=True)
-    merger = _Merger(units, traits, cost, minimum)
+    merger = _Merger(units, traits, cost, minimum, key)
     merger.run()
-    merged = _dissolve(units, merger.roots(), merger.acres)
+    root = merger.roots()
+    merged = _dissolve(units, root, merger.acres)
     deleted = none
     if settings.action is SpeckleAction.MERGE_DELETE:
         left = (merged["owner_class"] != MASKED) & (merged["Acres"] < minimum)
         merged, deleted = merged[~left].reset_index(drop=True), merged[left].reset_index(drop=True)
-    return SpeckleResult(merged, _qa(units, merged, deleted, merger, minimum), deleted)
+    return SpeckleResult(merged, _qa(units, merged, deleted, merger, minimum), deleted,
+                         _receiver(units, root, deleted))

@@ -52,16 +52,12 @@ class SmallStandAction(StrEnum):
     FORCE_MERGE = "force_merge"   # verified baseline: merge with no maximum-size cap
     RETAIN = "retain"
     DELETE = "delete"
+    PROXIMITY_MERGE = "proximity_merge"   # retain here; grouped after polygons (leto_proximity)
 
 
-# Upstream's allowed values (config.py load_config): ours plus proximity_merge, which is #169.
-PROXIMITY_MERGE = "proximity_merge"
-UPSTREAM_SMALL_STAND_ACTIONS = frozenset({*(a.value for a in SmallStandAction), PROXIMITY_MERGE})
+# Upstream's allowed values (config.py load_config).
+UPSTREAM_SMALL_STAND_ACTIONS = frozenset(a.value for a in SmallStandAction)
 UPSTREAM_DEFAULT_ACTION = SmallStandAction.RETAIN
-
-
-class ProximityMergeNotPorted(ValueError):
-    """``proximity_merge`` is a valid upstream action that ARTEMIS has not ported (#169)."""
 
 
 def small_stand_action(small_stands: dict | None, segmentation: dict | None) -> SmallStandAction:
@@ -69,8 +65,7 @@ def small_stand_action(small_stands: dict | None, segmentation: dict | None) -> 
 
     ``small_stands.remaining_small_stand_action`` takes precedence over the legacy
     ``segmentation`` key; with neither, upstream's default ``retain``. The value is lowercased
-    and stripped; anything outside upstream's four actions fails closed, and ``proximity_merge``
-    fails closed as not yet ported.
+    and stripped; anything outside upstream's four actions fails closed.
     """
     legacy = (segmentation or {}).get("remaining_small_stand_action", UPSTREAM_DEFAULT_ACTION)
     raw = (small_stands or {}).get("remaining_small_stand_action", legacy)
@@ -78,9 +73,6 @@ def small_stand_action(small_stands: dict | None, segmentation: dict | None) -> 
     if action not in UPSTREAM_SMALL_STAND_ACTIONS:
         raise ValueError("small_stands.remaining_small_stand_action must be one of "
                          f"{sorted(UPSTREAM_SMALL_STAND_ACTIONS)}.")
-    if action == PROXIMITY_MERGE:
-        raise ProximityMergeNotPorted("small_stands.remaining_small_stand_action "
-                                      "'proximity_merge' is not ported yet (#169)")
     return SmallStandAction(action)
 
 
@@ -553,7 +545,10 @@ def resolve_small_stands(labels, feature_arrays, forest_type, ownership, minimum
     FORCE_MERGE reruns the small-segment merge with no maximum-size cap; ownership is still
     a hard boundary, so a fragment with no same-owner neighbour is kept, never deleted.
     RETAIN keeps every segment; DELETE zeroes those under ``minimum_cells`` and reports them.
-    Every action then splits disconnected segments and renumbers, as upstream's branches do.
+    PROXIMITY_MERGE keeps them too: upstream groups them after polygon creation
+    (:mod:`pipeline.leto_proximity`). Every action then splits disconnected segments and
+    renumbers, as upstream's branches do; upstream's ``proximity_merge`` branch skips both, so
+    here a disconnected segment's parts are separate parent stands before the grouping.
     """
     action = SmallStandAction(action)
     deleted = DeletedSmallStands()

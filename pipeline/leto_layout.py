@@ -5,8 +5,8 @@ Every scheduled unit is its own FVS stand, ``STAND_ID`` = ``STAND_CN`` = its ``u
 
 - **Trees** (:func:`pipeline.leto_inventory.build_inventory`): the live FIA trees of the unit's
   donor plots, ``TREE_COUNT`` = ``TPA_UNADJ`` x weight, species through the FVS crosswalk, HT
-  falling back to ACTUALHT. A unit's donor weights are its parent stand's
-  (:func:`pipeline.leto_donors.expand_to_units`), filtered at the unit as LETO does. A young
+  falling back to ACTUALHT. A unit's donor weights are its parent stands' combined by its
+  pieces' acres (:func:`pipeline.leto_proximity.unit_weights`), filtered at the unit as LETO does. A young
   plot (``Y<ID>``, ADR 0003) is a donor like any other, with its own trees from
   ``young_plots/``. A unit with no usable live tree takes the whole tree list of its nearest
   unit that has one.
@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pipeline import leto_database, leto_donors, leto_inventory
+from pipeline import leto_database, leto_inventory
 from pipeline.leto_database import DatabaseMode
 from pipeline.leto_riparian import RIPARIAN, UPLAND
 from pipeline.leto_speckle import UnitClass
@@ -60,13 +60,16 @@ def unit_stdage_means(units: pd.DataFrame, parent_age: pd.Series) -> pd.Series:
     """Each ``unit_id``'s acre-weighted mean of its rows' parent-stand (``SEG_ID``) ages.
 
     Upstream's ``read_stand_polygons``: rows without an age are left out of the mean; a unit
-    with none has no mean.
+    with none has no mean. A unit whose known rows share one age has that age exactly.
     """
     age = units["SEG_ID"].map(parent_age).astype(float)
     acres = units["Acres"].astype(float)
     known = age.notna()
     keys = units.loc[known, "unit_id"]
     mean = (age * acres)[known].groupby(keys).sum() / acres[known].groupby(keys).sum()
+    by_unit = age[known].groupby(keys)
+    same = by_unit.min() == by_unit.max()
+    mean[same] = by_unit.min()[same]
     return mean.reindex(pd.unique(units["unit_id"]))
 
 
@@ -86,21 +89,25 @@ def young_donor_trees(trees: pd.DataFrame, prefix: str) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-def build(units, parent_weights: pd.DataFrame, parent_age: pd.Series, donor_trees: pd.DataFrame,
+def build(units, unit_weights: pd.DataFrame, unit_age: pd.Series, donor_trees: pd.DataFrame,
           species_lookup: Mapping[str, str], minimum_weight: float) -> leto_inventory.Inventory:
-    """LETO stage 4 for the scheduled ``units`` (a projected GeoDataFrame, ``unit_id`` ``<FIPS>-<n>``).
+    """LETO stage 4 for the scheduled ``units`` (a projected GeoDataFrame, one row per
+    ``unit_id`` ``<FIPS>-<n>``).
 
-    ``parent_weights``: unfiltered ``SEG_ID`` x ``PLT_CN`` donor weights. ``donor_trees``: the
+    ``unit_weights``: unfiltered ``unit_id`` x ``PLT_CN`` donor weights; ``unit_age``: each
+    unit's mean stand age (:func:`unit_stdage_means`), by ``unit_id``. ``donor_trees``: the
     donors' TREE rows (:data:`TREE_FIELDS`). Fails closed (:class:`UnitsWithoutTrees`) on a
     unit no imputation could reach.
     """
     frame = units.assign(
         MU_ID=units["unit_id"].str.rsplit("-", n=1).str[1].astype("int64"),
         STAND_ID=units["unit_id"], ParentSEG_ID=units["SEG_ID"],
-        STDAGE_MEAN=units["unit_id"].map(unit_stdage_means(units, parent_age)),
-        DB_GROUP=database_groups(units))
-    weights = leto_donors.expand_to_units(
-        parent_weights, frame[["MU_ID", "SEG_ID"]].rename(columns={"SEG_ID": "PARENT_SEG"}))
+        STDAGE_MEAN=units["unit_id"].map(unit_age), DB_GROUP=database_groups(units))
+    weights = unit_weights[unit_weights["unit_id"].isin(set(units["unit_id"]))].drop(
+        columns="unit_id")
+    missing = sorted(set(units["unit_id"]) - set(unit_weights["unit_id"]))
+    if missing:
+        raise ValueError(f"Management units without donor weights: {missing[:20]}")
     inventory = leto_inventory.build_inventory(frame.drop(columns="SEG_ID"), weights, donor_trees,
                                                species_lookup, minimum_weight=minimum_weight)
     if not inventory.still_missing.empty:

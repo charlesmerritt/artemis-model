@@ -18,7 +18,7 @@ relative to the LETO repo (`LETO_v1_project/leto/…`) or to this repo.
 
 | # | Stage | LETO v1 (truth) | ARTEMIS today | Effect |
 |---|---|---|---|---|
-| 1 | 2 small stands | After the similar merge, `small_stands.remaining_small_stand_action` (over the legacy `segmentation` key, else `retain`; lowercased, stripped, one of four: `config.py:96-136`) picks the branch (`stage2_segmentation.py:2134-2166`). `force_merge` runs `merge_small_segments(..., maximum_cells=None)`: ownership-compatible, no size cap; isolated fragments with no neighbour are **kept**. `retain` keeps every segment. `delete` zeroes them (`delete_small_segments`) and logs the segments, cells and acres. Each branch then splits disconnected segments and renumbers. AGENTS.md: "Prefer preserving acreage over deleting stands." | Matches for `force_merge`, `retain` and `delete` (#168): `leto_ca.small_stand_action` reads the key as upstream does, `resolve_small_stands` returns `delete`'s counts, and the `leto` stage writes them to `qa/leto/area_accounting.csv` as `deleted_small_stands`, `deleted_small_stand_cells` and `deleted_small_stand_acres`. Florida states `force_merge`. `proximity_merge` fails closed (#169). | Explained the FL5 run's 1.3-ac median parent stand before `force_merge`. Differences: see "Small-stand gaps". |
+| 1 | 2 small stands | After the similar merge, `small_stands.remaining_small_stand_action` (over the legacy `segmentation` key, else `retain`; lowercased, stripped, one of four: `config.py:96-136`) picks the branch (`stage2_segmentation.py:2134-2166`). `force_merge` runs `merge_small_segments(..., maximum_cells=None)`: ownership-compatible, no size cap; isolated fragments with no neighbour are **kept**. `retain` keeps every segment. `delete` zeroes them (`delete_small_segments`) and logs the segments, cells and acres. Each branch then splits disconnected segments and renumbers. AGENTS.md: "Prefer preserving acreage over deleting stands." | Matches for `force_merge`, `retain` and `delete` (#168): `leto_ca.small_stand_action` reads the key as upstream does, `resolve_small_stands` returns `delete`'s counts, and the `leto` stage writes them to `qa/leto/area_accounting.csv` as `deleted_small_stands`, `deleted_small_stand_cells` and `deleted_small_stand_acres`. Florida states `force_merge`. `proximity_merge` is ported (#169): see "Proximity merge". | Explained the FL5 run's 1.3-ac median parent stand before `force_merge`. Differences: see "Small-stand gaps". |
 | 2 | 2 CA config | Maine-verified: `maximum_iterations` 40, `convergence_threshold` 0.01, `shared_edge_bonus` **0.2**, `similar_merge_min_shared_edges` **2** | `DEFAULT_CFG`: 100, 0.001, 0.1, 1 (the legacy values plus our own tightening) | Different stands. The 100/0.001 values are ours alone; neither LETO version uses them. |
 | 3 | 1 attributes | STDAGE, FORTYPCD, BALIVE from the dominant FIA COND (`COND_STATUS_CD=1`, max `CONDPROP_UNADJ`, CONDID tie-break). TPA and QMD from live FIA TREE rows (`STATUSCD=1`, `DIA>0`, `TPA_UNADJ>0`) in that condition. The TreeMap RAT is a fallback only (`stage1_rasters.py:123-351, 397-650`). | FORTYPCD, BALIVE, QMD, TPA_LIVE from the TreeMap VAT; only STDAGE from COND (`cellular_automata._attribute_grids`, `02_build_attributes.py`) | Different feature rasters on every pixel. |
 | 4 | 1 gaps | A missing attribute is filled from the **nearest assigned cell** (`distance_transform_edt`), and provenance is written to QA rasters (`stage1_rasters.py:742-763`) | Missing STDAGE is filled with the landscape **median** | Wrong fill rule. |
@@ -148,7 +148,7 @@ It needs `ME_5_Co_Dissolve`, the ME/MA/NH/NY FIA TREE and COND CSVs, and NHDPlus
   `LETO_v1_project/data/templates/FVS_Data_Blank.db`. It holds four tables:
   `FVS_StandInit`, `FVS_TreeInit`, `FVS_PlotInit` and `FVS_GroupAddFilesAndKeywords`.
   `leto_database` still writes only the first two, into a fresh SQLite file.
-- **Small-stand gaps (closed by #168 except `proximity_merge`).** `retain`, `delete` and
+- **Small-stand gaps (closed by #168 and #169).** `retain`, `delete` and
   `proximity_merge` already existed at `d2b92ee`, unchanged at `13bcf13`
   (`stage2_segmentation.py:2148-2166`, `small_stands.plan_proximity_merges`).
   - Done: `leto_ca.small_stand_action` reads `small_stands.remaining_small_stand_action`, then
@@ -169,15 +169,14 @@ It needs `ME_5_Co_Dissolve`, the ME/MA/NH/NY FIA TREE and COND CSVs, and NHDPlus
   - Every region in `config/leto.yaml` states its action; Florida's is `force_merge`, as
     upstream's verified Maine config. `tests/test_leto_stage.py` checks no region relies on
     upstream's `retain` default.
-  - Differences. `proximity_merge` is a valid upstream value but raises
-    `ProximityMergeNotPorted` (#169), where upstream defers it to after polygon creation.
-    Upstream logs its "remaining undersized-segment diagnostic" (no neighbour, size-blocked,
+  - Differences. Upstream logs its "remaining undersized-segment diagnostic" (no neighbour, size-blocked,
     otherwise unmerged) before the action; ours does not. Deleted acres are planar cell acres,
     as upstream's log reports them, while parent and unit acres are geodesic.
 - **Upstream tests.** `tests/test_leto_upstream.py` runs upstream's `test_weight_math.py` (1)
   and `test_imputation_qa.py` (3) verbatim against `leto_donors` and `leto_imputation_qa`.
-  The other 11 wait for their ports: `test_small_stands.py` and `test_management_units.py`
-  (#169), and `test_config.py` (the regional LETO config).
+  `test_small_stands.py` (4) and `test_management_units.py` (6) run verbatim against
+  `leto_small_stands` and `leto_management_units` (#169). `test_config.py` waits for the
+  regional LETO config's port.
 - **Divergences found while porting them.** The ported tests caught only the first; the
   rest came from reading the two modules against upstream.
   - Fixed: `leto_donors.filter_weights` required a `key`. It now defaults to `SEG_ID`.
@@ -188,3 +187,39 @@ It needs `ME_5_Co_Dissolve`, the ME/MA/NH/NY FIA TREE and COND CSVs, and NHDPlus
   - Recorded: `leto_imputation_qa` reads IDs through `as_id_series`, not `astype(str)` and a
     strip-".0" cleanup. A float-damaged control number raises, and a float `STAND_ID` 1.0
     reads as "1". The ported tests pass unchanged.
+
+## Proximity merge (#169)
+
+- **Ported verbatim.** `pipeline/leto_small_stands.py` (`plan_proximity_merges`,
+  `aggregate_management_unit_weights`) and `pipeline/leto_management_units.py`
+  (`assign_final_mu_ids`, `assign_mu_parts`, the chain QA, `validate_final_units`) are upstream's
+  modules at the pin; `tests/test_leto_upstream.py` runs their tests unchanged.
+- **The geometry around them** (`pipeline/leto_proximity.py`) follows `stage2_segmentation.
+  apply_proximity_merge` and `spatial_management_units.finalize_management_outputs`: every
+  parent stand's acres, Harris code, dominant forest type and mean age, its neighbours within
+  `maximum_distance_meters`, then one unit ID per proximity group and compatibility class
+  after the riparian split, its pieces numbered as parts. Limits are the region's
+  `small_stands` keys (upstream's names and defaults, `config.py`), read into enums.
+- **Donor weights.** Each unit's are its parent stands' combined by its pieces' acres
+  (upstream's `stage3_crosswalk` path); its representative plot is the largest, ties to the
+  lower TreeMap value. Under the LETO layout these weights and the acre-weighted age feed
+  stage 4, as upstream's per-MU weights do.
+- **Differences.**
+  - Under `proximity_merge` the CA output is split into connected segments and renumbered,
+    as for `retain`; upstream's branch skips both, so a disconnected segment would be one
+    parent there and its parts separate parents here.
+  - Distances are planar metres in the project CRS (EPSG:5070 Albers); upstream's near table
+    is geodesic. Candidate pairs are taken from the small parents only, the only sources
+    upstream's planner reads.
+  - Compatibility classes are `MGMT_CLASS` (our `unit_class`), `DB_GROUP`, `OWN_CODE` and
+    `RIPARIAN`; ARTEMIS never makes `MGMT_TYPE`, `OWN_TYPE` or `WETLAND`.
+  - With proximity off, upstream keeps `BIO_MU_ID` = `MU_ID` per piece, as we do; our
+    `MU_ID`s number the pieces by parent stand then riparian flag.
+  - A unit of one parent stand keeps that parent's weights, traits and age exactly, where
+    upstream's combination re-weights them by acres (equal up to float rounding).
+  - Upstream dissolves units and then writes acre-weighted biology per unit; ours keeps the
+    representative plot's attributes (the plot layout) and computes the acre-weighted traits
+    only for the speckle cost and the LETO layout's age.
+- **After LETO.** The speckle merge (ADR 0005) measures a whole multipart unit against the
+  minimum unit area. A unit that takes in speckle keeps its own row, weights and age; the
+  `segments` layer records each piece's LETO unit (`leto_unit_id`) and its unit now.

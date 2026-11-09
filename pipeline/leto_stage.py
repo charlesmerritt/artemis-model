@@ -34,20 +34,29 @@ county's cells are read, so no parent stand crosses it. In order:
    trees; one missing from those tables is :class:`UnknownYoungPlotIds`.
 3. **The cellular automata, then the small-stand action** (:func:`pipeline.leto_ca.segment`):
    the region's ``small_stands.remaining_small_stand_action``, read as upstream reads it
-   (:func:`pipeline.leto_ca.small_stand_action`). ``delete`` leaves its cells in no parent stand.
+   (:func:`pipeline.leto_ca.small_stand_action`). ``delete`` leaves its cells in no parent stand;
+   ``proximity_merge`` keeps the small ones for step 4.
    Owner classes are hard edges: the repaired Harris raster, its nodata read as unknown (0),
    as LETO does. Harris 1-2 stay their own classes, so they can be masked (LETO folds them into 0).
-4. **Polygons**, one per parent stand.
-5. **The vector riparian split** (:mod:`pipeline.leto_riparian`) on the region's hydrography.
-6. **Parent-stand donor weights** (:mod:`pipeline.leto_donors`): donors under the minimum
-   weight are dropped, but each parent keeps its largest.
-7. **The representative plot**: each parent's largest donor plot, ties to the lower TreeMap
-   value. Every unit of a parent runs on it.
+4. **Polygons**, one per parent stand. Under ``proximity_merge``, LETO's proximity groups
+   (:mod:`pipeline.leto_proximity`): smallest parents first, each joins the candidate within
+   60 m of the same owner and dominant forest type, capped at 300 ac combined, ranked by
+   mean-age difference, then distance, then ID (limits from the region's ``small_stands``).
+5. **The vector riparian split** (:mod:`pipeline.leto_riparian`) on the region's hydrography,
+   then **LETO's final unit identity**: one unit per proximity group and compatibility class
+   (owner, riparian, database group, management class), its pieces numbered as parts. Without
+   ``proximity_merge`` every single-part piece is its own unit.
+6. **Donor weights** (:mod:`pipeline.leto_donors`): each parent's pixel shares, combined by
+   its pieces' acres within each unit (:func:`pipeline.leto_proximity.unit_weights`). The
+   parent weights under the minimum weight are dropped for ``donor_weights.csv``, but each
+   parent keeps its largest.
+7. **The representative plot**: each unit's largest combined donor plot, ties to the lower
+   TreeMap value; a unit of one parent stand runs on that parent's largest.
 8. **Speckle merge** (:mod:`pipeline.leto_speckle`, ADR 0005): a unit under the region's
-   minimum unit area joins a neighbour (same owner and class, then same class, then, if
-   managed, riparian), chosen by ``force_merge``'s cost on its parent stand's traits
-   (:func:`parent_traits`). It takes the receiver's row, so its parent stand, representative
-   plot and age; ``keep`` leaves LETO's units as they are.
+   minimum unit area, measured whole if multipart, joins a neighbour (same owner and class,
+   then same class, then, if managed, riparian), chosen by ``force_merge``'s cost on its
+   parent stands' traits weighted by acres (:func:`parent_traits`). It takes the receiver's
+   row, so its representative plot and age; ``keep`` leaves LETO's units as they are.
 9. **The plot layout's FVS tables** (:func:`plot_inventory`), one stand per distinct
    representative plot of a scheduled unit. An FIA plot is its extract rows, anchored to 2022
    as the FL5 golden run was. A young plot is its neighbour plot's StandInit row (the site)
@@ -65,7 +74,8 @@ county's cells are read, so no parent stand crosses it. In order:
    ACTUALHT; a unit with no usable live tree takes its nearest unit's
    (:class:`pipeline.leto_layout.UnitsWithoutTrees` if none can). Its ``AGE``, and its
    ``stand_age``, is the acre-weighted mean of its parent stands' mean ``STDAGE``
-   (:func:`parent_ages`), rounded half to even.
+   (:func:`parent_ages`), rounded half to even. Its weights and age are those of its LETO unit,
+   before the speckle merge.
 
 Writes into ``<run_dir>/leto/<FIPS>/``, per county: ``parent_stands.tif``,
 ``donor_weights.csv`` (its filtered parent donor weights), ``units.gpkg``, ``stands.csv``,
@@ -93,14 +103,23 @@ finished county (:func:`assemble`), in FIPS order:
   only under ``database.mode`` ``grouped`` or ``both`` (``config/leto.yaml``).
 - ``qa/leto/imputation_diagnostics.csv``, ``imputation_summary.csv``, ``missing_species.csv``,
   ``missing_species_by_stand.csv``: the LETO layout's stage 4 QA, per county.
-- ``management_units.gpkg``, layer ``units``: every unit, masked ones too, with its ``Acres``
-  (geodesic, as LETO), ``owner_class`` and ``unit_class``. Unit IDs are ``<FIPS>-<n>``.
+- ``management_units.gpkg``, layer ``units``: one feature per unit, masked ones too, with its
+  ``Acres`` (geodesic, as LETO), ``owner_class``, ``unit_class``, ``BIO_MU_ID`` (its proximity
+  group), ``SEG_ID`` (its first part's parent stand), ``SEG_IDS`` and ``PART_COUNT``. Unit IDs
+  are ``<FIPS>-<n>``. Layer ``segments``: its single-part pieces, each with its ``unit_id``,
+  ``leto_unit_id`` (LETO's unit, before the speckle merge), ``MU_PART``, ``BIO_MU_ID``,
+  parent stand, owner, riparian flag and ``Acres``.
 - ``qa/leto/area_accounting.csv``: per county, forest cells, the stands, cells and acres the
-  ``delete`` small-stand action removed (zero under the other actions), parent stands and units, the unit
-  acres split into managed, unknown-flagged (managed, Harris 0), riparian and masked, the drift,
+  ``delete`` small-stand action removed (zero under the other actions), parent stands,
+  segments and units, the unit acres split into managed, unknown-flagged (managed, Harris 0), riparian and masked, the drift,
   the scheduled acres with no usable stand age, and the forest cells the Harris raster has no
   value for (read as unknown). A drift over
   :data:`MAX_DRIFT_ACRES` fails the county (:class:`AcreDrift`) before anything is written.
+- ``qa/leto/proximity.csv``: per county, the small-stand action, LETO's proximity merges and
+  their mean and largest distance, its multipart proximity groups and units (before the
+  speckle merge), segments per multipart unit, upstream's chain QA counters and the parent
+  stands still under the minimum stand size. Per county, ``qa/proximity_merges.csv`` (each
+  merge) and ``qa/proximity_chain.csv`` (each unit's span).
 - ``qa/leto/speckle.csv``: per county, units and speckle before and after, merges and their
   acres by step, the managed acres turned grow-only, the speckle kept, and the acre drift
   per owner class (``owner_drift_acres_<class>``) that step 2 moves. Under ``merge_delete``
@@ -141,8 +160,9 @@ from rasterio.windows import Window
 from shapely.geometry import box, shape
 
 from pipeline import leto_attributes as la
-from pipeline import leto_ca, leto_donors, leto_layout, leto_qa, leto_riparian
+from pipeline import leto_ca, leto_donors, leto_layout, leto_proximity, leto_qa, leto_riparian
 from pipeline.leto_database import DatabaseMode, SamplingDesign
+from pipeline.leto_proximity import ProximityPlan, ProximitySettings
 from pipeline.leto_speckle import MergeCost, SpeckleSettings, UnitClass, merge_speckle
 from pipeline.harvest_eligibility import usable_stand_age
 from pipeline.ids import as_id_series, read_id_csv
@@ -175,6 +195,7 @@ CONFIG_PATH = REPO / "config" / "leto.yaml"
 OWNERSHIP = "nwos2022_improved.tif"          # the repaired Harris raster
 UNITS_GPKG = "management_units.gpkg"
 UNITS_LAYER = "units"
+SEGMENTS_LAYER = "segments"
 RECORD = LETO_RECORD
 COUNTY_DIR = "leto"
 PARENT_STANDS = "parent_stands.tif"
@@ -183,10 +204,13 @@ COUNTY_UNITS = "units.gpkg"
 QA_DIR = Path("qa") / "leto"
 AREA_ACCOUNTING = leto_qa.AREA_ACCOUNTING
 SPECKLE = leto_qa.SPECKLE
+PROXIMITY = "proximity.csv"                  # per county: LETO's proximity merge and its units
+PROXIMITY_MERGES = "proximity_merges.csv"    # in <county>/qa/: upstream's merge rows
+PROXIMITY_CHAIN = "proximity_chain.csv"      # in <county>/qa/: upstream's chain QA per unit
 REPAIRED_RASTERS = (IMPROVED_TREEMAP, PROVENANCE, OWNERSHIP)
 COUNTY_OUTPUTS = (PARENT_STANDS, DONOR_WEIGHTS, COUNTY_UNITS, STANDS, FVS_DATA, AREA_ACCOUNTING,
-                  SPECKLE, *leto_qa.COUNTY_QA)
-OUTPUT_VERSION = 5                            # bump when a county's outputs change shape: redoes every county
+                  SPECKLE, PROXIMITY, *leto_qa.COUNTY_QA)
+OUTPUT_VERSION = 6                            # bump when a county's outputs change shape: redoes every county
 INV_YEAR = DEFAULT_INV_YEAR                   # every FVS stand starts in TreeMap's year, 2022
 VARIANT = "SN"
 FIA_STAND_INIT, FIA_TREE_INIT = "FVS_STANDINIT_PLOT", "FVS_TREEINIT_PLOT"   # in the extract
@@ -275,6 +299,11 @@ class LetoSettings:
     minimum_plot_weight: float
     speckle: SpeckleSettings
     database_mode: DatabaseMode = DatabaseMode.COMBINED   # the LETO layout's; FVS_Data.db is combined
+    proximity: ProximitySettings = ProximitySettings()    # read only under proximity_merge
+
+    @property
+    def small_stand_action(self) -> leto_ca.SmallStandAction:
+        return leto_ca.SmallStandAction(self.segmentation["remaining_small_stand_action"])
 
     def record(self) -> dict:
         """The settings as JSON, for ``leto.json``."""
@@ -284,7 +313,8 @@ class LetoSettings:
                 "segmentation": {k: str(v) if isinstance(v, StrEnum) else v
                                  for k, v in self.segmentation.items()},
                 "riparian": rules, "minimum_plot_weight": self.minimum_plot_weight,
-                "speckle": self.speckle.record(), "database": {"mode": self.database_mode.value}}
+                "speckle": self.speckle.record(), "database": {"mode": self.database_mode.value},
+                "proximity": self.proximity.record()}
 
 
 def load_settings(county_fips: str, path: Path = CONFIG_PATH) -> LetoSettings:
@@ -302,13 +332,18 @@ def _settings(name: str, spec: dict) -> LetoSettings:
     rules = BufferRules(**{layer: {int(code): (str(label), float(feet))
                                    for code, (label, feet) in spec["riparian"][layer].items()}
                            for layer in ("flowline", "waterbody", "area")})
+    segmentation = {**leto_ca.DEFAULT_CFG, **spec["segmentation"],
+                    "remaining_small_stand_action": action}
+    proximity = ProximitySettings.from_config(spec.get("small_stands"), spec["segmentation"],
+                                              spec.get("proximity_chain_qa"))
+    if action is leto_ca.SmallStandAction.PROXIMITY_MERGE:
+        proximity.check(float(segmentation["minimum_stand_acres"]))
     return LetoSettings(
         region=name, state_fips=spec["state_fips"], inputs=REPO / spec["inputs"],
-        segmentation={**leto_ca.DEFAULT_CFG, **spec["segmentation"],
-                      "remaining_small_stand_action": action},
-        buffer_rules=rules, minimum_plot_weight=float(spec["inventory"]["minimum_plot_weight"]),
+        segmentation=segmentation, buffer_rules=rules,
+        minimum_plot_weight=float(spec["inventory"]["minimum_plot_weight"]),
         speckle=SpeckleSettings.from_config(spec["speckle"]),
-        database_mode=DatabaseMode(spec["database"]["mode"]))
+        database_mode=DatabaseMode(spec["database"]["mode"]), proximity=proximity)
 
 
 # ── step 1: the county's cells ─────────────────────────────────────────────────────────
@@ -555,23 +590,19 @@ def riparian_split(parents: gpd.GeoDataFrame, hydrography: Path, rules: BufferRu
 
 @dataclass(frozen=True)
 class DonorPlots:
-    """Each parent stand's donor weights, before and after the minimum-weight filter, and its
-    representative plot (``TREEMAP_VALUE``, ``PLT_CN``, ``WEIGHT``, indexed by ``SEG_ID``)."""
+    """Each parent stand's donor weights, before and after the minimum-weight filter."""
 
     weights: pd.DataFrame
     kept: pd.DataFrame
-    top: pd.DataFrame
 
 
-def representative_plots(seg: np.ndarray, cells: CountyCells, attrs: Attributes,
-                         settings: LetoSettings) -> DonorPlots:
-    """Donor weights per parent, and each parent's largest kept donor, ties to the lower value."""
+def parent_donors(seg: np.ndarray, cells: CountyCells, attrs: Attributes,
+                  settings: LetoSettings) -> DonorPlots:
+    """Donor weights per parent stand, and those the minimum weight keeps (its largest at least)."""
     value_to_plt = {int(v): attrs.stand_cn(int(v)) for v in attrs.records.index}
     weights = leto_donors.parent_weights(seg, cells.treemap, value_to_plt)
-    kept = leto_donors.filter_weights(weights, settings.minimum_plot_weight, key="SEG_ID")
-    top = (kept.sort_values(["SEG_ID", "WEIGHT", "TREEMAP_VALUE"], ascending=[True, False, True])
-           .drop_duplicates("SEG_ID").set_index("SEG_ID"))
-    return DonorPlots(weights, kept, top[["TREEMAP_VALUE", "PLT_CN", "WEIGHT"]])
+    return DonorPlots(weights, leto_donors.filter_weights(weights, settings.minimum_plot_weight,
+                                                          key="SEG_ID"))
 
 
 def parent_ages(seg: np.ndarray, grids: dict[str, np.ndarray]) -> pd.Series:
@@ -606,28 +637,103 @@ def merge_cost(cells: CountyCells, settings: LetoSettings) -> MergeCost:
                      edge_length=abs(cells.transform.a))
 
 
-def unit_layer(pieces: gpd.GeoDataFrame, top: pd.DataFrame, attrs: Attributes,
-               county: County) -> gpd.GeoDataFrame:
-    """Every piece as a unit: its ID, owner, class and representative plot."""
-    units = pieces.sort_values(["SEG_ID", "RIPARIAN"], kind="stable").reset_index(drop=True)
-    units.insert(0, "unit_id", [f"{county.fips}-{i}" for i in range(1, len(units) + 1)])
-    units.insert(1, "county_fips", county.fips)
-    units.insert(2, "county", county.name)
-    owners = {code: classify_owner({"OWN_CODE": int(code)}) for code in units["OWN_CODE"].unique()}
-    units["owner_class"] = units["OWN_CODE"].map(lambda c: owners[c].owner_class)
-    units["unknown_ownership"] = units["OWN_CODE"].map(lambda c: owners[c].has("unknown_ownership"))
-    units["unit_class"] = np.where(units["RIPARIAN"] == leto_riparian.RIPARIAN,
-                                   UnitClass.RIPARIAN.value, UnitClass.MANAGED.value)
-    rep = units["SEG_ID"].map(top["TREEMAP_VALUE"]).astype(np.int64)
+def proximity_plan(parents: gpd.GeoDataFrame, traits: pd.DataFrame, ages: pd.Series,
+                   settings: LetoSettings) -> ProximityPlan | None:
+    """LETO's proximity groups of the parent stands, under ``proximity_merge`` only.
+
+    ``traits``: :func:`parent_traits` (its dominant ``FORTYPCD``); ``ages``: :func:`parent_ages`.
+    """
+    if settings.small_stand_action is not leto_ca.SmallStandAction.PROXIMITY_MERGE:
+        return None
+    ids = parents["SEG_ID"].to_numpy()
+    traits = pd.DataFrame({"FORTYPCD_DOM": traits["FORTYPCD"].reindex(ids).to_numpy(),
+                           "STDAGE_MEAN": ages.reindex(ids).to_numpy()},
+                          index=pd.Index(ids, name="SEG_ID"))
+    return leto_proximity.plan_groups(parents, traits,
+                                      minimum_acres=float(settings.segmentation["minimum_stand_acres"]),
+                                      settings=settings.proximity)
+
+
+def _classify(pieces: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Each piece's owner class, unknown flag and unit class."""
+    owners = {code: classify_owner({"OWN_CODE": int(code)}) for code in pieces["OWN_CODE"].unique()}
+    return pieces.assign(
+        owner_class=pieces["OWN_CODE"].map(lambda c: owners[c].owner_class),
+        unknown_ownership=pieces["OWN_CODE"].map(lambda c: owners[c].has("unknown_ownership")),
+        unit_class=np.where(pieces["RIPARIAN"] == leto_riparian.RIPARIAN,
+                            UnitClass.RIPARIAN.value, UnitClass.MANAGED.value))
+
+
+def segment_layer(pieces: gpd.GeoDataFrame, plan: ProximityPlan | None,
+                  county: County) -> gpd.GeoDataFrame:
+    """Every single-part piece with its LETO unit identity (:func:`pipeline.leto_proximity.final_identity`)."""
+    segments = leto_proximity.final_identity(_classify(pieces), county.fips,
+                                             groups=plan.groups if plan else None)
+    segments.insert(1, "county_fips", county.fips)
+    segments.insert(2, "county", county.name)
+    return segments
+
+
+def unit_layer(segments: gpd.GeoDataFrame, top: pd.DataFrame, attrs: Attributes) -> gpd.GeoDataFrame:
+    """One feature per unit ID: its pieces dissolved, with its representative plot (``top``, by
+    ``unit_id``) and what follows from it."""
+    units = leto_proximity.dissolve_units(segments).drop(columns=["MU_ID"])
+    rep = units["unit_id"].map(top["TREEMAP_VALUE"]).astype(np.int64)
     young = rep >= NEW_ID_START
     units["tm_id"] = rep
     units["origin"] = np.where(young, Origin.YOUNG_PLOT.value, Origin.TREEMAP.value)
-    units["PLT_CN"] = units["SEG_ID"].map(top["PLT_CN"])
+    units["PLT_CN"] = units["unit_id"].map(top["PLT_CN"])
     units["FORTYPCD"] = rep.map(attrs.records["FORTYPCD"])
     dated = rep.map(attrs.young["STAND_AGE_2022"]) if len(attrs.young) else np.nan
     age = pd.Series(np.where(young, dated, units["PLT_CN"].map(attrs.start_age)), index=units.index)
     units["stand_age"] = age.map(usable_stand_age).astype(float)   # unusable: blank
     return units
+
+
+def after_speckle(segments: gpd.GeoDataFrame, receiver: pd.Series) -> gpd.GeoDataFrame:
+    """The pieces under the units the speckle merge left: ``leto_unit_id`` keeps LETO's unit,
+    ``unit_id`` is the unit holding it now; pieces of deleted speckle are dropped. Parts are
+    renumbered within each unit: its own first, then those it absorbed, by parent stand."""
+    out = segments.rename(columns={"unit_id": "leto_unit_id"}).drop(columns=["MU_ID"])
+    out.insert(0, "unit_id", out["leto_unit_id"].map(receiver))
+    out = out[out["unit_id"].notna()].copy()
+    out["_absorbed"] = out["unit_id"] != out["leto_unit_id"]
+    out = out.sort_values(["unit_id", "_absorbed", "SEG_ID", "MU_PART"], kind="stable")
+    out["MU_PART"] = out.groupby("unit_id", sort=False).cumcount() + 1
+    order = pd.Series(np.arange(len(receiver)), index=receiver.index)
+    out = out.iloc[np.lexsort((out["MU_PART"].to_numpy(),
+                               out["unit_id"].map(order).to_numpy()))]
+    return out.drop(columns="_absorbed").reset_index(drop=True)
+
+
+def proximity_qa(county: County, settings: LetoSettings, parents: gpd.GeoDataFrame,
+                 plan: ProximityPlan | None, chain: dict, segments: gpd.GeoDataFrame) -> dict:
+    """One county's line: LETO's proximity merges and distances, its multipart units (before the
+    speckle merge) and the parent stands still under the minimum stand size."""
+    minimum = float(settings.segmentation["minimum_stand_acres"])
+    parts = segments.groupby("unit_id").size()
+    multipart = parts[parts > 1]
+    plan_qa = plan.qa if plan else {
+        "proximity_merges": 0, "average_merge_distance_meters": 0.0,
+        "maximum_merge_distance_meters": 0.0, "multipart_management_units": 0,
+        "small_stands_remaining": int((parents["Acres"] < minimum).sum()),
+        "total_acres_before": float(parents["Acres"].sum()),
+        "total_acres_after": float(parents["Acres"].sum())}
+    return {"county_fips": county.fips, "small_stand_action": settings.small_stand_action.value,
+            "proximity_merges": plan_qa["proximity_merges"],
+            "average_merge_distance_meters": round(plan_qa["average_merge_distance_meters"], 4),
+            "maximum_merge_distance_meters": round(plan_qa["maximum_merge_distance_meters"], 4),
+            "multipart_proximity_groups": plan_qa["multipart_management_units"],
+            "multipart_management_units": chain["multipart_management_units"],
+            "average_segments_per_multipart_unit": round(float(multipart.mean()), 4)
+            if len(multipart) else 0.0,
+            "chain_flagged_units": chain["chain_flagged_units"],
+            "maximum_observed_span_meters": round(chain["maximum_observed_span_meters"], 4),
+            "average_span_of_multipart_units_meters":
+                round(chain["average_span_of_multipart_units_meters"], 4),
+            "small_stands_remaining": plan_qa["small_stands_remaining"],
+            "total_acres_before": round(plan_qa["total_acres_before"], 4),
+            "total_acres_after": round(plan_qa["total_acres_after"], 4)}
 
 
 def scheduled(units: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -653,7 +759,7 @@ def stand_rows(units: gpd.GeoDataFrame, layout: InventoryLayout = InventoryLayou
 
 def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.GeoDataFrame,
                     county: County, deleted: leto_ca.DeletedSmallStands,
-                    speckle: gpd.GeoDataFrame) -> dict:
+                    speckle: gpd.GeoDataFrame, segments: int = 0) -> dict:
     """One county's line: forest cells → parent stands → units, the unit acres split four ways.
 
     Forest cells the ``delete`` small-stand action removed are in no parent stand; they are
@@ -676,7 +782,7 @@ def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.Ge
             "deleted_small_stand_cells": deleted.cells,
             "deleted_small_stand_acres": round(deleted.acres(cells.cell_acres), 4),
             "parent_stands": len(parents), "parent_stand_acres": round(parent_acres, 4),
-            "units": len(units), "unit_acres": round(unit_acres, 4),
+            "segments": segments, "units": len(units), "unit_acres": round(unit_acres, 4),
             "deleted_speckle": len(speckle), "deleted_speckle_acres": round(speckle_acres, 4),
             "managed_acres": acres(~masked & ~riparian & ~unknown),
             "unknown_flagged_acres": acres(~masked & ~riparian & unknown),
@@ -842,12 +948,16 @@ def donor_trees(extract: Path, plots: pd.Series, attrs: Attributes) -> pd.DataFr
     return pd.concat([trees[list(leto_layout.TREE_FIELDS)], young], ignore_index=True)
 
 
-def unit_inventory(units: gpd.GeoDataFrame, donors: DonorPlots, seg: np.ndarray,
-                   grids: dict[str, np.ndarray], attrs: Attributes, extract: Path,
+def unit_inventory(units: gpd.GeoDataFrame, weights: pd.DataFrame, ages: pd.Series,
+                   donors: DonorPlots, attrs: Attributes, extract: Path,
                    species_lookup: Mapping[str, str], settings: LetoSettings
                    ) -> tuple[leto_layout.CountyInventory, gpd.GeoDataFrame]:
-    """LETO stage 4 for the county's scheduled units; their ``stand_age`` is its ``AGE``."""
-    inventory = leto_layout.build(scheduled(units), donors.weights, parent_ages(seg, grids),
+    """LETO stage 4 for the county's scheduled units; their ``stand_age`` is its ``AGE``.
+
+    ``weights`` and ``ages`` are each LETO unit's, by ``unit_id``: a unit that took in speckle
+    keeps its own, as it keeps its row.
+    """
+    inventory = leto_layout.build(scheduled(units), weights, ages,
                                   donor_trees(extract, donors.weights["PLT_CN"], attrs),
                                   species_lookup, settings.minimum_plot_weight)
     age = units["unit_id"].map(leto_layout.stand_ages(inventory))
@@ -942,25 +1052,34 @@ def run_county(job: CountyJob) -> CountyResult:
                  place.fips, deleted.segments, deleted.cells, deleted.acres(cells.cell_acres))
     clock.lap("segment")
     parents = parent_polygons(seg, cells)
+    traits, ages = parent_traits(seg, cells, grids, settings), parent_ages(seg, grids)
+    plan = proximity_plan(parents, traits, ages, settings)
     clock.lap("polygons")
     pieces = riparian_split(parents, job.region.hydrography, settings.buffer_rules)
     clock.lap("riparian")
-    donors = representative_plots(seg, cells, attrs, settings)
+    segments = segment_layer(pieces, plan, place)
+    chain, chain_summary = leto_proximity.chain_qa(segments, settings.proximity)
+    donors = parent_donors(seg, cells, attrs, settings)
+    weights = leto_proximity.unit_weights(donors.weights, segments)
     clock.lap("donors")
-    speckle = merge_speckle(unit_layer(pieces, donors.top, attrs, place),
-                            parent_traits(seg, cells, grids, settings), settings.speckle,
-                            merge_cost(cells, settings))
+    speckle = merge_speckle(unit_layer(segments, leto_proximity.representative(weights), attrs),
+                            leto_proximity.unit_traits(segments, traits), settings.speckle,
+                            merge_cost(cells, settings), key="unit_id")
     units = speckle.units
     clock.lap("speckle")
     inventory: PlotInventory | leto_layout.CountyInventory
     if job.layout is InventoryLayout.LETO:
-        inventory, units = unit_inventory(units, donors, seg, grids, attrs, extract,
-                                          job.species_lookup, settings)
+        inventory, units = unit_inventory(units, weights,
+                                          leto_layout.unit_stdage_means(segments, ages), donors,
+                                          attrs, extract, job.species_lookup, settings)
     else:
         inventory = plot_inventory(stand_rows(units)["PLT_CN"], attrs, extract)
+    proximity = proximity_qa(place, settings, parents, plan, chain_summary, segments)
+    segments = after_speckle(segments, speckle.receiver)
     stands = stand_rows(units, job.layout)
     clock.lap("inventory")
-    accounting = area_accounting(cells, parents, units, place, deleted, speckle.deleted)
+    accounting = area_accounting(cells, parents, units, place, deleted, speckle.deleted,
+                                 len(segments))
     if abs(accounting["drift_acres"]) > MAX_DRIFT_ACRES:
         raise AcreDrift(f"county {place.fips}: units hold {accounting['unit_acres']} ac, parent "
                         f"stands {accounting['parent_stand_acres']} ac")
@@ -973,10 +1092,12 @@ def run_county(job: CountyJob) -> CountyResult:
     _write_parents(job.out / PARENT_STANDS, seg, cells)
     donors.kept.to_csv(job.out / DONOR_WEIGHTS, index=False)
     units.to_file(job.out / COUNTY_UNITS, layer=UNITS_LAYER, driver="GPKG", mode="w")
+    segments.to_file(job.out / COUNTY_UNITS, layer=SEGMENTS_LAYER, driver="GPKG", mode="w")
     stands.to_csv(job.out / STANDS, index=False)
     inventory.write(job.out / FVS_DATA)
     pd.DataFrame([accounting]).to_csv(job.out / AREA_ACCOUNTING, index=False)
     speckle.qa.to_csv(job.out / SPECKLE, index=False)
+    pd.DataFrame([proximity]).to_csv(job.out / PROXIMITY, index=False)
     clock.lap("write")
     qa = job.out / leto_qa.QA_SUBDIR
     leto_qa.write_qa_cells(qa / leto_qa.QA_CELLS, _forest_type(cells, grids), cells.added_back,
@@ -986,6 +1107,10 @@ def run_county(job: CountyJob) -> CountyResult:
                             parents=parent_table(seg, parents, cells, grids), parent_shapes=parents,
                             settings={k: v for k, v in settings.record().items() if k != "inputs"})
     clock.lap("maps")
+    if plan is not None:
+        plan.merges.to_csv(qa / PROXIMITY_MERGES, index=False)
+    chain.insert(0, "county_fips", place.fips)
+    chain.to_csv(qa / PROXIMITY_CHAIN, index=False)
     leto_qa.write_timings(qa / leto_qa.TIMINGS, place.fips, place.name, clock, job.memory_scope)
     return CountyResult(place.fips, accounting, len(units), len(stands), round(clock.total(), 1))
 
@@ -1172,14 +1297,18 @@ def assemble(run_dir: Path, counties: list[str],
     (run_dir / QA_DIR).mkdir(parents=True, exist_ok=True)
     _concat_csv([d / AREA_ACCOUNTING for d in dirs], run_dir / QA_DIR / AREA_ACCOUNTING)
     _concat_csv([d / SPECKLE for d in dirs], run_dir / QA_DIR / SPECKLE)
+    _concat_csv([d / PROXIMITY for d in dirs], run_dir / QA_DIR / PROXIMITY)
     if layout is InventoryLayout.LETO:
         leto_layout.assemble(dirs, run_dir, run_dir / FVS_DATA, run_dir / QA_DIR)
     else:
         assemble_inventory([d / FVS_DATA for d in dirs]).write(run_dir / FVS_DATA)
-    units = pd.concat([gpd.read_file(d / COUNTY_UNITS, layer=UNITS_LAYER) for d in dirs],
-                      ignore_index=True)
-    units = gpd.GeoDataFrame(units, crs=units.crs)
-    units.to_file(run_dir / UNITS_GPKG, layer=UNITS_LAYER, driver="GPKG", mode="w")
+    layers = {}
+    for layer in (UNITS_LAYER, SEGMENTS_LAYER):
+        frame = pd.concat([gpd.read_file(d / COUNTY_UNITS, layer=layer) for d in dirs],
+                          ignore_index=True)
+        layers[layer] = gpd.GeoDataFrame(frame, crs=frame.crs)
+        layers[layer].to_file(run_dir / UNITS_GPKG, layer=layer, driver="GPKG", mode="w")
+    units = layers[UNITS_LAYER]
     leto_qa.write_report(run_dir / QA_DIR, dict(zip(counties, dirs)), units)
     return pd.read_csv(run_dir / QA_DIR / AREA_ACCOUNTING, dtype={"county_fips": str})
 

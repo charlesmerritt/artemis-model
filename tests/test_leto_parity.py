@@ -138,9 +138,19 @@ def test_an_unknown_action_fails_closed_and_names_the_allowed_ones():
         leto_ca.small_stand_action({"remaining_small_stand_action": "drop"}, {})
 
 
-def test_proximity_merge_fails_closed_until_it_is_ported():
-    with pytest.raises(leto_ca.ProximityMergeNotPorted, match="#169"):
-        leto_ca.small_stand_action({"remaining_small_stand_action": " Proximity_Merge"}, {})
+def test_proximity_merge_is_read_as_upstream_reads_it():
+    action = leto_ca.small_stand_action({"remaining_small_stand_action": " Proximity_Merge"}, {})
+    assert action is leto_ca.SmallStandAction.PROXIMITY_MERGE
+
+
+def test_proximity_merge_keeps_every_small_segment_for_the_grouping_after_polygons():
+    """Upstream retains residual small segments under proximity_merge; LETO groups them later."""
+    labels = np.array([[1, 1, 2], [1, 1, 3]], dtype=np.int32)
+    features = {"STDAGE": np.zeros(labels.shape)}
+    out, deleted = leto_ca.resolve_small_stands(
+        labels, features, np.zeros(labels.shape, np.int32), np.zeros(labels.shape, np.int16), 3,
+        action=leto_ca.SmallStandAction.PROXIMITY_MERGE, cfg=leto_ca.DEFAULT_CFG)
+    assert len(np.unique(out)) == 3 and deleted == leto_ca.DeletedSmallStands()
 
 
 # --- Stage 1: FIA-first segmentation attributes ------------------------------------------

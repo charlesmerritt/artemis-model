@@ -34,6 +34,11 @@ Over Florida, LANDFIRE labels almost all forest change Unknown or Fire, so it da
 ~35,000 undated add-back acres in the v4 statewide run (`experiments/2026-11-09_landfire-cut-year/`).
 Codes, grids and nodata vary by product version: read each product's own legend.
 
+### Under `proximity_merge` a unit's `SEG_ID` is only its first part's parent stand
+A multipart unit spans several parent stands (`SEG_IDS`; the `segments` layer of
+`management_units.gpkg` has each piece). Combine donor weights per unit
+(`leto_proximity.unit_weights`), never by joining the units layer's `SEG_ID` to parent weights.
+
 ### Mutation runs require successful collection and a fresh cache
 After collection fails or tests change, rebuild the `mutants/` workspace before measuring.
 `scripts/quality.py mutate` can exit successfully with an undefined score after failure;

@@ -8,7 +8,7 @@ has its own standardized traits, so a test sets the ``force_merge`` cost by choo
 import geopandas as gpd
 import pandas as pd
 import pytest
-from shapely.geometry import box
+from shapely.geometry import MultiPolygon, box
 
 from pipeline.leto_speckle import (
     MergeCost,
@@ -222,3 +222,31 @@ def test_merge_alone_keeps_what_it_cannot_merge():
     result = _merge(units, _traits(s1=(0.0, 161), s2=(0.0, 161)))
     assert len(result.units) == 2 and result.deleted.empty
     assert _qa(result)["speckle_kept"] == 1 and _qa(result)["speckle_deleted"] == 0
+
+
+# ── multipart units (#169) ─────────────────────────────────────────────────────────────
+
+
+def test_a_multipart_unit_is_measured_whole_against_the_minimum_area():
+    """Two 3-cell parts (0.67 ac each) of one unit hold 1.33 ac: not speckle."""
+    parts = MultiPolygon([box(0, 0, 3 * CELL, CELL), box(0, 5 * CELL, 3 * CELL, 6 * CELL)])
+    multipart = {"unit_id": f"{COUNTY}-1", "county_fips": COUNTY, "SEG_ID": 1,
+                 "owner_class": "corporate", "unit_class": "managed", "stand_age": 1.0,
+                 "Acres": parts.area / M2_PER_ACRE, "geometry": parts}
+    units = _layer(multipart, _unit(2, 0, 1, 10, 4, seg=2))
+    traits = _traits(u1=(0.0, 161), u2=(0.0, 161)).rename(index={1: f"{COUNTY}-1",
+                                                                2: f"{COUNTY}-2"})
+    result = merge_speckle(units, traits, MERGE, COST, key="unit_id")
+
+    assert sorted(result.units["unit_id"]) == [f"{COUNTY}-1", f"{COUNTY}-2"]
+    assert _qa(result)["speckle_before"] == 0
+
+
+def test_the_result_names_each_input_units_receiver_and_none_for_what_was_deleted():
+    units = _layer(_unit(1, 0, 0, 10, 4, seg=1), _unit(2, 10, 0, 1, 2, seg=1),
+                   _unit(3, 30, 0, 1, 1, seg=1))                      # 3 is isolated
+    delete = SpeckleSettings(SpeckleAction.MERGE_DELETE, minimum_unit_acres=1.0)
+    result = merge_speckle(units, _traits(s1=(0.0, 161)), delete, COST)
+
+    assert result.receiver.to_dict() == {f"{COUNTY}-1": f"{COUNTY}-1",
+                                         f"{COUNTY}-2": f"{COUNTY}-1", f"{COUNTY}-3": None}
