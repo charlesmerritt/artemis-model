@@ -473,18 +473,6 @@ FLOWLINE_LAYER = "nhdflowline_fl"                       # in raw.nhd.fl_gdb (EPA
 WATERBODY_LAYER = "NHDWaterbody_DissolveBoundaries1"    # in raw.nhd.se_gdb
 
 
-def _declared(path: str, data_root: Path | None) -> Path:
-    """A path declared in ``config/data_paths.yaml``, moved under ``data_root`` when given.
-
-    ``data_root`` stands in for the drive (``/mnt/d``), e.g. a local mirror of the R2 bucket.
-    """
-    from pipeline.data_access import data_paths
-
-    if data_root is None:
-        return Path(path)
-    return data_root / Path(path).relative_to(data_paths()["drive"])
-
-
 def _parser() -> argparse.ArgumentParser:
     from pipeline.data_access import data_paths
 
@@ -516,14 +504,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    from pipeline.data_access import data_paths
+    from pipeline.data_access import data_paths, under_data_root
 
     args = _parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     raw = data_paths()["raw"]
 
     def path(given: Path | None, declared: str) -> Path:
-        return given if given is not None else _declared(declared, args.data_root)
+        return given if given is not None else under_data_root(declared, args.data_root)
 
     if args.command == "fia":
         manifest = write_fia_extract(

@@ -397,3 +397,23 @@ def test_main_leto_runs_one_county(world, tmp_path):
           "--counties", str(world["counties_path"])])
 
     assert len(read_stands(world["run_dir"])) > 0
+
+
+def test_main_leto_defaults_to_the_declared_sources_under_a_data_root(world, tmp_path):
+    # --data-root stands in for the drive (/mnt/d), as region_prep's does, e.g. data/r2_cache:
+    # the VAT and the county layer sit where config/data_paths.yaml declares them under it.
+    import pyogrio
+
+    root = tmp_path / "mirror"
+    vat = root / "TreeMap-2022" / "Data" / "TreeMap2022_CONUS.tif.vat.dbf"
+    vat.parent.mkdir(parents=True)
+    pyogrio.write_dataframe(VAT.reindex(columns=VAT_COLUMNS, fill_value=0), vat,
+                            driver="ESRI Shapefile")
+    counties = root / "county_p010g.shp_nt00934" / "countyp010g.shp"
+    counties.parent.mkdir(parents=True)
+    world["counties"].to_file(counties)
+
+    main(["leto", str(world["run_dir"]), "--repair", str(world["repair"]), "--county", ALPHA,
+          "--region-dir", str(world["region"]), "--data-root", str(root)])
+
+    assert len(read_stands(world["run_dir"])) > 0

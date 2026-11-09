@@ -127,14 +127,15 @@ def schedule(run_dir: Path, restarts: int, workers: int, cooling: float) -> dict
 
 
 def run_leto_stage(args: argparse.Namespace) -> None:
-    from pipeline.data_access import data_paths
+    from pipeline.data_access import data_paths, under_data_root
     from pipeline.leto_stage import run_leto
     from pipeline.s1_initial_state.add_back_ids import read_vat
 
     raw = data_paths()["raw"]
-    vat = read_vat(args.vat or Path(raw["treemap_2022"]["tif"] + ".vat.dbf"))
+    vat = read_vat(args.vat or under_data_root(raw["treemap_2022"]["tif"] + ".vat.dbf", args.data_root))
     accounting = run_leto(args.run_dir, repair=args.repair, county=args.county, vat=vat,
-                          counties=args.counties or Path(raw["counties"]["p010g_shp"]),
+                          counties=args.counties or under_data_root(raw["counties"]["p010g_shp"],
+                                                                    args.data_root),
                           region_dir=args.region_dir)
     log.info("leto: county %s, %d units, %.1f ac (drift %.2f ac)", args.county,
              accounting["units"], accounting["unit_acres"], accounting["drift_acres"])
@@ -164,6 +165,8 @@ def main(argv: list[str] | None = None) -> None:
                       help="TreeMap's value table; default: raw.treemap_2022.tif + .vat.dbf")
     leto.add_argument("--counties", type=Path, default=None,
                       help="the county layer; default: raw.counties.p010g_shp")
+    leto.add_argument("--data-root", type=Path, default=None,
+                      help="stands in for the drive in every default path, e.g. data/r2_cache")
 
     sch = stages.add_parser("schedule", help="anneal one trajectory per stand")
     sch.add_argument("run_dir", type=Path)
