@@ -78,15 +78,24 @@ def _vat(rows):
 VAT = _vat([("11", PLOT_11), ("22", PLOT_22), ("33", PLOT_33)])
 
 
-def _run(path, values, **tiling):
-    """A raster-repair run folder: just the improved TreeMap raster."""
+PUBLISHED, ADDED_BACK, ADDED_BACK_YOUNG = 1, 2, 4   # TreeMapProvenance
+
+
+def _run(path, values, provenance=None, **tiling):
+    """A raster-repair run folder: its improved TreeMap raster and provenance raster.
+
+    By default every pixel is published, except a young-plot ID's (added back young).
+    """
     path.mkdir(parents=True)
     values = np.asarray(values, dtype=np.uint32)
-    with rasterio.open(path / "treemap2022_improved.tif", "w", driver="GTiff",
-                       height=values.shape[0], width=values.shape[1], count=1, dtype="uint32",
-                       crs="EPSG:5070", transform=Affine(30, 0, 0, 0, -30, 0), nodata=NODATA,
-                       **tiling) as dst:
-        dst.write(values, 1)
+    if provenance is None:
+        provenance = np.where(values >= 1_000_000, ADDED_BACK_YOUNG, PUBLISHED)
+    for name, band, dtype, nodata in (("treemap2022_improved.tif", values, "uint32", NODATA),
+                                      ("treemap2022_provenance.tif", provenance, "uint8", 255)):
+        with rasterio.open(path / name, "w", driver="GTiff", height=values.shape[0],
+                           width=values.shape[1], count=1, dtype=dtype, crs="EPSG:5070",
+                           transform=Affine(30, 0, 0, 0, -30, 0), nodata=nodata, **tiling) as dst:
+            dst.write(np.asarray(band, dtype=dtype), 1)
     return path
 
 
@@ -198,7 +207,8 @@ def test_the_manifest_records_the_fiadb_each_run_and_what_the_extract_holds(tmp_
     by_label = {run["label"]: run for run in manifest["runs"]}
     assert by_label["aoi_5county/young_plots"] == {
         "label": "aoi_5county/young_plots", "path": str(fl5.resolve()), "manifest_sha256": None,
-        "treemap_values": 2, "plots": 2, "young_plot_ids_excluded": 1, "young_plot_pixels": 2,
+        "treemap_values": 2, "plots": 2, "neighbour_only_plots": 0, "add_back_pixels": 2,
+        "young_plot_ids_excluded": 1, "young_plot_pixels": 2,
         "plots_by_status": {"complete": 1, "not_in_fiadb": 1},
         "pixels_by_status": {"complete": 2, "not_in_fiadb": 1}}
     assert by_label["v5/fl_statewide"]["manifest_sha256"] == (
@@ -227,7 +237,7 @@ def test_a_rerun_keeps_the_extract_until_its_inputs_change(tmp_path):
     assert second["plots"] == 2
     assert sorted(r[0] for r in _rows(region / "fia_extract.db", "SELECT CN FROM PLOT")) == sorted(
         [PLOT_11, PLOT_22])
-    assert not list(region.glob("*.partial"))
+    assert not list(region.glob("*.partial.*"))
 
 
 
@@ -371,16 +381,24 @@ def test_the_hydrography_manifest_records_each_source_and_a_rerun_keeps_the_laye
 # ── the command ─────────────────────────────────────────────────────────────────────────
 
 
-def test_the_command_builds_both_region_inputs_from_the_declared_kinds_of_source(tmp_path):
-    import geopandas as gpd
+def _vat_dbf(path, rows):
+    """TreeMap's VAT as a .dbf, all 27 columns: numbers as floats, PLT_CN as text."""
     import pyogrio
 
+    from pipeline.s1_initial_state.add_back_ids import VAT_COLUMNS
+
+    frame = pd.DataFrame([{**dict.fromkeys(VAT_COLUMNS, 1.0), "Value": float(tm_id),
+                           "TM_ID": float(tm_id), "PLT_CN": plt_cn} for tm_id, plt_cn in rows])
+    pyogrio.write_dataframe(frame, path, driver="ESRI Shapefile")
+    return path
+
+
+def test_the_command_builds_both_region_inputs_from_the_declared_kinds_of_source(tmp_path):
+    import geopandas as gpd
+
     fiadb = _fiadb(tmp_path / "fiadb.db")
-    vat_dbf = tmp_path / "TreeMap2022_CONUS.tif.vat.dbf"
     # TreeMap's VAT stores Value and TM_ID as numbers; a 19-digit PLT_CN only survives as text.
-    pyogrio.write_dataframe(pd.DataFrame({"Value": [11.0, 22.0], "TM_ID": [11.0, 22.0],
-                                          "PLT_CN": [PLOT_11, PLOT_22], "Count": [9.0, 9.0]}),
-                            vat_dbf, driver="ESRI Shapefile")
+    vat_dbf = _vat_dbf(tmp_path / "TreeMap2022_CONUS.tif.vat.dbf", [(11, PLOT_11), (22, PLOT_22)])
     fl5 = _run(tmp_path / "v4" / "aoi_5county", [[11]])
     statewide = _run(tmp_path / "v5" / "fl_statewide", [[22]])
     flowlines, waterbodies = _hydro_source(tmp_path / "nhd.gpkg")
@@ -478,7 +496,6 @@ def test_the_command_defaults_to_the_declared_sources_under_a_data_root(tmp_path
     import shutil
 
     import geopandas as gpd
-    import pyogrio
 
     root = tmp_path / "mirror"
     fiadb = root / "SQLite_FIADB_ENTIRE" / "SQLite_FIADB_ENTIRE.db"
@@ -486,8 +503,7 @@ def test_the_command_defaults_to_the_declared_sources_under_a_data_root(tmp_path
     _fiadb(fiadb)
     vat = root / "TreeMap-2022" / "Data" / "TreeMap2022_CONUS.tif.vat.dbf"
     vat.parent.mkdir(parents=True)
-    pyogrio.write_dataframe(pd.DataFrame({"TM_ID": [11.0], "PLT_CN": [PLOT_11]}), vat,
-                            driver="ESRI Shapefile")
+    _vat_dbf(vat, [(11, PLOT_11)])
     counties = root / "county_p010g.shp_nt00934" / "countyp010g.shp"
     counties.parent.mkdir(parents=True)
     _counties(counties)
@@ -509,3 +525,56 @@ def test_the_command_defaults_to_the_declared_sources_under_a_data_root(tmp_path
     assert layers["flowline"]["path"] == str((streams / "nhdplus_epasnapshot2022_fl.gdb").resolve())
     assert layers["waterbody"]["layer"] == "NHDWaterbody_DissolveBoundaries1"
     assert gpd.read_file(region / "hydrography.gpkg", layer="waterbody")["fcode"].tolist() == [39004]
+
+
+
+def test_an_add_back_pixels_neighbour_plot_is_extracted_but_never_counted_as_its_trees(tmp_path):
+    # A run's own raster stamps add-back pixels (provenance 2 and 4) with their neighbour plot's
+    # TM_ID, for forest type and species mix only. 11 is mapped by a published pixel and is the
+    # neighbour of one add-back pixel; 22 is only ever a neighbour. Both are extracted (a young
+    # plot's stand may take its site from one), but no add-back pixel counts as 22's or 11's.
+    run = _run(tmp_path / "v4" / "aoi_5county", [[11, 11, 22, 22]],
+               provenance=[[PUBLISHED, ADDED_BACK_YOUNG, ADDED_BACK, ADDED_BACK_YOUNG]])
+
+    manifest = write_fia_extract(tmp_path / "region", fiadb=_fiadb(tmp_path / "fiadb.db"),
+                                 runs=[run], vat=VAT)
+
+    assert manifest["plots"] == 2
+    summary = manifest["runs"][0]
+    assert (summary["plots"], summary["neighbour_only_plots"], summary["add_back_pixels"]) == (1, 1, 3)
+    assert summary["pixels_by_status"] == {"complete": 1}
+    assert summary["plots_by_status"] == {"complete": 1}
+
+
+def test_a_feature_without_a_usable_fcode_fails_closed(tmp_path):
+    # leto_riparian buffers by FCode: a feature without one would silently get no buffer.
+    import geopandas as gpd
+
+    flowlines, waterbodies = _hydro_source(tmp_path / "nhd.gpkg")
+    flow = gpd.read_file(flowlines.path, layer=flowlines.layer)
+    flow["fcode"] = flow["fcode"].astype("string")
+    flow.loc[0, "fcode"] = "perennial"
+    flow.to_file(flowlines.path, layer=flowlines.layer)
+
+    with pytest.raises(ValueError, match=r"1 feature.* no usable FCode: perennial"):
+        stage_hydrography(tmp_path / "region", flowlines=flowlines, waterbodies=waterbodies,
+                          bounds=_florida_box())
+    assert not (tmp_path / "region" / "hydrography.gpkg").exists()
+    assert not list((tmp_path / "region").glob("*.partial.*"))
+
+
+def test_an_extract_edited_by_hand_or_missing_its_table_is_rebuilt(tmp_path):
+    run = _run(tmp_path / "v5" / "fl_statewide", [[11]])
+    fiadb, region = _fiadb(tmp_path / "fiadb.db"), tmp_path / "region"
+    write_fia_extract(region, fiadb=fiadb, runs=[run], vat=VAT)
+
+    con = sqlite3.connect(region / "fia_extract.db")
+    con.execute("INSERT INTO PLOT VALUES ('999', 12, 2019)")   # no longer what the manifest hashed
+    con.commit()
+    con.close()
+    write_fia_extract(region, fiadb=fiadb, runs=[run], vat=VAT)
+    assert [r[0] for r in _rows(region / "fia_extract.db", "SELECT CN FROM PLOT")] == [PLOT_11]
+
+    (region / "fia_extract_missing.csv").unlink()
+    write_fia_extract(region, fiadb=fiadb, runs=[run], vat=VAT)
+    assert (region / "fia_extract_missing.csv").exists()

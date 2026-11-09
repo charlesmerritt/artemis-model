@@ -12,8 +12,8 @@ Southeast-wide NHD again (ADR 0004):
 Each source defaults to the ``config/data_paths.yaml`` key its ``--help`` names; ``--data-root``
 moves those paths from the drive to a local mirror of the R2 bucket.
 
-**fia** reads each ``--repair`` run's ``treemap2022_improved.tif`` and, through TreeMap's VAT,
-the plots it maps. It writes:
+**fia** reads each ``--repair`` run's ``treemap2022_improved.tif`` and
+``treemap2022_provenance.tif`` and, through TreeMap's VAT, the plots it maps. It writes:
 
 - ``fia_extract.db``: those plots' rows of :data:`EXTRACT_TABLES` (PLOT, COND, TREE and FVS's
   plot-level StandInit and TreeInit), under the FIADB's own schema, each indexed on its plot
@@ -27,16 +27,18 @@ the plots it maps. It writes:
 What the extract covers:
 
 - **Every plot a run's improved TreeMap maps**, over all the runs. A run's own raster stamps an
-  add-back pixel with its neighbour plot's ``TM_ID`` (AGENTS.md), so neighbour plots are in the
-  extract too: a young plot's stand may take its site from one. Being in the extract never joins
-  an add-back pixel to that plot's trees.
+  add-back pixel (provenance 2 or 4) with its neighbour plot's ``TM_ID`` (AGENTS.md), so
+  neighbour plots are in the extract too: a young plot's FVS stand row may take its site from
+  one. Add-back pixels are never counted as that plot's: the manifest gives them apart, and a
+  plot only ever stamped there as a neighbour-only plot.
 - **No young-plot ID** (from :data:`add_back_ids.NEW_ID_START`): its trees come from the run's
   ``young_plots/``. Any other value without a VAT row fails closed (:class:`UnknownTreeMapValues`).
 - **Exact control numbers.** Rows are copied SQL to SQL and matched as text, never through a
   float, so a 19-digit ``PLT_CN`` arrives as it left.
 
-The FIADB is read once. A rerun with the inputs the manifest records keeps the extract. A new run
-or plot set rebuilds it beside the old one and swaps it in whole.
+The FIADB is read once. A rerun with the inputs the manifest records keeps the extract, as long as
+its files are there and its sha256 still matches. A new run or plot set, or an extract edited by
+hand, rebuilds it beside the old one and swaps it in whole.
 
 **hydrography** writes ``hydrography.gpkg`` (layers ``flowline`` and ``waterbody``) and
 ``hydrography.json``. A layer keeps each feature that intersects the state's county extent,
@@ -56,7 +58,8 @@ import logging
 import os
 import sqlite3
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -66,7 +69,8 @@ import pandas as pd
 import rasterio
 
 from pipeline.ids import as_id_series
-from pipeline.s1_initial_state.add_back_ids import NEW_ID_START
+from pipeline.s1_initial_state.add_back_ids import NEW_ID_START, read_vat
+from pipeline.s1_initial_state.county_improvement import TreeMapProvenance
 from pipeline.spatial_ref import assert_project_crs, project_crs
 
 FIA_EXTRACT_DB = "fia_extract.db"
@@ -74,14 +78,15 @@ FIA_EXTRACT_MISSING_CSV = "fia_extract_missing.csv"
 FIA_EXTRACT_JSON = "fia_extract.json"
 RUN_MANIFEST = "manifest.json"
 IMPROVED_TREEMAP = "treemap2022_improved.tif"
+PROVENANCE = "treemap2022_provenance.tif"
 # The extracted tables, each with the column that names its plot.
 EXTRACT_TABLES = {"PLOT": "CN", "COND": "PLT_CN", "TREE": "PLT_CN",
                   "FVS_STANDINIT_PLOT": "STAND_CN", "FVS_TREEINIT_PLOT": "STAND_CN"}
-LIVE = 1   # TREE.STATUSCD
+LIVE_TREE = 1   # TREE.STATUSCD of a live tree
 HYDROGRAPHY_GPKG = "hydrography.gpkg"
 HYDROGRAPHY_JSON = "hydrography.json"
 FCODE = "fcode"   # the column leto_riparian buffers by
-# Past the state's counties: a feature just outside still buffers into a border stand, and
+# Past the state's counties: a feature just outside still buffers into a unit at the state line, and
 # the widest buffer rule is 75 ft (leto_riparian.FLORIDA_FIRST_PASS_RULES).
 HYDROGRAPHY_PAD_M = 1000.0
 
@@ -100,7 +105,7 @@ COVERAGE_SQL = f"""
     SELECT w.PLT_CN,
            (SELECT COUNT(*) FROM main.PLOT p WHERE p.CN = w.PLT_CN) AS plot_rows,
            (SELECT COUNT(*) FROM main.TREE t
-             WHERE t.PLT_CN = w.PLT_CN AND t.STATUSCD = {LIVE}) AS live_trees,
+             WHERE t.PLT_CN = w.PLT_CN AND t.STATUSCD = {LIVE_TREE}) AS live_trees,
            (SELECT COUNT(*) FROM main.FVS_STANDINIT_PLOT s
              WHERE s.STAND_CN = w.PLT_CN) AS fvs_stand_rows,
            (SELECT COUNT(*) FROM main.FVS_TREEINIT_PLOT r
@@ -109,33 +114,27 @@ COVERAGE_SQL = f"""
 """
 
 
-def read_treemap_vat(path: Path) -> pd.DataFrame:
-    """TreeMap's VAT as ``TM_ID`` and ``PLT_CN``, both exact strings.
-
-    The VAT stores them as floats: :func:`pipeline.ids.as_id_series` restores digits that
-    provably survived, and refuses any that did not.
-    """
-    import pyogrio
-
-    vat = pyogrio.read_dataframe(path, columns=["TM_ID", "PLT_CN"], read_geometry=False)
-    return pd.DataFrame({column: as_id_series(vat[column], column=column)
-                         for column in ("TM_ID", "PLT_CN")})
-
-
 class UnknownTreeMapValues(ValueError):
     """A run maps a value that is neither a TreeMap value nor a young-plot ID: no plot to extract."""
 
 
-def treemap_values(run_dir: Path) -> pd.Series:
-    """Pixels per value in a run's improved raster, indexed by the value (nodata excluded)."""
-    counts: dict[int, int] = {}
-    with rasterio.open(run_dir / IMPROVED_TREEMAP) as src:
+def treemap_values(run_dir: Path) -> tuple[pd.Series, pd.Series]:
+    """Pixels per value of a run's improved raster: on TreeMap's own pixels, and on add-back pixels.
+
+    Add-back pixels are provenance 2 and 4 (:meth:`TreeMapProvenance.added_back`). Each
+    Series is indexed by the raster value; nodata is left out.
+    """
+    counts: tuple[dict[int, int], dict[int, int]] = ({}, {})
+    with rasterio.open(run_dir / IMPROVED_TREEMAP) as src, rasterio.open(run_dir / PROVENANCE) as prov:
         for _, window in src.block_windows(1):
             block = src.read(1, window=window)
-            values, n = np.unique(block[block != src.nodata], return_counts=True)
-            for value, pixels in zip(values.tolist(), n.tolist()):
-                counts[value] = counts.get(value, 0) + pixels
-    return pd.Series(counts, dtype=np.int64).sort_index()
+            added = TreeMapProvenance.added_back(prov.read(1, window=window))
+            for tally, pixels in zip(counts, (~added, added)):
+                values, n = np.unique(block[pixels & (block != src.nodata)], return_counts=True)
+                for value, count in zip(values.tolist(), n.tolist()):
+                    tally[value] = tally.get(value, 0) + count
+    treemap, add_back = (pd.Series(c, dtype=np.int64).sort_index() for c in counts)
+    return treemap, add_back
 
 
 @dataclass(frozen=True)
@@ -143,7 +142,8 @@ class RunReferences:
     """What one raster-repair run's improved TreeMap references."""
 
     run_dir: Path
-    plots: pd.DataFrame               # TM_ID, PLT_CN, pixels: one row per TreeMap value
+    plots: pd.DataFrame               # TM_ID, PLT_CN, pixels: TreeMap values on TreeMap's own pixels
+    neighbours: pd.DataFrame          # the same, for the neighbour plot stamped on add-back pixels
     young_plot_pixels: pd.Series      # pixels per young-plot ID, which names no plot
 
     @property
@@ -151,25 +151,48 @@ class RunReferences:
         """The run's name in the extract's tables: its folder and the folder above it."""
         return "/".join(Path(self.run_dir).parts[-2:])
 
+    @property
+    def path(self) -> str:
+        return str(self.run_dir.resolve())
+
+    @property
+    def manifest_sha256(self) -> str | None:
+        """The sha256 of the run's ``manifest.json``, or None for a run without one."""
+        manifest = self.run_dir / RUN_MANIFEST
+        return _sha256(manifest) if manifest.exists() else None
+
+    @property
+    def referenced(self) -> pd.DataFrame:
+        """Every plot the run names, its own pixels' and its add-back pixels' neighbours."""
+        return pd.concat([self.plots, self.neighbours], ignore_index=True)
+
 
 def run_references(run_dir: Path, vat: pd.DataFrame) -> RunReferences:
     """The plots a run maps, through TreeMap's VAT (``TM_ID`` and ``PLT_CN`` as exact strings).
 
-    A young-plot ID (from :data:`add_back_ids.NEW_ID_START`) is not a TreeMap value: its
-    trees come from the run's ``young_plots/``, so it names no plot to extract. Any other value
-    without a VAT row is :class:`UnknownTreeMapValues`.
+    An add-back pixel's value is not its trees' plot. In a run's own raster it is the
+    neighbour plot's ``TM_ID`` (forest type and species mix only), kept apart in
+    :attr:`RunReferences.neighbours`. In ``young_plots/`` it is a young-plot ID (from
+    :data:`add_back_ids.NEW_ID_START`), whose trees come from ``young_plots/``: it names no plot
+    to extract. Any other value without a VAT row is :class:`UnknownTreeMapValues`.
     """
-    values = treemap_values(run_dir)
-    young = values.index >= NEW_ID_START
-    mapped = pd.DataFrame({"TM_ID": as_id_series(pd.Series(values.index[~young]), column="TM_ID"),
-                           "pixels": values[~young].to_numpy()})
+    treemap, add_back = treemap_values(run_dir)
+    young = add_back.index >= NEW_ID_START
+    plots, neighbours = (_plots_of(run_dir, values, vat) for values in (treemap, add_back[~young]))
+    return RunReferences(Path(run_dir), plots, neighbours, add_back[young])
+
+
+def _plots_of(run_dir: Path, values: pd.Series, vat: pd.DataFrame) -> pd.DataFrame:
+    """``TM_ID``, ``PLT_CN`` and ``pixels`` for raster values that must all be TreeMap values."""
+    mapped = pd.DataFrame({"TM_ID": as_id_series(pd.Series(values.index, dtype=np.int64), column="TM_ID"),
+                           "pixels": values.to_numpy()})
     mapped = mapped.merge(vat[["TM_ID", "PLT_CN"]], on="TM_ID", how="left", validate="one_to_one")
     unknown = mapped[mapped["PLT_CN"].isna()]
     if len(unknown):
         raise UnknownTreeMapValues(
             f"{run_dir} maps values in no TreeMap VAT row: "
             + ", ".join(f"{v} ({n} px)" for v, n in zip(unknown["TM_ID"], unknown["pixels"])))
-    return RunReferences(Path(run_dir), mapped, values[young])
+    return mapped
 
 
 def coverage_status(coverage: pd.DataFrame) -> pd.Series:
@@ -201,21 +224,17 @@ def write_fia_extract(region_dir: Path, *, fiadb: Path, runs: Sequence[Path],
     references = [run_references(run, vat) for run in runs]
     identity = _fiadb_identity(fiadb)
     inputs_sha256 = _inputs_sha256(identity, references)
-    kept = _kept(region_dir, FIA_EXTRACT_DB, FIA_EXTRACT_JSON, inputs_sha256)
-    if kept is not None:
-        return kept
+    db = region_dir / FIA_EXTRACT_DB
+    current = _manifest_if_current(region_dir / FIA_EXTRACT_JSON, inputs_sha256,
+                                   [db, region_dir / FIA_EXTRACT_MISSING_CSV])
+    if current is not None and current.get("extract_sha256") == _sha256(db):
+        return current
     region_dir.mkdir(parents=True, exist_ok=True)
-    plots = sorted({cn for ref in references for cn in ref.plots["PLT_CN"]})
-    partial = region_dir / f"{FIA_EXTRACT_DB}.partial"
-    partial.unlink(missing_ok=True)
-    try:
+    plots = sorted({cn for ref in references for cn in ref.referenced["PLT_CN"]})
+    with _swapped_in(region_dir / FIA_EXTRACT_DB) as partial:
         tables, coverage = _extract(partial, fiadb, plots)
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
     coverage["status"] = coverage_status(coverage)
     _missing_table(coverage, references).to_csv(region_dir / FIA_EXTRACT_MISSING_CSV, index=False)
-    os.replace(partial, region_dir / FIA_EXTRACT_DB)
     status = coverage.set_index("PLT_CN")["status"]
     manifest = {
         "fiadb": identity,
@@ -232,22 +251,38 @@ def write_fia_extract(region_dir: Path, *, fiadb: Path, runs: Sequence[Path],
 
 def _inputs_sha256(identity: dict, references: Sequence[RunReferences]) -> str:
     """A hash of everything the extract is built from: the FIADB and what each run maps."""
-    runs = [{"path": str(ref.run_dir.resolve()),
-             "manifest_sha256": _run_manifest_sha256(ref.run_dir),
+    runs = [{"path": ref.path, "manifest_sha256": ref.manifest_sha256,
              "values": ref.plots[["TM_ID", "PLT_CN", "pixels"]].values.tolist(),
+             "neighbours": ref.neighbours[["TM_ID", "PLT_CN", "pixels"]].values.tolist(),
              "young_plot_pixels": [[int(k), int(v)] for k, v in ref.young_plot_pixels.items()]}
             for ref in references]
-    blob = json.dumps({"fiadb": identity, "runs": runs}, sort_keys=True, default=int)
-    return hashlib.sha256(blob.encode()).hexdigest()
+    return _json_sha256({"fiadb": identity, "runs": runs})
 
 
-def _kept(region_dir: Path, output: str, manifest_name: str, inputs_sha256: str) -> dict | None:
-    """The manifest of an output already built from these inputs, or None."""
-    path = region_dir / manifest_name
-    if not (path.exists() and (region_dir / output).exists()):
+def _json_sha256(inputs) -> str:
+    """The sha256 of ``inputs`` as canonical JSON: what a manifest's ``inputs_sha256`` records."""
+    return hashlib.sha256(json.dumps(inputs, sort_keys=True, default=int).encode()).hexdigest()
+
+
+def _manifest_if_current(path: Path, inputs_sha256: str, outputs: Sequence[Path]) -> dict | None:
+    """The manifest at ``path`` if it records these inputs and every output it lists is there."""
+    if not (path.exists() and all(output.exists() for output in outputs)):
         return None
     manifest = json.loads(path.read_text())
     return manifest if manifest.get("inputs_sha256") == inputs_sha256 else None
+
+
+@contextmanager
+def _swapped_in(final: Path) -> Iterator[Path]:
+    """A path beside ``final`` to write it at, moved over ``final`` only if the block succeeds."""
+    partial = final.with_name(f"{final.stem}.partial{final.suffix}")
+    partial.unlink(missing_ok=True)
+    try:
+        yield partial
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    os.replace(partial, final)
 
 
 def _extract(out: Path, fiadb: Path, plots: list[str]) -> tuple[dict[str, int], pd.DataFrame]:
@@ -296,20 +331,17 @@ def _run_summary(ref: RunReferences, status: pd.Series) -> dict:
     plots = ref.plots.assign(status=ref.plots["PLT_CN"].map(status))
     return {
         "label": ref.label,
-        "path": str(ref.run_dir.resolve()),
-        "manifest_sha256": _run_manifest_sha256(ref.run_dir),
+        "path": ref.path,
+        "manifest_sha256": ref.manifest_sha256,
         "treemap_values": len(plots),
         "plots": int(plots["PLT_CN"].nunique()),
+        "neighbour_only_plots": len(set(ref.neighbours["PLT_CN"]) - set(plots["PLT_CN"])),
+        "add_back_pixels": int(ref.neighbours["pixels"].sum() + ref.young_plot_pixels.sum()),
         "young_plot_ids_excluded": len(ref.young_plot_pixels),
         "young_plot_pixels": int(ref.young_plot_pixels.sum()),
         "plots_by_status": _counts(plots.drop_duplicates("PLT_CN")["status"]),
         "pixels_by_status": {str(k): int(v) for k, v in plots.groupby("status")["pixels"].sum().items()},
     }
-
-
-def _run_manifest_sha256(run_dir: Path) -> str | None:
-    manifest = run_dir / RUN_MANIFEST
-    return _sha256(manifest) if manifest.exists() else None
 
 
 def _counts(status: pd.Series) -> dict[str, int]:
@@ -326,9 +358,9 @@ def _sha256(path: Path) -> str:
 
 def _missing_table(coverage: pd.DataFrame, references: Sequence[RunReferences]) -> pd.DataFrame:
     """The plots not :attr:`PlotCoverage.COMPLETE`, each with its ``TM_ID`` and the runs mapping it."""
-    mapped = pd.concat([ref.plots.assign(run=ref.label) for ref in references], ignore_index=True)
-    runs = (mapped.groupby(["PLT_CN", "TM_ID"], sort=False)["run"]
-            .agg("; ".join).reset_index(name="runs"))
+    mapped = pd.concat([ref.referenced.assign(run=ref.label) for ref in references], ignore_index=True)
+    runs = (mapped.drop_duplicates(["PLT_CN", "TM_ID", "run"])
+            .groupby(["PLT_CN", "TM_ID"], sort=False)["run"].agg("; ".join).reset_index(name="runs"))
     missing = coverage[coverage["status"] != PlotCoverage.COMPLETE]
     missing = missing.merge(runs, on="PLT_CN", how="left", validate="one_to_many")
     return missing[["PLT_CN", "TM_ID", "status", "plot_rows", "live_trees", "fvs_stand_rows",
@@ -346,8 +378,8 @@ class LayerSource:
     layer: str
 
 
-def state_bounds(counties: Path, state: str, pad_m: float = HYDROGRAPHY_PAD_M) -> tuple[float, ...]:
-    """A state's counties' extent in the project CRS, padded by ``pad_m``.
+def state_bounds(counties: Path, state: str) -> tuple[float, float, float, float]:
+    """A state's counties' extent in the project CRS, padded by :data:`HYDROGRAPHY_PAD_M`.
 
     ``counties`` is the national county layer (``raw.counties``): ``state`` is matched against
     its ``STATE`` (postal code) or, all digits, its ``STATE_FIPS``.
@@ -361,7 +393,8 @@ def state_bounds(counties: Path, state: str, pad_m: float = HYDROGRAPHY_PAD_M) -
     if rows.empty:
         raise ValueError(f"no county of state {state!r} in {counties}")
     minx, miny, maxx, maxy = rows.to_crs(project_crs()).total_bounds
-    return (float(minx - pad_m), float(miny - pad_m), float(maxx + pad_m), float(maxy + pad_m))
+    pad = HYDROGRAPHY_PAD_M
+    return (float(minx - pad), float(miny - pad), float(maxx + pad), float(maxy + pad))
 
 
 def stage_hydrography(region_dir: Path, *, flowlines: LayerSource, waterbodies: LayerSource,
@@ -377,21 +410,20 @@ def stage_hydrography(region_dir: Path, *, flowlines: LayerSource, waterbodies: 
     inputs = {"bounds": list(bounds), "sources": {name: [str(Path(src.path).resolve()), src.layer,
                                                         *_file_identity(Path(src.path))]
                                                  for name, src in sources.items()}}
-    inputs_sha256 = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
-    kept = _kept(region_dir, HYDROGRAPHY_GPKG, HYDROGRAPHY_JSON, inputs_sha256)
-    if kept is not None:
-        return kept
+    inputs_sha256 = _json_sha256(inputs)
+    current = _manifest_if_current(region_dir / HYDROGRAPHY_JSON, inputs_sha256,
+                                   [region_dir / HYDROGRAPHY_GPKG])
+    if current is not None:
+        return current
     region_dir.mkdir(parents=True, exist_ok=True)
-    partial = region_dir / HYDROGRAPHY_GPKG.replace(".gpkg", ".partial.gpkg")
-    partial.unlink(missing_ok=True)
     layers = {}
-    for name, source in sources.items():
-        layer, source_crs = read_layer(source, bounds)
-        assert_project_crs(layer, f"staged {name} layer")
-        layer.to_file(partial, layer=name, driver="GPKG")
-        layers[name] = {"path": str(Path(source.path).resolve()), "layer": source.layer,
-                        "source_crs": source_crs, "features": len(layer)}
-    os.replace(partial, region_dir / HYDROGRAPHY_GPKG)
+    with _swapped_in(region_dir / HYDROGRAPHY_GPKG) as partial:
+        for name, source in sources.items():
+            layer, source_crs = read_layer(source, bounds)
+            assert_project_crs(layer, f"staged {name} layer")
+            layer.to_file(partial, layer=name, driver="GPKG")
+            layers[name] = {"path": str(Path(source.path).resolve()), "layer": source.layer,
+                            "source_crs": source_crs, "features": len(layer)}
     manifest = {"crs": project_crs(), "bounds": list(bounds), "layers": layers,
                 "inputs_sha256": inputs_sha256}
     (region_dir / HYDROGRAPHY_JSON).write_text(json.dumps(manifest, indent=2) + "\n")
@@ -426,7 +458,12 @@ def read_layer(source: LayerSource, bounds: tuple[float, float, float, float]):
     frame = frame.rename(columns={fcode: FCODE}).to_crs(project_crs())
     inside = frame.sindex.query(box(*bounds), predicate="intersects")
     frame = frame.iloc[sorted(inside)].reset_index(drop=True)
-    frame[FCODE] = pd.to_numeric(frame[FCODE], errors="coerce").astype("Int32")
+    fcodes = pd.to_numeric(frame[FCODE], errors="coerce")
+    unusable = frame.loc[fcodes.isna(), FCODE]
+    if len(unusable):   # leto_riparian would give it no buffer, silently
+        raise ValueError(f"{source.path} layer {source.layer}: {len(unusable)} feature(s) with no "
+                         f"usable FCode: {', '.join(map(str, unusable.unique()[:5]))}")
+    frame[FCODE] = fcodes.astype("Int32")
     return frame[[FCODE, "geometry"]], info["crs"]
 
 
@@ -462,7 +499,8 @@ def _parser() -> argparse.ArgumentParser:
     fia = commands.add_parser("fia", help="the FIA extract: fia_extract.{db,json}, fia_extract_missing.csv")
     fia.add_argument("--region-dir", type=Path, required=True)
     fia.add_argument("--repair", type=Path, action="append", required=True,
-                     help="a raster-repair run folder holding treemap2022_improved.tif; repeat for each run")
+                     help="a raster-repair run folder (treemap2022_improved.tif and "
+                          "treemap2022_provenance.tif), or its young_plots/; repeat for each run")
     fia.add_argument("--fiadb", type=Path, help=f"default: {raw['fia_sqlite']['db']}")
     fia.add_argument("--vat", type=Path, help=f"default: {raw['treemap_2022']['tif']}.vat.dbf")
 
@@ -490,7 +528,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.command == "fia":
         manifest = write_fia_extract(
             args.region_dir, fiadb=path(args.fiadb, raw["fia_sqlite"]["db"]), runs=args.repair,
-            vat=read_treemap_vat(path(args.vat, raw["treemap_2022"]["tif"] + ".vat.dbf")))
+            vat=read_vat(path(args.vat, raw["treemap_2022"]["tif"] + ".vat.dbf")))
         summary = {"plots": manifest["plots"], "plots_by_status": manifest["plots_by_status"],
                    "runs": {run["label"]: run["plots_by_status"] for run in manifest["runs"]}}
     else:
