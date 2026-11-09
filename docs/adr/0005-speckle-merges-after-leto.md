@@ -25,7 +25,7 @@ LETO's output untouched. A speckle joins the first neighbour that qualifies in t
 1. The same owner class and the same unit class.
 2. The same unit class under another owner class. The speckle takes that owner class.
 3. For a managed speckle only, a riparian neighbour. The speckle becomes grow-only.
-4. Otherwise it is kept.
+4. Otherwise it is kept (amended 2026-11-09 below: deleted by default).
 
 Within a step, the neighbour with the lowest `force_merge` cost wins: the difference in stand
 age, live basal area, QMD, TPA and forest type, less 0.2 × shared edges. Ties go to the lower
@@ -59,3 +59,17 @@ weights, representative plot and age, and acres are conserved.
   add-back ac) join mature land, 71 of them grow-only riparian units. Accepted as small;
   `tests/test_leto_t3_sanity.py` bounds the add-back acres that join mature managed land
   at 1%.
+
+## Amendment, 2026-11-09: what cannot merge is deleted
+
+Speckle that no step can place has no allowed neighbour: an isolated forest patch, a contact
+at a corner only, or riparian speckle beside managed land only. Kept, it is salt and pepper the
+merge cannot reach (2,437 units, 762 ac in Union). `SpeckleAction.MERGE_DELETE` is now the
+default: merge, then delete what is left, from every layer and from `stands.csv`.
+`SpeckleAction.MERGE` keeps it, as first written; `KEEP` still replays LETO.
+
+Deleted speckle is its own line, like the `delete` small-stand action's (#168): count and acres
+in `qa/leto/area_accounting.csv` (`deleted_speckle`, `deleted_speckle_acres`, counted in the
+drift) and in `qa/leto/speckle.csv` (`speckle_deleted`, its acres and its riparian acres).
+Owner drift counts merges only. Deleting riparian speckle removes grow-only acres, never
+harvestable ones.

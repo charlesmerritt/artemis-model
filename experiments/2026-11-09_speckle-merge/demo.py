@@ -44,7 +44,7 @@ def main() -> None:
     counties = under_data_root(raw["counties"]["p010g_shp"], args.data_root)
     base = load_settings(COUNTY)
     rows = []
-    for action in (SpeckleAction.KEEP, SpeckleAction.MERGE):
+    for action in (SpeckleAction.KEEP, SpeckleAction.MERGE, SpeckleAction.MERGE_DELETE):
         settings = dataclasses.replace(base, speckle=dataclasses.replace(base.speckle, action=action))
         run_dir = args.out / action.value
         run_leto(run_dir, repair=args.repair, fips=[COUNTY], vat=vat, counties=counties,
@@ -59,7 +59,9 @@ def main() -> None:
         rows.append({"speckle": action.value, "size": "all", "units": len(units),
                      "acres": round(float(units["Acres"].sum()), 1)})
     pd.DataFrame(rows).to_csv(HERE / "size_distribution.csv", index=False)
-    pd.read_csv(args.out / "merge" / QA_DIR / SPECKLE).to_csv(HERE / "speckle_qa.csv", index=False)
+    pd.concat([pd.read_csv(args.out / a / QA_DIR / SPECKLE).assign(speckle=a)
+               for a in (SpeckleAction.MERGE, SpeckleAction.MERGE_DELETE)]
+              ).to_csv(HERE / "speckle_qa.csv", index=False)
     print(pd.DataFrame(rows).pivot(index="size", columns="speckle", values=["units", "acres"]))
 
 

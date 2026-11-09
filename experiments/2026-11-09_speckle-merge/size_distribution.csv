@@ -13,3 +13,10 @@ merge,5-20 ac,1854,18838.1
 merge,20-100 ac,1143,49871.6
 merge,>= 100 ac,237,37420.7
 merge,all,8091,112606.3
+merge_delete,< 1 cell,0,0.0
+merge_delete,1 cell - 1 ac,0,0.0
+merge_delete,1-5 ac,2420,5714.3
+merge_delete,5-20 ac,1854,18838.1
+merge_delete,20-100 ac,1143,49871.6
+merge_delete,>= 100 ac,237,37420.7
+merge_delete,all,5654,111844.8

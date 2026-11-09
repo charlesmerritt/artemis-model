@@ -1,7 +1,7 @@
 """Common sense on real data: the ``leto`` stage on the T3 county, Union (12125), v4 raster run.
 
 Hand-built layers pin the rules; this checks the stage's output reads like a forest. It runs
-the county twice, speckle ``keep`` (LETO's own units) and ``merge`` (the default), and skips
+the county twice, speckle ``keep`` (LETO's own units) and ``merge_delete`` (the default), and skips
 when the inputs are not on this machine. ``ARTEMIS_DATA`` points at a ``data/`` folder (the
 repo's own by default, so set it from a worktree):
 
@@ -9,6 +9,7 @@ repo's own by default, so set it from a worktree):
 """
 
 import dataclasses
+from dataclasses import dataclass
 import os
 from pathlib import Path
 
@@ -19,7 +20,17 @@ import pytest
 
 from pipeline.data_access import data_paths, under_data_root
 from pipeline.leto_speckle import SpeckleAction, UnitClass
-from pipeline.leto_stage import INV_YEAR, UNITS_GPKG, UNITS_LAYER, Origin, load_settings, run_leto
+from pipeline.leto_stage import (
+    AREA_ACCOUNTING,
+    INV_YEAR,
+    QA_DIR,
+    SPECKLE,
+    UNITS_GPKG,
+    UNITS_LAYER,
+    Origin,
+    load_settings,
+    run_leto,
+)
 from pipeline.s1_initial_state.add_back_ids import read_vat
 from pipeline.s3_management.owner_classes import MASKED
 
@@ -44,18 +55,35 @@ def t3(tmp_path_factory):
     counties = under_data_root(raw["counties"]["p010g_shp"], DATA_ROOT)
     base = load_settings(T3)
     runs = {}
-    for action in SpeckleAction:
+    for action in (SpeckleAction.KEEP, base.speckle.action):        # LETO's own, the default
         run_dir = tmp_path_factory.mktemp(action.value)
         settings = dataclasses.replace(base, speckle=dataclasses.replace(base.speckle, action=action))
         run_leto(run_dir, repair=REPAIR, fips=[T3], vat=vat, counties=counties,
                  region_dir=REGION, settings=settings)
         units = gpd.read_file(run_dir / UNITS_GPKG, layer=UNITS_LAYER)
-        runs[action] = units[units["owner_class"] != MASKED]
+        runs[action] = Run(units[units["owner_class"] != MASKED],
+                           pd.read_csv(run_dir / QA_DIR / SPECKLE).iloc[0],
+                           pd.read_csv(run_dir / QA_DIR / AREA_ACCOUNTING).iloc[0])
     return runs
 
 
+@dataclass(frozen=True)
+class Run:
+    units: gpd.GeoDataFrame                   # scheduled units: not masked
+    speckle: pd.Series                        # the county's qa/leto/speckle.csv line
+    accounting: pd.Series                     # its qa/leto/area_accounting.csv line
+
+
+def _default_run(t3) -> Run:
+    return t3[load_settings(T3).speckle.action]
+
+
+def _default(t3) -> gpd.GeoDataFrame:
+    return _default_run(t3).units
+
+
 def _both(t3):
-    return t3[SpeckleAction.KEEP], t3[SpeckleAction.MERGE]
+    return t3[SpeckleAction.KEEP].units, _default(t3)
 
 
 def _acres(units, mask=None) -> float:
@@ -66,7 +94,7 @@ def _acres(units, mask=None) -> float:
 
 
 def test_add_back_forest_averages_a_young_stand_age(t3):
-    young = t3[SpeckleAction.MERGE]
+    young = _default(t3)
     young = young[young["origin"] == Origin.YOUNG_PLOT]
     assert len(young) > 0
     mean = np.average(young["stand_age"], weights=young["Acres"])
@@ -74,7 +102,7 @@ def test_add_back_forest_averages_a_young_stand_age(t3):
 
 
 def test_no_add_back_stand_is_older_than_the_cut_record(t3):
-    young = t3[SpeckleAction.MERGE]
+    young = _default(t3)
     young = young[young["origin"] == Origin.YOUNG_PLOT]
     assert young["stand_age"].notna().all()
     assert young["stand_age"].between(0, INV_YEAR - FIRST_DETECTED_CUT).all()
@@ -83,16 +111,30 @@ def test_no_add_back_stand_is_older_than_the_cut_record(t3):
 # ── speckle merge cleans up, and moves little ──────────────────────────────────────────
 
 
-def test_speckle_merge_removes_most_speckle(t3):
+def test_the_default_leaves_no_speckle(t3):
     keep, merge = _both(t3)
     minimum = load_settings(T3).speckle.minimum_unit_acres
-    before, after = (keep["Acres"] < minimum).sum(), (merge["Acres"] < minimum).sum()
-    assert after < 0.5 * before, f"{after} of {before} speckle left"
+    assert (keep["Acres"] < minimum).sum() > 0
+    assert (merge["Acres"] < minimum).sum() == 0
     assert len(merge) < len(keep)
 
 
-def test_speckle_merge_conserves_scheduled_acres(t3):
-    assert _acres(t3[SpeckleAction.MERGE]) == pytest.approx(_acres(t3[SpeckleAction.KEEP]), abs=0.01)
+def test_most_speckle_merges_rather_than_being_deleted(t3):
+    qa = _default_run(t3).speckle
+    assert qa["speckle_deleted"] < 0.5 * qa["speckle_before"]
+
+
+def test_deleted_speckle_is_under_one_percent_of_the_county(t3):
+    keep, merge = _both(t3)
+    deleted = _default_run(t3).speckle["speckle_deleted_acres"]
+    assert deleted < 0.01 * _acres(keep), f"{deleted:.0f} ac deleted"
+
+
+def test_merged_plus_deleted_acres_equal_letos_own(t3):
+    keep, merge = _both(t3)
+    deleted = _default_run(t3).accounting["deleted_speckle_acres"]
+    assert deleted == pytest.approx(_default_run(t3).speckle["speckle_deleted_acres"], abs=1e-3)
+    assert _acres(merge) + deleted == pytest.approx(_acres(keep), abs=0.01)
 
 
 def test_under_one_percent_of_add_back_acres_joins_mature_managed_land(t3):
@@ -107,7 +149,7 @@ def test_under_one_percent_of_add_back_acres_joins_mature_managed_land(t3):
                  & ~keep["unit_id"].isin(merge["unit_id"])]
     absorbed = gpd.sjoin(young.set_geometry(young.representative_point())[["Acres", "geometry"]],
                          merge[["origin", "unit_class", "geometry"]], predicate="within")
-    assert len(absorbed) == len(young)                      # every merged speckle is found
+    assert len(young) - len(absorbed) <= _default_run(t3).speckle["speckle_deleted"]   # the rest
     mature = absorbed[(absorbed["origin"] == Origin.TREEMAP)
                       & (absorbed["unit_class"] == UnitClass.MANAGED)]
     add_back = _acres(keep, keep["origin"] == Origin.YOUNG_PLOT)
@@ -115,9 +157,11 @@ def test_under_one_percent_of_add_back_acres_joins_mature_managed_land(t3):
         f"{mature['Acres'].sum():.1f} of {add_back:.0f} add-back ac joined mature managed land")
 
 
-def test_speckle_merge_never_shrinks_riparian_acres(t3):
-    keep, merge = (_acres(u, u["unit_class"] == UnitClass.RIPARIAN) for u in _both(t3))
-    assert merge >= keep - 0.01
+def test_riparian_acres_shrink_only_by_the_riparian_speckle_deleted(t3):
+    """Riparian area never joins managed land, so only its deleted speckle can leave it."""
+    keep, merge = _both(t3)
+    before, after = (_acres(u, u["unit_class"] == UnitClass.RIPARIAN) for u in (keep, merge))
+    assert after >= before - _default_run(t3).speckle["speckle_deleted_riparian_acres"] - 0.01
 
 
 def test_speckle_merge_moves_under_one_percent_of_acres_between_owner_classes(t3):
@@ -130,13 +174,13 @@ def test_speckle_merge_moves_under_one_percent_of_acres_between_owner_classes(t3
 
 
 def test_every_scheduled_unit_has_a_stand_age_and_a_representative_plot(t3):
-    units = t3[SpeckleAction.MERGE]
+    units = _default(t3)
     assert units["stand_age"].notna().all()
     assert units["PLT_CN"].notna().all() and (units["PLT_CN"] != "").all()
 
 
 def test_riparian_and_unknown_owner_shares_are_plausible(t3):
-    units = t3[SpeckleAction.MERGE]
+    units = _default(t3)
     total = _acres(units)
     riparian = _acres(units, units["unit_class"] == UnitClass.RIPARIAN) / total
     unknown = _acres(units, units["owner_class"] == "unknown") / total
@@ -145,13 +189,13 @@ def test_riparian_and_unknown_owner_shares_are_plausible(t3):
 
 
 def test_one_cell_speckle_is_a_small_share_of_the_county(t3):
-    units = t3[SpeckleAction.MERGE]
+    units = _default(t3)
     cell_acres = 900 / 4046.8564224
     assert _acres(units, units["Acres"] < cell_acres) < 0.005 * _acres(units)
 
 
 def test_plot_control_numbers_are_exact_strings(t3):
-    plots = t3[SpeckleAction.MERGE]["PLT_CN"]
+    plots = _default(t3)["PLT_CN"]
     assert pd.api.types.is_string_dtype(plots)
     fia = plots[~plots.str.startswith("Y")]
     assert fia.str.fullmatch(r"\d+").all()       # never '1.23e+14' or '123.0'

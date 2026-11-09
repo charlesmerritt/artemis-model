@@ -2,13 +2,15 @@
 
 LETO's small-stand actions act on parent stands, before the riparian and county splits, so
 the speckle those splits make survives them. After the splits, a unit under the region's
-minimum unit area (1 ac in Florida) is *speckle*. :attr:`SpeckleAction.MERGE`, the default,
-merges it into the first neighbour that qualifies, in :class:`SpeckleStep` order:
+minimum unit area (1 ac in Florida) is *speckle*. :attr:`SpeckleAction.MERGE_DELETE`, the
+default, merges it into the first neighbour that qualifies, in :class:`SpeckleStep` order:
 
 1. ``same_owner``: the same owner class and the same unit class;
 2. ``other_owner``: the same unit class under another owner class (it takes that owner class);
 3. ``riparian``: for a managed speckle only, a riparian neighbour (it becomes grow-only);
-4. otherwise it is kept.
+4. otherwise nothing takes it: :attr:`SpeckleAction.MERGE_DELETE`, the default, deletes it
+   (no allowed neighbour: an isolated patch, a corner-only contact, riparian speckle beside
+   managed land only), and :attr:`SpeckleAction.MERGE` keeps it.
 
 Within a step the neighbour with the lowest ``force_merge`` cost wins
 (:func:`pipeline.leto_ca.merge_small_segments`): the weighted squared differences of the two
@@ -51,7 +53,8 @@ class UnitClass(StrEnum):
 
 
 class SpeckleAction(StrEnum):
-    MERGE = "merge"                            # ADR 0005's default
+    MERGE_DELETE = "merge_delete"              # the default: merge, then delete what is left
+    MERGE = "merge"                            # merge, keep what is left (ADR 0005 as first written)
     KEEP = "keep"                              # LETO's own output, e.g. the Maine baseline replay
 
 
@@ -68,7 +71,7 @@ STEPS = tuple(SpeckleStep)
 
 @dataclass(frozen=True)
 class SpeckleSettings:
-    action: SpeckleAction = SpeckleAction.MERGE
+    action: SpeckleAction = SpeckleAction.MERGE_DELETE
     minimum_unit_acres: float = 1.0
 
     @classmethod
@@ -92,6 +95,7 @@ class MergeCost:
 class SpeckleResult:
     units: gpd.GeoDataFrame
     qa: pd.DataFrame                           # one row per county
+    deleted: gpd.GeoDataFrame                  # speckle MERGE_DELETE removed, as it stood
 
 
 def _order(unit_ids: pd.Series) -> np.ndarray:
@@ -222,9 +226,12 @@ def _dissolve(units: gpd.GeoDataFrame, root: np.ndarray, acres: np.ndarray) -> g
     return out.reset_index(drop=True)
 
 
-def _qa(before: gpd.GeoDataFrame, after: gpd.GeoDataFrame, merger: _Merger | None,
-        minimum: float) -> pd.DataFrame:
-    """Per county: merges by step, kept speckle, managed acres turned grow-only, owner drift."""
+def _qa(before: gpd.GeoDataFrame, after: gpd.GeoDataFrame, deleted: gpd.GeoDataFrame,
+        merger: _Merger | None, minimum: float) -> pd.DataFrame:
+    """Per county: merges by step, speckle kept and deleted, grow-only acres, owner drift.
+
+    Owner drift is what merges move between owner classes; deleted acres are their own line.
+    """
     events = pd.DataFrame(merger.events if merger else [], columns=["unit", "step", "acres"])
     events["county_fips"] = before["county_fips"].to_numpy()[events["unit"].to_numpy(dtype=int)]
     owners = list(load_ownership_policy()["classes"])      # one header for every county
@@ -243,7 +250,13 @@ def _qa(before: gpd.GeoDataFrame, after: gpd.GeoDataFrame, merger: _Merger | Non
             row[f"merged_{step}_acres"] = round(float(hit["acres"].sum()), 4)
         row["grow_only_acres"] = row[f"merged_{SpeckleStep.RIPARIAN}_acres"]
         row["speckle_kept"], row["speckle_kept_acres"] = len(kept), round(float(kept["Acres"].sum()), 4)
-        drift = (after[after["county_fips"] == county].groupby("owner_class")["Acres"].sum()
+        gone = deleted[deleted["county_fips"] == county]
+        row["speckle_deleted"] = len(gone)
+        row["speckle_deleted_acres"] = round(float(gone["Acres"].sum()), 4)
+        row["speckle_deleted_riparian_acres"] = round(float(
+            gone.loc[gone["unit_class"] == UnitClass.RIPARIAN, "Acres"].sum()), 4)
+        ended = pd.concat([after[after["county_fips"] == county], gone])
+        drift = (ended.groupby("owner_class")["Acres"].sum()
                  .sub(units.groupby("owner_class")["Acres"].sum(), fill_value=0.0))
         row.update({f"owner_drift_acres_{owner}": round(float(drift.get(owner, 0.0)), 4)
                     for owner in owners})
@@ -260,10 +273,16 @@ def merge_speckle(units: gpd.GeoDataFrame, traits: pd.DataFrame, settings: Speck
     standardized continuous traits (the keys of ``cost.weights`` but ``FORTYPCD``) and its
     dominant ``FORTYPCD``.
     """
+    minimum = settings.minimum_unit_acres
+    none = units.iloc[:0]
     if settings.action is SpeckleAction.KEEP or units.empty:
-        return SpeckleResult(units, _qa(units, units, None, settings.minimum_unit_acres))
+        return SpeckleResult(units, _qa(units, units, none, None, minimum), none)
     units = units.reset_index(drop=True)
-    merger = _Merger(units, traits, cost, settings.minimum_unit_acres)
+    merger = _Merger(units, traits, cost, minimum)
     merger.run()
     merged = _dissolve(units, merger.roots(), merger.acres)
-    return SpeckleResult(merged, _qa(units, merged, merger, settings.minimum_unit_acres))
+    deleted = none
+    if settings.action is SpeckleAction.MERGE_DELETE:
+        left = (merged["owner_class"] != MASKED) & (merged["Acres"] < minimum)
+        merged, deleted = merged[~left].reset_index(drop=True), merged[left].reset_index(drop=True)
+    return SpeckleResult(merged, _qa(units, merged, deleted, merger, minimum), deleted)

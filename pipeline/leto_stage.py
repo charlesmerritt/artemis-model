@@ -84,7 +84,9 @@ finished county (:func:`assemble`), in FIPS order:
   :data:`MAX_DRIFT_ACRES` fails the county (:class:`AcreDrift`) before anything is written.
 - ``qa/leto/speckle.csv``: per county, units and speckle before and after, merges and their
   acres by step, the managed acres turned grow-only, the speckle kept, and the acre drift
-  per owner class (``owner_drift_acres_<class>``) that step 2 moves.
+  per owner class (``owner_drift_acres_<class>``) that step 2 moves. Under ``merge_delete``
+  (the default) the speckle that could not merge is deleted: counted here and in
+  ``area_accounting.csv`` (``deleted_speckle``, ``deleted_speckle_acres``), and in no layer.
 - ``leto.json``: the layout (``library`` checks it: :func:`pipeline.run.check_layout`), the
   raster run's ``manifest.json`` sha256, per region the resolved settings and the FIA extract
   and hydrography (path and sha256), and per county its status, input hash, unit and stand
@@ -162,7 +164,7 @@ SPECKLE = "speckle.csv"
 REPAIRED_RASTERS = (IMPROVED_TREEMAP, PROVENANCE, OWNERSHIP)
 COUNTY_OUTPUTS = (PARENT_STANDS, DONOR_WEIGHTS, COUNTY_UNITS, STANDS, FVS_DATA, AREA_ACCOUNTING,
                   SPECKLE)
-OUTPUT_VERSION = 2                            # bump when a county's outputs change shape: redoes every county
+OUTPUT_VERSION = 3                            # bump when a county's outputs change shape: redoes every county
 LAYOUT = InventoryLayout.PLOT                 # the plot layout (ADR 0004)
 INV_YEAR = DEFAULT_INV_YEAR                   # every FVS stand starts in TreeMap's year, 2022
 VARIANT = "SN"
@@ -598,11 +600,13 @@ def stand_rows(units: gpd.GeoDataFrame) -> pd.DataFrame:
 
 
 def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.GeoDataFrame,
-                    county: County, deleted: leto_ca.DeletedSmallStands) -> dict:
+                    county: County, deleted: leto_ca.DeletedSmallStands,
+                    speckle: gpd.GeoDataFrame) -> dict:
     """One county's line: forest cells → parent stands → units, the unit acres split four ways.
 
     Forest cells the ``delete`` small-stand action removed are in no parent stand; they are
-    their own line, at ``cell_acres`` each.
+    their own line, at ``cell_acres`` each. ``speckle`` is what the speckle merge deleted: its
+    own line, and in the drift, since its acres left the units but not the parent stands.
     """
     masked = units["owner_class"] == MASKED
     riparian = units["unit_class"] == UnitClass.RIPARIAN
@@ -613,6 +617,7 @@ def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.Ge
 
     forest_cells = int(cells.valid.sum())
     parent_acres, unit_acres = float(parents["Acres"].sum()), float(units["Acres"].sum())
+    speckle_acres = float(speckle["Acres"].sum())
     return {"county_fips": county.fips, "county": county.name, "forest_cells": forest_cells,
             "forest_cell_acres": round(forest_cells * cells.cell_acres, 4),
             "deleted_small_stands": deleted.segments,
@@ -620,6 +625,7 @@ def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.Ge
             "deleted_small_stand_acres": round(deleted.acres(cells.cell_acres), 4),
             "parent_stands": len(parents), "parent_stand_acres": round(parent_acres, 4),
             "units": len(units), "unit_acres": round(unit_acres, 4),
+            "deleted_speckle": len(speckle), "deleted_speckle_acres": round(speckle_acres, 4),
             "managed_acres": acres(~masked & ~riparian & ~unknown),
             "unknown_flagged_acres": acres(~masked & ~riparian & unknown),
             "riparian_acres": acres(~masked & riparian),
@@ -627,7 +633,7 @@ def area_accounting(cells: CountyCells, parents: gpd.GeoDataFrame, units: gpd.Ge
             "no_age_acres": acres(~masked & units["stand_age"].isna()),   # harvest eligibility decides
             "add_back_cells": int(cells.added_back.sum()),
             "harris_nodata_cells": int(cells.harris_nodata.sum()),   # read as unknown, as LETO does
-            "drift_acres": round(unit_acres - parent_acres, 4)}
+            "drift_acres": round(unit_acres + speckle_acres - parent_acres, 4)}
 
 
 # ── step 8: the plot layout's FVS tables ───────────────────────────────────────────────
@@ -814,7 +820,7 @@ def run_county(job: CountyJob) -> CountyResult:
     units = speckle.units
     stands = stand_rows(units)
     inventory = plot_inventory(stands["PLT_CN"], attrs, extract)
-    accounting = area_accounting(cells, parents, units, place, deleted)
+    accounting = area_accounting(cells, parents, units, place, deleted, speckle.deleted)
     if abs(accounting["drift_acres"]) > MAX_DRIFT_ACRES:
         raise AcreDrift(f"county {place.fips}: units hold {accounting['unit_acres']} ac, parent "
                         f"stands {accounting['parent_stand_acres']} ac")

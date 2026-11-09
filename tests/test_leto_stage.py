@@ -235,7 +235,7 @@ def test_florida_runs_the_maine_verified_ca_with_force_merge_and_its_first_pass_
     assert settings.buffer_rules.waterbody == first_pass.waterbody
     assert settings.buffer_rules.area == first_pass.area
     assert settings.minimum_plot_weight == 0.05
-    assert settings.speckle == SpeckleSettings(SpeckleAction.MERGE, minimum_unit_acres=1.0)
+    assert settings.speckle == SpeckleSettings(SpeckleAction.MERGE_DELETE, minimum_unit_acres=1.0)
 
 
 def test_a_county_in_no_configured_region_fails_closed():
@@ -347,7 +347,7 @@ def test_the_units_layer_and_the_run_record_are_written(world):
     assert len(florida["fia_extract"]["sha256"]) == 64
     assert florida["settings"]["segmentation"]["shared_edge_bonus"] == 0.2
     assert record["counties"][ALPHA]["region"] == "florida"
-    assert florida["settings"]["speckle"] == {"action": "merge", "minimum_unit_acres": 1.0}
+    assert florida["settings"]["speckle"] == {"action": "merge_delete", "minimum_unit_acres": 1.0}
     assert record["counties"][ALPHA]["status"] == "done"
     assert len(record["counties"][ALPHA]["input_sha256"]) == 64
     assert record["layout"] == "plot"
@@ -494,17 +494,47 @@ def _speckle_qa(world):
                        dtype={"county_fips": str}).set_index("county_fips").loc[ALPHA]
 
 
-def test_speckle_merges_by_default_and_its_qa_table_matches_the_units_layer(world):
+def _with_isolated_cell(world):
+    """One forest cell ringed by non-forest in Alpha: speckle with no neighbour to merge into."""
+    for path in (world["repair"] / "treemap2022_improved.tif",
+                 world["repair"] / "young_plots" / "treemap2022_improved.tif"):
+        with rasterio.open(path) as src:
+            tm = src.read(1)
+        tm[4:9, 10:15] = NODATA
+        tm[6, 12] = 11
+        _tif(path, tm, "uint32", NODATA)
+
+
+def test_by_default_speckle_merges_then_what_is_left_is_deleted(world):
     _with_edge_stream(world)
+    _with_isolated_cell(world)
     _run(world)
 
     units, qa = _units(world), _speckle_qa(world)
     open_units = units[units["owner_class"] != "masked"]
+    assert (open_units["Acres"] >= 1.0).all()                # no speckle left in the layer
     assert qa["units_after"] == len(units) < qa["units_before"]
     merged = sum(qa[f"merged_{step}"] for step in ("same_owner", "other_owner", "riparian"))
-    assert merged == qa["units_before"] - qa["units_after"]
-    assert qa["speckle_kept"] == (open_units["Acres"] < 1.0).sum()
-    assert qa["speckle_kept"] < qa["speckle_before"]
+    assert merged + qa["speckle_deleted"] == qa["units_before"] - qa["units_after"]
+    assert qa["speckle_kept"] == 0 and qa["speckle_deleted"] > 0
+
+
+def test_deleted_speckle_is_its_own_line_in_the_area_accounting(world):
+    _with_edge_stream(world)
+    _with_isolated_cell(world)
+    _run(world)
+
+    line = pd.read_csv(world["run_dir"] / "qa" / "leto" / "area_accounting.csv",
+                       dtype={"county_fips": str}).set_index("county_fips").loc[ALPHA]
+    qa = _speckle_qa(world)
+    assert line["deleted_speckle"] == qa["speckle_deleted"]
+    assert line["deleted_speckle_acres"] == pytest.approx(qa["speckle_deleted_acres"], abs=1e-3)
+    assert line["unit_acres"] + line["deleted_speckle_acres"] == pytest.approx(
+        line["parent_stand_acres"], abs=0.1)
+    assert abs(line["drift_acres"]) <= 0.1
+    assert line["deleted_speckle"] >= 1
+    assert not _units(world).intersects(box(X0 + 12 * CELL + 1, Y0 - 7 * CELL + 1,
+                                            X0 + 13 * CELL - 1, Y0 - 6 * CELL - 1)).any()
 
 
 def test_a_many_county_run_assembles_every_countys_speckle_qa(world):

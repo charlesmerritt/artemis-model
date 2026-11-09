@@ -16,8 +16,9 @@
 #   NHDArea is staged. The region inputs hold no NHDArea layer yet, so `area` rules are
 #   kept for when it is.
 # speckle: ARTEMIS's merge of units under minimum_unit_acres after the riparian and county
-#   splits (ADR 0005, pipeline.leto_speckle). `merge` is the default; `keep` replays LETO's
-#   own output (the Maine baseline replay runs with `keep` and force_merge).
+#   splits (ADR 0005, pipeline.leto_speckle). `merge_delete`, the default, merges speckle and
+#   deletes what cannot merge; `merge` keeps it; `keep` replays LETO's own output (the Maine
+#   baseline replay runs with `keep` and force_merge).
 # inventory.minimum_plot_weight: LETO's donor-plot filter (5%; the largest donor is kept).
 # inputs: the region inputs folder region_prep writes (fia_extract.db, hydrography.gpkg),
 #   relative to the repo root. `main.py leto --region-dir` overrides it.
@@ -62,7 +63,7 @@ regions:
         46007: ["Ephemeral Stream/River Area", 0.0]
         53700: ["Area of Complex Channels", 75.0]
     speckle:
-      action: merge
+      action: merge_delete
       minimum_unit_acres: 1.0
     inventory:
       minimum_plot_weight: 0.05

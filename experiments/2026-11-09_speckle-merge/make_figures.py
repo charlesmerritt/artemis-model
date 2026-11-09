@@ -1,8 +1,8 @@
-"""#167 figures: Union's units before (LETO's own, speckle ``keep``) and after the speckle merge.
+"""#167 figures: Union's units before (LETO's own, speckle ``keep``) and after ``merge_delete``.
 
     PYTHONPATH=. uv run python experiments/2026-11-09_speckle-merge/make_figures.py --out <demo out>
 
-``--out`` is ``demo.py``'s output folder (``keep/`` and ``merge/`` run folders). Picks the
+``--out`` is ``demo.py``'s output folder (its ``keep/`` and ``merge_delete/`` run folders). Picks the
 windows where speckle is densest before the merge, plus the densest window of young-plot
 speckle, and writes one before/after PNG per window into ``figures/``.
 """
@@ -55,7 +55,16 @@ def _densest(units: gpd.GeoDataFrame, mask, n: int, taken: list) -> list[tuple[f
     return out
 
 
-def _panel(ax, units: gpd.GeoDataFrame, corner, title: str) -> None:
+def _deleted(keep: gpd.GeoDataFrame, merge: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """LETO's speckle that no unit holds after the merge: what ``merge_delete`` deleted."""
+    speckle = keep[keep["Acres"] < MINIMUM]
+    held = gpd.sjoin(speckle.set_geometry(speckle.representative_point())[["geometry"]],
+                     merge[["geometry"]], predicate="within").index
+    return speckle.drop(index=held.unique())
+
+
+def _panel(ax, units: gpd.GeoDataFrame, corner, title: str,
+           deleted: gpd.GeoDataFrame | None = None) -> None:
     x0, y0 = corner
     view = units.cx[x0:x0 + WINDOW, y0:y0 + WINDOW]
     young = view["origin"] == Origin.YOUNG_PLOT
@@ -69,6 +78,9 @@ def _panel(ax, units: gpd.GeoDataFrame, corner, title: str) -> None:
                       edgecolor=EDGE, linewidth=0.35)
     if speckle.any():
         view[speckle].plot(ax=ax, color=SPECKLE, edgecolor=SURFACE, linewidth=0.3)
+    gone = deleted.cx[x0:x0 + WINDOW, y0:y0 + WINDOW] if deleted is not None else []
+    if len(gone):
+        gone.plot(ax=ax, facecolor="none", edgecolor=SPECKLE, linewidth=0.9, linestyle=(0, (2, 1)))
     ax.set_xlim(x0, x0 + WINDOW)
     ax.set_ylim(y0, y0 + WINDOW)
     ax.set_aspect("equal")
@@ -76,14 +88,15 @@ def _panel(ax, units: gpd.GeoDataFrame, corner, title: str) -> None:
     ax.set_yticks([])
     for spine in ax.spines.values():
         spine.set_color("#d4d3cf")
-    ax.set_title(f"{title}\n{len(view):,} units, {int(speckle.sum()):,} speckle under 1 ac",
+    note = f", {len(gone):,} of LETO's speckle deleted" if deleted is not None else ""
+    ax.set_title(f"{title}\n{len(view):,} units, {int(speckle.sum()):,} speckle under 1 ac{note}",
                  fontsize=10, color=INK, loc="left")
 
 
-def _figure(keep, merge, corner, name: str, label: str) -> Path:
+def _figure(keep, merge, deleted, corner, name: str, label: str) -> Path:
     fig, axes = plt.subplots(1, 2, figsize=(11, 6.1), facecolor=SURFACE)
     _panel(axes[0], keep, corner, "Before: LETO's units (speckle keep)")
-    _panel(axes[1], merge, corner, "After: speckle merged (the default)")
+    _panel(axes[1], merge, corner, "After: merged, then the rest deleted (the default)", deleted)
     km = WINDOW / 1000
     fig.suptitle(f"Union County (12125), {label}: a {km:.1f} km window", x=0.02, ha="left",
                  fontsize=12, color=INK, fontweight="bold")
@@ -91,11 +104,12 @@ def _figure(keep, merge, corner, name: str, label: str) -> Path:
                Patch(facecolor=YOUNG, alpha=0.38, edgecolor=EDGE, label="Young-plot (add-back) unit"),
                Patch(facecolor=RIPARIAN, alpha=0.38, edgecolor=EDGE, label="Riparian unit (grow only)"),
                Patch(facecolor=SPECKLE, edgecolor=SURFACE, label="Speckle, under 1 ac"),
+               Patch(facecolor="none", edgecolor=SPECKLE, linestyle="--", label="Deleted speckle"),
                Patch(facecolor="white", edgecolor="#d4d3cf", label="No unit (non-forest or masked)")]
-    fig.legend(handles=handles, loc="lower center", ncol=5, frameon=False, fontsize=8.5,
+    fig.legend(handles=handles, loc="lower center", ncol=6, frameon=False, fontsize=8,
                labelcolor=MUTED, bbox_to_anchor=(0.5, 0.035))
-    fig.text(0.02, 0.012, "Speckle left after the merge has no allowed neighbour: an isolated "
-             "forest patch, a corner-only contact, or riparian speckle beside managed land only.",
+    fig.text(0.02, 0.012, "Deleted speckle had no allowed neighbour: an isolated forest patch, "
+             "a corner-only contact, or riparian speckle beside managed land only.",
              fontsize=8.5, color=MUTED)
     fig.tight_layout(rect=(0, 0.08, 1, 0.97))
     path = HERE / "figures" / f"{name}.png"
@@ -109,14 +123,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    keep, merge = _read(args.out / "keep"), _read(args.out / "merge")
+    keep, merge = _read(args.out / "keep"), _read(args.out / "merge_delete")
     speckle = keep["Acres"] < MINIMUM
     dense = _densest(keep, speckle, 3, [])
     young = _densest(keep, speckle & (keep["origin"] == Origin.YOUNG_PLOT), 1, dense)
+    deleted = _deleted(keep, merge)
     for i, corner in enumerate(dense, 1):
-        print(_figure(keep, merge, corner, f"speckle_window_{i}", f"densest speckle #{i}"))
+        print(_figure(keep, merge, deleted, corner, f"speckle_window_{i}", f"densest speckle #{i}"))
     for corner in young:
-        print(_figure(keep, merge, corner, "speckle_window_young", "densest young-plot speckle"))
+        print(_figure(keep, merge, deleted, corner, "speckle_window_young", "densest young-plot speckle"))
     print("speckle per unit count:", np.round(speckle.mean(), 3))
 
 

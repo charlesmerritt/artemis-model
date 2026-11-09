@@ -174,3 +174,51 @@ def test_the_qa_columns_are_the_same_whatever_owners_a_county_has():
     state = _merge(_layer(_unit(1, 0, 0, 10, 10, seg=1, owner="state")), _traits(s1=(0.0, 161)))
     assert list(family.qa.columns) == list(state.qa.columns)
     assert "owner_drift_acres_tribal" in family.qa.columns
+
+
+# ── merge, then delete what is left (the default) ─────────────────────────────────────
+
+
+MERGE_DELETE = SpeckleSettings(SpeckleAction.MERGE_DELETE, minimum_unit_acres=1.0)
+
+
+def test_the_default_merges_speckle_then_deletes_what_is_left():
+    assert SpeckleSettings().action is SpeckleAction.MERGE_DELETE
+
+
+def test_speckle_that_cannot_merge_is_deleted_and_reported():
+    units = _layer(
+        _unit(1, 0, 0, 10, 10, seg=1),
+        _unit(2, 10, 0, 2, 2, seg=2),                                     # merges into 1
+        _unit(3, 40, 0, 2, 2, seg=3),                                     # isolated
+        _unit(4, 10, 2, 2, 2, seg=4, unit_class="riparian"),              # riparian, managed nbrs
+        _unit(5, 50, 0, 10, 10, seg=5, county="12003"), _unit(6, 60, 0, 2, 2, seg=6),  # county line
+        _unit(7, 80, 0, 2, 2, seg=7, owner="masked"),                     # masked: never speckle
+    )
+    traits = _traits(**{f"s{i}": (0.0, 161) for i in range(1, 8)})
+    result = _merge(units, traits, MERGE_DELETE)
+
+    assert sorted(result.units["unit_id"]) == [f"{COUNTY}-1", f"{COUNTY}-7", "12003-5"]
+    assert sorted(result.deleted["unit_id"]) == [f"{COUNTY}-3", f"{COUNTY}-4", f"{COUNTY}-6"]
+    cell = CELL * CELL / M2_PER_ACRE
+    qa = _qa(result)
+    assert qa["merged_same_owner"] == 1
+    assert qa["speckle_kept"] == 0
+    assert qa["speckle_deleted"] == 3
+    assert qa["speckle_deleted_acres"] == pytest.approx(12 * cell, abs=1e-4)
+    assert qa["speckle_deleted_riparian_acres"] == pytest.approx(4 * cell, abs=1e-4)
+    assert (result.units["Acres"].sum() + result.deleted["Acres"].sum()
+            == pytest.approx(units["Acres"].sum(), abs=1e-9))
+
+
+def test_deleting_speckle_is_not_counted_as_owner_drift():
+    units = _layer(_unit(1, 0, 0, 10, 10, seg=1), _unit(2, 40, 0, 2, 2, seg=2, owner="family"))
+    result = _merge(units, _traits(s1=(0.0, 161), s2=(0.0, 161)), MERGE_DELETE)
+    assert _qa(result)["owner_drift_acres_family"] == 0.0
+
+
+def test_merge_alone_keeps_what_it_cannot_merge():
+    units = _layer(_unit(1, 0, 0, 10, 10, seg=1), _unit(2, 40, 0, 2, 2, seg=2))
+    result = _merge(units, _traits(s1=(0.0, 161), s2=(0.0, 161)))
+    assert len(result.units) == 2 and result.deleted.empty
+    assert _qa(result)["speckle_kept"] == 1 and _qa(result)["speckle_deleted"] == 0
