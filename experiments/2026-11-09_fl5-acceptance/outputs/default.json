@@ -3,16 +3,16 @@
     "forest_acres": 1165075.4052175176,
     "young_plot_acres": 85823.36435327392,
     "riparian_acres": 34191.17683355577,
-    "units": 49363.0,
+    "units": 49363,
     "unknown_owner_acres": 15596.31504230201,
-    "options": 1666966.0,
+    "options": 1666966,
     "options_per_stand": 33.76954399043818
   },
   "verdicts": [
     {
       "measure": "forest_acres",
       "run": 1165075.41,
-      "golden": 1174862.0,
+      "golden": 1174862,
       "deviation": "-0.833%",
       "tolerance": "\u00b10.1%",
       "verdict": "miss"
@@ -20,7 +20,7 @@
     {
       "measure": "young_plot_acres",
       "run": 85823.36,
-      "golden": 86953.0,
+      "golden": 86953,
       "deviation": "-1.299%",
       "tolerance": "\u00b11.0%",
       "verdict": "miss"
@@ -28,7 +28,7 @@
     {
       "measure": "riparian_acres",
       "run": 34191.18,
-      "golden": 34566.0,
+      "golden": 34566,
       "deviation": "-1.084%",
       "tolerance": "\u00b15.0%",
       "verdict": "pass"

@@ -24,12 +24,25 @@ objective (golden 0.1033) is not yet measured.
 `library`: 1,666,966 options over 49,363 stands, 51,112 distinct FVS runs in 42 min on 10
 workers. 1,329 distinct FVS stands (golden 1,502).
 
+Options per stand counts every stand, riparian included, as the golden figure does (3.2M
+options / 102,109 scheduled stands, 23,465 of them riparian). A riparian stand has one option.
+Riparian units are 17% of stands here against 23% in the golden run, which raises the average.
+Managed stands alone average 40.3.
+
 ## Hard invariants
 
-All hold on the default run:
+On the default run:
 
-- per county, unit acres plus deleted speckle equal parent-stand acres (drift ≤ 0.002 ac);
-- counties run separately, so no parent stand crosses a county line;
+- **Unit acres equal parent-stand acres: holds only with deleted speckle counted.** Per
+  county, units plus deleted speckle equal parent stands (`drift_acres` ≤ 0.002 ac). Units
+  alone fall 761–3,281 ac short per county. This is the same deletion as the forest-acre
+  miss below, and the same ruling settles both.
+- **Riparian area is never in a managed unit.** In the units layer every `managed` unit has
+  `RIPARIAN` 0 and every `riparian` unit 1. Riparian acres reconcile to the acre: 35,546
+  before the speckle merge, + 964 managed speckle merged in, − 2,318 riparian speckle
+  deleted = 34,191.18, the run's figure. So no riparian acre moved to managed land.
+- No parent stand crosses a county line: by construction (each county is clipped and
+  segmented on its own), not measured;
 - unit IDs are unique;
 - every unit's `PLT_CN` is in `FVS_StandInit_Plot`, and no plot is missing from the FIA extract
   (`qa_leto/donor_plots_missing.csv` is empty);
@@ -66,14 +79,15 @@ that speckle (`outputs/merge_only.json`):
 - **Riparian acres:** without the deletion, riparian is 5.6% over the golden run, so the
   deletion is what brings it inside ±5%.
 
-So under the default the forest-acre and young-plot tolerances cannot both hold: they predate
-the amendment. Either the tolerances become "forest acres less deleted speckle", or the
+So under the default, neither the forest-acre tolerance nor the unit-acre invariant can hold,
+because both predate the amendment. Either the tolerances become "forest acres less deleted speckle", or the
 amendment's deletion is reconsidered. That decision is the architect's.
 
 ## FVS failures
 
-3 of 51,112 runs fail (`outputs/fvs_failures.csv`), 5 options on 5 young-plot stands in Columbia,
-all `pine_plantation_short_rotation@+5`. Every stand keeps other options. Rerun by hand, FVSsn
+3 of 51,112 runs fail (`outputs/fvs_failures.csv`). Joining their `run_hash` to the run's
+`library.csv` gives 5 options on 5 young-plot stands in Columbia (plots `Y1001971`,
+`Y1001973`, `Y1002589`), all `pine_plantation_short_rotation@+5`. Every stand keeps other options. Rerun by hand, FVSsn
 raises SIGFPE in the National Volume Library's Clark profile (`r9ht_` ← `r9clark_` ←
 `volinit_`), computing volumes after the 2037 thinning of a young slash-pine (`SA1`) stand. It
 is an FVS volume-equation fault, not the leto stage's.

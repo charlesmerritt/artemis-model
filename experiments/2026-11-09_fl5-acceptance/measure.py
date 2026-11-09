@@ -33,6 +33,10 @@ def read_stands(run: Path) -> pd.DataFrame:
     return stands
 
 
+def unit_ids(path: Path) -> pd.Series:
+    return as_id_series(pd.read_csv(path, usecols=["unit_id"], dtype=str)["unit_id"])
+
+
 def measures(run: Path) -> dict:
     stands = read_stands(run)
     found = {
@@ -43,25 +47,26 @@ def measures(run: Path) -> dict:
         "unknown_owner_acres": stands.loc[stands.unknown_ownership == "True", "acres"].sum(),
     }
     if (run / "library.csv").exists():
-        options = as_id_series(pd.read_csv(run / "library.csv", usecols=["unit_id"], dtype=str)["unit_id"])
+        options = unit_ids(run / "library.csv")
         found["options"] = len(options)
         found["options_per_stand"] = len(options) / options.nunique()
     if (run / "plan.csv.gz").exists():
-        plan = as_id_series(pd.read_csv(run / "plan.csv.gz", usecols=["unit_id"], dtype=str)["unit_id"])
+        plan = unit_ids(run / "plan.csv.gz")
         found["scheduled_acres"] = stands.loc[stands.unit_id.isin(set(plan)), "acres"].sum()
+    if (run / "summary.json").exists():          # written with the plan, at the end of schedule
         found["objective"] = json.loads((run / "summary.json").read_text())["objective_best"]
     return found
 
 
-def verdicts(found: dict) -> pd.DataFrame:
+def verdicts(found: dict) -> list[dict]:
     rows = []
     for name, (golden, tolerance) in MEASURES.items():
         if name in found:
             deviation = found[name] / golden - 1
-            rows.append({"measure": name, "run": round(found[name], 2), "golden": golden,
+            rows.append({"measure": name, "run": round(float(found[name]), 2), "golden": golden,
                          "deviation": f"{deviation:+.3%}", "tolerance": f"±{tolerance:.1%}",
                          "verdict": "pass" if abs(deviation) <= tolerance else "miss"})
-    return pd.DataFrame(rows)
+    return rows
 
 
 def main() -> None:
@@ -71,13 +76,13 @@ def main() -> None:
     args = parser.parse_args()
     found = measures(args.run_dir)
     table = verdicts(found)
-    print(table.to_string(index=False))
+    print(pd.DataFrame(table).to_string(index=False))
     print(f"units: {found['units']:,} (golden {GOLDEN_UNITS:,}; reported, not gated)")
     if "objective" in found:
         print(f"objective: {found['objective']:.4f} (golden {GOLDEN_OBJECTIVE}; for information)")
     if args.json:
-        args.json.write_text(json.dumps({"measures": {k: float(v) for k, v in found.items()},
-                                         "verdicts": table.to_dict("records")}, indent=2) + "\n")
+        plain = {k: v.item() if hasattr(v, "item") else v for k, v in found.items()}
+        args.json.write_text(json.dumps({"measures": plain, "verdicts": table}, indent=2) + "\n")
 
 
 if __name__ == "__main__":
