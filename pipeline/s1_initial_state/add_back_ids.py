@@ -29,6 +29,8 @@ Writes into ``<run>/young_plots/``:
 - ``validation.json``: whether the four join (:func:`validate`), the acres by stand age,
   match level and age source, and the detector inputs that dated the cut years.
 
+The command line then writes the QA report, ``<run>/qa/young_plots/`` (:mod:`pipeline.young_plot_qa`).
+
 Control numbers stay strings end to end: read the CSVs with :func:`pipeline.ids.read_id_csv`
 and :data:`EXTENSION_ID_COLUMNS`.
 """
@@ -61,12 +63,7 @@ from pipeline.s1_initial_state.add_back_stand_age import (
 )
 from pipeline.s1_initial_state.county_improvement import Grid, TreeMapProvenance
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL
-from pipeline.s1_initial_state.run_counties import (
-    RUN_MANIFEST,
-    manifest_counties,
-    manifest_county_layer,
-    read_counties,
-)
+from pipeline.s1_initial_state.run_counties import RUN_MANIFEST
 from pipeline.spatial_ref import project_crs
 from pipeline.s1_initial_state.young_plot_library import (
     MatchLevel,
@@ -80,9 +77,6 @@ from pipeline.s1_initial_state.young_plot_library import (
 OUT_DIR = "young_plots"
 VAT_EXTENSION_CSV = "treemap2022_improved_vat_extension.csv"
 TREE_EXTENSION_CSV = "treemap2022_improved_tree_extension.csv"
-COUNTY_CSV = "add_back_acres_by_county.csv"
-OUTSIDE_COUNTIES = "outside listed counties"   # the county of an add-back pixel in no listed county
-UNRESOLVED = "unresolved"   # the age source of an add-back pixel whose ID has no VAT extension row
 IMPROVED = "treemap2022_improved.tif"
 PROVENANCE = "treemap2022_provenance.tif"
 STRIP_ROWS = 1024            # rows read at a time: a statewide grid is never held whole (#172)
@@ -327,42 +321,13 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
     report["cut_year_detectors"] = {name: None if path is None else str(path) for name, path in
                                     (("obata", obata), ("hansen", hansen), ("landfire", landfire))}
     (out / "validation.json").write_text(json.dumps(report, indent=2))
-    layer = manifest_county_layer(run_dir)
-    if layer is not None:
-        acres_by_county(run_dir, layer, manifest_counties(run_dir)).to_csv(
-            out / COUNTY_CSV, index=False, float_format="%.4f")
     return report
-
-
-def acres_by_county(run_dir: Path, counties: Path, fips: list[str]) -> pd.DataFrame:
-    """``<run_dir>/young_plots/``'s add-back acres by county and :class:`AgeSource`.
-
-    Read back from the written raster and VAT extension, so it counts what ``leto`` will
-    read. A pixel belongs to the county its centre falls in; one in no listed county keeps
-    an empty ``county_fips`` and :data:`OUTSIDE_COUNTIES`, and one whose ID has no VAT
-    extension row the age source :data:`UNRESOLVED`, so the rows sum to every add-back pixel.
-    """
-    layer = read_counties(counties, fips)
-    out = run_dir / OUT_DIR
-    added = AddBackPixels.of(out / PROVENANCE, _young)
-    values = added.gather(out / IMPROVED)
-    index = added.rasterized([(geom, i + 1) for i, geom in enumerate(layer.geometry)])
-    fips_of = np.array([""] + layer["ADMIN_FIPS"].astype(str).tolist(), dtype=object)
-    name_of = np.array([OUTSIDE_COUNTIES] + layer["NAME"].astype(str).tolist(), dtype=object)
-    vat = read_id_csv(out / VAT_EXTENSION_CSV, id_columns=EXTENSION_ID_COLUMNS)
-    source_of = pd.Series(vat["AGE_SOURCE"].to_numpy(), index=vat["Value"].astype(np.int64))
-    pixels = pd.DataFrame({"county_fips": fips_of[index], "county": name_of[index],
-                           "age_source": source_of.reindex(values.astype(np.int64)).fillna(UNRESOLVED).to_numpy()})
-    table = (pixels.groupby(["county_fips", "county", "age_source"]).size()
-             .rename("pixels").reset_index())
-    table["acres"] = table["pixels"] * ACRES_PER_PIXEL
-    return table
 
 
 def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
     """Read ``<run_dir>/young_plots/`` back: does it join, and how many acres by age and match?"""
     out = run_dir / OUT_DIR
-    added = AddBackPixels.of(out / PROVENANCE, _young)
+    added = young_plot_pixels(run_dir)
     vat = read_id_csv(out / VAT_EXTENSION_CSV, id_columns=EXTENSION_ID_COLUMNS)
     trees = read_id_csv(out / TREE_EXTENSION_CSV)
     values, pixels = np.unique(added.gather(out / IMPROVED), return_counts=True)
@@ -377,8 +342,8 @@ def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
     }
 
     def acres(column: str) -> dict[str, float]:
-        totals = vat.groupby(column)["Count"].sum() * ACRES_PER_PIXEL
-        return {str(k): round(float(v), 4) for k, v in totals.items()}
+        totals = acres_by(vat, column)
+        return {str(k): round(float(v), 4) for k, v in zip(totals[column], totals["acres"])}
 
     return {
         "checks": checks,
@@ -389,6 +354,18 @@ def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
         "acres_by_match_level": acres("MATCH_LEVEL"),
         "acres_by_age_source": acres("AGE_SOURCE"),
     }
+
+
+def acres_by(vat: pd.DataFrame, column: str) -> pd.DataFrame:
+    """A VAT extension's add-back ``pixels`` and ``acres`` by one of its columns, in its order."""
+    table = vat.groupby(column)["Count"].sum().rename("pixels").reset_index()
+    table["acres"] = table["pixels"] * ACRES_PER_PIXEL
+    return table
+
+
+def young_plot_pixels(run_dir: Path) -> AddBackPixels:
+    """The add-back pixels of ``<run_dir>/young_plots/``: provenance 4 there."""
+    return AddBackPixels.of(run_dir / OUT_DIR / PROVENANCE, _young)
 
 
 def _young(provenance: np.ndarray) -> np.ndarray:
@@ -420,6 +397,18 @@ class AddBackPixels:
             strips = tuple((w, np.flatnonzero(chosen(src.read(1, window=w))))
                            for w in _strips(src.height, src.width))
             return cls(src.transform, strips)
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        last = self.strips[-1][0] if self.strips else Window(0, 0, 0, 0)
+        return int(last.row_off + last.height), int(last.width)
+
+    def positions(self) -> tuple[np.ndarray, np.ndarray]:
+        """Each pixel's row and column on the grid, in :meth:`gather`'s order."""
+        rows = [int(w.row_off) + index // int(w.width) for w, index in self.strips]
+        cols = [index % int(w.width) for w, index in self.strips]
+        return (np.concatenate([np.empty(0, np.int64)] + rows),
+                np.concatenate([np.empty(0, np.int64)] + cols))
 
     @property
     def count(self) -> int:
@@ -548,6 +537,9 @@ def main() -> None:
         library=read_young_plot_library(args.vat, args.db, args.tree_table),
         tree_table=args.tree_table, obata=obata, hansen=hansen, landfire=args.landfire_dist_dir)
     print(json.dumps(report, indent=2))
+    from pipeline.young_plot_qa import write_young_plot_qa   # the report reads this module
+
+    print(write_young_plot_qa(args.run_dir))
     if not all(report["checks"].values()):
         sys.exit("a check failed: the young_plots outputs do not join")
 

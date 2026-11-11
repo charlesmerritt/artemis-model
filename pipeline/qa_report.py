@@ -24,6 +24,15 @@ import pandas as pd
 INDEX = "index.html"
 FIGURES = "figures"
 MAX_HTML_ROWS = 200                           # a longer table shows its head on the page
+MAX_MAP_PIXELS = 2000                         # a map's long side; larger grids are coarsened
+MAP_DPI = 150
+# Categorical hues in fixed order: slot n always means the stage's nth category, never
+# cycled. Checked with the dataviz validator on the page's #fcfcfb surface: every hard
+# check passes. Three slots sit under 3:1 contrast, so each map carries a labelled legend
+# and its table sits on the same page.
+CATEGORICAL = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948")
+NEUTRAL = "#9e9e9e"                           # a fallback or "none" category, never a slot
+SEQUENTIAL = ("#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b")   # one hue, light to dark
 
 STYLE = """
 :root { --fg:#0b0b0b; --bg:#f9f9f7; --surface:#fcfcfb; --muted:#52514e; --rule:#d9d8d3; }

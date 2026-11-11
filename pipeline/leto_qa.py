@@ -81,9 +81,9 @@ VIEWERS = "viewer"                            # the run's: viewer/<FIPS>.html
 COUNTY_QA = tuple(Path(QA_SUBDIR) / n for n in (PARENTS, QA_CELLS, MISSING_PLOTS,
                                                 RIPARIAN_SOURCES, VIEWER, TIMINGS))
 REGION = "region"                             # the scope of a whole-run row or map
-MAX_MAP_PIXELS = 2000                         # a map's long side; larger grids are coarsened
+MAX_MAP_PIXELS = qa_report.MAX_MAP_PIXELS
 MAX_BOUNDARY_FACTOR = 2                       # parent boundaries drawn up to this coarsening
-MAP_DPI = 150
+MAP_DPI = qa_report.MAP_DPI
 LEGEND_INCHES = 2.5
 MAX_FOREST_TYPES = 12                         # the rest share one colour
 NO_BUFFER = ("none", "outside every buffer")

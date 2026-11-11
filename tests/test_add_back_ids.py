@@ -316,62 +316,6 @@ def test_a_young_plot_with_no_trees_is_an_error_and_nothing_is_written(tmp_path)
     assert not (run / "young_plots").exists()
 
 
-def _counties(tmp_path, *polygons):
-    """A county layer in the project CRS: (ADMIN_FIPS, NAME, x0, x1) strips over the run's row."""
-    import geopandas as gpd
-    from shapely.geometry import box
-
-    path = tmp_path / "counties.shp"
-    gpd.GeoDataFrame({"ADMIN_FIPS": [p[0] for p in polygons], "NAME": [p[1] for p in polygons]},
-                     geometry=[box(x0, 0, x1, 30) for _, _, x0, x1 in polygons],
-                     crs="EPSG:5070").to_file(path)
-    return path
-
-
-def test_a_run_with_counties_reports_add_back_acres_by_county_and_age_source(tmp_path):
-    # Pixels 1-2 (obata, hansen) fall in 12001, pixels 3-4 (hansen, stratum median) in 12077.
-    # 12003 is listed but has no add-back pixel; it still gets no row, not a zero row.
-    run, sources = _run(tmp_path)
-    counties = _counties(tmp_path, ("12001", "Alachua", 0, 90), ("12077", "Liberty", 90, 180),
-                         ("12003", "Baker", 300, 330))
-    _manifest(run, ["12001 12001", "12003 Baker", "12077 12077"],   # names as the run wrote them
-              obata=str(sources["obata"]), hansen=str(sources["hansen"]), counties=str(counties))
-
-    write_add_back_ids(run, **sources)
-
-    table = pd.read_csv(run / "young_plots" / "add_back_acres_by_county.csv", dtype={"county_fips": str})
-    assert table.to_dict("records") == [
-        {"county_fips": "12001", "county": "Alachua", "age_source": "hansen", "pixels": 1, "acres": PX},
-        {"county_fips": "12001", "county": "Alachua", "age_source": "obata", "pixels": 1, "acres": PX},
-        {"county_fips": "12077", "county": "Liberty", "age_source": "hansen", "pixels": 1, "acres": PX},
-        {"county_fips": "12077", "county": "Liberty", "age_source": "stratum_median", "pixels": 1,
-         "acres": PX},
-    ]
-
-
-def test_add_back_pixels_outside_every_listed_county_are_reported_not_dropped(tmp_path):
-    run, sources = _run(tmp_path)
-    counties = _counties(tmp_path, ("12001", "Alachua", 0, 90))
-    _manifest(run, ["12001 Alachua"], obata=str(sources["obata"]), hansen=str(sources["hansen"]),
-              counties=str(counties))
-
-    write_add_back_ids(run, **sources)
-
-    table = pd.read_csv(run / "young_plots" / "add_back_acres_by_county.csv",
-                        dtype={"county_fips": str}, keep_default_na=False)
-    outside = table[table["county_fips"] == ""]
-    assert outside[["county", "age_source", "pixels"]].to_dict("records") == [
-        {"county": "outside listed counties", "age_source": "hansen", "pixels": 1},
-        {"county": "outside listed counties", "age_source": "stratum_median", "pixels": 1}]
-    assert table["pixels"].sum() == 4
-
-
-def test_a_run_without_counties_in_its_manifest_writes_no_county_table(tmp_path):
-    run, sources = _run(tmp_path)
-    write_add_back_ids(run, **sources)
-    assert not (run / "young_plots" / "add_back_acres_by_county.csv").exists()
-
-
 def test_default_inputs_are_the_declared_drive_paths_or_their_place_under_a_mirror(tmp_path):
     from pipeline.s1_initial_state.add_back_ids import default_inputs
 
@@ -382,30 +326,6 @@ def test_default_inputs_are_the_declared_drive_paths_or_their_place_under_a_mirr
         "vat": tmp_path / "TreeMap-2022/Data/TreeMap2022_CONUS.tif.vat.dbf",
         "tree_table": tmp_path / "TreeMap-2022/Data/TreeMap2022_CONUS_Tree_Table.csv",
         "db": tmp_path / "SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"}
-
-
-def test_an_add_back_pixel_with_no_vat_row_is_counted_as_unresolved_not_dropped(tmp_path):
-    from pipeline.s1_initial_state.add_back_ids import UNRESOLVED, acres_by_county
-
-    run, sources = _run(tmp_path)
-    counties = _counties(tmp_path, ("12001", "Alachua", 0, 180))
-    write_add_back_ids(run, **sources)
-    path = run / "young_plots" / "treemap2022_improved_vat_extension.csv"
-    vat = pd.read_csv(path, dtype=str)
-    vat[vat["Value"] != "1000001"].to_csv(path, index=False)   # pixel 1's row goes missing
-
-    table = acres_by_county(run, counties, ["12001"])
-    assert table["pixels"].sum() == 4
-    assert table.loc[table["age_source"] == UNRESOLVED, "pixels"].tolist() == [1]
-
-
-def test_a_county_that_is_not_five_digits_is_refused_before_the_layer_is_read(tmp_path):
-    from pipeline.s1_initial_state.add_back_ids import acres_by_county
-
-    run, sources = _run(tmp_path)
-    write_add_back_ids(run, **sources)
-    with pytest.raises(ValueError, match="5 digits"):
-        acres_by_county(run, tmp_path / "missing.shp", ["12001", "12001' OR '1'='1"])
 
 
 def _three_rows(path):
@@ -456,7 +376,3 @@ def test_the_outputs_do_not_depend_on_how_many_rows_are_read_at_a_time(tmp_path,
     report = json.loads((by_row / "young_plots" / "validation.json").read_text())
     assert all(report["checks"].values())
     assert report["counts"]["add_back_pixels"] == 12
-    # Row 0's pixels 1-2 are in 12001 and 3-4 in no county; rows 1-2 are all 12077.
-    table = pd.read_csv(by_row / "young_plots" / "add_back_acres_by_county.csv",
-                        dtype={"county_fips": str}, keep_default_na=False)
-    assert table.groupby("county_fips")["pixels"].sum().to_dict() == {"": 2, "12001": 2, "12077": 8}
