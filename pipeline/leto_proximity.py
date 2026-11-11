@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 import shapely
 
+from pipeline.ids import as_id_series
 from pipeline.leto_layout import database_groups
 from pipeline.leto_management_units import (
     assign_final_mu_ids,
@@ -194,7 +195,7 @@ def final_identity(pieces: gpd.GeoDataFrame, fips: str, *, groups: pd.Series | N
     frame = assign_final_mu_ids(frame, compatibility_fields=list(COMPATIBILITY),
                                 proximity_enabled=groups is not None)
     frame = frame.sort_values(["MU_ID", "MU_PART"], kind="stable").reset_index(drop=True)
-    frame.insert(0, "unit_id", fips + "-" + frame["MU_ID"].astype(str))
+    frame.insert(0, "unit_id", fips + "-" + as_id_series(frame["MU_ID"], column="MU_ID"))
     return gpd.GeoDataFrame(frame.drop(columns=["SOURCE_OID"]),
                             geometry="geometry", crs=pieces.crs)
 

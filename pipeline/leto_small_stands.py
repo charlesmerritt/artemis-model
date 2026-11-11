@@ -16,6 +16,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from pipeline.ids import as_id_series
+
 
 @dataclass
 class _Group:
@@ -299,7 +301,7 @@ def aggregate_management_unit_weights(
         "MU_ID"
     )["WEIGHT"].transform("sum")
     grouped["SEG_ID"] = grouped["MU_ID"]
-    grouped["STAND_ID"] = "MU_" + grouped["MU_ID"].astype(str)
+    grouped["STAND_ID"] = "MU_" + as_id_series(grouped["MU_ID"], column="MU_ID")
     grouped["FVS_Stand_ID"] = grouped["STAND_ID"]
 
     sums = grouped.groupby("MU_ID")["WEIGHT"].sum()
