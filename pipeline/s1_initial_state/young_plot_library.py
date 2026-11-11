@@ -6,9 +6,11 @@ whose forest type is the *neighbour plot's* and whose FIA ``STDAGE`` is near the
 2022 stand age is carried separately and is the authoritative one.
 
 **The match.** :meth:`YoungPlotLibrary.match` searches the neighbour plot's forest type
-(:attr:`MatchLevel.TYPE`), then its forest type group (:attr:`MatchLevel.GROUP`), each
-within ±2 years of the stand age; with both empty the pixel is
-:attr:`MatchLevel.UNMATCHED`, which #88 refuses. Within a pool, candidates rank by age gap,
+(:attr:`MatchLevel.TYPE`), then its forest type group (:attr:`MatchLevel.GROUP`), then
+that group's parent pool (:attr:`MatchLevel.PARENT`: softwood, hardwood, or every type for
+the "other" group), each within ±2 years of the stand age; with all three empty the pixel
+is :attr:`MatchLevel.UNMATCHED`, which #88 refuses. The parent pool exists for types the
+library barely holds: Florida's young-plot library has one Eastern redcedar plot (#172). Within a pool, candidates rank by age gap,
 then species mix, then the ``PLT_CN`` string.
 
 **Coverage** (#87's acceptance report) for the forest types of an AOI's TreeMap pixels:
@@ -38,7 +40,9 @@ from pipeline.s1_initial_state.young_stand_profiles import (
     PLOTS_SQL,
     SEEDLINGS_SQL,
     STATES,
+    PARENT,
     forest_type_group,
+    pool_members,
     states_sql,
 )
 
@@ -55,7 +59,8 @@ class MatchLevel(StrEnum):
 
     TYPE = "type"          # the neighbour plot's FORTYPCD
     GROUP = "group"        # its forest type group
-    UNMATCHED = "unmatched"   # no young plot of the type or group within ±2 years
+    PARENT = "parent"      # its group's parent pool: softwood, hardwood, or every type for "other"
+    UNMATCHED = "unmatched"   # no young plot of the type, group or parent pool within ±2 years
 
 
 @dataclass(frozen=True)
@@ -111,8 +116,10 @@ class YoungPlotLibrary:
         gap = (self.plots["STDAGE"] - stand_age).abs()
         near = self.plots[gap <= AGE_HALF_WINDOW]
         group = forest_type_group(fortypcd)
+        near_groups = near["FORTYPCD"].map(forest_type_group)
         pools = ((MatchLevel.TYPE, near["FORTYPCD"] == fortypcd),
-                 (MatchLevel.GROUP, near["FORTYPCD"].map(forest_type_group) == group))
+                 (MatchLevel.GROUP, near_groups == group),
+                 (MatchLevel.PARENT, near_groups.isin(pool_members(PARENT[group]))))
         for level, members in pools:
             pool = near[members]
             if len(pool):

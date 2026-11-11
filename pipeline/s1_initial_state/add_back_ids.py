@@ -226,7 +226,7 @@ def _match(pixels: pd.DataFrame, vat_by_id: pd.DataFrame, library: YoungPlotLibr
         by_type = unmatched.groupby([fortypcd[tm_id] for tm_id, _ in unmatched.index]).sum()
         raise UnmatchedYoungPlots(
             f"{unmatched.sum()} add-back pixels have no young plot of their neighbour plot's "
-            "forest type or group within 2 years of their stand age: "
+            "forest type, group or parent pool within 2 years of their stand age: "
             + ", ".join(f"FORTYPCD {code}: {n} px" for code, n in by_type.items()))
     return matches
 

@@ -246,8 +246,8 @@ def test_validation_reports_acres_by_stand_age_and_match_level_and_that_the_outp
 
 def test_a_pixel_with_no_young_plot_is_an_error_naming_its_forest_type_and_nothing_is_written(tmp_path):
     # Without the slash plot, pixel 3 (neighbour plot slash, stand age 6) has no young plot
-    # of its type or group within 2 years.
-    run, sources = _run(tmp_path, young_plots=((YOUNG_7, LOBLOLLY, 7), (YOUNG_0, LOBLOLLY, 0)))
+    # of its type, group or parent pool within 2 years: the softwoods left are aged 9 and 0.
+    run, sources = _run(tmp_path, young_plots=((YOUNG_7, LOBLOLLY, 9), (YOUNG_0, LOBLOLLY, 0)))
     with pytest.raises(UnmatchedYoungPlots, match=r"1 add-back pixels .* FORTYPCD 142: 1 px"):
         write_add_back_ids(run, **sources)
     assert not (run / "young_plots").exists()
