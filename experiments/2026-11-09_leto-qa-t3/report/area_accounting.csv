@@ -1,0 +1,2 @@
+county_fips,county,forest_cells,forest_cell_acres,deleted_small_stands,deleted_small_stand_cells,deleted_small_stand_acres,parent_stands,parent_stand_acres,units,unit_acres,deleted_speckle,deleted_speckle_acres,managed_acres,unknown_flagged_acres,riparian_acres,masked_acres,no_age_acres,add_back_cells,harris_nodata_cells,drift_acres
+12125,Union,506335,112606.293,0,0,0.0,5625,112606.2927,5654,111844.7781,2437,761.5147,105153.5211,143.9966,6547.2605,0.0,0.0,24587,0,0.0001

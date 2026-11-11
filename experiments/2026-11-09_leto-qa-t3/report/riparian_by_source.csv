@@ -1,0 +1,10 @@
+county_fips,county,layer,fcode,label,buffer_feet,pieces,acres
+12125,Union,flowline,46000,Unclassified Stream,35.0,39,117.4913
+12125,Union,flowline,46003,Intermittent Stream,35.0,65,161.2493
+12125,Union,flowline,46006,Perennial Stream,75.0,789,3474.8537
+12125,Union,flowline,55800,Artificial Path (NHDArea stand-in),75.0,449,2287.0881
+12125,Union,none,,outside every buffer,,37,77.6873
+12125,Union,waterbody,39000,Unclassified Lake/Pond,35.0,2,4.2424
+12125,Union,waterbody,39001,Intermittent Lake/Pond,35.0,1,1.078
+12125,Union,waterbody,39004,Perennial Lake/Pond,75.0,133,288.5639
+12125,Union,waterbody,39009,Perennial Lake/Pond,75.0,50,135.0065

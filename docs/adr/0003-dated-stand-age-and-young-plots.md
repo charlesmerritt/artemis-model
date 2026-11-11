@@ -89,3 +89,24 @@ separate age raster is produced.
   from 1,000,000. LETO creates management units only after add-back.
 - **Provenance 4 is redefined:** an add-back pixel carrying a young plot under a new ID.
   Rasters written before this keep the old meaning. Regenerate them; don't reinterpret them.
+
+## Amendment, 2026-11-09 (ADR 0004)
+
+- **LANDFIRE disturbance is a third detector.** Its stand-replacing harvest events (clearcut,
+  harvest) date a pixel as Obata and Hansen do, and the latest year among the three wins.
+  Thinning, fire and the other causes it records do not date a cut. Statewide, Obata covers
+  only Landsat path 17 / row 39, so without LANDFIRE most Florida add-back pixels would be
+  dated by Hansen alone or take a stratum median.
+- **FL5 keeps its ages.** The FL5 validation of the LETO stage uses the golden v4 run, dated
+  by Obata and Hansen only.
+
+## Amendment, 2026-11-11 (#172)
+
+- **The young-plot search gains a third level**, the forest type group's parent pool, still
+  within ±2 years: softwood or hardwood, or every type for the "other" group. Its match level
+  is `parent`. It is searched only when the type and the group find nothing, so no earlier
+  match changes; FL5's young plots stay as they were.
+- **Why:** on the v4 statewide run, 320 add-back pixels (71 ac) neighbour one Eastern redcedar
+  plot (`FORTYPCD` 171, "other" group) at stand ages 0–8. TreeMap's AL/FL/GA library holds one
+  young redcedar plot (age 10), and adding SC, NC, TN and MS gives ages 1, 13, 16 and 22 only.
+  The species-mix ranking still prefers plots with the neighbour's species.

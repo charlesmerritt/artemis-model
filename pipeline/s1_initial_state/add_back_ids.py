@@ -4,9 +4,10 @@ After this step an add-back pixel holds everything any other TreeMap pixel does:
 with a full VAT row and a tree list. It is a second pass over a finished run folder, like
 :mod:`add_back_stand_age`, and never changes the run's own files:
 
-    uv run python -m pipeline.s1_initial_state.add_back_ids <run>/aoi_5county [--obata-tif <lastDist.tif>] [--hansen-tif <hansen.tif>]
+    uv run python -m pipeline.s1_initial_state.add_back_ids <run>/aoi_5county [--obata-tif <lastDist.tif>] [--hansen-tif <hansen.tif>] [--landfire-dist-dir <landfire/>] [--data-root data/r2_cache]
 
 Each detector the run used dates its pixels: one not passed comes from the run's ``manifest.json``.
+LANDFIRE disturbance proposes no pixel, so no run uses it: it dates only when passed.
 
 Every add-back pixel of the run (provenance 2 or 4: either ADR 0002 mode) gets:
 
@@ -25,8 +26,10 @@ Writes into ``<run>/young_plots/``:
 - ``treemap2022_improved_vat_extension.csv``: one row per new ID, the :data:`VAT_COLUMNS`
   of its young plot, then :data:`EXTENSION_COLUMNS`. ``TM_ID`` equals ``Value``.
 - ``treemap2022_improved_tree_extension.csv``: each new ID's trees (:meth:`YoungPlotLibrary.tree_list`).
-- ``validation.json``: whether the four join (:func:`validate`), and the acres by stand age,
-  match level and age source.
+- ``validation.json``: whether the four join (:func:`validate`), the acres by stand age,
+  match level and age source, and the detector inputs that dated the cut years.
+
+The command line then writes the QA report, ``<run>/qa/young_plots/`` (:mod:`pipeline.young_plot_qa`).
 
 Control numbers stay strings end to end: read the CSVs with :func:`pipeline.ids.read_id_csv`
 and :data:`EXTENSION_ID_COLUMNS`.
@@ -38,7 +41,7 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -46,22 +49,22 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import rasterio
+from rasterio import windows
+from rasterio.transform import Affine
+from rasterio.windows import Window
 
 from pipeline.ids import as_id_series, read_id_csv
 from pipeline.s1_initial_state.add_back_methods import AddBackMethod
 from pipeline.s1_initial_state.add_back_stand_age import (
     UNDATED,
     CutYearDetector,
-    cut_year,
+    read_cut_year,
     stand_age,
 )
-from pipeline.s1_initial_state.county_improvement import (
-    Grid,
-    TreeMapProvenance,
-    _write,
-    read_on_grid,
-)
+from pipeline.s1_initial_state.county_improvement import Grid, TreeMapProvenance
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL
+from pipeline.s1_initial_state.run_counties import RUN_MANIFEST
+from pipeline.spatial_ref import project_crs
 from pipeline.s1_initial_state.young_plot_library import (
     MatchLevel,
     YoungPlotLibrary,
@@ -74,6 +77,9 @@ from pipeline.s1_initial_state.young_plot_library import (
 OUT_DIR = "young_plots"
 VAT_EXTENSION_CSV = "treemap2022_improved_vat_extension.csv"
 TREE_EXTENSION_CSV = "treemap2022_improved_tree_extension.csv"
+IMPROVED = "treemap2022_improved.tif"
+PROVENANCE = "treemap2022_provenance.tif"
+STRIP_ROWS = 1024            # rows read at a time: a statewide grid is never held whole (#172)
 NEW_ID_START = 1_000_000     # above TreeMap 2022's own values (at most 70,035)
 YOUNG_PLOTS_PROVENANCE = ("0 water, 1 published, 3 unmapped land, "
                           "4 added back: a young plot under a new TM_ID (ADR 0003)")
@@ -101,15 +107,21 @@ class AgeSource(StrEnum):
     OBATA = "obata"
     HANSEN = "hansen"
     OBATA_HANSEN = "obata_hansen"
+    LANDFIRE = "landfire"
+    OBATA_LANDFIRE = "obata_landfire"
+    HANSEN_LANDFIRE = "hansen_landfire"
+    OBATA_HANSEN_LANDFIRE = "obata_hansen_landfire"
     STRATUM_MEDIAN = "stratum_median"
 
 
-AGE_SOURCE_BY_DETECTOR = {
-    CutYearDetector(0): AgeSource.STRATUM_MEDIAN,     # undated
-    CutYearDetector.OBATA: AgeSource.OBATA,
-    CutYearDetector.HANSEN: AgeSource.HANSEN,
-    CutYearDetector.OBATA | CutYearDetector.HANSEN: AgeSource.OBATA_HANSEN,
-}
+def _age_source(bits: CutYearDetector) -> AgeSource:
+    """The detectors' names joined in bit order; undated (no bit) is a stratum median."""
+    names = [str(d.name).lower() for d in CutYearDetector if d in bits]
+    return AgeSource("_".join(names)) if names else AgeSource.STRATUM_MEDIAN
+
+
+AGE_SOURCE_BY_DETECTOR = {CutYearDetector(bits): _age_source(CutYearDetector(bits))
+                          for bits in range(1 << len(CutYearDetector))}
 
 
 def pixel_stand_ages(years: np.ndarray, detector: np.ndarray,
@@ -214,7 +226,7 @@ def _match(pixels: pd.DataFrame, vat_by_id: pd.DataFrame, library: YoungPlotLibr
         by_type = unmatched.groupby([fortypcd[tm_id] for tm_id, _ in unmatched.index]).sum()
         raise UnmatchedYoungPlots(
             f"{unmatched.sum()} add-back pixels have no young plot of their neighbour plot's "
-            "forest type or group within 2 years of their stand age: "
+            "forest type, group or parent pool within 2 years of their stand age: "
             + ", ".join(f"FORTYPCD {code}: {n} px" for code, n in by_type.items()))
     return matches
 
@@ -258,7 +270,7 @@ def run_detectors(run_dir: Path, obata: Path | None,
     A run folder without a manifest dates with what it is given.
     """
     given = {"obata": obata, "hansen": hansen}
-    manifest_path = run_dir / "manifest.json"
+    manifest_path = run_dir / RUN_MANIFEST
     if not manifest_path.exists():
         return obata, hansen
     manifest = json.loads(manifest_path.read_text())
@@ -275,25 +287,19 @@ def run_detectors(run_dir: Path, obata: Path | None,
 
 def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLibrary,
                        tree_table: Path, obata: Path | None = None,
-                       hansen: Path | None = None) -> dict:
+                       hansen: Path | None = None, landfire: Path | None = None) -> dict:
     """Give a run folder's add-back pixels new IDs; write them under ``<run_dir>/young_plots/``.
 
-    Returns :func:`validate`'s report, also written as ``validation.json``. Detectors not
-    passed come from the run's manifest (:func:`run_detectors`).
+    Returns :func:`validate`'s report, also written as ``validation.json``. Obata and Hansen
+    not passed come from the run's manifest (:func:`run_detectors`). ``landfire``, the
+    folder of LANDFIRE disturbance products, dates pixels only when given.
     """
     obata, hansen = run_detectors(run_dir, obata, hansen)
-    with rasterio.open(run_dir / "treemap2022_provenance.tif") as src:
-        provenance = src.read(1)
-        grid = Grid(src.transform, provenance.shape)
-    with rasterio.open(run_dir / "treemap2022_improved.tif") as src:
-        improved, nodata = src.read(1), src.nodata
-    strata = _band(run_dir / "bookend_strata.tif")
-    added = TreeMapProvenance.added_back(provenance)
-    years, detector = cut_year(
-        None if obata is None else read_on_grid(obata, grid, fill=0)[added],
-        None if hansen is None else read_on_grid(hansen, grid, fill=0)[added])  # band 1 lossyear
-    ages, sources = pixel_stand_ages(years, detector, strata[added])
-    pixels = pd.DataFrame({"NEIGHBOUR_TM_ID": as_id_series(pd.Series(improved[added]), column="TM_ID"),
+    added = AddBackPixels.of(run_dir / PROVENANCE, TreeMapProvenance.added_back)
+    years, detector = added.cut_years(obata=obata, hansen=hansen, landfire=landfire)
+    ages, sources = pixel_stand_ages(years, detector, added.gather(run_dir / "bookend_strata.tif"))
+    neighbours = added.gather(run_dir / IMPROVED)
+    pixels = pd.DataFrame({"NEIGHBOUR_TM_ID": as_id_series(pd.Series(neighbours), column="TM_ID"),
                            "STAND_AGE_2022": ages,
                            "CUT_YEAR": pd.Series(years, dtype="Int64").where(years > 0),
                            "AGE_SOURCE": sources})
@@ -302,15 +308,18 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
 
     out = run_dir / OUT_DIR
     out.mkdir(exist_ok=True)
-    improved[added] = ids.values
-    provenance[added] = TreeMapProvenance.ADDED_BACK_YOUNG
-    _write(out / "treemap2022_improved.tif", improved, grid.transform, nodata,
-           "TreeMap 2022 TM_ID; an add-back pixel's new TM_ID resolves in " + VAT_EXTENSION_CSV)
-    _write(out / "treemap2022_provenance.tif", provenance, grid.transform, 255,
-           YOUNG_PLOTS_PROVENANCE)
+    with rasterio.open(run_dir / IMPROVED) as src:
+        nodata = src.nodata
+    added.rewrite(run_dir / IMPROVED, out / IMPROVED, ids.values, nodata=nodata,
+                  description="TreeMap 2022 TM_ID; an add-back pixel's new TM_ID resolves in "
+                              + VAT_EXTENSION_CSV)
+    added.rewrite(run_dir / PROVENANCE, out / PROVENANCE, TreeMapProvenance.ADDED_BACK_YOUNG,
+                  nodata=255, description=YOUNG_PLOTS_PROVENANCE)
     ids.vat_extension.to_csv(out / VAT_EXTENSION_CSV, index=False)
     ids.tree_extension.to_csv(out / TREE_EXTENSION_CSV, index=False)
     report = validate(run_dir, vat["TM_ID"])
+    report["cut_year_detectors"] = {name: None if path is None else str(path) for name, path in
+                                    (("obata", obata), ("hansen", hansen), ("landfire", landfire))}
     (out / "validation.json").write_text(json.dumps(report, indent=2))
     return report
 
@@ -318,11 +327,10 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
 def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
     """Read ``<run_dir>/young_plots/`` back: does it join, and how many acres by age and match?"""
     out = run_dir / OUT_DIR
-    improved = _band(out / "treemap2022_improved.tif")
-    added = _band(out / "treemap2022_provenance.tif") == TreeMapProvenance.ADDED_BACK_YOUNG
+    added = young_plot_pixels(run_dir)
     vat = read_id_csv(out / VAT_EXTENSION_CSV, id_columns=EXTENSION_ID_COLUMNS)
     trees = read_id_csv(out / TREE_EXTENSION_CSV)
-    values, pixels = np.unique(improved[added], return_counts=True)
+    values, pixels = np.unique(added.gather(out / IMPROVED), return_counts=True)
     checks = {
         "every_add_back_pixel_resolves_to_a_vat_row": bool(np.isin(values, vat["Value"]).all()),
         "every_vat_row_is_full": bool(vat[VAT_COLUMNS].notna().all(axis=None)),
@@ -330,17 +338,16 @@ def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
         "no_new_id_is_a_treemap_value": not set(vat["TM_ID"]) & set(treemap_ids),
         "vat_counts_match_the_raster":
             pd.Series(pixels, index=values).reindex(vat["Value"]).tolist() == vat["Count"].tolist(),
-        "other_pixels_unchanged":
-            bool((improved[~added] == _band(run_dir / "treemap2022_improved.tif")[~added]).all()),
+        "other_pixels_unchanged": added.others_equal(out / IMPROVED, run_dir / IMPROVED),
     }
 
     def acres(column: str) -> dict[str, float]:
-        totals = vat.groupby(column)["Count"].sum() * ACRES_PER_PIXEL
-        return {str(k): round(float(v), 4) for k, v in totals.items()}
+        totals = acres_by(vat, column)
+        return {str(k): round(float(v), 4) for k, v in zip(totals[column], totals["acres"])}
 
     return {
         "checks": checks,
-        "counts": {"add_back_pixels": int(added.sum()), "new_ids": len(vat),
+        "counts": {"add_back_pixels": added.count, "new_ids": len(vat),
                    "young_plots": int(vat["YOUNG_TM_ID"].nunique()),
                    "neighbour_plots": int(vat["NEIGHBOUR_TM_ID"].nunique())},
         "acres_by_stand_age": acres("STAND_AGE_2022"),
@@ -349,9 +356,130 @@ def validate(run_dir: Path, treemap_ids: Iterable[str]) -> dict:
     }
 
 
-def _band(path: Path) -> np.ndarray:
-    with rasterio.open(path) as src:
-        return src.read(1)
+def acres_by(vat: pd.DataFrame, column: str) -> pd.DataFrame:
+    """A VAT extension's add-back ``pixels`` and ``acres`` by one of its columns, in its order."""
+    table = vat.groupby(column)["Count"].sum().rename("pixels").reset_index()
+    table["acres"] = table["pixels"] * ACRES_PER_PIXEL
+    return table
+
+
+def young_plot_pixels(run_dir: Path) -> AddBackPixels:
+    """The add-back pixels of ``<run_dir>/young_plots/``: provenance 4 there."""
+    return AddBackPixels.of(run_dir / OUT_DIR / PROVENANCE, _young)
+
+
+def _young(provenance: np.ndarray) -> np.ndarray:
+    return provenance == TreeMapProvenance.ADDED_BACK_YOUNG
+
+
+def _strips(height: int, width: int) -> Iterator[Window]:
+    """Full-width bands of :data:`STRIP_ROWS` rows, top to bottom."""
+    for row in range(0, height, STRIP_ROWS):
+        yield Window(0, row, width, min(STRIP_ROWS, height - row))
+
+
+@dataclass(frozen=True)
+class AddBackPixels:
+    """Where a run's add-back pixels are, one strip of rows at a time.
+
+    Every raster is read a strip at a time and only these pixels are kept, so a statewide
+    grid (618M pixels) is never held whole. Values come back in row-major order, as
+    indexing a whole band by a mask would give them.
+    """
+
+    transform: Affine
+    strips: tuple[tuple[Window, np.ndarray], ...]   # each strip and its pixels' flat indices in it
+
+    @classmethod
+    def of(cls, provenance: Path, chosen: Callable[[np.ndarray], np.ndarray]) -> AddBackPixels:
+        """The pixels of ``provenance`` that ``chosen`` (a mask of a provenance block) picks."""
+        with rasterio.open(provenance) as src:
+            strips = tuple((w, np.flatnonzero(chosen(src.read(1, window=w))))
+                           for w in _strips(src.height, src.width))
+            return cls(src.transform, strips)
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        last = self.strips[-1][0] if self.strips else Window(0, 0, 0, 0)
+        return int(last.row_off + last.height), int(last.width)
+
+    def positions(self) -> tuple[np.ndarray, np.ndarray]:
+        """Each pixel's row and column on the grid, in :meth:`gather`'s order."""
+        rows = [int(w.row_off) + index // int(w.width) for w, index in self.strips]
+        cols = [index % int(w.width) for w, index in self.strips]
+        return (np.concatenate([np.empty(0, np.int64)] + rows),
+                np.concatenate([np.empty(0, np.int64)] + cols))
+
+    @property
+    def count(self) -> int:
+        return sum(len(index) for _, index in self.strips)
+
+    def gather(self, path: Path) -> np.ndarray:
+        """Band 1 of ``path`` (on this grid) at these pixels."""
+        with rasterio.open(path) as src:
+            parts = [src.read(1, window=w).ravel()[index] for w, index in self.strips]
+            return np.concatenate(parts) if parts else np.empty(0, dtype=src.dtypes[0])
+
+    def cut_years(self, **detectors: Path | None) -> tuple[np.ndarray, np.ndarray]:
+        """:func:`read_cut_year` at these pixels, strip by strip."""
+        years, detector = [np.empty(0, np.uint16)], [np.empty(0, np.uint8)]
+        for w, index in self.strips:
+            if not len(index):
+                continue
+            where = np.zeros(int(w.height) * int(w.width), dtype=bool)
+            where[index] = True
+            grid = Grid(windows.transform(w, self.transform), (int(w.height), int(w.width)))
+            y, d = read_cut_year(grid, where=where.reshape(grid.shape), **detectors)
+            years.append(y)
+            detector.append(d)
+        return np.concatenate(years), np.concatenate(detector)
+
+    def rasterized(self, shapes: list) -> np.ndarray:
+        """``shapes`` (geometry, value) burnt onto the grid by pixel centre, at these pixels; 0 off them."""
+        from rasterio import features
+
+        return np.concatenate([np.empty(0, np.uint16)] + [
+            features.rasterize(shapes, out_shape=(int(w.height), int(w.width)), fill=0, dtype="uint16",
+                               transform=windows.transform(w, self.transform)).ravel()[index]
+            for w, index in self.strips])
+
+    def others_equal(self, a: Path, b: Path) -> bool:
+        """Whether ``a`` and ``b`` agree everywhere but these pixels."""
+        with rasterio.open(a) as one, rasterio.open(b) as other:
+            for w, index in self.strips:
+                keep = np.ones(int(w.height) * int(w.width), dtype=bool)
+                keep[index] = False
+                if not (one.read(1, window=w).ravel()[keep] == other.read(1, window=w).ravel()[keep]).all():
+                    return False
+        return True
+
+    def rewrite(self, source: Path, path: Path, values: np.ndarray | int, *, nodata,
+                description: str) -> None:
+        """``source`` with these pixels set to ``values``, as a Cloud Optimized GeoTIFF at ``path``.
+
+        Written a strip at a time to a tiled scratch file beside ``path``, then copied to a
+        COG (overviews nearest: the values are classes), so neither is held whole.
+        """
+        from rasterio.shutil import copy as rio_copy
+
+        values = np.asarray(values)
+        scratch = path.with_name(path.stem + ".partial.tif")
+        with rasterio.open(source) as src:
+            profile = dict(driver="GTiff", height=src.height, width=src.width, count=1,
+                           dtype=src.dtypes[0], crs=project_crs(), transform=self.transform,
+                           nodata=nodata, tiled=True, blockxsize=256, blockysize=256,
+                           compress="DEFLATE", BIGTIFF="IF_SAFER")
+            start = 0
+            with rasterio.open(scratch, "w", **profile) as dst:
+                for w, index in self.strips:
+                    block = src.read(1, window=w)
+                    block.reshape(-1)[index] = values if values.ndim == 0 else values[start:start + len(index)]
+                    start += len(index)
+                    dst.write(block, 1, window=w)
+                dst.update_tags(description=description)
+        rio_copy(scratch, path, driver="COG", compress="DEFLATE", blocksize=256,
+                 overview_resampling="NEAREST", resampling="NEAREST")
+        scratch.unlink()
 
 
 def read_vat(path: Path) -> pd.DataFrame:
@@ -364,11 +492,19 @@ def read_vat(path: Path) -> pd.DataFrame:
     return vat[VAT_COLUMNS]
 
 
-def main() -> None:
-    from pipeline.data_access import data_paths
+def default_inputs(data_root: Path | None) -> dict[str, Path]:
+    """The TreeMap VAT, tree table and entire FIADB ``config/data_paths.yaml`` declares,
+    moved under ``data_root`` (a mirror of the drive, e.g. ``data/r2_cache``) when given."""
+    from pipeline.data_access import data_paths, under_data_root
 
     raw = data_paths()["raw"]
     treemap = raw["treemap_2022"]
+    return {"vat": under_data_root(treemap["tif"] + ".vat.dbf", data_root),
+            "tree_table": under_data_root(treemap["tree_table"], data_root),
+            "db": under_data_root(raw["fia_sqlite"]["db"], data_root)}
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("run_dir", type=Path,
@@ -379,9 +515,19 @@ def main() -> None:
     parser.add_argument("--hansen-tif", type=Path, default=None,
                         help="Hansen GFC raster on the TreeMap grid, band 1 lossyear "
                              "(default: the run's manifest)")
-    parser.add_argument("--vat", type=Path, default=Path(treemap["tif"] + ".vat.dbf"))
-    parser.add_argument("--tree-table", type=Path, default=Path(treemap["tree_table"]))
-    parser.add_argument("--db", type=Path, default=Path(raw["fia_sqlite"]["db"]))
+    parser.add_argument("--landfire-dist-dir", type=Path, default=None,
+                        help="folder of LANDFIRE annual disturbance products "
+                             "(LF<version>_Dist<yy>_CONUS/); its clearcuts and harvests date pixels "
+                             "(default: not used)")
+    parser.add_argument("--vat", type=Path, default=None,
+                        help="TreeMap's VAT (default: raw.treemap_2022.tif + .vat.dbf)")
+    parser.add_argument("--tree-table", type=Path, default=None,
+                        help="TreeMap's tree table (default: raw.treemap_2022.tree_table)")
+    parser.add_argument("--db", type=Path, default=None,
+                        help="the entire FIADB SQLite (default: raw.fia_sqlite.db)")
+    parser.add_argument("--data-root", type=Path, default=None,
+                        help="a mirror of the drive the defaults name, e.g. data/r2_cache")
+    parser.set_defaults(**default_inputs(parser.parse_known_args()[0].data_root))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -389,8 +535,11 @@ def main() -> None:
     report = write_add_back_ids(
         args.run_dir, vat=read_vat(args.vat),
         library=read_young_plot_library(args.vat, args.db, args.tree_table),
-        tree_table=args.tree_table, obata=obata, hansen=hansen)
+        tree_table=args.tree_table, obata=obata, hansen=hansen, landfire=args.landfire_dist_dir)
     print(json.dumps(report, indent=2))
+    from pipeline.young_plot_qa import write_young_plot_qa   # the report reads this module
+
+    print(write_young_plot_qa(args.run_dir))
     if not all(report["checks"].values()):
         sys.exit("a check failed: the young_plots outputs do not join")
 

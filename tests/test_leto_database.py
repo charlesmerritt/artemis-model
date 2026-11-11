@@ -1,5 +1,5 @@
 """Stage 5 FVS databases pinned to LETO v1 `leto/stage5_database.py` and `pipeline._build_databases`
-(aauslander480/Leto @ d2b92ee)."""
+(aauslander480/Leto), at the pin in research/leto_parity/README.md."""
 
 import sqlite3
 
@@ -82,3 +82,49 @@ def test_group_names_become_safe_filenames(tmp_path):
     stands = _stands().assign(DB_GROUP=["Family / Indiv.", "Riparian", "Family / Indiv."])
     db.build_databases(stands, _trees(), tmp_path)
     assert (tmp_path / "FVS_Inventory_Family_Indiv.db").exists()
+
+
+# --- database.mode: pipeline._build_databases' grouped, combined and both (#170) ------------
+
+
+def _databases(path):
+    return sorted(p.name for p in path.glob("*.db"))
+
+
+def test_grouped_is_the_default_and_writes_one_database_per_group_only(tmp_path):
+    db.build_databases(_stands(), _trees(), tmp_path)
+    assert _databases(tmp_path) == ["FVS_Inventory_Family.db", "FVS_Inventory_Riparian.db"]
+
+
+def test_combined_writes_every_stand_into_one_all_stands_database(tmp_path):
+    summary = db.build_databases(_stands(), _trees(), tmp_path, mode=db.DatabaseMode.COMBINED)
+    assert _databases(tmp_path) == ["FVS_Inventory_All_Stands.db"]
+    assert summary["DB_GROUP"].tolist() == ["All_Stands"]
+    assert summary[["STANDS", "TREE_RECORDS"]].values.tolist() == [[3, 4]]
+    with sqlite3.connect(tmp_path / "FVS_Inventory_All_Stands.db") as con:
+        stands = pd.read_sql("SELECT * FROM FVS_StandInit", con)
+    assert stands["STAND_ID"].tolist() == ["MU_1", "MU_2", "MU_3"]
+
+
+def test_both_writes_the_groups_and_then_the_combined_database(tmp_path):
+    summary = db.build_databases(_stands(), _trees(), tmp_path, mode=db.DatabaseMode.BOTH)
+    assert summary["DB_GROUP"].tolist() == ["Family", "Riparian", "All_Stands"]
+    assert len(_databases(tmp_path)) == 3
+
+
+def test_the_combined_database_can_be_written_to_a_path_of_its_own(tmp_path):
+    db.build_databases(_stands(), _trees(), tmp_path / "groups", mode=db.DatabaseMode.BOTH,
+                       combined_path=tmp_path / "FVS_Data.db")
+    assert (tmp_path / "FVS_Data.db").exists()
+    assert _databases(tmp_path / "groups") == ["FVS_Inventory_Family.db",
+                                               "FVS_Inventory_Riparian.db"]
+
+
+def test_the_mode_is_one_of_upstreams_three():
+    assert [m.value for m in db.DatabaseMode] == ["grouped", "combined", "both"]
+    with pytest.raises(ValueError):
+        db.DatabaseMode("per_county")
+
+
+def test_the_state_code_is_the_callers():
+    assert set(db.prepare_stands(_stands(), state_code=23)["STATE"]) == {23}

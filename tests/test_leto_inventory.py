@@ -1,4 +1,4 @@
-"""Stage 4 inventory pinned to LETO v1 (aauslander480/Leto, LETO_v1_project @ d2b92ee).
+"""Stage 4 inventory pinned to LETO v1 (aauslander480/Leto, LETO_v1_project), at the pin in research/leto_parity/README.md.
 
 Each test names the `leto/stage4_inventory.py` or `leto/pipeline.py` function it reproduces.
 """
@@ -295,3 +295,21 @@ def test_inventory_writes_leto_file_names(tmp_path):
         "QA_Imputation_Summary.csv"])
     trees = pd.read_csv(tmp_path / "FVS_TreeInit.csv", dtype={"PLT_CN": "string"})
     assert len(trees) == len(result.trees)
+
+
+def test_a_stand_id_the_units_carry_is_kept_as_upstream_does():
+    # pipeline._prepare_stands_dataframe only sets STAND_ID when the units have none
+    stands = inv.prepare_stands(_units().assign(STAND_ID=["12001-1", "12001-2", "12003-1"]))
+    assert stands["STAND_ID"].tolist() == ["12001-1", "12001-2", "12003-1"]
+    assert stands["MU_ID"].tolist() == ["1", "2", "3"]
+
+
+def test_build_inventory_keys_trees_and_weights_by_the_units_own_stand_ids():
+    units, weights, trees = _inventory_inputs()
+    units = units.assign(STAND_ID=["A-1", "A-2", "B-1"])
+
+    inventory = inv.build_inventory(units, weights, trees, LOOKUP)
+
+    assert set(inventory.final_stands["STAND_ID"]) <= {"A-1", "A-2", "B-1"}
+    assert set(inventory.trees["STAND_ID"]) == set(inventory.final_stands["STAND_ID"])
+    assert set(inventory.weights["STAND_ID"]) <= {"A-1", "A-2", "B-1"}

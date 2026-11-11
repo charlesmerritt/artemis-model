@@ -2,6 +2,9 @@
 
 ## Data access
 Data may be available on an external hard drive under /mnt/d/ symlinked to data on the work laptop, otherwise it is available in Cloudflare R2.
+The entire FIADB is on R2 (`artemis-r2/data/SQLite_FIADB_ENTIRE/`, 70.7 GB): fetch it into
+`data/r2_cache/` (see `config/data_paths.yaml`) rather than building region inputs from the
+five-county consolidated DB, which ADR 0004 rules out.
 
 ## Gotchas
 ### Regeneration has multiple paths; a rendered clearcut does not prove reestablishment
@@ -15,14 +18,6 @@ resetting age alone would restore mature biomass. In a run folder's own rasters,
 pixels (provenance 2, 4) carry the neighbour plot's `TM_ID`: never join it to trees. Use
 `<run>/young_plots/` (`add_back_ids`): new IDs from 1,000,000, in its VAT/tree extensions (ADR 0003).
 
-### LETO ground truth is `aauslander480/Leto`'s `LETO_v1_project/`, not its legacy `scripts/`
-
-`pipeline/leto_ca.py` was ported from the legacy `Leto/scripts/Cellular_automata/02_segment_treemap.py`.
-Only the CA core matches v1. Small-stand handling (v1 `force_merge`, never delete), Stage 1
-attribute sources, parent-segment donor weights, the 5% donor filter, the vector riparian split
-and the FVS sampling design all differ. See `research/leto_parity/README.md` before changing
-initial state.
-
 ### FIA control numbers (`PLT_CN`, `STAND_CN`, etc.) must not be cast via `str(int(...))`
 
 `PLT_CN` and the other FIA control numbers (`STAND_CN`, `COND_CN`, `PLOT_CN`, `TREE_CN`, `SUBP_CN`, …) are up to 19-digit integers.
@@ -31,6 +26,18 @@ Any time one of these passes through a float64 (e.g. a numeric field read out of
 `str(int(x))` typecast to int = BAD
 
 This was flagged as a real bug in PR #40 (`make_leto_figure.py` in the LETO CA research demo), where `str(int(rec.PLT_CN))` was used to join TreeMap VAT records to `fvs_trajectory.csv` instead of `as_id_series`.
+
+### LANDFIRE disturbance: Clearcut and Harvest barely cover Florida's private harvests
+
+`landfire_disturbance.py` dates a cut only from `DIST_TYPE` Clearcut or Harvest (#171).
+Over Florida, LANDFIRE labels almost all forest change Unknown or Fire, so it dates 74 of
+~35,000 undated add-back acres in the v4 statewide run (`experiments/2026-11-09_landfire-cut-year/`).
+Codes, grids and nodata vary by product version: read each product's own legend.
+
+### Under `proximity_merge` a unit's `SEG_ID` is only its first part's parent stand
+A multipart unit spans several parent stands (`SEG_IDS`; the `segments` layer of
+`management_units.gpkg` has each piece). Combine donor weights per unit
+(`leto_proximity.unit_weights`), never by joining the units layer's `SEG_ID` to parent weights.
 
 ### Mutation runs require successful collection and a fresh cache
 After collection fails or tests change, rebuild the `mutants/` workspace before measuring.

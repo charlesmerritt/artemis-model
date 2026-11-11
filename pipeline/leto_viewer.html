@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root { --fg:#1d1d1f; --bg:#ffffff; --panel:#f6f6f4; --muted:#62615d; --rule:#d9d8d3;
+        --accent:#ff7f0e; --map:#fbfbf9; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg:#f0efec; --bg:#121212; --panel:#1b1b1a; --muted:#b5b4ad; --rule:#3a3a37;
+          --map:#202020; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; font: 13px/1.4 system-ui, sans-serif; color: var(--fg);
+             background: var(--bg); }
+body { display: flex; }
+aside { width: 360px; flex: none; height: 100%; overflow-y: auto; background: var(--panel);
+        border-right: 1px solid var(--rule); padding: 12px 14px; }
+main { flex: 1; position: relative; min-width: 0; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--map);
+         cursor: grab; touch-action: none; }
+canvas.dragging { cursor: grabbing; }
+h1 { font-size: 16px; margin: 0 0 2px; } h2 { font-size: 13px; margin: 14px 0 6px;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+p.sub { margin: 0 0 8px; color: var(--muted); }
+label { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+label > span { width: 92px; flex: none; color: var(--muted); }
+select, input[type=text] { flex: 1; min-width: 0; font: inherit; padding: 2px 4px;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--rule); border-radius: 4px; }
+input[type=range] { flex: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 4px 0; }
+.legend i { display: inline-block; width: 11px; height: 11px; margin-right: 4px;
+            vertical-align: -1px; border-radius: 2px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+td, th { padding: 2px 4px; border-bottom: 1px solid var(--rule); text-align: left;
+         vertical-align: top; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+th { color: var(--muted); font-weight: 600; }
+code { font-size: 11px; }
+pre { font-size: 11px; white-space: pre-wrap; margin: 4px 0; }
+.empty { color: var(--muted); font-style: italic; }
+#hud { position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: var(--muted);
+       background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 2px 6px;
+       border-radius: 4px; pointer-events: none; }
+button { font: inherit; padding: 2px 8px; border: 1px solid var(--rule); border-radius: 4px;
+         background: var(--bg); color: var(--fg); cursor: pointer; }
+</style>
+</head>
+<body>
+<aside>
+  <h1 id="title"></h1>
+  <p class="sub" id="counts"></p>
+
+  <h2>Units</h2>
+  <label><span>Colour by</span><select id="fill">
+    <option value="owner_class">owner class</option>
+    <option value="unit_class">unit class</option>
+    <option value="FORTYPCD">forest type (plot)</option>
+    <option value="origin">origin</option>
+    <option value="stand_age">stand age</option>
+    <option value="representative_share">representative share</option>
+    <option value="acres">acres</option>
+    <option value="SEG_ID">parent stand</option>
+    <option value="none">no fill</option>
+  </select></label>
+  <label><span>Opacity</span><input type="range" id="fillAlpha" min="0" max="1" step="0.05" value="0.7"></label>
+  <label><span>Outlines</span><input type="checkbox" id="unitLines" checked> units
+    <input type="checkbox" id="parentLines" checked> parent stands</label>
+  <div class="legend" id="fillLegend"></div>
+
+  <h2>Cells (CA inputs)</h2>
+  <label><span>Layer</span><select id="cells"><option value="-1">none</option></select></label>
+  <label><span>Opacity</span><input type="range" id="cellAlpha" min="0" max="1" step="0.05" value="1"></label>
+  <div class="legend" id="cellLegend"></div>
+
+  <h2>Find</h2>
+  <label><span>Unit or parent</span><input type="text" id="find" placeholder="12125-17 or p:42">
+    <button id="reset" title="Zoom to the county">Fit</button></label>
+
+  <h2>Selected</h2>
+  <div id="details"><p class="empty">Click a unit.</p></div>
+
+  <h2>Run settings</h2>
+  <details><summary>CA and speckle settings</summary><pre id="settings"></pre></details>
+</aside>
+<main>
+  <canvas id="map"></canvas>
+  <div id="hud"></div>
+</main>
+<script type="application/json" id="leto-data">__DATA__</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("leto-data").textContent);
+const $ = (id) => document.getElementById(id);
+const canvas = $("map"), ctx = canvas.getContext("2d");
+
+function rows(table) {
+  return table.rows.map((r) => Object.fromEntries(table.columns.map((c, i) => [c, r[i]])));
+}
+const units = rows(D.units), parents = rows(D.parents);
+const parentById = new Map(parents.map((p, i) => [p.SEG_ID, i]));
+const unitById = new Map(units.map((u, i) => [u.unit_id, i]));
+
+// Outlines: world x east, y south (canvas down), in metres from the origin.
+function decode(rings) {
+  const path = new Path2D();
+  const box = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const ring of rings) {
+    let x = 0, y = 0;
+    for (let i = 0; i < ring.length; i += 2) {
+      x += ring[i]; y += ring[i + 1];
+      const wx = x / D.scale, wy = -y / D.scale;
+      if (i === 0) path.moveTo(wx, wy); else path.lineTo(wx, wy);
+      if (wx < box[0]) box[0] = wx; if (wy < box[1]) box[1] = wy;
+      if (wx > box[2]) box[2] = wx; if (wy > box[3]) box[3] = wy;
+    }
+    path.closePath();
+  }
+  return { path, box };
+}
+const unitShapes = D.unit_rings.map(decode), parentShapes = D.parent_rings.map(decode);
+const allUnits = new Path2D(), allParents = new Path2D();
+unitShapes.forEach((s) => allUnits.addPath(s.path));
+parentShapes.forEach((s) => allParents.addPath(s.path));
+const units_by_parent = new Map();
+units.forEach((u, i) => {
+  if (!units_by_parent.has(u.SEG_ID)) units_by_parent.set(u.SEG_ID, []);
+  units_by_parent.get(u.SEG_ID).push(i);
+});
+
+const [west, south, east, north] = D.bounds;
+const extent = { x: west - D.origin[0], y: -(north - D.origin[1]), w: east - west, h: north - south };
+const images = D.cell_layers.map((layer) => { const im = new Image(); im.src = layer.png; im.onload = draw; return im; });
+D.cell_layers.forEach((layer, i) => $("cells").add(new Option(layer.name, i)));
+
+// ── colours ────────────────────────────────────────────────────────────────────────
+const VIRIDIS = ["#440154", "#472d7b", "#3b528b", "#2c728e", "#21918c", "#28ae80", "#5ec962", "#addc30", "#fde725"];
+const SHARE = ["#a50026", "#d73027", "#f46d43", "#fdae61", "#fee08b", "#d9ef8b", "#a6d96a", "#66bd63", "#1a9850"];
+const FIXED = { unit_class: { managed: "#9ccf8a", riparian: "#1f77b4" },
+                origin: { treemap: "#bdbdbd", young_plot: "#d62728" } };
+function ramp(colors, t) {
+  if (t == null || !isFinite(t)) return null;
+  const x = Math.min(Math.max(t, 0), 1) * (colors.length - 1), i = Math.min(Math.floor(x), colors.length - 2);
+  const a = colors[i], b = colors[i + 1], f = x - i;
+  const mix = (k) => Math.round(parseInt(a.substr(k, 2), 16) * (1 - f) + parseInt(b.substr(k, 2), 16) * f);
+  return `rgb(${mix(1)},${mix(3)},${mix(5)})`;
+}
+function quantile(values, q) {
+  const v = values.filter((x) => x != null && isFinite(x)).sort((a, b) => a - b);
+  return v.length ? v[Math.min(v.length - 1, Math.floor(q * v.length))] : 0;
+}
+function hashColor(n) {
+  const h = ((n * 2654435761) >>> 0) % 360;
+  return `hsl(${h},55%,${55 + ((n * 7) % 3) * 8}%)`;
+}
+function fillScheme(field) {
+  if (field === "none") return { color: () => null, legend: [] };
+  if (field === "SEG_ID") return { color: (u) => hashColor(u.SEG_ID), legend: [["one colour per parent stand", "#999"]] };
+  if (["stand_age", "representative_share", "acres"].includes(field)) {
+    const log = field === "acres", colors = field === "representative_share" ? SHARE : VIRIDIS;
+    const f = (v) => (v == null ? null : log ? Math.log10(Math.max(v, 0.01)) : v);
+    const vals = units.map((u) => f(u[field]));
+    const lo = field === "representative_share" ? 0 : quantile(vals, 0.02);
+    const hi = field === "representative_share" ? 1 : Math.max(quantile(vals, 0.98), lo + 1e-9);
+    const label = (v) => (log ? Math.pow(10, v) : v).toPrecision(3);
+    const legend = [0, 0.25, 0.5, 0.75, 1].map((t) => [label(lo + t * (hi - lo)), ramp(colors, t)]);
+    legend.push(["blank", "#888"]);
+    return { color: (u) => { const v = f(u[field]); return v == null ? "#888" : ramp(colors, (v - lo) / (hi - lo)); },
+             legend };
+  }
+  const counts = new Map();
+  units.forEach((u) => counts.set(String(u[field]), (counts.get(String(u[field])) || 0) + u.acres));
+  const order = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
+  const map = new Map(order.map((k, i) => [k, (FIXED[field] || {})[k] || D.palette[i % D.palette.length]]));
+  if (field === "owner_class" && map.has("masked")) map.set("masked", "#9e9e9e");
+  return { color: (u) => map.get(String(u[field])), legend: order.map((k) => [k, map.get(k)]) };
+}
+function legendHtml(items) {
+  return items.map(([label, color]) => `<span><i style="background:${color}"></i>${esc(label)}</span>`).join("");
+}
+function esc(v) {
+  return String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+
+// ── state and drawing ──────────────────────────────────────────────────────────────
+const view = { k: 1, tx: 0, ty: 0 };
+let scheme = fillScheme("owner_class"), fillGroups = [], selected = -1;
+function regroup() {
+  const groups = new Map();
+  units.forEach((u, i) => {
+    const c = scheme.color(u);
+    if (!c) return;
+    if (!groups.has(c)) groups.set(c, new Path2D());
+    groups.get(c).addPath(unitShapes[i].path);
+  });
+  fillGroups = [...groups];
+  $("fillLegend").innerHTML = legendHtml(scheme.legend);
+}
+function fit() {
+  const r = canvas.getBoundingClientRect();
+  view.k = Math.min(r.width / extent.w, r.height / extent.h) * 0.95;
+  view.tx = r.width / 2 - (extent.x + extent.w / 2) * view.k;
+  view.ty = r.height / 2 - (extent.y + extent.h / 2) * view.k;
+}
+function zoomTo(box) {
+  const r = canvas.getBoundingClientRect(), w = Math.max(box[2] - box[0], 300), h = Math.max(box[3] - box[1], 300);
+  view.k = Math.min(r.width / w, r.height / h) * 0.6;
+  view.tx = r.width / 2 - ((box[0] + box[2]) / 2) * view.k;
+  view.ty = r.height / 2 - ((box[1] + box[3]) / 2) * view.k;
+}
+let pending = false;
+function draw() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; render(); });
+}
+function render() {
+  const dpr = window.devicePixelRatio || 1, r = canvas.getBoundingClientRect();
+  if (canvas.width !== Math.round(r.width * dpr) || canvas.height !== Math.round(r.height * dpr)) {
+    canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(view.k * dpr, 0, 0, view.k * dpr, view.tx * dpr, view.ty * dpr);
+  const layer = +$("cells").value;
+  if (layer >= 0 && images[layer].complete) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = +$("cellAlpha").value;
+    ctx.drawImage(images[layer], extent.x, extent.y, extent.w, extent.h);
+  }
+  ctx.globalAlpha = +$("fillAlpha").value;
+  for (const [color, path] of fillGroups) { ctx.fillStyle = color; ctx.fill(path, "evenodd"); }
+  ctx.globalAlpha = 1;
+  const px = 1 / view.k, cellsPerPixel = px / 30;     // 30 m cells
+  // Zoomed out, a cell is under a pixel: unit edges fade out and parent edges thin, or the
+  // lines would hide the fills. near is 0 at 2 or more cells per pixel, 1 at 0.4 or fewer.
+  const near = Math.min(1, Math.max(0, (2 - cellsPerPixel) / 1.6));
+  if ($("unitLines").checked && near > 0) {
+    ctx.strokeStyle = `rgba(40,40,40,${0.55 * near})`; ctx.lineWidth = 0.7 * px; ctx.stroke(allUnits);
+  }
+  if ($("parentLines").checked) {
+    ctx.strokeStyle = `rgba(17,17,17,${0.35 + 0.65 * near})`; ctx.lineWidth = (0.6 + 1.2 * near) * px;
+    ctx.stroke(allParents);
+  }
+  if (selected >= 0) {
+    const p = parentById.get(units[selected].SEG_ID);
+    if (p !== undefined) {
+      ctx.setLineDash([6 * px, 4 * px]); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3 * px;
+      ctx.stroke(parentShapes[p].path); ctx.setLineDash([]);
+    }
+    ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent");
+    ctx.lineWidth = 3.5 * px; ctx.stroke(unitShapes[selected].path);
+  }
+  $("hud").textContent = `${(1 / view.k).toFixed(1)} m per pixel · drag to pan, wheel to zoom, click a unit`;
+}
+
+// ── details ────────────────────────────────────────────────────────────────────────
+const num = (v, d = 2) => (v == null ? "—" : typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(d)) : esc(v));
+function kv(pairs) {
+  return "<table>" + pairs.map(([k, v]) => `<tr><th>${esc(k)}</th><td class="n">${v}</td></tr>`).join("") + "</table>";
+}
+function showDetails(i) {
+  selected = i;
+  if (i < 0) { $("details").innerHTML = '<p class="empty">Click a unit.</p>'; draw(); return; }
+  const u = units[i], p = parents[parentById.get(u.SEG_ID)];
+  let html = kv([["unit", `<code>${esc(u.unit_id)}</code>`], ["owner class", esc(u.owner_class)
+      + (u.unknown_ownership ? " (unknown owner)" : "")], ["unit class", esc(u.unit_class)],
+    ["origin", esc(u.origin)], ["acres", num(u.acres)], ["stand age", num(u.stand_age, 0)],
+    ["forest type (plot)", num(u.FORTYPCD, 0)], ["representative plot", `<code>${esc(u.PLT_CN)}</code>`],
+    ["TreeMap value", num(u.tm_id, 0)], ["representative share", num(u.representative_share)]]);
+  if (p) {
+    const siblings = (units_by_parent.get(u.SEG_ID) || []).length;
+    html += `<h2>Parent stand ${esc(p.SEG_ID)}</h2>` + kv([["cells", num(p.cells, 0)], ["acres", num(p.acres)],
+      ["owner code (Harris)", num(p.OWN_CODE, 0)], ["units from it", String(siblings)],
+      ["dominant forest type", `${num(p.dominant_forest_type, 0)} (${num(100 * p.dominant_forest_type_share, 0)}% of cells)`]]);
+    html += "<table><tr><th>CA input</th><th class=n>mean</th><th class=n>sd</th><th class=n>cv</th></tr>"
+      + ["STDAGE", "BALIVE", "QMD", "TPA"].map((n) => {
+        const m = p[n + "_mean"], s = p[n + "_sd"];
+        return `<tr><td>${n}</td><td class=n>${num(m, 1)}</td><td class=n>${num(s, 1)}</td>`
+          + `<td class=n>${m ? num(s / m, 2) : "—"}</td></tr>`;
+      }).join("") + "</table>";
+  }
+  const donors = D.donors[String(u.SEG_ID)] || [];
+  html += `<h2>Donor plots (${donors.length})</h2><table><tr><th>PLT_CN</th><th class=n>TreeMap</th>`
+    + "<th class=n>weight</th><th class=n>cell share</th></tr>"
+    + donors.map(([cn, tm, w, w0]) => `<tr${cn === u.PLT_CN ? ' style="font-weight:600"' : ""}><td><code>${esc(cn)}</code></td>`
+      + `<td class=n>${tm}</td><td class=n>${num(w, 3)}</td><td class=n>${num(w0, 3)}</td></tr>`).join("") + "</table>";
+  $("details").innerHTML = html;
+  draw();
+}
+function pick(sx, sy) {
+  const wx = (sx - view.tx) / view.k, wy = (sy - view.ty) / view.k;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  let hit = -1;
+  for (let i = 0; i < unitShapes.length && hit < 0; i++) {
+    const b = unitShapes[i].box;
+    if (wx >= b[0] && wx <= b[2] && wy >= b[1] && wy <= b[3] && ctx.isPointInPath(unitShapes[i].path, wx, wy, "evenodd")) hit = i;
+  }
+  ctx.restore();
+  return hit;
+}
+
+// ── interaction ────────────────────────────────────────────────────────────────────
+let drag = null;
+canvas.addEventListener("pointerdown", (e) => {
+  drag = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, moved: false };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 3) { drag.moved = true; canvas.classList.add("dragging"); }
+  if (drag.moved) { view.tx = drag.tx + dx; view.ty = drag.ty + dy; draw(); }
+});
+canvas.addEventListener("pointerup", (e) => {
+  if (drag && !drag.moved) {
+    const r = canvas.getBoundingClientRect();
+    showDetails(pick(e.clientX - r.left, e.clientY - r.top));
+  }
+  drag = null; canvas.classList.remove("dragging");
+});
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const f = Math.exp(-e.deltaY * 0.0015);
+  view.tx = sx - (sx - view.tx) * f; view.ty = sy - (sy - view.ty) * f; view.k *= f;
+  draw();
+}, { passive: false });
+window.addEventListener("resize", draw);
+$("fill").addEventListener("change", (e) => { scheme = fillScheme(e.target.value); regroup(); draw(); });
+for (const id of ["fillAlpha", "cellAlpha", "unitLines", "parentLines"]) $(id).addEventListener("input", draw);
+$("cells").addEventListener("change", (e) => {
+  const layer = D.cell_layers[+e.target.value];
+  $("cellLegend").innerHTML = layer ? legendHtml(layer.legend) : "";
+  draw();
+});
+$("reset").addEventListener("click", () => { fit(); draw(); });
+$("find").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const q = e.target.value.trim();
+  let i = unitById.get(q);
+  if (i === undefined && /^p:\d+$/.test(q)) i = (units_by_parent.get(+q.slice(2)) || [])[0];
+  if (i === undefined) { e.target.style.borderColor = "#d62728"; return; }
+  e.target.style.borderColor = "";
+  zoomTo(unitShapes[i].box); showDetails(i);
+});
+
+$("title").textContent = `${D.county} (${D.fips}): management units`;
+$("counts").textContent = `${units.length.toLocaleString()} units from ${parents.length.toLocaleString()} parent stands`;
+$("settings").textContent = JSON.stringify(D.settings, null, 2);
+regroup(); fit(); render();
+</script>
+</body>
+</html>

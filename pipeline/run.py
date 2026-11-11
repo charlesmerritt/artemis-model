@@ -1,26 +1,35 @@
 """
 The ARTEMIS runner: a run directory's stands, through the trajectory library, to a plan.
 
-    uv run python -m pipeline.run library  <run_dir> [--workers N] [--inventory plot|leto]
+    uv run python -m pipeline.run leto     <run_dir> --repair <raster run> [--county FIPS ...] [--workers N]
+                                           [--layout plot|leto]
+    uv run python -m pipeline.run library  <run_dir> [--workers N] [--layout plot|leto]
     uv run python -m pipeline.run schedule <run_dir> [--restarts N] [--workers N]
+    uv run python -m pipeline.run outputs  <run_dir> [--rasters all|activity|vegetation|none]
+                                                     [--qa full|tables|none] [--grid <raster>]
 
 A run directory holds one landscape. Upstream stages write its inputs:
 
 * ``stands.csv`` — one row per management unit, with the columns in :data:`STAND_COLUMNS`.
   ``PLT_CN`` names the FVS stand the unit's keyfiles read in ``FVS_Data.db``: a donor plot
-  shared by many units (``--inventory plot``), or the unit's own LETO inventory stand
-  (``--inventory leto``, `pipeline.leto_database`). ``unit_class`` is ``riparian`` for a
-  unit that may only grow.
+  shared by many units (``--layout plot``), or the unit's own LETO inventory stand, its
+  ``unit_id`` (``--layout leto``, `pipeline.leto_layout`). ``unit_class`` is ``riparian`` for
+  a unit that may only grow.
 * ``FVS_Data.db`` — the FVS input database those stands live in.
 
-The raster repair (`pipeline.s1_initial_state.county_improvement`) and the LETO stages
-(`pipeline.leto_ca`, `leto_riparian`, `leto_donors`, `leto_inventory`, `leto_database`) produce
-them; their FL5 driver is still `experiments/2026-10-19_fl5-leto-stands` steps 1-2 and 8.
+``leto`` (`pipeline.leto_stage`) writes ``stands.csv`` and the layout's ``FVS_Data.db`` from
+a raster-repair run, county by county (in parallel with ``--workers``, resuming the counties
+already done), so ``library`` runs straight on its run folder. Its ``leto.json`` records the
+layout it built; ``library`` with another ``--layout`` fails closed (:class:`LayoutMismatch`).
+The LETO layout reads the FVS species crosswalk (``--species-crosswalk``, default
+``raw.fvs_species_crosswalk.xls``, fetched from R2 when the drive is not mounted).
 
 ``library`` enumerates every stand's regime-library options (`trajectory_library.OPEN_LIBRARY`)
 and runs the FVS keyfiles not yet cached. ``schedule`` selects one trajectory per stand against the TPO
 even-flow targets by simulated annealing (`pipeline.s3_management.annealer`), best of
-``--restarts``.
+``--restarts``. ``outputs`` (`pipeline.outputs_stage`) joins the plan to its FVS cycles and the
+units layer: the per-unit, per-cycle trajectory table, an activity and a vegetation COG per
+timestep, and the ``qa/outputs/`` report, each part behind its own flag.
 """
 
 from __future__ import annotations
@@ -48,10 +57,11 @@ PLAN = "plan.csv.gz"
 DEVIATION = "deviation_by_cycle.csv"
 SEEDS = "seeds.csv"
 SUMMARY = "summary.json"
+LETO_RECORD = "leto.json"      # what the leto stage built the run folder from, its layout too
 
 STAND_COLUMNS = ("unit_id", "PLT_CN", "county", "owner_class", "OWN_CODE", "FORTYPCD",
                  "forest_branch", "stand_age", "acres", "unit_class")
-ID_DTYPES = {"unit_id": str, "PLT_CN": str}
+ID_DTYPES = {"unit_id": str, "PLT_CN": str, "county_fips": str}   # FIPS keep a leading zero
 COOLING = 0.98                 # 2026-09-28's converged setting, which every schedule since ran
 
 log = logging.getLogger("artemis")
@@ -67,6 +77,24 @@ class InventoryLayout(Enum):
         return tl.PLOT_TABLES if self is InventoryLayout.PLOT else tl.LETO_TABLES
 
 
+class LayoutMismatch(ValueError):
+    """``library`` asked for a layout other than the one the ``leto`` stage built the run with."""
+
+
+def check_layout(run_dir: Path, layout: InventoryLayout) -> None:
+    """Fail closed when ``run_dir``'s ``leto.json`` records another layout; a run without one passes."""
+    record = Path(run_dir) / LETO_RECORD
+    if not record.exists():
+        return
+    built = InventoryLayout(json.loads(record.read_text())["layout"])
+    if built is not layout:
+        raise LayoutMismatch(
+            f"{run_dir} was built with the {built.value} layout ({record}): its {FVS_DATA} holds "
+            f"{built.tables.stand}, not {layout.tables.stand}, so `library --layout "
+            f"{layout.value}` would run keyfiles against tables that are not there. Pass "
+            f"--layout {built.value}, or rebuild the run with `leto --layout {layout.value}`")
+
+
 def read_stands(run_dir: Path) -> pd.DataFrame:
     stands = pd.read_csv(run_dir / STANDS, dtype=ID_DTYPES)
     missing = [c for c in STAND_COLUMNS if c not in stands.columns]
@@ -79,6 +107,7 @@ def read_stands(run_dir: Path) -> pd.DataFrame:
 
 
 def build_library(run_dir: Path, workers: int, layout: InventoryLayout, fvs_bin: Path) -> None:
+    check_layout(run_dir, layout)
     stands = read_stands(run_dir)
     with sqlite3.connect(run_dir / FVS_DATA) as con:
         trees = pd.read_sql(f"SELECT * FROM {layout.tables.tree}", con)
@@ -125,6 +154,49 @@ def schedule(run_dir: Path, restarts: int, workers: int, cooling: float) -> dict
     return summary
 
 
+def species_lookup(path: Path | None, data_root: Path | None) -> dict[str, str]:
+    """The FVS species crosswalk: ``path``, or the declared one (under ``data_root``, else from R2)."""
+    from pipeline.data_access import data_paths, ensure_local, under_data_root
+    from pipeline.s1_initial_state.data_sources import SPECIES_CROSSWALK_SHEET
+    from pipeline.s1_initial_state.leto_initial_state import load_species_lookup
+
+    if path is None:
+        declared = data_paths()["raw"]["fvs_species_crosswalk"]["xls"]
+        path = under_data_root(declared, data_root)
+        path = ensure_local(path) if data_root is None else path
+        if path is None:
+            raise FileNotFoundError(f"{declared} is on neither the drive nor R2: pass "
+                                    "--species-crosswalk")
+    return load_species_lookup(path, SPECIES_CROSSWALK_SHEET)
+
+
+def run_leto_stage(args: argparse.Namespace) -> None:
+    from pipeline.data_access import data_paths, under_data_root
+    from pipeline.leto_stage import run_leto
+    from pipeline.s1_initial_state.add_back_ids import read_vat
+
+    raw = data_paths()["raw"]
+    vat = read_vat(args.vat or under_data_root(raw["treemap_2022"]["tif"] + ".vat.dbf", args.data_root))
+    species = (species_lookup(args.species_crosswalk, args.data_root)
+               if args.layout is InventoryLayout.LETO else None)
+    result = run_leto(args.run_dir, repair=args.repair, fips=args.county, vat=vat,
+                      counties=args.counties or under_data_root(raw["counties"]["p010g_shp"],
+                                                                args.data_root),
+                      region_dir=args.region_dir, workers=args.workers, layout=args.layout,
+                      species_lookup=species)
+    for line in result.accounting.itertuples():
+        log.info("leto: county %s (%s), %d units, %.1f ac (drift %.2f ac)", line.county_fips,
+                 result.outcomes[line.county_fips], line.units, line.unit_acres,
+                 line.drift_acres)
+
+
+def _layout_argument(parser: argparse.ArgumentParser, *flags: str) -> None:
+    parser.add_argument(*flags, dest="layout", type=InventoryLayout, default=InventoryLayout.PLOT,
+                        choices=list(InventoryLayout), metavar="{plot,leto}",
+                        help="the FVS_Data.db tables: a stand per representative plot (plot) or "
+                             "per management unit (leto)")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="artemis", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -133,9 +205,30 @@ def main(argv: list[str] | None = None) -> None:
     lib = stages.add_parser("library", help="enumerate options and run FVS")
     lib.add_argument("run_dir", type=Path)
     lib.add_argument("--workers", type=int, default=4)
-    lib.add_argument("--inventory", type=InventoryLayout, default=InventoryLayout.PLOT,
-                     choices=list(InventoryLayout))
+    _layout_argument(lib, "--layout", "--inventory")
     lib.add_argument("--fvs-bin", type=Path, default=tl.RunPaths.fvs_bin)
+
+    leto = stages.add_parser("leto", help="a raster-repair run's counties to management units")
+    leto.add_argument("run_dir", type=Path)
+    leto.add_argument("--repair", type=Path, required=True,
+                      help="a raster-repair run folder (and its young_plots/)")
+    leto.add_argument("--county", nargs="+", default=None, metavar="FIPS",
+                      help="5-digit county FIPS, e.g. 12125 12077; default: every county the "
+                           "raster run's manifest.json lists")
+    leto.add_argument("--workers", type=int, default=1, help="counties run at once")
+    _layout_argument(leto, "--layout")
+    leto.add_argument("--species-crosswalk", type=Path, default=None,
+                      help="the FVS species crosswalk, for --layout leto; default: "
+                           "raw.fvs_species_crosswalk.xls")
+    leto.add_argument("--region-dir", type=Path, default=None,
+                      help="region inputs (fia_extract.db, hydrography.gpkg); "
+                           "default: the region's in config/leto.yaml")
+    leto.add_argument("--vat", type=Path, default=None,
+                      help="TreeMap's value table; default: raw.treemap_2022.tif + .vat.dbf")
+    leto.add_argument("--counties", type=Path, default=None,
+                      help="the county layer; default: raw.counties.p010g_shp")
+    leto.add_argument("--data-root", type=Path, default=None,
+                      help="stands in for the drive in every default path, e.g. data/r2_cache")
 
     sch = stages.add_parser("schedule", help="anneal one trajectory per stand")
     sch.add_argument("run_dir", type=Path)
@@ -143,10 +236,28 @@ def main(argv: list[str] | None = None) -> None:
     sch.add_argument("--workers", type=int, default=11)
     sch.add_argument("--cooling", type=float, default=COOLING)
 
+    out = stages.add_parser("outputs", help="the plan's trajectory table, per-timestep maps and QA")
+    out.add_argument("run_dir", type=Path)
+    from pipeline.outputs_stage import QaLevel, RasterSet
+    out.add_argument("--rasters", default=RasterSet.ALL.value, choices=[r.value for r in RasterSet],
+                     help="which per-timestep COGs to write (default: all)")
+    out.add_argument("--qa", default=QaLevel.FULL.value, choices=[q.value for q in QaLevel],
+                     help="qa/outputs/: tables, figures and maps with index.html (full), the "
+                          "tables only, or nothing (default: full)")
+    out.add_argument("--grid", type=Path, default=None,
+                     help="a raster whose cell size and alignment the maps take; default: the "
+                          "leto stage's parent_stands.tif, else the TreeMap snap grid")
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    if args.stage == "library":
-        build_library(args.run_dir, args.workers, args.inventory, args.fvs_bin)
+    if args.stage == "leto":
+        run_leto_stage(args)
+    elif args.stage == "library":
+        build_library(args.run_dir, args.workers, args.layout, args.fvs_bin)
+    elif args.stage == "outputs":
+        from pipeline import outputs_stage as stage
+        stage.run_outputs(args.run_dir, rasters=stage.RasterSet(args.rasters),
+                          qa=stage.QaLevel(args.qa), grid=args.grid)
     else:
         schedule(args.run_dir, args.restarts, args.workers, args.cooling)
 

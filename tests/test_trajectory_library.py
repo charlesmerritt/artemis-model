@@ -143,3 +143,14 @@ def test_the_open_library_is_the_decks_repeat_offsets_25(policy):
     assert policy.rotations is tl.RotationMode.REPEAT
     assert policy.forest_types is tl.ForestTypeRule.FILTER
     assert policy.offsets == (0, 5, 10, 15, 20, 25)
+
+
+def test_stand_sdi_tables_read_letos_alpha_species_and_a_tree_table_without_history():
+    # leto_database.prepare_trees: SPECIES through the crosswalk (SN alpha), no HISTORY column
+    trees = pd.DataFrame({"STAND_CN": ["12001-7"] * 3, "SPECIES": ["LP", "SU", "131"],
+                          "TREE_COUNT": [10.0, 5.0, 2.0], "DIAMETER": [10.0, 10.0, 10.0]})
+
+    sdi = tl.stand_sdi_tables(trees)
+
+    assert set(sdi["12001-7"]) == {"LP", "SU"}
+    assert sdi["12001-7"]["LP"] == pytest.approx(12.0 / 5.0 * sdi["12001-7"]["SU"])

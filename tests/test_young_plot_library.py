@@ -14,6 +14,7 @@ from pipeline.s1_initial_state.young_plot_library import (
 )
 
 LOBLOLLY, SLASH, LONGLEAF = 161, 142, 141
+GUM = 608   # sweetbay/swamp tupelo/red maple: oak/gum/cypress, a hardwood group
 
 
 def _library(plots: list[tuple[str, int, int]], trees: list[tuple[str, int, float]] = (),
@@ -84,8 +85,38 @@ def test_a_plot_of_the_type_at_two_years_beats_a_plot_of_the_group_at_the_exact_
     assert (match.level, match.age_gap, match.plt_cn) == (MatchLevel.TYPE, 2, "100000000000002")
 
 
-def test_with_no_plot_in_the_group_within_two_years_the_pixel_is_unmatched():
-    library = _library([("100000000000001", SLASH, 10), ("100000000000003", LOBLOLLY, 0)])
+def test_with_no_plot_in_the_group_within_two_years_the_groups_parent_pool_is_searched():
+    # Slash at stand age 0, no longleaf/slash plot near it: loblolly, the other softwood
+    # group, is in its parent pool. The hardwood plot at the exact age is not.
+    library = _library([("100000000000001", SLASH, 10), ("100000000000002", GUM, 0),
+                        ("100000000000003", LOBLOLLY, 1)])
+    match = library.match(SLASH, 0, NO_MIX)
+    assert (match.level, match.age_gap, match.plt_cn) == (MatchLevel.PARENT, 1, "100000000000003")
+
+
+def test_a_plot_of_the_group_at_two_years_beats_a_plot_of_the_parent_pool_at_the_exact_age():
+    library = _library([("100000000000001", LOBLOLLY, 0), ("100000000000002", LONGLEAF, 2)])
+    match = library.match(SLASH, 0, NO_MIX)
+    assert (match.level, match.plt_cn) == (MatchLevel.GROUP, "100000000000002")
+
+
+EASTERN_REDCEDAR_TYPE, EASTERN_REDCEDAR = 171, 68
+
+
+def test_an_other_type_like_eastern_redcedar_falls_back_to_every_type_ranked_by_species_mix():
+    # 171 is in the "other" group, whose parent pool is every type. Its neighbour plot is
+    # all redcedar; the gum plot holds redcedar, so it beats the loblolly plot at the same age.
+    library = _library([("100000000000001", EASTERN_REDCEDAR_TYPE, 10),
+                        ("100000000000002", LOBLOLLY, 5), ("100000000000003", GUM, 5)],
+                       trees=[("100000000000002", LOBLOLLY_PINE, 400.0),
+                              ("100000000000003", EASTERN_REDCEDAR, 300.0),
+                              ("100000000000003", SWEETGUM, 100.0)])
+    match = library.match(EASTERN_REDCEDAR_TYPE, 4, pd.Series({EASTERN_REDCEDAR: 1.0}))
+    assert (match.level, match.age_gap, match.plt_cn) == (MatchLevel.PARENT, 1, "100000000000003")
+
+
+def test_with_no_plot_in_the_parent_pool_within_two_years_the_pixel_is_unmatched():
+    library = _library([("100000000000001", SLASH, 10), ("100000000000003", GUM, 0)])
     match = library.match(SLASH, 0, NO_MIX)
     assert (match.level, match.plt_cn, match.tm_id) == (MatchLevel.UNMATCHED, None, None)
 

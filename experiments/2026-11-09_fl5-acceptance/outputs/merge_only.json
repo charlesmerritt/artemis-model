@@ -1,0 +1,35 @@
+{
+  "measures": {
+    "forest_acres": 1174862.1415735672,
+    "young_plot_acres": 86163.96588243387,
+    "riparian_acres": 36509.67116957311,
+    "units": 81842,
+    "unknown_owner_acres": 16125.98683099429
+  },
+  "verdicts": [
+    {
+      "measure": "forest_acres",
+      "run": 1174862.14,
+      "golden": 1174862,
+      "deviation": "+0.000%",
+      "tolerance": "\u00b10.1%",
+      "verdict": "pass"
+    },
+    {
+      "measure": "young_plot_acres",
+      "run": 86163.97,
+      "golden": 86953,
+      "deviation": "-0.907%",
+      "tolerance": "\u00b11.0%",
+      "verdict": "pass"
+    },
+    {
+      "measure": "riparian_acres",
+      "run": 36509.67,
+      "golden": 34566,
+      "deviation": "+5.623%",
+      "tolerance": "\u00b15.0%",
+      "verdict": "miss"
+    }
+  ]
+}

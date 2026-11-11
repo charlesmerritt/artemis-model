@@ -1,0 +1,7 @@
+scope,parent_stands,donor_plots_mean,donor_plots_median,donor_plots_max,representative_share_median,representative_share_p10,representative_share_acre_weighted,parents_under_half_share,acres_under_half_share,plots_missing_from_fia,cells_missing_from_fia,acres_missing_from_fia
+12003,11551,3.0448,3.0,14,0.58,0.2628,0.4508,4331,200772.2826,0,0,0.0
+12023,19947,3.218,2.0,14,0.5149,0.2174,0.37,8016,266556.4547,0,0,0.0
+12047,17736,2.7656,2.0,15,0.6667,0.2424,0.3411,5754,175042.7551,0,0,0.0
+12121,20723,3.0237,2.0,16,0.6,0.2222,0.3436,7517,162437.6375,0,0,0.0
+12125,5625,3.1012,3.0,13,0.5298,0.2451,0.3995,2224,84860.3122,0,0,0.0
+region,75582,3.0234,2.0,16,0.5882,0.2327,0.3842,27842,889669.4421,0,0,0.0

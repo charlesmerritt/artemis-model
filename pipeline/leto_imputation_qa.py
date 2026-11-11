@@ -1,8 +1,9 @@
 """LETO stage 4 imputation QA: why each stand was imputed, and how far its donor was.
 
-Ported from aauslander480/Leto `LETO_v1_project/leto/imputation_qa.py` (d2b92ee) with one
-change: plot control numbers go through `pipeline.ids.as_id_series` instead of LETO's
-strip-".0" cleanup, which cannot repair an ID that has been through a float.
+Ported from aauslander480/Leto `LETO_v1_project/leto/imputation_qa.py`, at the pin in
+research/leto_parity/README.md, with one change: plot control numbers go through
+`pipeline.ids.as_id_series` instead of LETO's strip-".0" cleanup, which cannot repair an ID
+that has been through a float.
 """
 from __future__ import annotations
 
