@@ -69,16 +69,15 @@ import pandas as pd
 import rasterio
 
 from pipeline.ids import as_id_series
-from pipeline.s1_initial_state.add_back_ids import NEW_ID_START, read_vat
+from pipeline.s1_initial_state.add_back_ids import IMPROVED as IMPROVED_TREEMAP
+from pipeline.s1_initial_state.add_back_ids import NEW_ID_START, PROVENANCE, read_vat
 from pipeline.s1_initial_state.county_improvement import TreeMapProvenance
+from pipeline.s1_initial_state.run_counties import RUN_MANIFEST
 from pipeline.spatial_ref import assert_project_crs, project_crs
 
 FIA_EXTRACT_DB = "fia_extract.db"
 FIA_EXTRACT_MISSING_CSV = "fia_extract_missing.csv"
 FIA_EXTRACT_JSON = "fia_extract.json"
-RUN_MANIFEST = "manifest.json"
-IMPROVED_TREEMAP = "treemap2022_improved.tif"
-PROVENANCE = "treemap2022_provenance.tif"
 # The extracted tables, each with the column that names its plot.
 EXTRACT_TABLES = {"PLOT": "CN", "COND": "PLT_CN", "TREE": "PLT_CN",
                   "FVS_STANDINIT_PLOT": "STAND_CN", "FVS_TREEINIT_PLOT": "STAND_CN"}

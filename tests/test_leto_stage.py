@@ -42,9 +42,7 @@ from pipeline.leto_stage import (
     ConflictingPlotRows,
     CountyOutcome,
     MissingRepresentativePlots,
-    NoCountiesInManifest,
     NeighbourIdOnAddBack,
-    UnknownCounty,
     PlotInventory,
     UnknownYoungPlotIds,
     CountyCells,
@@ -57,6 +55,7 @@ from pipeline.leto_stage import (
 )
 from pipeline.run import InventoryLayout, LayoutMismatch, main, read_stands
 from pipeline.s1_initial_state.add_back_ids import VAT_COLUMNS
+from pipeline.s1_initial_state.run_counties import NoCountiesInManifest, UnknownCounty
 from pipeline.spatial_ref import project_crs
 
 NODATA = 4294967295

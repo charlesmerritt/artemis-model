@@ -61,6 +61,12 @@ from pipeline.s1_initial_state.add_back_stand_age import (
 )
 from pipeline.s1_initial_state.county_improvement import Grid, TreeMapProvenance
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL
+from pipeline.s1_initial_state.run_counties import (
+    RUN_MANIFEST,
+    manifest_counties,
+    manifest_county_layer,
+    read_counties,
+)
 from pipeline.spatial_ref import project_crs
 from pipeline.s1_initial_state.young_plot_library import (
     MatchLevel,
@@ -270,7 +276,7 @@ def run_detectors(run_dir: Path, obata: Path | None,
     A run folder without a manifest dates with what it is given.
     """
     given = {"obata": obata, "hansen": hansen}
-    manifest_path = run_dir / "manifest.json"
+    manifest_path = run_dir / RUN_MANIFEST
     if not manifest_path.exists():
         return obata, hansen
     manifest = json.loads(manifest_path.read_text())
@@ -321,27 +327,11 @@ def write_add_back_ids(run_dir: Path, *, vat: pd.DataFrame, library: YoungPlotLi
     report["cut_year_detectors"] = {name: None if path is None else str(path) for name, path in
                                     (("obata", obata), ("hansen", hansen), ("landfire", landfire))}
     (out / "validation.json").write_text(json.dumps(report, indent=2))
-    counties = manifest_counties(run_dir)
-    if counties is not None:
-        acres_by_county(run_dir, *counties).to_csv(out / COUNTY_CSV, index=False,
-                                                   float_format="%.4f")
+    layer = manifest_county_layer(run_dir)
+    if layer is not None:
+        acres_by_county(run_dir, layer, manifest_counties(run_dir)).to_csv(
+            out / COUNTY_CSV, index=False, float_format="%.4f")
     return report
-
-
-def manifest_counties(run_dir: Path) -> tuple[Path, list[str]] | None:
-    """The county layer and FIPS a run's ``manifest.json`` records; ``None`` if it records none.
-
-    The manifest lists counties as ``"<FIPS> <name>"``, where the name may be the FIPS again:
-    only the FIPS is read, and names come from the layer.
-    """
-    path = run_dir / "manifest.json"
-    if not path.exists():
-        return None
-    manifest = json.loads(path.read_text())
-    layer, listed = manifest.get("inputs", {}).get("counties"), manifest.get("counties")
-    if not layer or not listed:
-        return None
-    return Path(layer), [str(entry).split()[0] for entry in listed]
 
 
 def acres_by_county(run_dir: Path, counties: Path, fips: list[str]) -> pd.DataFrame:
@@ -352,19 +342,10 @@ def acres_by_county(run_dir: Path, counties: Path, fips: list[str]) -> pd.DataFr
     an empty ``county_fips`` and :data:`OUTSIDE_COUNTIES`, and one whose ID has no VAT
     extension row the age source :data:`UNRESOLVED`, so the rows sum to every add-back pixel.
     """
-    malformed = [f for f in fips if not (len(f) == 5 and f.isdigit())]
-    if malformed:
-        raise ValueError(f"a county FIPS is 5 digits, not {malformed[0]!r}")
-    import geopandas as gpd
-
-    from pipeline.spatial_ref import to_project_crs
-
+    layer = read_counties(counties, fips)
     out = run_dir / OUT_DIR
     added = AddBackPixels.of(out / PROVENANCE, _young)
     values = added.gather(out / IMPROVED)
-    quoted = ", ".join(f"'{f}'" for f in fips)
-    layer = to_project_crs(gpd.read_file(counties, where=f"ADMIN_FIPS IN ({quoted})"))
-    layer = layer.dissolve(by="ADMIN_FIPS", aggfunc="first").reset_index()
     index = added.rasterized([(geom, i + 1) for i, geom in enumerate(layer.geometry)])
     fips_of = np.array([""] + layer["ADMIN_FIPS"].astype(str).tolist(), dtype=object)
     name_of = np.array([OUTSIDE_COUNTIES] + layer["NAME"].astype(str).tolist(), dtype=object)

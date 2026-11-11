@@ -332,7 +332,8 @@ def test_a_run_with_counties_reports_add_back_acres_by_county_and_age_source(tmp
     # Pixels 1-2 (obata, hansen) fall in 12001, pixels 3-4 (hansen, stratum median) in 12077.
     # 12003 is listed but has no add-back pixel; it still gets no row, not a zero row.
     run, sources = _run(tmp_path)
-    counties = _counties(tmp_path, ("12001", "Alachua", 0, 90), ("12077", "Liberty", 90, 180))
+    counties = _counties(tmp_path, ("12001", "Alachua", 0, 90), ("12077", "Liberty", 90, 180),
+                         ("12003", "Baker", 300, 330))
     _manifest(run, ["12001 12001", "12003 Baker", "12077 12077"],   # names as the run wrote them
               obata=str(sources["obata"]), hansen=str(sources["hansen"]), counties=str(counties))
 

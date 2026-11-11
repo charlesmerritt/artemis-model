@@ -4,7 +4,7 @@
                                [--region-dir <dir>] [--layout plot|leto] [--species-crosswalk <xls>]
 
 Without ``--county`` it runs every county the raster run's ``manifest.json`` lists
-(:class:`NoCountiesInManifest` when it lists none). Each county is its own job
+(:class:`~pipeline.s1_initial_state.run_counties.NoCountiesInManifest` when it lists none). Each county is its own job
 (:func:`run_county`), ``--workers`` at a time in separate processes; a county's outputs do not
 depend on which process ran it, so a parallel run's files equal a serial run's.
 
@@ -181,14 +181,17 @@ from pipeline.s1_initial_state.region_prep import (
     HYDROGRAPHY_GPKG,
     IMPROVED_TREEMAP,
     PROVENANCE,
-    RUN_MANIFEST,
     UnknownTreeMapValues,
+)
+from pipeline.s1_initial_state.run_counties import (
+    RUN_MANIFEST,
+    manifest_counties,
+    read_counties,
 )
 from pipeline.s1_initial_state.young_stand_profiles import BA_FACTOR
 from pipeline.s3_management.owner_classes import MASKED, classify_owner
 from pipeline.s3_management.regime_assignment import forest_type_branch
 from pipeline.s4_fvs.regime_templates import DEFAULT_INV_YEAR
-from pipeline.spatial_ref import to_project_crs
 
 REPO = Path(__file__).resolve().parents[1]
 CONFIG_PATH = REPO / "config" / "leto.yaml"
@@ -266,14 +269,6 @@ class MissingRepresentativePlots(ValueError):
 
 class AmbiguousStandInit(ValueError):
     """A plot with more than one StandInit row in the extract: its start age and FVS row could differ."""
-
-
-class UnknownCounty(ValueError):
-    """A FIPS that names no county in the county layer."""
-
-
-class NoCountiesInManifest(ValueError):
-    """No ``--county`` list, and the raster run's manifest lists no counties to default to."""
 
 
 class ConflictingPlotRows(ValueError):
@@ -358,13 +353,8 @@ class County:
 
 def read_county(counties: Path, fips: str) -> County:
     """The county with ``ADMIN_FIPS == fips`` from the national county layer, in the project CRS."""
-    if not (len(fips) == 5 and fips.isdigit()):
-        raise UnknownCounty(f"a county FIPS is 5 digits, not {fips!r}")
-    rows = gpd.read_file(counties, where=f"ADMIN_FIPS = '{fips}'")
-    if rows.empty:
-        raise UnknownCounty(f"county {fips} is not in {counties}")
-    rows = to_project_crs(rows)
-    return County(fips, str(rows["NAME"].iloc[0]), rows.geometry.union_all())
+    row = read_counties(counties, [fips]).iloc[0]
+    return County(fips, str(row["NAME"]), row.geometry)
 
 
 @dataclass(frozen=True)
@@ -1119,15 +1109,6 @@ def run_county(job: CountyJob) -> CountyResult:
 
 
 # ── many counties: the plan, resume, assembly ──────────────────────────────────────────
-
-
-def manifest_counties(repair: Path) -> list[str]:
-    """The FIPS the raster run's ``manifest.json`` lists (``"12125 Union"`` entries)."""
-    listed = json.loads((repair / RUN_MANIFEST).read_text()).get("counties")
-    if not listed:
-        raise NoCountiesInManifest(f"{repair / RUN_MANIFEST} lists no counties: name them with "
-                                   "--county")
-    return [str(entry).split()[0] for entry in listed]
 
 
 def _digest(payload: dict) -> str:
