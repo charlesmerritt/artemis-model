@@ -111,9 +111,11 @@ def build_library(run_dir: Path, workers: int, layout: InventoryLayout, fvs_bin:
     stands = read_stands(run_dir)
     with sqlite3.connect(run_dir / FVS_DATA) as con:
         trees = pd.read_sql(f"SELECT * FROM {layout.tables.tree}", con)
+        inventory = tl.inventory_fingerprints(con, layout.tables)
     sdi = tl.stand_sdi_tables(trees)
     keyfiles: dict[str, str] = {}
-    lib = tl.enumerate_library(tl.OPEN_LIBRARY, stands, sdi, keyfiles, tables=layout.tables)
+    lib = tl.enumerate_library(tl.OPEN_LIBRARY, stands, sdi, keyfiles, tables=layout.tables,
+                               inventory=inventory)
     lib.to_csv(run_dir / LIBRARY, index=False)
     plt_of = dict(zip(lib["run_hash"], lib["PLT_CN"]))
     paths = tl.RunPaths(work=run_dir, data_db=run_dir / FVS_DATA, fvs_bin=fvs_bin)

@@ -1,5 +1,6 @@
 """The trajectory library: every stand's eligible options, rendered to FVS keyfiles and run."""
 
+import sqlite3
 import stat
 
 import pandas as pd
@@ -154,3 +155,36 @@ def test_stand_sdi_tables_read_letos_alpha_species_and_a_tree_table_without_hist
 
     assert set(sdi["12001-7"]) == {"LP", "SU"}
     assert sdi["12001-7"]["LP"] == pytest.approx(12.0 / 5.0 * sdi["12001-7"]["SU"])
+
+
+def _inventory_db(path, trees):
+    with sqlite3.connect(path) as con:
+        pd.DataFrame({"STAND_CN": ["1234567890123456789", "2"], "AGE": [30, 30]}).to_sql(
+            tl.PLOT_TABLES.stand, con, index=False)
+        pd.DataFrame(trees).to_sql(tl.PLOT_TABLES.tree, con, index=False)
+
+
+def test_inventory_fingerprints_change_only_for_the_stand_whose_trees_changed(tmp_path):
+    rows = {"STAND_CN": ["1234567890123456789", "2", "2"], "SPECIES": ["LP", "LP", "SA"],
+            "DIAMETER": [8.0, 6.0, 4.0]}
+    _inventory_db(tmp_path / "a.db", rows)
+    _inventory_db(tmp_path / "b.db", {**rows, "DIAMETER": [8.0, 6.0, 5.0]})
+    _inventory_db(tmp_path / "c.db", {k: v[::-1] for k, v in rows.items()})   # rows reordered
+
+    a, b, c = (tl.inventory_fingerprints(sqlite3.connect(tmp_path / f"{n}.db"), tl.PLOT_TABLES)
+               for n in "abc")
+
+    assert set(a) == {"1234567890123456789", "2"}
+    assert a["1234567890123456789"] == b["1234567890123456789"]
+    assert a["2"] != b["2"]
+    assert a == c
+
+
+def test_a_stand_whose_inventory_changed_gets_a_new_run_even_with_the_same_keyfile():
+    def hashes(inventory):
+        lib = tl.enumerate_library(tl.OPEN_LIBRARY, _stands(), sdi={}, keyfiles={},
+                                   config=CONFIG, inventory=inventory)
+        return set(lib["run_hash"])
+
+    assert hashes({"1234567890123456789": "old"}) == hashes({"1234567890123456789": "old"})
+    assert hashes({"1234567890123456789": "old"}).isdisjoint(hashes({"1234567890123456789": "new"}))

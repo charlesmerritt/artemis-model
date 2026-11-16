@@ -263,15 +263,34 @@ def stand_sdi_tables(trees: pd.DataFrame) -> dict[str, dict[str, float]]:
     return out
 
 
+def inventory_fingerprints(con: sqlite3.Connection, tables: FvsTables) -> dict[str, str]:
+    """Per FVS stand (``STAND_CN``), a digest of its StandInit and TreeInit rows, in any order.
+
+    A run's identity is its keyfile *and* the inventory the keyfile reads: rebuilding
+    ``FVS_Data.db`` under the same stand IDs (a ``leto`` rerun) must not reuse the old runs.
+    """
+    digests: dict[str, hashlib._Hash] = {}
+    for table in (tables.stand, tables.tree):
+        frame = pd.read_sql(f"SELECT * FROM {table}", con)
+        frame["STAND_CN"] = as_id_series(frame["STAND_CN"])
+        frame = frame[sorted(frame.columns)].astype("string")
+        frame["_row"] = pd.util.hash_pandas_object(frame, index=False).to_numpy()
+        for cn, rows in frame.sort_values("_row").groupby("STAND_CN", sort=False)["_row"]:
+            digest = digests.setdefault(cn, hashlib.sha256())
+            digest.update(table.encode() + rows.to_numpy().tobytes())
+    return {cn: d.hexdigest()[:20] for cn, d in digests.items()}
+
+
 def enumerate_library(policy: LibraryPolicy, stands: pd.DataFrame, sdi: dict,
                       keyfiles: dict[str, str], *, config: dict | None = None,
-                      tables: FvsTables = PLOT_TABLES, entry_cache: dict | None = None
-                      ) -> pd.DataFrame:
+                      tables: FvsTables = PLOT_TABLES, entry_cache: dict | None = None,
+                      inventory: dict[str, str] | None = None) -> pd.DataFrame:
     """One row per (stand, option): the label the scheduler sees and the run it reads.
 
     ``stands`` carries ``unit_id``, ``PLT_CN`` (the FVS stand the keyfile reads),
     ``stand_age``, ``unit_class``, ``owner_class`` and ``forest_branch``. Rendered keyfiles are
-    added to ``keyfiles`` by hash.
+    added to ``keyfiles`` by hash. ``inventory`` (:func:`inventory_fingerprints`) joins each
+    plot's inventory digest to its runs' hash, so a changed inventory is a new run.
     """
     config = load_regimes_config() if config is None else config
     entry_cache = {} if entry_cache is None else entry_cache
@@ -298,7 +317,8 @@ def enumerate_library(policy: LibraryPolicy, stands: pd.DataFrame, sdi: dict,
             if not shifted and prescription != "no_management":
                 continue          # collapsed to no entry: `no_management` already covers it
             text = render(plt, template, shifted, tables=tables)
-            h = hashlib.sha256(text.encode()).hexdigest()[:20]
+            ident = text if inventory is None else f"{inventory.get(plt, '')}\n{text}"
+            h = hashlib.sha256(ident.encode()).hexdigest()[:20]
             keyfiles.setdefault(h, text)
             out.append((variant_label(prescription, off), h))
         runs[key] = out
