@@ -31,9 +31,12 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import os
 import re
+import signal
 import subprocess
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -176,6 +179,31 @@ def mutation_score(counts: Counter) -> float | None:
     return round(100 * caught / tested, 1) if tested else None
 
 
+clock = time.monotonic
+
+
+def run_mutmut(module: str, timeout: float | None) -> bool:
+    """Mutate ``module``; ``False`` when ``timeout`` seconds ran out first.
+
+    mutmut stores each mutant's result as it goes, so a run stopped here resumes from the
+    cache next time. Its whole process group is stopped, workers included.
+    """
+    proc = subprocess.Popen(["mutmut", "run", f"{module}.*"], cwd=REPO_ROOT, start_new_session=True)
+    try:
+        code = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGTERM)
+        try:
+            proc.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+        return False
+    if code not in (0, 1):
+        sys.exit(f"mutmut failed on {module} (exit {code})")
+    return True
+
+
 def cmd_mutate(args: argparse.Namespace) -> int:
     if args.rotation:
         files, scope = [rotation_file()], "retroactive sweep"
@@ -190,18 +218,26 @@ def cmd_mutate(args: argparse.Namespace) -> int:
     lines = [f"### Mutation testing — {scope}", "",
              "| File | Score | Killed | Survived | No tests | Timeout | Other |",
              "|---|---:|---:|---:|---:|---:|---:|"]
-    survivors, failing = [], []
+    survivors, failing, unreached = [], [], []
+    deadline = None if args.budget_minutes is None else clock() + 60 * args.budget_minutes
     for path in files:
         module = module_name(path)
+        left = None if deadline is None else deadline - clock()
+        if left is not None and left <= 0:
+            unreached.append(path)
+            lines.append(f"| `{path}` | not reached | | | | | |")
+            continue
         print(f"mutating {path} ...", file=sys.stderr, flush=True)
-        run = subprocess.run(["mutmut", "run", f"{module}.*"], cwd=REPO_ROOT)
-        if run.returncode not in (0, 1):
-            sys.exit(f"mutmut failed on {path} (exit {run.returncode})")
+        finished = run_mutmut(module, left)
         statuses = mutation_statuses(module)
         counts = Counter(statuses.values())
         score = mutation_score(counts)
         other = sum(counts.values()) - sum(counts[k] for k in ("killed", "survived", "no tests", "timeout"))
-        lines.append(f"| `{path}` | {'—' if score is None else f'{score:.1f}%'} | {counts['killed']} | "
+        shown = "—" if score is None else f"{score:.1f}%"
+        if not finished:
+            unreached.append(path)
+            shown = f"stopped at budget, {shown} so far"
+        lines.append(f"| `{path}` | {shown} | {counts['killed']} | "
                      f"{counts['survived']} | {counts['no tests']} | {counts['timeout']} | {other} |")
         survivors += [name for name, status in statuses.items() if status == "survived"]
         if args.min_score is not None and score is not None and score < args.min_score:
@@ -214,6 +250,9 @@ def cmd_mutate(args: argparse.Namespace) -> int:
         lines += [f"- `{name}`" for name in shown]
         if len(survivors) > len(shown):
             lines.append(f"- … and {len(survivors) - len(shown)} more")
+    if unreached:
+        lines += ["", f"**The budget of {args.budget_minutes:g} min ran out** with {len(unreached)} "
+                  "file(s) unfinished. mutmut's cache carries their results so far into the next run."]
     _emit("\n".join(lines), args.summary)
     if failing:
         print(f"FAIL mutation score below --min-score {args.min_score:g}% in: {', '.join(failing)}")
@@ -241,6 +280,9 @@ def main() -> int:
     mutate.add_argument("--min-score", type=float, help="fail if a file's mutation score (%%) is below this")
     mutate.add_argument("--show-survivors", type=int, default=30)
     mutate.add_argument("--summary", type=Path, help="append the markdown report to this file")
+    mutate.add_argument("--budget-minutes", type=float, default=None,
+                        help="stop starting files after this many minutes and exit cleanly, so CI "
+                             "saves mutmut's cache and the next run resumes")
     mutate.set_defaults(func=cmd_mutate)
 
     args = parser.parse_args()
