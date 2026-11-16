@@ -1,0 +1,13 @@
+{
+  "stands": 49363,
+  "acres": 1165075.4052175176,
+  "restarts": 11,
+  "cooling_factor": 0.98,
+  "wall_seconds": 3915.120589237,
+  "options_per_stand": 33.769442699997974,
+  "best_seed": 44,
+  "objective_best": 0.01665769434207762,
+  "objective_greedy": 298.95132423311156,
+  "evenflow_cost": 0.07674318625907797,
+  "target_period": "2013_2024"
+}
