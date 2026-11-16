@@ -371,6 +371,27 @@ def test_a_failed_rerun_leaves_no_stale_outputs(run_dir):
     assert not (run_dir / os_.TABLE).exists() and not (run_dir / os_.QA_DIR).exists()
 
 
+
+def test_a_failed_rerun_keeps_the_last_good_outputs_aside_not_in_place(run_dir):
+    os_.run_outputs(run_dir, rasters=os_.RasterSet.NONE, qa=os_.QaLevel.TABLES)
+    good = (run_dir / os_.TABLE).read_bytes()
+    (run_dir / "keyfiles" / "h-cut.key").unlink()
+
+    with pytest.raises(os_.MissingKeyfile):
+        os_.run_outputs(run_dir, rasters=os_.RasterSet.NONE, qa=os_.QaLevel.TABLES)
+
+    kept = run_dir / os_.PREVIOUS_OUT_DIR / os_.TABLE.relative_to(os_.OUT_DIR)
+    assert kept.read_bytes() == good
+    assert (run_dir / os_.PREVIOUS_QA_DIR / os_.HARVEST_QA).exists()
+
+
+def test_a_successful_rerun_drops_the_previous_outputs(run_dir):
+    os_.run_outputs(run_dir, rasters=os_.RasterSet.NONE, qa=os_.QaLevel.TABLES)
+    os_.run_outputs(run_dir, rasters=os_.RasterSet.NONE, qa=os_.QaLevel.TABLES)
+
+    assert not (run_dir / os_.PREVIOUS_OUT_DIR).exists()
+    assert not (run_dir / os_.PREVIOUS_QA_DIR).exists()
+
 def test_a_plot_and_prescription_with_two_runs_stops_the_stage(run_dir):
     library = _library()
     library.loc[library["unit_id"] == "12003-2", "run_hash"] = library.loc[

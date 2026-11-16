@@ -87,6 +87,8 @@ UNIT_INDEX_TIF = RASTER_DIR / "unit_index.tif"
 ACTIVITY_DIR = RASTER_DIR / "activity"
 VEGETATION_DIR = RASTER_DIR / "vegetation"
 QA_DIR = Path("qa") / "outputs"
+PREVIOUS_OUT_DIR = Path("outputs.previous")           # the last outputs, while a rerun runs
+PREVIOUS_QA_DIR = Path("qa") / "outputs.previous"
 KEYFILES = "keyfiles"
 DEVIATION = "deviation_by_cycle.csv"          # schedule's per owner group targets
 
@@ -528,8 +530,27 @@ def run_outputs(run_dir: Path, *, rasters: RasterSet = RasterSet.ALL, qa: QaLeve
                 grid: Path | None = None) -> OutputsRun:
     """The stage: table, rasters and QA for a scheduled ``run_dir``; see the module docstring."""
     run_dir = Path(run_dir)
-    for stale in (run_dir / OUT_DIR, run_dir / QA_DIR):   # a failed rerun leaves nothing old
-        shutil.rmtree(stale, ignore_errors=True)
+    # A rerun sets the last outputs aside rather than deleting them: a failure then leaves
+    # nothing stale in place beside a new plan, and the last good outputs are not lost.
+    aside = [(run_dir / cur, run_dir / prev) for cur, prev in
+             ((OUT_DIR, PREVIOUS_OUT_DIR), (QA_DIR, PREVIOUS_QA_DIR))]
+    for current, previous in aside:
+        if current.exists():
+            shutil.rmtree(previous, ignore_errors=True)
+            current.rename(previous)
+    try:
+        record = _run_outputs(run_dir, rasters, qa, grid)
+    except Exception:
+        kept = [str(prev) for _, prev in aside if prev.exists()]
+        if kept:
+            log.warning("outputs failed; the previous outputs are kept in %s", ", ".join(kept))
+        raise
+    for _, previous in aside:
+        shutil.rmtree(previous, ignore_errors=True)
+    return record
+
+
+def _run_outputs(run_dir: Path, rasters: RasterSet, qa: QaLevel, grid: Path | None) -> OutputsRun:
     horizon = n_cycles()
     table = trajectory_table(run_dir, horizon)
     plan = read_plan(run_dir)
