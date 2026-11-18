@@ -37,6 +37,10 @@ After collection fails or tests change, rebuild the `mutants/` workspace before 
 `scripts/quality.py mutate` can exit successfully with an undefined score after failure;
 verify collection and status counts. See `research/code_quality/hardening.txt`.
 
+### A push is done when its PR checks are green
+Wait for `gh pr checks <n>` and report it: CI sat red for six unwatched pushes (Nov 9-16).
+Watch the ~100-minute mutation job with `gh run watch <id> --exit-status` in the background.
+
 ## What Artemis should do, step by step
 
 1. A LETO pipeline initializes state

@@ -30,8 +30,8 @@ as a failure:
 | A finding or a design | a deck | `check_docs.py` (links, slide ids) |
 
 `check_docs.py` also sets an advisory line budget for the markdown files that remain. New or
-over-ceiling files print a warning but do not fail, and each existing file is marked keep, convert, code, record or generated. Checks and pytest
-run in CI and pre-commit; each PR also gets CRAP and file-by-file mutation reports (`scripts/quality.py`).
+over-ceiling files print a warning but do not fail, and each existing file is marked keep, convert, code, record or generated. Checks run in CI and
+pre-commit, pytest in CI and pre-push; each PR also gets CRAP and file-by-file mutation reports (`scripts/quality.py`).
 
 ## Quickstart
 
