@@ -146,3 +146,45 @@ def test_search_keeps_the_best_restart():
 
     assert [r["seed"] for r in results] == [1, 2, 3]
     assert best["objective"] == min(r["objective"] for r in results) == pytest.approx(0.0)
+
+
+class _Untouchable:
+    """Stands in for a per-option Python structure the search must not read.
+
+    Forked restarts share the parent's landscape copy-on-write. Reading a Python object
+    writes its reference count, which copies its page into the worker, so a search that
+    reads per-option lists ends up holding a private copy of the whole landscape per worker.
+    """
+
+    def __getattr__(self, name):
+        raise AssertionError(f"the search read a per-option Python structure ({name})")
+
+    def __getitem__(self, key):
+        raise AssertionError("the search read a per-option Python structure")
+
+    def __len__(self):
+        raise AssertionError("the search read a per-option Python structure")
+
+
+def test_the_search_reads_only_the_flat_buffers_not_per_option_python_objects():
+    stands, library, cycles = _toy()
+    cfg = _cfg()
+    land = A.Landscape(stands, library, cycles, n_cycles=2)
+    obj = A.Objective(land, _caps(), cfg)
+    expected = A.anneal(land, obj, cfg, seed=7, initial=[0, 0])
+
+    land.options = land.volumes = land.standing = _Untouchable()
+    obj = A.Objective(land, _caps(), cfg)
+
+    assert A.anneal(land, obj, cfg, seed=7, initial=[0, 0]) == expected
+
+
+def test_the_flat_buffers_hold_exactly_the_reported_volumes():
+    stands, library, cycles = _toy()
+    land = A.Landscape(stands, library, cycles, n_cycles=2)
+
+    for i in range(land.n):
+        assert land.n_options[i] == len(land.options[i])
+        for k in range(land.n_options[i]):
+            assert list(land.vol(i, k)) == land.volumes[i][k]
+            assert land.standing_of(i, k) == land.standing[i][k]

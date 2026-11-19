@@ -131,6 +131,7 @@ def schedule(run_dir: Path, restarts: int, workers: int, cooling: float) -> dict
     caps = annealer.tpo_caps(cfg["target_period"])
 
     land, obj, greedy = annealer.build_landscape(stands, library, cycles, cfg, caps)
+    del library, cycles   # the landscape holds what the search needs; don't fork them
     obj.reset(greedy)
     greedy_objective = obj.total()
     seeds = [cfg["seed"] + i for i in range(restarts)]
