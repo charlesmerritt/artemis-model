@@ -188,3 +188,68 @@ def test_a_stand_whose_inventory_changed_gets_a_new_run_even_with_the_same_keyfi
 
     assert hashes({"1234567890123456789": "old"}) == hashes({"1234567890123456789": "old"})
     assert hashes({"1234567890123456789": "old"}).isdisjoint(hashes({"1234567890123456789": "new"}))
+
+
+def _succeeding_fvs(tmp_path):
+    """A stand-in FVSsn that writes a complete FVS_Summary2 and logs each call."""
+    calls = tmp_path / "calls.log"
+    fake = tmp_path / "FVSsn"
+    fake.write_text(f"""#!/usr/bin/env python3
+import sqlite3
+open({str(calls)!r}, "a").write("run\\n")
+con = sqlite3.connect("FVS_Out.db")
+con.execute("CREATE TABLE FVS_Summary2 (Year INT, RmvCode INT, Age INT, BA REAL, MCuFt REAL,"
+            " RTpa REAL, RTCuFt REAL, RMCuFt REAL, RBdFt REAL)")
+for c in range({tl.NUM_CYCLE + 1}):
+    con.execute("INSERT INTO FVS_Summary2 VALUES (?,0,?,?,?,0,0,?,0)",
+                ({tl.INV_YEAR} + 5 * c, 10 + 5 * c, 50.5 + c, 1000.25 + c, 0.1 * c))
+con.commit()
+""")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    data_db = tmp_path / "FVS_Data.db"
+    data_db.write_bytes(b"")
+    return tl.RunPaths(work=tmp_path / "work", data_db=data_db, fvs_bin=fake), calls
+
+
+def test_runs_finished_before_a_crash_are_kept_and_not_rerun(tmp_path, monkeypatch):
+    paths, calls = _succeeding_fvs(tmp_path)
+    keyfiles = {f"h{i}": f"keyfile {i}" for i in range(3)}
+    plt_of = {h: "1234567890123456789" for h in keyfiles}
+    write_part = tl._write_part
+    written = []
+
+    def crash_after_first_part(*args, **kwargs):
+        if written:
+            raise RuntimeError("killed")
+        written.append(write_part(*args, **kwargs))
+
+    monkeypatch.setattr(tl, "_write_part", crash_after_first_part)
+    with pytest.raises(RuntimeError):
+        tl.run_fvs(keyfiles, plt_of, paths, workers=1, checkpoint_runs=1)
+    monkeypatch.setattr(tl, "_write_part", write_part)
+    before = len(calls.read_text().splitlines())
+
+    tl.run_fvs(keyfiles, plt_of, paths, workers=1, checkpoint_runs=1)
+
+    assert len(calls.read_text().splitlines()) - before == 2
+    cycles = pd.read_csv(paths.cycles, dtype={"PLT_CN": str})
+    assert sorted(cycles["run_hash"].unique()) == ["h0", "h1", "h2"]
+    assert not paths.parts.exists()
+
+
+def test_checkpointed_cycles_equal_one_pass_and_keep_exact_ids(tmp_path):
+    paths, _ = _succeeding_fvs(tmp_path)
+    keyfiles = {f"h{i}": f"keyfile {i}" for i in range(5)}
+    plt_of = {h: ("1234567890123456789" if i % 2 else "987654321098765432")
+              for i, h in enumerate(keyfiles)}
+
+    tl.run_fvs(keyfiles, plt_of, paths, workers=2, checkpoint_runs=2)
+
+    cycles = pd.read_csv(paths.cycles, dtype={"PLT_CN": str})
+    assert list(cycles.columns) == ["run_hash", "PLT_CN", "cycle", "calendar_year", "Age", "BA",
+                                    "MCuFt", "removed_merch_cuft_per_ac"]
+    key = ["PLT_CN", "run_hash", "calendar_year"]
+    assert cycles[key].equals(cycles.sort_values(key)[key].reset_index(drop=True))
+    assert set(cycles["PLT_CN"]) == {"1234567890123456789", "987654321098765432"}
+    assert len(cycles) == 5 * (tl.NUM_CYCLE + 1)
+    assert cycles["MCuFt"].iloc[1] == 1001.25

@@ -62,6 +62,10 @@ NUM_CYCLE = 11                         # one carrier cycle so a 2072 entry execu
 OFFSET_SEP = "@+"                      # `{prescription}@+{offset}`
 FVS_OK_RETURNCODES = frozenset({0, 10})
 REMOVAL_COLS = ("RTpa", "RTCuFt", "RMCuFt", "RBdFt")
+CYCLE_COLUMNS = ["run_hash", "PLT_CN", "cycle", "calendar_year", "Age", "BA", "MCuFt",
+                 "removed_merch_cuft_per_ac"]
+CYCLE_ORDER = ["PLT_CN", "run_hash", "calendar_year"]   # the order one pass wrote rows in
+CHECKPOINT_RUNS = 2000
 
 OFFSETS_0_15 = (0, 5, 10, 15)          # 2026-09-14's grid
 OFFSETS_0_25 = (0, 5, 10, 15, 20, 25)  # AGENTS.md's 5-25 year offsets
@@ -324,15 +328,21 @@ def enumerate_library(policy: LibraryPolicy, stands: pd.DataFrame, sdi: dict,
         runs[key] = out
         return out
 
-    rows = []
+    # Columns, not a dict per row: a statewide library is tens of millions of rows, and a
+    # dict each would cost several times the frame they become.
+    cols: dict[str, list[str]] = {c: [] for c in ("unit_id", "PLT_CN", "prescription",
+                                                  "base_prescription", "run_hash")}
     for s in stands.itertuples(index=False):
         regimes = (["no_management"] if s.unit_class == "riparian"
                    else regimes_for(policy, config, s.owner_class, s.forest_branch))
         for prescription in regimes:
             for label, h in runs_for(s.PLT_CN, prescription):
-                rows.append({"unit_id": s.unit_id, "PLT_CN": s.PLT_CN, "prescription": label,
-                             "base_prescription": prescription, "run_hash": h})
-    lib = pd.DataFrame(rows)
+                cols["unit_id"].append(s.unit_id)
+                cols["PLT_CN"].append(s.PLT_CN)
+                cols["prescription"].append(label)
+                cols["base_prescription"].append(prescription)
+                cols["run_hash"].append(h)
+    lib = pd.DataFrame(cols)
     if lib.duplicated(["unit_id", "prescription"]).any():
         raise AssertionError("a stand carries the same option twice")
     log.info("%d options over %d stands (%.1f per stand), %d distinct runs", len(lib),
@@ -363,6 +373,11 @@ class RunPaths:
     @property
     def failures(self) -> Path:
         return self.work / "fvs_failures.csv"
+
+    @property
+    def parts(self) -> Path:
+        """Checkpoints of a `run_fvs` call not yet folded into `cycles`."""
+        return self.work / "fvs_cycles.parts"
 
 
 def run_one(args: tuple[str, str, str, str]) -> tuple[str, str | None, list[dict]]:
@@ -419,53 +434,115 @@ def merge_harvest_year_rows(df: pd.DataFrame) -> pd.DataFrame:
     return merged.reset_index()
 
 
-def run_fvs(keyfiles: dict[str, str], plt_of: dict[str, str], paths: RunPaths,
-            workers: int) -> None:
-    """Run every keyfile not yet in ``paths.cycles``; append its cycles and any failures."""
+def cycles_of_run(run_hash: str, plt: str, rows: list[dict]) -> pd.DataFrame | None:
+    """One run's `FVS_Summary2` rows as its cycle rows, or `None` if a cycle is missing."""
+    df = pd.DataFrame(rows)
+    df["run_hash"] = run_hash
+    df["PLT_CN"] = plt
+    df["prescription"] = run_hash          # merge_harvest_year_rows keys on this column
+    df = merge_harvest_year_rows(df)
+    df = df[df["Year"] >= INV_YEAR].copy()
+    df["cycle"] = ((df["Year"] - INV_YEAR) // CYCLE_YEARS).astype(int)
+    if set(df["cycle"]) != set(range(NUM_CYCLE + 1)):
+        return None
+    return df.rename(columns={"Year": "calendar_year", "RMCuFt": "removed_merch_cuft_per_ac"})[
+        CYCLE_COLUMNS]
+
+
+def _run_and_reduce(args: tuple[str, str, str, str, str]) -> tuple[str, str | None,
+                                                                     pd.DataFrame | None]:
+    """`run_one`, reduced in the worker to the run's cycle rows."""
+    run_hash, plt, *rest = args
+    h, err, rows = run_one((run_hash, *rest))
+    if err:
+        return h, err, None
+    cycles = cycles_of_run(h, plt, rows)
+    return h, (None if cycles is not None else "incomplete cycle grid"), cycles
+
+
+def _read_cycles(path: Path) -> pd.DataFrame:
+    # `round_trip` parses each float back to the double that was written, so folding a
+    # checkpoint into the cycles file never perturbs a value.
+    return pd.read_csv(path, dtype={"PLT_CN": str}, float_precision="round_trip")
+
+
+def _write_part(parts: Path, frames: list[pd.DataFrame]) -> Path:
+    """Write one checkpoint atomically: a crash leaves the part whole or absent."""
+    parts.mkdir(parents=True, exist_ok=True)
+    path = parts / f"part-{len(list(parts.glob('part-*.csv.gz'))):06d}.csv.gz"
+    tmp = path.with_suffix(".tmp")
+    pd.concat(frames, ignore_index=True).to_csv(tmp, index=False, compression="gzip")
+    tmp.rename(path)
+    return path
+
+
+def _fold_parts(paths: RunPaths) -> None:
+    """Append every checkpoint to `cycles`, in one pass's order, then drop the checkpoints."""
+    parts = sorted(paths.parts.glob("part-*.csv.gz")) if paths.parts.exists() else []
+    if parts:
+        new = (pd.concat([_read_cycles(p) for p in parts], ignore_index=True)
+                 .sort_values(CYCLE_ORDER, kind="stable"))
+        out = (pd.concat([_read_cycles(paths.cycles), new], ignore_index=True)
+               if paths.cycles.exists() else new)
+        out.to_csv(paths.cycles, index=False)
+    if paths.parts.exists():
+        shutil.rmtree(paths.parts)
+
+
+def _cached_runs(paths: RunPaths) -> set[str]:
     have = (set(pd.read_csv(paths.cycles, usecols=["run_hash"])["run_hash"])
             if paths.cycles.exists() else set())
+    if paths.parts.exists():
+        for part in paths.parts.glob("part-*.csv.gz"):
+            have |= set(pd.read_csv(part, usecols=["run_hash"])["run_hash"])
+    return have
+
+
+def run_fvs(keyfiles: dict[str, str], plt_of: dict[str, str], paths: RunPaths,
+            workers: int, checkpoint_runs: int = CHECKPOINT_RUNS) -> None:
+    """Run every keyfile not yet in ``paths.cycles``; append its cycles and any failures.
+
+    Each worker returns only its run's cycle rows, and every ``checkpoint_runs`` finished
+    runs are written to ``paths.parts``, so memory stays bounded by one checkpoint and a
+    killed call resumes where it stopped. The finished cycles file is the one a single
+    pass would write: earlier cycles first, then this call's rows by plot, run and year.
+    """
+    have = _cached_runs(paths)
     todo = sorted(set(keyfiles) - have)
     log.info("FVS: %d distinct runs, %d cached, %d to run on %d workers",
              len(keyfiles), len(set(keyfiles) & have), len(todo), workers)
     if not todo:
+        _fold_parts(paths)
         return
     paths.keyfiles.mkdir(parents=True, exist_ok=True)
     tasks = []
     for h in todo:
         path = paths.keyfiles / f"{h}.key"
         path.write_text(keyfiles[h])
-        tasks.append((h, str(path), str(paths.data_db), str(paths.fvs_bin)))
+        tasks.append((h, plt_of[h], str(path), str(paths.data_db), str(paths.fvs_bin)))
 
-    raw, failures = [], []
+    failures, incomplete, pending = [], [], []
     with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(run_one, t) for t in tasks]
+        futures = [pool.submit(_run_and_reduce, t) for t in tasks]
         for n, fut in enumerate(as_completed(futures), start=1):
-            h, err, rows = fut.result()
-            if err:
+            h, err, cycles = fut.result()
+            if err == "incomplete cycle grid":
+                incomplete.append(h)
+            elif err:
                 failures.append({"run_hash": h, "error": err})
-            for r in rows:
-                r["run_hash"] = h
-            raw.extend(rows)
+            else:
+                pending.append(cycles)
+            if len(pending) >= checkpoint_runs:
+                _write_part(paths.parts, pending)
+                pending = []
             if n % 2000 == 0:
-                log.info("  %d/%d runs (%d failed)", n, len(tasks), len(failures))
+                log.info("  %d/%d runs (%d failed)", n, len(tasks),
+                         len(failures) + len(incomplete))
+    if pending:
+        _write_part(paths.parts, pending)
+    _fold_parts(paths)
 
-    if raw:
-        df = pd.DataFrame(raw)
-        df["PLT_CN"] = df["run_hash"].map(plt_of)
-        df["prescription"] = df["run_hash"]       # merge_harvest_year_rows keys on this column
-        df = merge_harvest_year_rows(df)
-        df = df[df["Year"] >= INV_YEAR].copy()
-        df["cycle"] = ((df["Year"] - INV_YEAR) // CYCLE_YEARS).astype(int)
-        complete = df.groupby("run_hash")["cycle"].apply(lambda c: set(c) == set(range(NUM_CYCLE + 1)))
-        bad = complete.index[~complete]
-        failures += [{"run_hash": h, "error": "incomplete cycle grid"} for h in bad]
-        df = df[~df["run_hash"].isin(set(bad))]
-        out = df[["run_hash", "PLT_CN", "cycle", "Year", "Age", "BA", "MCuFt", "RMCuFt"]].rename(
-            columns={"Year": "calendar_year", "RMCuFt": "removed_merch_cuft_per_ac"})
-        if paths.cycles.exists():
-            out = pd.concat([pd.read_csv(paths.cycles, dtype={"PLT_CN": str}), out],
-                            ignore_index=True)
-        out.to_csv(paths.cycles, index=False)
+    failures += [{"run_hash": h, "error": "incomplete cycle grid"} for h in sorted(incomplete)]
     prev_fail = pd.read_csv(paths.failures) if paths.failures.exists() else pd.DataFrame()
     pd.concat([prev_fail, pd.DataFrame(failures, columns=["run_hash", "error"])]).to_csv(
         paths.failures, index=False)
