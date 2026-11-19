@@ -526,9 +526,12 @@ def run_fvs(keyfiles: dict[str, str], plt_of: dict[str, str], paths: RunPaths,
 
     failures, incomplete, pending = [], [], []
     with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_run_and_reduce, t) for t in tasks]
-        for n, fut in enumerate(as_completed(futures), start=1):
+        # No list of futures is kept: a finished future holds its run's rows, so keeping them
+        # all would hold every run in memory however often the rows are checkpointed.
+        done = as_completed([pool.submit(_run_and_reduce, t) for t in tasks])
+        for n, fut in enumerate(done, start=1):
             h, err, cycles = fut.result()
+            del fut
             if err == "incomplete cycle grid":
                 incomplete.append(h)
             elif err:

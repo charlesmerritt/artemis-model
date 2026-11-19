@@ -268,3 +268,24 @@ def test_a_relative_run_folder_still_gives_fvs_its_data(tmp_path, monkeypatch):
 
     assert pd.read_csv(relative.failures).empty
     assert set(pd.read_csv(relative.cycles)["run_hash"]) == {"h1"}
+
+
+def test_finished_runs_are_released_once_checkpointed(tmp_path, monkeypatch):
+    import gc
+    import weakref
+
+    paths, _ = _succeeding_fvs(tmp_path)
+    keyfiles = {f"h{i}": f"keyfile {i}" for i in range(6)}
+    write_part = tl._write_part
+    checkpointed, alive = [], []
+
+    def track_checkpointed_rows(parts, frames):
+        gc.collect()
+        alive.append(sum(ref() is not None for ref in checkpointed))
+        checkpointed.extend(weakref.ref(f) for f in frames)
+        return write_part(parts, frames)
+
+    monkeypatch.setattr(tl, "_write_part", track_checkpointed_rows)
+    tl.run_fvs(keyfiles, {h: "1" for h in keyfiles}, paths, workers=1, checkpoint_runs=1)
+
+    assert len(alive) == 6 and max(alive) == 0
