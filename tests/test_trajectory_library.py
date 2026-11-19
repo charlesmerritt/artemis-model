@@ -2,6 +2,7 @@
 
 import sqlite3
 import stat
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -253,3 +254,17 @@ def test_checkpointed_cycles_equal_one_pass_and_keep_exact_ids(tmp_path):
     assert set(cycles["PLT_CN"]) == {"1234567890123456789", "987654321098765432"}
     assert len(cycles) == 5 * (tl.NUM_CYCLE + 1)
     assert cycles["MCuFt"].iloc[1] == 1001.25
+
+
+def test_a_relative_run_folder_still_gives_fvs_its_data(tmp_path, monkeypatch):
+    paths, _ = _succeeding_fvs(tmp_path)
+    fake = paths.fvs_bin
+    fake.write_text(fake.read_text().replace(
+        "import sqlite3\n", "import os, sqlite3, sys\nos.path.exists('FVS_Data.db') or sys.exit(20)\n", 1))
+    monkeypatch.chdir(tmp_path)
+    relative = tl.RunPaths(work=Path("work"), data_db=Path("FVS_Data.db"), fvs_bin=fake)
+
+    tl.run_fvs({"h1": "keyfile"}, {"h1": "1"}, relative, workers=1)
+
+    assert pd.read_csv(relative.failures).empty
+    assert set(pd.read_csv(relative.cycles)["run_hash"]) == {"h1"}

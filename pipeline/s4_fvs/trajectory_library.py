@@ -519,7 +519,10 @@ def run_fvs(keyfiles: dict[str, str], plt_of: dict[str, str], paths: RunPaths,
     for h in todo:
         path = paths.keyfiles / f"{h}.key"
         path.write_text(keyfiles[h])
-        tasks.append((h, plt_of[h], str(path), str(paths.data_db), str(paths.fvs_bin)))
+        # Absolute: each run symlinks the database into its own temporary directory, where
+        # a relative path dangles and FVS stops with code 20 on every run.
+        tasks.append((h, plt_of[h], str(path.resolve()), str(paths.data_db.resolve()),
+                      str(paths.fvs_bin.resolve())))
 
     failures, incomplete, pending = [], [], []
     with ProcessPoolExecutor(max_workers=workers) as pool:
