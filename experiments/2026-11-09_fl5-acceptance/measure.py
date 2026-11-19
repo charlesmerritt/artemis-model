@@ -33,8 +33,8 @@ def read_stands(run: Path) -> pd.DataFrame:
     return stands
 
 
-def unit_ids(path: Path) -> pd.Series:
-    return as_id_series(pd.read_csv(path, usecols=["unit_id"], dtype=str)["unit_id"])
+def unit_ids(path: Path, column: str = "unit_id") -> pd.Series:
+    return as_id_series(pd.read_csv(path, usecols=[column], dtype=str)[column])
 
 
 def measures(run: Path) -> dict:
@@ -51,7 +51,7 @@ def measures(run: Path) -> dict:
         found["options"] = len(options)
         found["options_per_stand"] = len(options) / options.nunique()
     if (run / "plan.csv.gz").exists():
-        plan = unit_ids(run / "plan.csv.gz")
+        plan = unit_ids(run / "plan.csv.gz", "stand_id")     # the plan names units stand_id
         found["scheduled_acres"] = stands.loc[stands.unit_id.isin(set(plan)), "acres"].sum()
     if (run / "summary.json").exists():          # written with the plan, at the end of schedule
         found["objective"] = json.loads((run / "summary.json").read_text())["objective_best"]

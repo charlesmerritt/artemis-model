@@ -6,7 +6,9 @@
     "units": 49363,
     "unknown_owner_acres": 15596.31504230201,
     "options": 1666966,
-    "options_per_stand": 33.76954399043818
+    "options_per_stand": 33.76954399043818,
+    "scheduled_acres": 1165075.4052175176,
+    "objective": 0.01665769434207762
   },
   "verdicts": [
     {
@@ -31,6 +33,14 @@
       "golden": 34566,
       "deviation": "-1.084%",
       "tolerance": "\u00b15.0%",
+      "verdict": "pass"
+    },
+    {
+      "measure": "scheduled_acres",
+      "run": 1165075.41,
+      "golden": 1174633,
+      "deviation": "-0.814%",
+      "tolerance": "\u00b11.0%",
       "verdict": "pass"
     },
     {

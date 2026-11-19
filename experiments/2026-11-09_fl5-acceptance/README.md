@@ -4,9 +4,10 @@ The default `leto` stage on the v4 FL5 raster run, then `library` and `schedule`
 with the 2026-10-19 golden run within #173's tolerances. Run at leto-core `b86e60a`
 (speckle `merge_delete`, small stands `force_merge`, plot layout).
 
-Status: `leto` and `library` complete. **`schedule` has not completed**: it was stopped by the
-machine's low-memory guard in annealing (11 workers on a 31 GB workstation), after the greedy
-allocator. Scheduled acres and the objective are still to be measured.
+Status: `leto`, `library` and `schedule` complete. The first `schedule` (2026-11-09) was stopped
+by the low-memory guard: each of its 11 forked restarts had copied the parent's landscape, about
+10 GB in all. Since `616589c` the restarts share one copy, and the 2026-11-19 rerun peaked at
+589 MB for all 12 processes (PSS), with a bit-identical plan (below).
 
 ## Results
 
@@ -15,11 +16,11 @@ allocator. Scheduled acres and the objective are still to be measured.
 | Forest acres | 1,174,862 | 1,165,075 | −0.83% | ±0.1% | miss, by design (below) |
 | Young-plot acres | 86,953 | 85,823 | −1.30% | ±1% | miss, by design (below) |
 | Riparian acres | 34,566 | 34,191 | −1.08% | ±5% | pass |
-| Scheduled acres | 1,157,293 + ~17,340 | — | — | ±1% | not measured |
+| Scheduled acres | 1,157,293 + ~17,340 | 1,165,075 | −0.81% | ±1% | pass |
 | Options per stand | 31.4 | 33.8 | +7.5% | ±10% | pass |
 
 Reported, not gated: 49,363 units (golden 114,727), 116,006 before the speckle merge. The
-objective (golden 0.1033) is not yet measured.
+objective is 0.0167 (golden 0.1033), for information only. Every unit is scheduled.
 
 `library`: 1,666,966 options over 49,363 stands, 51,112 distinct FVS runs in 42 min on 10
 workers. 1,329 distinct FVS stands (golden 1,502).
@@ -28,6 +29,19 @@ Options per stand counts every stand, riparian included, as the golden figure do
 options / 102,109 scheduled stands, 23,465 of them riparian). A riparian stand has one option.
 Riparian units are 17% of stands here against 23% in the golden run, which raises the average.
 Managed stands alone average 40.3.
+
+## Schedule
+
+11 restarts (seeds 42–52, cooling 0.98) in 49 min on 11 workers: best objective 0.0167
+(seed 44), range 0.0167–0.0270, against 298.95 for the greedy seed. Even-flow cost 0.0767.
+Worst cycle deviation per key (`outputs/deviation_by_cycle.csv`): Baker 0.6%, Columbia 0.4%,
+Hamilton 0.6%, Suwannee 11.6%, Union 0.3%; Federal (NF) 0.2%, Other public 1.1%,
+Private 3.6%.
+
+Memory, measured with `psutil` PSS over the process tree: 589 MB peak, against about 10 GB
+before `616589c` (775 MB private per worker after 15 levels, now 4 MB). The change is storage
+only. On this run's library, the greedy plan, plan table, violation vector, attainable
+envelope and two 8-level anneals from a calibrated T0 hash identical to `b690060`'s.
 
 ## Hard invariants
 
