@@ -13,8 +13,10 @@ by the low-memory guard: each of its 11 forked restarts had copied the parent's 
 
 | Measure | Golden | Default run | Deviation | Tolerance | Verdict |
 |---|--:|--:|--:|--:|---|
-| Forest acres | 1,174,862 | 1,165,075 | −0.83% | ±0.1% | miss, by design (below) |
-| Young-plot acres | 86,953 | 85,823 | −1.30% | ±1% | miss, by design (below) |
+| Forest acres, net of deleted speckle | 1,174,862 | 1,174,862 | +0.000% | ±0.1% | pass |
+| Young-plot acres, net of deleted speckle | 86,953 | 86,164 | −0.91% | ±1% | pass |
+| Forest acres, units only | 1,174,862 | 1,165,075 | −0.83% | reported | — |
+| Young-plot acres, units only | 86,953 | 85,823 | −1.30% | reported | — |
 | Riparian acres | 34,566 | 34,191 | −1.08% | ±5% | pass |
 | Scheduled acres | 1,157,293 + ~17,340 | 1,165,075 | −0.81% | ±1% | pass |
 | Options per stand | 31.4 | 33.8 | +7.5% | ±10% | pass |
@@ -64,7 +66,15 @@ On the default run:
   pixel's neighbour TreeMap ID reaches trees;
 - no unit has a blank stand age.
 
-## The misses: the speckle that cannot merge is deleted
+## Ruling: acres are gated net of deleted speckle
+
+Decided 2026-11-19: `merge_delete` stays the default, and forest and young-plot acres are gated
+net of the speckle it deletes (`measure.py`). Forest acres net of deletion are units plus
+`deleted_speckle_acres` from `qa/leto/area_accounting.csv`. Young-plot acres net of deletion
+come from the `merge` diagnostic below, which is the same run with the deletion off. Units
+alone are still reported. The derivation that led to the ruling follows.
+
+## Before the ruling: the speckle that cannot merge is deleted
 
 Forest cells sum to 1,174,862.1 ac, the golden figure to the acre, and parent stands carry all
 of it. The shortfall is ADR 0005's 2026-11-09 amendment, which postdates #173's tolerances:
@@ -95,7 +105,7 @@ that speckle (`outputs/merge_only.json`):
 
 So under the default, neither the forest-acre tolerance nor the unit-acre invariant can hold,
 because both predate the amendment. Either the tolerances become "forest acres less deleted speckle", or the
-amendment's deletion is reconsidered. That decision is the architect's.
+amendment's deletion is reconsidered. The architect chose the first (ruling above).
 
 ## FVS failures
 
@@ -124,7 +134,8 @@ layer comes with #169.
     FVSSN_BIN=$M/fvs/bin/FVSsn uv run python main.py library $M/data/runs/fl5_v4_leto_173 --workers 10
     uv run python main.py schedule $M/data/runs/fl5_v4_leto_173     # fewer --workers on 31 GB
     PYTHONPATH=. uv run python experiments/2026-11-09_fl5-acceptance/measure.py \
-        $M/data/runs/fl5_v4_leto_173 --json experiments/2026-11-09_fl5-acceptance/outputs/default.json
+        $M/data/runs/fl5_v4_leto_173 --deletion-free $M/data/runs/fl5_v4_leto_173_merge \
+        --json experiments/2026-11-09_fl5-acceptance/outputs/default.json
 
 The diagnostic takes the same `leto` arguments through `leto_merge_only.py`, into
 `data/runs/fl5_v4_leto_173_merge`.

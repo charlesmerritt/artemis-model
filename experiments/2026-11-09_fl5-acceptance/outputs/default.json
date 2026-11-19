@@ -8,24 +8,43 @@
     "options": 1666966,
     "options_per_stand": 33.76954399043818,
     "scheduled_acres": 1165075.4052175176,
-    "objective": 0.01665769434207762
+    "deleted_speckle_acres": 9786.7364,
+    "forest_acres_net_of_deleted_speckle": 1174862.1416175177,
+    "objective": 0.01665769434207762,
+    "young_plot_acres_net_of_deleted_speckle": 86163.96588243387
   },
   "verdicts": [
+    {
+      "measure": "forest_acres_net_of_deleted_speckle",
+      "run": 1174862.14,
+      "golden": 1174862,
+      "deviation": "+0.000%",
+      "tolerance": "\u00b10.1%",
+      "verdict": "pass"
+    },
+    {
+      "measure": "young_plot_acres_net_of_deleted_speckle",
+      "run": 86163.97,
+      "golden": 86953,
+      "deviation": "-0.907%",
+      "tolerance": "\u00b11.0%",
+      "verdict": "pass"
+    },
     {
       "measure": "forest_acres",
       "run": 1165075.41,
       "golden": 1174862,
       "deviation": "-0.833%",
-      "tolerance": "\u00b10.1%",
-      "verdict": "miss"
+      "tolerance": "reported",
+      "verdict": "\u2014"
     },
     {
       "measure": "young_plot_acres",
       "run": 85823.36,
       "golden": 86953,
       "deviation": "-1.299%",
-      "tolerance": "\u00b11.0%",
-      "verdict": "miss"
+      "tolerance": "reported",
+      "verdict": "\u2014"
     },
     {
       "measure": "riparian_acres",
