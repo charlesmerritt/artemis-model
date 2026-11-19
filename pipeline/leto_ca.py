@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from enum import StrEnum
 
 import numpy as np
@@ -51,6 +52,39 @@ class SmallStandAction(StrEnum):
     FORCE_MERGE = "force_merge"   # verified baseline: merge with no maximum-size cap
     RETAIN = "retain"
     DELETE = "delete"
+    PROXIMITY_MERGE = "proximity_merge"   # retain here; grouped after polygons (leto_proximity)
+
+
+# Upstream's allowed values (config.py load_config).
+UPSTREAM_SMALL_STAND_ACTIONS = frozenset(a.value for a in SmallStandAction)
+UPSTREAM_DEFAULT_ACTION = SmallStandAction.RETAIN
+
+
+def small_stand_action(small_stands: dict | None, segmentation: dict | None) -> SmallStandAction:
+    """The action LETO v1's ``load_config`` resolves (``config.py:96-136``).
+
+    ``small_stands.remaining_small_stand_action`` takes precedence over the legacy
+    ``segmentation`` key; with neither, upstream's default ``retain``. The value is lowercased
+    and stripped; anything outside upstream's four actions fails closed.
+    """
+    legacy = (segmentation or {}).get("remaining_small_stand_action", UPSTREAM_DEFAULT_ACTION)
+    raw = (small_stands or {}).get("remaining_small_stand_action", legacy)
+    action = str(raw).lower().strip()
+    if action not in UPSTREAM_SMALL_STAND_ACTIONS:
+        raise ValueError("small_stands.remaining_small_stand_action must be one of "
+                         f"{sorted(UPSTREAM_SMALL_STAND_ACTIONS)}.")
+    return SmallStandAction(action)
+
+
+@dataclass(frozen=True)
+class DeletedSmallStands:
+    """What ``delete`` removed: upstream's segment and cell counts (zero for the other actions)."""
+
+    segments: int = 0
+    cells: int = 0
+
+    def acres(self, cell_acres: float) -> float:
+        return self.cells * cell_acres
 
 
 # LETO v1 verified Maine baseline (configs/maine_test.py "segmentation" and
@@ -488,14 +522,36 @@ def merge_similar_adjacent_stands(labels, similarity_features, forest_type, owne
     return labels
 
 
+def delete_small_segments(labels, minimum_cells):
+    """LETO v1 stage2 `delete_small_segments`: zero every segment under ``minimum_cells``.
+
+    Returns the new labels, the number of segments deleted and the number of cells they held.
+    """
+    counts = np.bincount(labels.ravel())
+    small = np.flatnonzero((counts > 0) & (counts < minimum_cells))
+    small = small[small > 0]
+    delete_lookup = np.zeros(len(counts), dtype=bool)
+    delete_lookup[small] = True
+    delete_mask = delete_lookup[labels]
+    output = labels.copy()
+    output[delete_mask] = 0
+    return output, int(len(small)), int(delete_mask.sum())
+
+
 def resolve_small_stands(labels, feature_arrays, forest_type, ownership, minimum_cells, *,
-                         action, cfg):
-    """LETO v1 "HANDLING REMAINING UNDERSIZED SEGMENTS" (stage2 `main`).
+                         action, cfg) -> tuple[np.ndarray, DeletedSmallStands]:
+    """LETO v1 "HANDLING REMAINING UNDERSIZED SEGMENTS" (stage2 `main`), after the similar merge.
 
     FORCE_MERGE reruns the small-segment merge with no maximum-size cap; ownership is still
     a hard boundary, so a fragment with no same-owner neighbour is kept, never deleted.
+    RETAIN keeps every segment; DELETE zeroes those under ``minimum_cells`` and reports them.
+    PROXIMITY_MERGE keeps them too: upstream groups them after polygon creation
+    (:mod:`pipeline.leto_proximity`). Every action then splits disconnected segments and
+    renumbers, as upstream's branches do; upstream's ``proximity_merge`` branch skips both, so
+    here a disconnected segment's parts are separate parent stands before the grouping.
     """
     action = SmallStandAction(action)
+    deleted = DeletedSmallStands()
     if action is SmallStandAction.FORCE_MERGE:
         weights = dict(cfg["variable_weights"])
         labels = merge_small_segments(labels, feature_arrays, forest_type, ownership,
@@ -504,11 +560,9 @@ def resolve_small_stands(labels, feature_arrays, forest_type, ownership, minimum
                                       shared_edge_bonus=cfg["shared_edge_bonus"],
                                       maximum_cells=None, log=lambda *a, **k: None)
     elif action is SmallStandAction.DELETE:
-        counts = np.bincount(labels.ravel())
-        small = np.flatnonzero((counts > 0) & (counts < minimum_cells))
-        small = small[small > 0]
-        labels = np.where(np.isin(labels, small), 0, labels)
-    return renumber_segments(split_disconnected_segments(labels))
+        labels, segments, cells = delete_small_segments(labels, minimum_cells)
+        deleted = DeletedSmallStands(segments, cells)
+    return renumber_segments(split_disconnected_segments(labels)), deleted
 
 
 def segment(features_raw, forest_type, ownership, valid_mask, cell_acres, cfg=None, *,
@@ -528,7 +582,8 @@ def segment(features_raw, forest_type, ownership, valid_mask, cell_acres, cfg=No
                     merge gate (LETO compares raw stand-age means, not
                     standardized ones). Defaults to the standardized features.
     info:           optional dict; filled with "homogeneity_scales" (the robust
-                    scale per feature) for QA output.
+                    scale per feature) and "deleted_small_stands"
+                    (:class:`DeletedSmallStands`) for QA output.
     """
     cfg = {**DEFAULT_CFG, **(cfg or {})}
     weights = dict(cfg["variable_weights"])
@@ -576,8 +631,10 @@ def segment(features_raw, forest_type, ownership, valid_mask, cell_acres, cfg=No
             require_same_fortypcd=cfg["similar_merge_require_same_fortypcd"],
             minimum_shared_edges=cfg["similar_merge_min_shared_edges"],
             maximum_passes=cfg["similar_merge_max_passes"], log=log)
-    labels = resolve_small_stands(labels, std, forest_type, ownership, min_cells,
-                                  action=cfg["remaining_small_stand_action"], cfg=cfg)
+    labels, deleted = resolve_small_stands(labels, std, forest_type, ownership, min_cells,
+                                           action=cfg["remaining_small_stand_action"], cfg=cfg)
+    if info is not None:
+        info["deleted_small_stands"] = deleted
     log(f"parent stands (SEG_ID): {int(labels.max()):,}")
     return labels
 

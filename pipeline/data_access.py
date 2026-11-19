@@ -81,6 +81,16 @@ def data_paths() -> dict:
         return yaml.safe_load(fh)
 
 
+def under_data_root(path, data_root: Path | None) -> Path:
+    """A path declared on the drive (``/mnt/d``), moved under ``data_root`` when given.
+
+    ``data_root`` stands in for the drive, e.g. ``data/r2_cache``, which mirrors its layout.
+    """
+    if data_root is None:
+        return Path(path)
+    return Path(data_root) / Path(path).relative_to(data_paths()["drive"])
+
+
 @lru_cache(maxsize=1)
 def r2_available() -> bool:
     """Whether remote lookups can be attempted at all.

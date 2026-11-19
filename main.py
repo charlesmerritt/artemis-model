@@ -1,4 +1,4 @@
-"""ARTEMIS entry point: `uv run python main.py {library,schedule} <run_dir>`. See pipeline/run.py."""
+"""ARTEMIS entry point: `uv run python main.py {leto,library,schedule,outputs} <run_dir>`. See pipeline/run.py."""
 
 from pipeline.run import main
 

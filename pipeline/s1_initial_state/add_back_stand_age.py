@@ -6,16 +6,18 @@ the cut year, the stand age it implies, and the add-back acres in each age class
 over a :mod:`county_improvement` run folder's stitched rasters, so an existing run can be
 aged without being rebuilt:
 
-    uv run python -m pipeline.s1_initial_state.add_back_stand_age <run>/aoi_5county --obata-tif <lastDist.tif> --hansen-tif <hansen_aoi.tif>
+    uv run python -m pipeline.s1_initial_state.add_back_stand_age <run>/aoi_5county --obata-tif <lastDist.tif> --hansen-tif <hansen_aoi.tif> [--landfire-dist-dir <landfire/>]
 
-- **Cut year.** The latest year Obata (``lastDist``) or Hansen (``lossyear``) detects, any
-  year from 2001 to 2022. A run's disturbance window and Hansen's 30% canopy-in-2000 gate
+- **Cut year.** The latest year Obata (``lastDist``), Hansen (``lossyear``) or LANDFIRE
+  disturbance (a clearcut or harvest: :mod:`landfire_disturbance`) detects, any year from
+  2001 to 2022. A run's disturbance window and Hansen's 30% canopy-in-2000 gate
   decide whether a detector *proposes* a pixel, not whether its year *dates* one: ground
   that was sparse in 2000 and lost canopy later was still cut then (2,185 ac of the gated
-  union run). Where the two detectors disagree by more than 2 years a spectral tie-break is owed (#90); until it
-  lands the latest year stands.
+  union run). LANDFIRE dates pixels only; it never proposes one. Where Obata and Hansen
+  disagree by more than 2 years a spectral tie-break is owed (#90); until it lands the
+  latest year stands.
 - **Stand age.** Years since establishment, as of 2022. Establishment is the year after
-  the cut year, so a 2022 cut would be -1; it is 0. A pixel neither detector dates is
+  the cut year, so a 2022 cut would be -1; it is 0. A pixel no detector dates is
   ``UNDATED``: under the union rule, the pixels only the bookends propose.
 - **Age classes.** Named by their first and last year; the last class is open-ended. The
   default is #93's proposal, to be matched to FIA's reporting classes for the acceptance
@@ -55,43 +57,64 @@ from pipeline.s1_initial_state.county_improvement import (
     read_on_grid,
 )
 from pipeline.s1_initial_state.finalize_add_back import ACRES_PER_PIXEL
+from pipeline.s1_initial_state.landfire_disturbance import landfire_cut_year
 
 VINTAGE = 2022                # TreeMap 2022: stand age is as of this year
 DATED_YEARS = (2001, VINTAGE)  # any detector year in here dates a pixel, whatever the run's window
 ESTABLISHMENT_LAG = 1         # planted the year after the harvest
 HANSEN_BASE_YEAR = 2000       # Hansen stores lossyear as years since 2000
-UNDATED = -1                  # the stand age of a pixel neither detector dates
+UNDATED = -1                  # the stand age of a pixel no detector dates
 UNDATED_CLASS = "undated"
 DEFAULT_AGE_CLASS_STARTS = (0, 6, 11, 21, 41)   # #93: 0-5, 6-10, 11-20, 21-40, 41+
 MIN_VOTES = {ConsensusRule.UNION: 1, ConsensusRule.AT_LEAST_TWO: 2}
 
 
 class CutYearDetector(IntFlag):
-    """The detectors whose year is the cut year: both bits when they agree. 0 is undated."""
+    """The detectors whose year is the cut year: every one that agrees on it. 0 is undated."""
 
     OBATA = 1
     HANSEN = 2
+    LANDFIRE = 4
 
 
-def cut_year(obata: np.ndarray | None,
-             hansen_lossyear: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
-    """The latest year either detector dates (0 where neither does), and which dates it.
+def cut_year(obata: np.ndarray | None, hansen_lossyear: np.ndarray | None,
+             landfire: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """The latest year any detector dates (0 where none does), and which date it.
 
-    ``obata`` is geepipe ``lastDist``; ``hansen_lossyear`` counts years since 2000. A
-    detector that has not run is ``None``.
+    ``obata`` is geepipe ``lastDist``; ``hansen_lossyear`` counts years since 2000;
+    ``landfire`` is the year of the latest LANDFIRE clearcut or harvest
+    (:func:`landfire_cut_year`). A detector that has not run is ``None``.
     """
     years: dict[CutYearDetector, np.ndarray] = {}
     if obata is not None:
         years[CutYearDetector.OBATA] = _dated(np.asarray(obata, dtype=np.int32))
     if hansen_lossyear is not None:
         years[CutYearDetector.HANSEN] = _dated(np.asarray(hansen_lossyear, dtype=np.int32) + HANSEN_BASE_YEAR)
+    if landfire is not None:
+        years[CutYearDetector.LANDFIRE] = _dated(np.asarray(landfire, dtype=np.int32))
     if not years:
-        raise ValueError("no detector has run: supply Obata, Hansen or both")
+        raise ValueError("no detector has run: supply Obata, Hansen or LANDFIRE")
     latest = np.maximum.reduce(list(years.values())).astype(np.uint16)
     detector = np.zeros(latest.shape, dtype=np.uint8)
     for flag, year in years.items():
         detector[(year == latest) & (latest > 0)] |= np.uint8(flag)
     return latest, detector
+
+
+def read_cut_year(grid: Grid, *, obata: Path | None, hansen: Path | None,
+                  landfire: Path | None, where: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """:func:`cut_year` of the detector rasters read onto ``grid``, at ``where``'s pixels (all if ``None``).
+
+    ``obata`` and ``hansen`` are rasters on the TreeMap grid (Hansen band 1 is ``lossyear``);
+    ``landfire`` is the folder of LANDFIRE disturbance products.
+    """
+    def at(values: np.ndarray) -> np.ndarray:
+        return values if where is None else values[where]
+
+    return cut_year(
+        None if obata is None else at(read_on_grid(obata, grid, fill=0)),
+        None if hansen is None else at(read_on_grid(hansen, grid, fill=0)),
+        None if landfire is None else at(landfire_cut_year(landfire, grid, window=DATED_YEARS)))
 
 
 def _dated(years: np.ndarray) -> np.ndarray:
@@ -144,23 +167,25 @@ def stand_age_table(years: np.ndarray, provenance: np.ndarray, method_bits: np.n
 
 
 def write_stand_age(run_dir: Path, *, obata: Path | None = None, hansen: Path | None = None,
+                    landfire: Path | None = None,
                     starts: Sequence[int] = DEFAULT_AGE_CLASS_STARTS) -> pd.DataFrame:
-    """Date and age a run folder's add-back pixels; write the rasters and the table into it."""
+    """Date and age a run folder's add-back pixels; write the rasters and the table into it.
+
+    ``landfire`` is the folder holding the ``LF<version>_Dist<yy>_CONUS`` products.
+    """
     with rasterio.open(run_dir / "treemap2022_provenance.tif") as src:
         provenance = src.read(1)
         grid = Grid(src.transform, provenance.shape)
     with rasterio.open(run_dir / "add_back_method_bits.tif") as src:
         bits = src.read(1)
-    years, detector = cut_year(
-        None if obata is None else read_on_grid(obata, grid, fill=0),
-        None if hansen is None else read_on_grid(hansen, grid, fill=0))       # band 1 lossyear
+    years, detector = read_cut_year(grid, obata=obata, hansen=hansen, landfire=landfire)
     not_added = ~TreeMapProvenance.added_back(provenance)
     years[not_added] = 0
     detector[not_added] = 0
     _write(run_dir / "add_back_cut_year.tif", years, grid.transform, 0,
-           "latest Obata/Hansen cut year of each add-back pixel; 0 undated or not add-back")
+           "latest Obata/Hansen/LANDFIRE cut year of each add-back pixel; 0 undated or not add-back")
     _write(run_dir / "add_back_cut_year_detector.tif", detector, grid.transform, 0,
-           "detectors dating the cut year: bit 1 obata, 2 hansen; 0 undated or not add-back")
+           "detectors dating the cut year: bit 1 obata, 2 hansen, 4 landfire; 0 undated or not add-back")
     table = stand_age_table(years, provenance, bits, starts)
     table.to_csv(run_dir / "add_back_stand_age.csv", index=False, float_format="%.1f")
     return table
@@ -176,12 +201,15 @@ def main() -> None:
                         help="geepipe lastDist raster on the TreeMap grid")
     parser.add_argument("--hansen-tif", type=Path, default=None,
                         help="Hansen GFC raster on the TreeMap grid, band 1 lossyear")
+    parser.add_argument("--landfire-dist-dir", type=Path, default=None,
+                        help="folder of LANDFIRE annual disturbance products "
+                             "(LF<version>_Dist<yy>_CONUS/); its clearcuts and harvests date pixels")
     parser.add_argument("--age-class-starts", type=int, nargs="+",
                         default=list(DEFAULT_AGE_CLASS_STARTS),
                         help="first year of each age class; the last is open-ended")
     args = parser.parse_args()
     table = write_stand_age(args.run_dir, obata=args.obata_tif, hansen=args.hansen_tif,
-                            starts=args.age_class_starts)
+                            landfire=args.landfire_dist_dir, starts=args.age_class_starts)
     by_class = table.pivot_table(index="age_class", columns="agreement", values="acres",
                                  aggfunc="sum", sort=False)
     print(by_class.round(0).to_string())

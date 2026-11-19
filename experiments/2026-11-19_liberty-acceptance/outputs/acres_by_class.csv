@@ -1,0 +1,13 @@
+county_fips,county,owner_class,unit_class,units,acres
+12077,Liberty,corporate,managed,1936,58924.4745
+12077,Liberty,corporate,riparian,533,2696.9886
+12077,Liberty,family,managed,3615,115609.884
+12077,Liberty,family,riparian,1206,6404.4713
+12077,Liberty,federal,managed,3481,245158.6689
+12077,Liberty,federal,riparian,1314,8653.488
+12077,Liberty,local,managed,21,207.6367
+12077,Liberty,local,riparian,2,2.5594
+12077,Liberty,state,managed,392,18848.6059
+12077,Liberty,state,riparian,102,695.2795
+12077,Liberty,unknown,managed,114,1001.7251
+12077,Liberty,unknown,riparian,24,87.0811

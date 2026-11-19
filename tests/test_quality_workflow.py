@@ -47,6 +47,7 @@ def test_configured_mutation_workspace_contains_fixtures_and_collects_suite(muta
         "notebooks/LETO_Initial_State_Walkthrough.ipynb",
         "docs/research/leto-vs-boundary-overlay.md",
         "docs/superpowers/specs/2026-07-20-s1-segmentation-synthesis-design.md",
+        "tools/board",   # tests/test_board.py copies it at fixture setup, after collection passes
     ]:
         assert (mutation_workspace / relative).is_file(), relative
     result = _collect(mutation_workspace, "tests", "pipeline", "scripts/quality.py")

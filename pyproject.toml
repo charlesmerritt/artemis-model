@@ -62,7 +62,7 @@ extend-exclude = ["notebooks", "data", ".jupyter-runtime"]
 # Mutation testing runs file by file (`scripts/quality.py mutate` selects the file); this is the base.
 source_paths = ["pipeline"]
 also_copy = [
-    "config", "scripts", "tests", "notes",
+    "config", "scripts", "tests", "notes", "tools",
     # Tests load dated drivers, archived evidence, and documentation by repository-relative path.
     "weekly-artifact", "research", "notebooks", "docs/research", "docs/superpowers/specs",
 ]

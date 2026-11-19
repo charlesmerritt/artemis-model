@@ -9,13 +9,14 @@ the usage examples. `uv run pytest` runs those doctests alongside `tests/`.
 
 ```bash
 uv run python -c "import pipeline.s4_fvs.build_fvs_inputs as m; help(m)"   # any module
-uv run python main.py --help   # the runner (pipeline/run.py): library, then schedule
+uv run python main.py --help   # the runner (pipeline/run.py): leto, library, schedule, then outputs
 ```
 
 | Stage | Modules | Entry point |
 |---|---|---|
-| shared | `ids` (exact-string join keys), `spatial_ref` (the one CRS), `data_access` (drive, then R2), `raster_clip`, `raster_windows`, `leto_*` (LETO v1 stages 1-5, `research/leto_parity/README.md`) | `python -m pipeline.spatial_ref` |
-| `s1_initial_state/` | TreeMap hole stratification, sampling, embedding, classification, add-back, FIA and LCMS validation | each module's `--help` |
+| shared | `ids` (exact-string join keys), `spatial_ref` (the one CRS), `data_access` (drive, then R2), `raster_clip`, `raster_windows`, `leto_*` (LETO v1 stages 1-5, `research/leto_parity/README.md`), `leto_stage` (the `leto` stage: a raster-repair run's counties, in parallel and resumable via `leto.json`, to `stands.csv`, the layout's `FVS_Data.db` and `management_units.gpkg`, ADR 0004, `config/leto.yaml`), `leto_layout` (the LETO layout: one FVS stand per unit, LETO stages 4-5, its QA in `qa/leto/`), `leto_speckle` (units under 1 ac merged into a neighbour, ADR 0005) | `python -m pipeline.spatial_ref` |
+| outputs | `outputs_stage` (the `outputs` stage: `plan.csv.gz` joined to its FVS cycles and keyfiles and to `management_units.gpkg`: `outputs/trajectories.csv.gz`, one row per unit and cycle; an activity and a vegetation COG per timestep; the `qa/outputs/` report; `--rasters`, `--qa`, `--grid`), `outputs_figures` (its charts and per-timestep map previews), `qa_report` (any stage's `qa/<stage>/index.html`) | `python main.py outputs --help` |
+| `s1_initial_state/` | TreeMap hole stratification, sampling, embedding, classification, add-back, FIA and LCMS validation; `region_prep` (a region's FIA extract from the full FIADB and its hydrography, built once per state) | each module's `--help` |
 | `s3_management/` | `sketch_management_units` → `sliver_merge` → `assign_plt_cn`; `owner_classes`, `regime_assignment`, `tpo_targets`, `harvest_scheduler` (greedy baseline), `annealer` (simulated-annealing selection) | `python -m pipeline.s3_management.regime_assignment` |
 | `s4_fvs/` | `trajectory_library` (regime-library options, FVS runs), `build_fvs_inputs`, `regime_templates` / `regime_library` (keyfiles), `fallback_treelists`, `paint_fvs_to_raster` | `python -m pipeline.s4_fvs.fallback_treelists` |
 | `s5_imagery/` | NAIP acquisition with a per-year coverage check, embedding clustering inside vs outside an AOI, raster correction, viewer catalog | `python -m pipeline.s5_imagery.naip_acquire --help` |

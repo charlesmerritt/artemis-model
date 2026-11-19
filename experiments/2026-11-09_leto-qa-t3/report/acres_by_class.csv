@@ -1,0 +1,11 @@
+county_fips,county,owner_class,unit_class,units,acres
+12125,Union,corporate,managed,619,10221.7967
+12125,Union,corporate,riparian,230,911.0502
+12125,Union,family,managed,3193,89465.0022
+12125,Union,family,riparian,1207,5228.9804
+12125,Union,local,managed,37,234.5071
+12125,Union,local,riparian,13,38.5594
+12125,Union,state,managed,196,5232.2151
+12125,Union,state,riparian,105,351.1122
+12125,Union,unknown,managed,44,143.9966
+12125,Union,unknown,riparian,10,17.5583

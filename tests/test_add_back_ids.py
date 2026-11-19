@@ -36,6 +36,16 @@ def test_a_dated_pixels_stand_age_counts_from_the_year_after_the_cut_and_a_2022_
                                 AgeSource.HANSEN]
 
 
+def test_every_combination_of_the_three_detectors_names_its_age_source():
+    years = np.array([2014] * 7)
+    detector = np.array([D.LANDFIRE, D.OBATA | D.LANDFIRE, D.HANSEN | D.LANDFIRE,
+                         D.OBATA | D.HANSEN | D.LANDFIRE, D.OBATA, D.HANSEN, D.OBATA | D.HANSEN])
+    _, sources = pixel_stand_ages(years, detector, strata=np.ones(7, dtype=int))
+    assert sources.tolist() == ["landfire", "obata_landfire", "hansen_landfire",
+                                "obata_hansen_landfire", "obata", "hansen", "obata_hansen"]
+    assert all(isinstance(s, AgeSource) for s in sources)
+
+
 def test_an_undated_pixel_takes_the_median_stand_age_of_its_stratums_dated_pixels():
     # Stratum 1's dated ages are 2, 7, 7, 9 (cut 2019, 2014, 2014, 2012): the lower median, 7,
     # is an age a dated pixel has. Stratum 3's only dated age is 0, and stratum 4's are 4, 6:
@@ -236,8 +246,8 @@ def test_validation_reports_acres_by_stand_age_and_match_level_and_that_the_outp
 
 def test_a_pixel_with_no_young_plot_is_an_error_naming_its_forest_type_and_nothing_is_written(tmp_path):
     # Without the slash plot, pixel 3 (neighbour plot slash, stand age 6) has no young plot
-    # of its type or group within 2 years.
-    run, sources = _run(tmp_path, young_plots=((YOUNG_7, LOBLOLLY, 7), (YOUNG_0, LOBLOLLY, 0)))
+    # of its type, group or parent pool within 2 years: the softwoods left are aged 9 and 0.
+    run, sources = _run(tmp_path, young_plots=((YOUNG_7, LOBLOLLY, 9), (YOUNG_0, LOBLOLLY, 0)))
     with pytest.raises(UnmatchedYoungPlots, match=r"1 add-back pixels .* FORTYPCD 142: 1 px"):
         write_add_back_ids(run, **sources)
     assert not (run / "young_plots").exists()
@@ -252,9 +262,12 @@ def test_read_vat_keeps_treemaps_27_columns_with_its_ids_as_exact_strings(tmp_pa
     assert vat[["Value", "TM_ID", "PLT_CN"]].iloc[0].tolist() == ["36935", "36935", "200000000000010"]
 
 
-def _manifest(run, **inputs):
+def _manifest(run, listed=None, **inputs):
     methods = {"bookends": "run", "obata_disturbance": "run", "hansen_loss": "run"}
-    (run / "manifest.json").write_text(json.dumps({"methods": methods, "inputs": inputs}))
+    manifest = {"methods": methods, "inputs": inputs}
+    if listed is not None:
+        manifest["counties"] = listed
+    (run / "manifest.json").write_text(json.dumps(manifest))
 
 
 def test_a_detector_the_run_used_but_not_passed_or_found_is_an_error_not_undated_pixels(tmp_path):
@@ -274,6 +287,25 @@ def test_a_detector_not_passed_falls_back_to_the_path_the_runs_manifest_records(
         {"hansen": 2 * PX, "obata": PX, "stratum_median": PX})
 
 
+def test_landfire_dates_an_otherwise_undated_pixel_instead_of_a_stratum_median(tmp_path, landfire_dist):
+    # Pixel 4 is undated by Obata and Hansen. A 2021 LANDFIRE clearcut dates it: age 0, and
+    # the age-0 loblolly plot is its young plot.
+    run, sources = _run(tmp_path)
+    root = landfire_dist("2022", "21", [[0, 0, 0, 0, 421, 0]],
+                         pd.DataFrame([(421, 2021, "Clearcut")],
+                                      columns=["VALUE", "DIST_YEAR", "DIST_TYPE"]),
+                         transform=Affine(30, 0, 0, 0, -30, 30))
+    report = write_add_back_ids(run, **sources, landfire=root)
+    assert report["acres_by_age_source"] == pytest.approx(
+        {"hansen": 2 * PX, "obata": PX, "landfire": PX})
+    vat = read_id_csv(run / "young_plots" / "treemap2022_improved_vat_extension.csv",
+                      id_columns=EXTENSION_ID_COLUMNS)
+    dated = vat[vat["AGE_SOURCE"] == "landfire"].iloc[0]
+    assert (dated["CUT_YEAR"], dated["STAND_AGE_2022"]) == (2021, 0)
+    assert report["cut_year_detectors"] == {"obata": str(sources["obata"]),
+                                            "hansen": str(sources["hansen"]), "landfire": str(root)}
+
+
 def test_a_young_plot_with_no_trees_is_an_error_and_nothing_is_written(tmp_path):
     # A slash plot of age 6 with no live trees: pixel 3's new ID would have an empty tree list.
     treeless = "100000000000009"
@@ -282,3 +314,65 @@ def test_a_young_plot_with_no_trees_is_an_error_and_nothing_is_written(tmp_path)
     with pytest.raises(TreelessYoungPlots, match=rf"1 add-back pixels .* {treeless}"):
         write_add_back_ids(run, **sources)
     assert not (run / "young_plots").exists()
+
+
+def test_default_inputs_are_the_declared_drive_paths_or_their_place_under_a_mirror(tmp_path):
+    from pipeline.s1_initial_state.add_back_ids import default_inputs
+
+    on_drive = default_inputs(None)
+    assert on_drive["db"].as_posix() == "/mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"
+    mirrored = default_inputs(tmp_path)
+    assert mirrored == {
+        "vat": tmp_path / "TreeMap-2022/Data/TreeMap2022_CONUS.tif.vat.dbf",
+        "tree_table": tmp_path / "TreeMap-2022/Data/TreeMap2022_CONUS_Tree_Table.csv",
+        "db": tmp_path / "SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"}
+
+
+def _three_rows(path):
+    """Rewrite a one-row test raster as three copies of that row, every band."""
+    with rasterio.open(path) as src:
+        bands, nodata = src.read(), src.nodata
+    _write(path, np.repeat(bands, 3, axis=1), nodata)
+
+
+def _run_three_rows(tmp_path):
+    tmp_path.mkdir()
+    run, sources = _run(tmp_path)
+    for name in ("treemap2022_provenance.tif", "treemap2022_improved.tif", "bookend_strata.tif"):
+        _three_rows(run / name)
+    _three_rows(sources["obata"])
+    _three_rows(sources["hansen"])
+    counties = tmp_path / "counties.shp"
+    import geopandas as gpd
+    from shapely.geometry import box
+    gpd.GeoDataFrame({"ADMIN_FIPS": ["12001", "12077"], "NAME": ["Alachua", "Liberty"]},
+                     geometry=[box(0, 0, 90, 30), box(0, -60, 180, 0)],   # row 0 west; rows 1-2
+                     crs="EPSG:5070").to_file(counties)
+    _manifest(run, ["12001 12001", "12077 12077"], obata=str(sources["obata"]),
+              hansen=str(sources["hansen"]), counties=str(counties))
+    return run, sources
+
+
+def _outputs(run):
+    out = run / "young_plots"
+    return {p.name: (_read(p).tolist() if p.suffix == ".tif" else p.read_text())
+            for p in sorted(out.iterdir())}
+
+
+def test_the_outputs_do_not_depend_on_how_many_rows_are_read_at_a_time(tmp_path, monkeypatch):
+    import pipeline.s1_initial_state.add_back_ids as module
+
+    whole, sources = _run_three_rows(tmp_path / "whole")
+    write_add_back_ids(whole, **sources)
+    monkeypatch.setattr(module, "STRIP_ROWS", 1)
+    by_row, sources = _run_three_rows(tmp_path / "by_row")
+    write_add_back_ids(by_row, **sources)
+
+    expected, got = _outputs(whole), _outputs(by_row)
+    assert sorted(got) == sorted(expected)
+    for name in expected:
+        if name != "validation.json":   # it records the detector paths, which differ
+            assert got[name] == expected[name], name
+    report = json.loads((by_row / "young_plots" / "validation.json").read_text())
+    assert all(report["checks"].values())
+    assert report["counts"]["add_back_pixels"] == 12

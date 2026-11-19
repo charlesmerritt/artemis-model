@@ -16,12 +16,14 @@ spelling.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import logging
 import math
 import multiprocessing as mp
 import random
 import time
+from array import array
 from collections.abc import Collection
 from pathlib import Path
 
@@ -152,12 +154,37 @@ def tpo_caps(period: str) -> dict[str, dict[str, float]]:
 # The decision space
 # --------------------------------------------------------------------------------------
 
+class _PerOption:
+    """`view[i][k]` over a landscape's flat buffers, for reporting and tests."""
+
+    def __init__(self, land: "Landscape", get):
+        self._land, self._get = land, get
+
+    def __len__(self) -> int:
+        return self._land.n
+
+    def __getitem__(self, i: int) -> list:
+        return [self._get(i, k) for k in range(self._land.n_options[i])]
+
+    def __iter__(self):
+        return (self[i] for i in range(self._land.n))
+
+
 class Landscape:
     """Stands, their libraries, and the per-cycle volume of every trajectory.
 
-    Volumes are held as plain Python lists of floats rather than numpy arrays: the inner
-    loop touches one stand's 10-element vector per proposal, where numpy's per-call
-    overhead costs more than the arithmetic saves.
+    Every option's volumes, ending standing volume and prescription code live in flat
+    `array.array` buffers, indexed by stand `i` and option `k` through `vol`,
+    `standing_of` and `code_of`. Restarts run in forked workers that share this landscape
+    copy-on-write, and reading a Python object writes its reference count, which copies
+    its page into the worker. Nested lists of floats were therefore copied whole into
+    every worker (775 MB each on FL5). Reading a flat buffer creates a new float and leaves
+    the shared pages untouched, so the workers keep sharing one copy. The doubles are the
+    same values the lists held, so the search is bit-identical.
+
+    `options`, `volumes` and `standing` remain for reporting, the greedy seed and tests:
+    `options[i]` is stand `i`'s prescription names, and `volumes[i][k]` and
+    `standing[i][k]` are built from the buffers on access. The search never reads them.
     """
 
     def __init__(self, stands: pd.DataFrame, library: pd.DataFrame,
@@ -182,8 +209,13 @@ class Landscape:
 
         self.stand_ids: list[str] = []
         self.options: list[list[str]] = []
-        self.volumes: list[list[list[float]]] = []   # [stand][option][cycle] absolute cuft
-        self.standing: list[list[float]] = []        # [stand][option] ending cuft
+        self.n_options = array("l")    # [stand] option count
+        self._first = array("q")       # [stand] index of its first option in the buffers
+        self._vol = array("d")         # [option * n_cycles + cycle] absolute cuft
+        self._end = array("d")         # [option] ending standing cuft
+        self._code = array("l")        # [option] index into option_names
+        self.option_names: list[str] = []
+        code_of_name: dict[str, int] = {}
         self.county_ix: list[int] = []
         self.owner_ix: list[int] = []
         self.acres: list[float] = []
@@ -203,7 +235,7 @@ class Landscape:
         for row in stands.itertuples(index=False):
             presc_list = by_stand.get(row.unit_id, [])
             plt = str(row.PLT_CN)
-            opts, vols, stand_end = [], [], []
+            opts, vols, stand_end = [], array("d"), array("d")
             for presc in presc_list:
                 key = (plt, presc)
                 if key not in vol_lookup:
@@ -215,7 +247,7 @@ class Landscape:
                     continue
                 acres = float(row.acres)
                 opts.append(presc)
-                vols.append([v * acres for v in vol_lookup[key]])
+                vols.extend([v * acres for v in vol_lookup[key]])
                 stand_end.append(standing[key] * acres)
             if not opts:
                 self.dropped_no_trajectory += 1
@@ -227,15 +259,26 @@ class Landscape:
                 continue
             self.stand_ids.append(row.unit_id)
             self.options.append(opts)
-            self.volumes.append(vols)
-            self.standing.append(stand_end)
+            self._first.append(len(self._end))
+            self.n_options.append(len(opts))
+            self._vol.extend(vols)
+            self._end.extend(stand_end)
+            for presc in opts:
+                if presc not in code_of_name:
+                    code_of_name[presc] = len(self.option_names)
+                    self.option_names.append(presc)
+                self._code.append(code_of_name[presc])
             self.county_ix.append(cix[tpo_county(row.county)])
             self.owner_ix.append(oix[owner_group(row.owner_class)])
             self.acres.append(float(row.acres))
             self.unit_class.append(row.unit_class)
 
         self.n = len(self.stand_ids)
-        self.decision_stands = [i for i in range(self.n) if len(self.options[i]) > 1]
+        # Reporting views over the buffers; assigned, not properties, so a test can
+        # replace them with something that refuses to be read.
+        self.volumes = _PerOption(self, lambda i, k: list(self.vol(i, k)))
+        self.standing = _PerOption(self, self.standing_of)
+        self.decision_stands = [i for i in range(self.n) if self.n_options[i] > 1]
         log.info("Landscape: %d stands (%d with a real choice), %d dropped for want of a "
                  "trajectory or a TPO dimension", self.n, len(self.decision_stands),
                  self.dropped_no_trajectory)
@@ -243,6 +286,32 @@ class Landscape:
             log.warning("%d (stand, prescription) options dropped: no complete FVS "
                         "trajectory. Affected prescriptions: %s", self.dropped_options,
                         sorted({p for _, p in self.dropped_option_keys}))
+
+    def vol(self, i: int, k: int) -> array:
+        """Stand `i`'s option `k`: absolute removed cuft per cycle."""
+        start = (self._first[i] + k) * self.n_cycles
+        return self._vol[start:start + self.n_cycles]
+
+    def standing_of(self, i: int, k: int) -> float:
+        """Stand `i`'s option `k`: ending standing cuft."""
+        return self._end[self._first[i] + k]
+
+    def code_of(self, i: int, k: int) -> int:
+        """Stand `i`'s option `k`, as an index into `option_names`."""
+        return self._code[self._first[i] + k]
+
+    def option_with_code(self, i: int, code: int) -> int:
+        """Stand `i`'s first option carrying `code`, or -1 when it has none."""
+        first = self._first[i]
+        for k in range(self.n_options[i]):
+            if self._code[first + k] == code:
+                return k
+        return -1
+
+    def max_standing(self, i: int) -> float:
+        """Stand `i`'s largest ending standing cuft over its options."""
+        first = self._first[i]
+        return max(self._end[first:first + self.n_options[i]])
 
     def verify_riparian_structural(self) -> dict:
         """§3 rule 2: a riparian stand's library must be exactly {no_management}."""
@@ -295,7 +364,7 @@ class Objective:
         self.total_target = caps[hs.TOTAL][""]
 
         # Normaliser for the standing-volume term: the landscape's per-stand maximum.
-        self.standing_max = sum(max(s) for s in land.standing) or 1.0
+        self.standing_max = sum(land.max_standing(i) for i in range(land.n)) or 1.0
 
         self.county_v = [[0.0] * self.n_cycles for _ in land.counties]
         self.owner_v = [[0.0] * self.n_cycles for _ in land.owners]
@@ -306,15 +375,16 @@ class Objective:
         self.county_v = [[0.0] * self.n_cycles for _ in self.land.counties]
         self.owner_v = [[0.0] * self.n_cycles for _ in self.land.owners]
         self.standing_total = 0.0
+        land = self.land
         for i, k in enumerate(choice):
-            vols = self.land.volumes[i][k]
-            cv = self.county_v[self.land.county_ix[i]]
-            ov = self.owner_v[self.land.owner_ix[i]]
+            vols = land.vol(i, k)
+            cv = self.county_v[land.county_ix[i]]
+            ov = self.owner_v[land.owner_ix[i]]
             for c in range(self.n_cycles):
                 v = vols[c]
                 cv[c] += v
                 ov[c] += v
-            self.standing_total += self.land.standing[i][k]
+            self.standing_total += land.standing_of(i, k)
 
     def _dim_cost(self) -> float:
         cost = 0.0
@@ -338,7 +408,7 @@ class Objective:
     def delta_and_apply(self, i: int, old_k: int, new_k: int, apply: bool) -> float:
         """Objective change from reassigning stand `i`; applies it only when asked."""
         land = self.land
-        old_v, new_v = land.volumes[i][old_k], land.volumes[i][new_k]
+        old_v, new_v = land.vol(i, old_k), land.vol(i, new_k)
         cv = self.county_v[land.county_ix[i]]
         ov = self.owner_v[land.owner_ix[i]]
         ct = self.county_target[land.county_ix[i]]
@@ -359,7 +429,7 @@ class Objective:
                 a, b = ov[c], ov[c] + dv
                 before += ((a - ot) / ot) ** 2
                 after += ((b - ot) / ot) ** 2
-        d_standing = land.standing[i][new_k] - land.standing[i][old_k]
+        d_standing = land.standing_of(i, new_k) - land.standing_of(i, old_k)
         delta = (self.w_vol * (after - before)
                  - self.w_standing * (d_standing / self.standing_max))
 
@@ -732,7 +802,7 @@ def calibrate_t0(land: Landscape, obj: Objective, choice: list[int],
     for _ in range(samples):
         i = rng.choice(land.decision_stands)
         k = choice[i]
-        nk = rng.randrange(len(land.options[i]))
+        nk = rng.randrange(land.n_options[i])
         if nk == k:
             continue
         d = obj.delta_and_apply(i, k, nk, apply=False)
@@ -781,7 +851,7 @@ def anneal(land: Landscape, obj: Objective, cfg: dict, seed: int,
                 # single-stand move
                 i = rng.choice(decision)
                 k = choice[i]
-                nk = rng.randrange(len(land.options[i]))
+                nk = rng.randrange(land.n_options[i])
                 if nk == k:
                     continue
                 d = obj.delta_and_apply(i, k, nk, apply=False)
@@ -798,10 +868,10 @@ def anneal(land: Landscape, obj: Objective, cfg: dict, seed: int,
                 if i == j:
                     continue
                 ki, kj = choice[i], choice[j]
-                oi, oj = land.options[i], land.options[j]
-                if oj[kj] not in oi or oi[ki] not in oj:
+                ni = land.option_with_code(i, land.code_of(j, kj))
+                nj = land.option_with_code(j, land.code_of(i, ki))
+                if ni < 0 or nj < 0:
                     continue
-                ni, nj = oi.index(oj[kj]), oj.index(oi[ki])
                 if ni == ki and nj == kj:
                     continue
                 d1 = obj.delta_and_apply(i, ki, ni, apply=True)
@@ -940,6 +1010,14 @@ def search(land: Landscape, obj: Objective, cfg: dict, greedy: list[int], seeds:
            workers: int) -> tuple[dict, list[dict]]:
     """Anneal once per seed from the greedy plan, in forked workers; the best and every run."""
     _STATE.update(land=land, obj=obj, cfg=cfg, greedy=greedy)
-    with mp.get_context("fork").Pool(processes=max(1, min(workers, len(seeds)))) as pool:
-        results = pool.map(_search_one, seeds, chunksize=1)
+    # A collection in a worker writes the header of every tracked object it scans, which
+    # copies the parent's pages (stands, library, the landscape's lists) into the worker.
+    # Freezing moves them out of the collector's reach for the life of the pool.
+    gc.collect()
+    gc.freeze()
+    try:
+        with mp.get_context("fork").Pool(processes=max(1, min(workers, len(seeds)))) as pool:
+            results = pool.map(_search_one, seeds, chunksize=1)
+    finally:
+        gc.unfreeze()
     return min(results, key=lambda r: r["objective"]), results

@@ -1,0 +1,23 @@
+{
+  "run": "data/processed/improved-rasters-evt2022-gate-v4/aoi_5county",
+  "add_back_acres": 80203.7,
+  "acres_whose_age_changes": 31.4,
+  "undated_acres_landfire_dates": 1.6,
+  "dated_acres_whose_age_changes_by_years": {
+    "-11": 0.2,
+    "-1": 29.6
+  },
+  "acres_by_age_source_obata_hansen": {
+    "hansen": 20799.1,
+    "obata": 18627.1,
+    "obata_hansen": 38906.4,
+    "stratum_median": 1871.1
+  },
+  "acres_by_age_source_with_landfire": {
+    "hansen": 20769.3,
+    "landfire": 31.4,
+    "obata": 18627.1,
+    "obata_hansen": 38906.4,
+    "stratum_median": 1869.5
+  }
+}

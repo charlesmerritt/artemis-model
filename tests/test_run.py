@@ -58,12 +58,8 @@ def test_read_stands_keeps_control_numbers_exact(tmp_path):
 
 def test_the_library_stage_writes_the_library_and_records_failed_runs(tmp_path):
     _stands().to_csv(tmp_path / run.STANDS, index=False)
-    with sqlite3.connect(tmp_path / run.FVS_DATA) as con:
-        con.execute("create table FVS_TreeInit_Plot (STAND_CN text, SPECIES text, HISTORY int, "
-                    "TREE_COUNT real, DIAMETER real)")
-    fake = tmp_path / "FVSsn"
-    fake.write_text("#!/bin/sh\nexit 2\n")
-    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    _write_plot_inventory(tmp_path, diameter=6.0)
+    fake = _failing_fvs(tmp_path)
 
     run.main(["library", str(tmp_path), "--workers", "1", "--fvs-bin", str(fake)])
 
@@ -71,6 +67,43 @@ def test_the_library_stage_writes_the_library_and_records_failed_runs(tmp_path):
     assert lib.loc[lib["unit_id"] == "r", "prescription"].tolist() == ["no_management"]
     failures = pd.read_csv(tmp_path / run.FAILURES)
     assert set(failures["run_hash"]) == set(lib["run_hash"])
+
+
+def _write_plot_inventory(d, diameter):
+    with sqlite3.connect(d / run.FVS_DATA) as con:
+        con.execute("drop table if exists FVS_StandInit_Plot")
+        con.execute("drop table if exists FVS_TreeInit_Plot")
+        con.execute("create table FVS_StandInit_Plot (STAND_CN text, AGE int)")
+        con.execute("create table FVS_TreeInit_Plot (STAND_CN text, SPECIES text, HISTORY int, "
+                    "TREE_COUNT real, DIAMETER real)")
+        con.executemany("insert into FVS_StandInit_Plot values (?, 30)", [("1234567890123456789",), ("2",)])
+        con.executemany("insert into FVS_TreeInit_Plot values (?, '131', 1, 100.0, ?)",
+                        [("1234567890123456789", 8.0), ("2", diameter)])
+
+
+def _failing_fvs(d):
+    fake = d / "FVSsn"
+    fake.write_text("#!/bin/sh\nexit 2\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    return fake
+
+
+def test_rebuilding_the_inventory_gives_only_the_changed_plots_new_fvs_runs(tmp_path):
+    _stands().to_csv(tmp_path / run.STANDS, index=False)
+    fake = _failing_fvs(tmp_path)
+
+    def run_hashes():
+        run.main(["library", str(tmp_path), "--workers", "1", "--fvs-bin", str(fake)])
+        lib = pd.read_csv(tmp_path / run.LIBRARY, dtype={"PLT_CN": str})
+        return {plt: set(g["run_hash"]) for plt, g in lib.groupby("PLT_CN")}
+
+    _write_plot_inventory(tmp_path, diameter=6.0)
+    before = run_hashes()
+    _write_plot_inventory(tmp_path, diameter=7.0)     # plot 2's trees change, its keyfiles don't
+    after = run_hashes()
+
+    assert after["1234567890123456789"] == before["1234567890123456789"]
+    assert after["2"].isdisjoint(before["2"])
 
 
 def test_the_schedule_stage_writes_the_best_plan_and_its_summary(tmp_path):

@@ -1,7 +1,9 @@
-"""LETO stage 5: one FVS input database per DB_GROUP (owner type, or Riparian).
+"""LETO stage 5: the FVS input databases, one per DB_GROUP (owner type, or Riparian), one for
+every stand, or both.
 
 Ports aauslander480/Leto `LETO_v1_project/leto/stage5_database.py` (`prepare_stands`,
-`prepare_trees`, `safe_filename`), `pipeline._build_databases` in "grouped" mode, and
+`prepare_trees`, `safe_filename`), `pipeline._build_databases` with its `database.mode`
+(:class:`DatabaseMode`, `leto/pipeline.py:160-165` at 13bcf13), and
 `stage2.finalize_database_groups`.
 
 TREE_COUNT is already trees per acre, so every stand is one 1-acre plot:
@@ -17,6 +19,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 import pandas as pd
@@ -30,6 +33,22 @@ STAND_GROUP_NAME = "All_Stands"
 STAND_TABLE = "FVS_StandInit"
 TREE_TABLE = "FVS_TreeInit"
 FLORIDA_STATE_CODE = 12
+
+
+class DatabaseMode(StrEnum):
+    """Upstream's ``database.mode``: which databases :func:`build_databases` writes."""
+
+    GROUPED = "grouped"                       # one per DB_GROUP
+    COMBINED = "combined"                     # one holding every stand, named All_Stands
+    BOTH = "both"                             # the groups, then the combined one
+
+    @property
+    def grouped(self) -> bool:
+        return self is not DatabaseMode.COMBINED
+
+    @property
+    def combined(self) -> bool:
+        return self is not DatabaseMode.GROUPED
 
 
 @dataclass(frozen=True)
@@ -109,27 +128,44 @@ def write_database(path: Path, stand_rows: pd.DataFrame, tree_rows: pd.DataFrame
         con.execute(f"CREATE INDEX idx_tree_stand ON {TREE_TABLE}(STAND_CN)")
 
 
+def database_path(out_dir: Path, group: str) -> Path:
+    return Path(out_dir) / f"FVS_Inventory_{safe_filename(group)}.db"
+
+
 def build_databases(final_stands: pd.DataFrame, trees: pd.DataFrame, out_dir: Path | str, *,
+                    mode: DatabaseMode = DatabaseMode.GROUPED, combined_path: Path | None = None,
                     design: SamplingDesign = SamplingDesign(), variant: str = "SN",
                     state_code: int = FLORIDA_STATE_CODE) -> pd.DataFrame:
-    """Write `FVS_Inventory_<group>.db` per DB_GROUP; return the group summary."""
+    """Write the ``mode``'s databases; return one summary row per database.
+
+    Grouped: ``FVS_Inventory_<group>.db`` per DB_GROUP in ``out_dir``. Combined: every stand in
+    ``FVS_Inventory_All_Stands.db`` there, or at ``combined_path`` when given.
+    """
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     stands = final_stands.copy()
     stands["DB_GROUP"] = (stands["DB_GROUP"].astype("string").str.strip().replace("", pd.NA)
                           .fillna(UNKNOWN_GROUP))
+    databases: list[tuple[str, pd.DataFrame, Path]] = []
+    if mode.grouped:
+        databases += [(group, frame, database_path(out_dir, group))
+                      for group, frame in stands.groupby("DB_GROUP", sort=True)]
+    if mode.combined:
+        databases.append((STAND_GROUP_NAME, stands,
+                          Path(combined_path) if combined_path else database_path(out_dir, STAND_GROUP_NAME)))
+    tree_ids = as_id_series(trees["STAND_ID"])
     rows = []
-    for group, group_stands in stands.groupby("DB_GROUP", sort=True):
+    for group, group_stands, path in databases:
         ids = set(as_id_series(group_stands["STAND_ID"]))
         stand_rows = prepare_stands(group_stands, design=design, variant=variant,
                                     state_code=state_code)
-        tree_rows = prepare_trees(trees[as_id_series(trees["STAND_ID"]).isin(ids)])
-        path = out_dir / f"FVS_Inventory_{safe_filename(group)}.db"
+        tree_rows = prepare_trees(trees[tree_ids.isin(ids)])
+        path.parent.mkdir(parents=True, exist_ok=True)
         write_database(path, stand_rows, tree_rows)
         rows.append({"DB_GROUP": group, "STANDS": len(stand_rows),
                      "ACRES": float(pd.to_numeric(group_stands["Acres"], errors="coerce").sum()),
                      "TREE_RECORDS": len(tree_rows), "OUTPUT_DB": str(path)})
     summary = pd.DataFrame(rows)
-    if int(summary["STANDS"].sum()) != stands["STAND_ID"].nunique():
-        raise RuntimeError("Grouped database stand counts do not equal unique final stands.")
+    grouped = summary[summary["DB_GROUP"] != STAND_GROUP_NAME] if mode is DatabaseMode.BOTH else summary
+    if int(grouped["STANDS"].sum()) != stands["STAND_ID"].nunique():
+        raise RuntimeError("Database stand counts do not equal unique final stands.")
     return summary

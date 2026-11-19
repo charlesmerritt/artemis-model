@@ -1,0 +1,2 @@
+county_fips,county,forest_cells,forest_cell_acres,deleted_small_stands,deleted_small_stand_cells,deleted_small_stand_acres,parent_stands,parent_stand_acres,segments,units,unit_acres,deleted_speckle,deleted_speckle_acres,managed_acres,unknown_flagged_acres,riparian_acres,masked_acres,no_age_acres,add_back_cells,harris_nodata_cells,drift_acres
+12077,Liberty,2067117,459716.1613,0,0,0.0,11065,459716.1609,19783,12740,458290.8629,6515,1425.3049,438749.27,1001.7251,18539.8678,0.0,0.0,69399,0,0.0068

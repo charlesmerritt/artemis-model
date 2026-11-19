@@ -80,6 +80,12 @@ raw:
 
   fia_sqlite:
     db:         "/mnt/d/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db"
+    # The entire FIADB (70.7 GB) is on R2 at r2:artemis-r2/data/SQLite_FIADB_ENTIRE/. It is far
+    # over ARTEMIS_R2_MAX_FETCH_MB, so fetch it once by hand into the cache, which mirrors /mnt/d:
+    #   rclone copyto --multi-thread-streams 16 \
+    #     r2:artemis-r2/data/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db \
+    #     data/r2_cache/SQLite_FIADB_ENTIRE/SQLite_FIADB_ENTIRE.db
+    # then pass `--data-root data/r2_cache` to region_prep and `main.py leto`.
     # FVS-Ready tables present in this DB (no FIA2FVS conversion needed):
     #   FVS_TREEINIT_PLOT  — tree list records keyed to plot
     #   FVS_TREEINIT_COND  — tree list records keyed to condition
@@ -88,11 +94,24 @@ raw:
     #   FVS_PLOTINIT_PLOT  — plot-level initialization
     #   FVS_GROUPADDFILESANDKEYWORDS — keyword group assignments
 
+  fvs_species_crosswalk:
+    xls:        "/mnt/d/FVS_SpeciesCrosswalk.xls"
+    # FIA SPCD -> FVS species per variant (sheet EasternSpeciesTranslator, SN_Mapped_To), as
+    # LETO reads it. On R2 at r2:artemis-r2/data/FVS_SpeciesCrosswalk.xls (68 KB): `main.py
+    # leto --layout leto` fetches it into data/r2_cache/ when the drive is not mounted.
+
   landfire:
     # Existing Vegetation Type
     evt_tif:    "/mnt/d/LF2022_EVT_CONUS/LF2022_EVT_CONUS/Tif/LF2022_EVT_CONUS.tif"
     # Vegatation Condition Class
     vcc_tif:    "/mnt/d/LF2022_VCC_CONUS/LF2022_VCC_CONUS/Tif/LF2022_VCC_CONUS.tif"
+    # Annual Disturbance 1999-2025 (Dist, not HDist; DOI 10.5066/P974JF8W): 27
+    # LF<version>_Dist<yy>_CONUS/ folders, each with Tif/ and its own CSV_Data/ legend.
+    # Staged 2026-11-09 in the bucket (r2:artemis-r2/data/landfire/) and a local mirror;
+    # not yet on the work laptop's drive. The add-back steps take it only when passed
+    # --landfire-dist-dir (FL5 keeps its Obata/Hansen ages, ADR 0003); the legend test
+    # reads it from here, or from ARTEMIS_LANDFIRE_DIST.
+    dist_dir:   "/mnt/d/landfire"
 
   nhd:
     fl_gdb:     "/mnt/d/US SE Streams - FINAL/US SE Streams - FINAL/Streams By State/nhdplus_epasnapshot2022_fl.gdb"

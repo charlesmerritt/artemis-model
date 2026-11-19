@@ -9,7 +9,7 @@ harvest volume follows observed TPO levels per owner group.
 ### The landscape
 
 **Management unit**:
-The smallest piece of landscape that carries one management decision. Delineated by LETO.
+The land that carries one management decision: one or more pieces LETO gives one ID.
 _Avoid_: Stand (FVS's word for the same object; use it only when naming an FVS input)
 
 **Owner class**:
@@ -52,7 +52,7 @@ _Avoid_: Library (unqualified; the trajectory library is FVS output)
 A published TreeMap pixel whose plot predates a harvest Landsat dates: trees on cut ground.
 
 **Cut year**:
-The year a Landsat detector dates a pixel's harvest.
+The year a detector (Obata, Hansen or LANDFIRE disturbance) dates a pixel's stand-replacing harvest.
 _Avoid_: Disturbance year (detectors also date burns, thins and site prep)
 
 **Stand age**:
@@ -61,6 +61,30 @@ _Avoid_: Age (unqualified), years since cut
 
 **Age source**:
 What set a pixel's stand age: a detector's cut year, or its bookend stratum's median.
+
+### Initial state
+
+**Parent stand**:
+One LETO segment: contiguous, similar pixels under one owner class, before the riparian and
+county splits. Its pieces are management units.
+_Avoid_: Segment, SEG
+
+**Donor plot**:
+An FIA plot whose TreeMap pixels fall inside a parent stand, weighted by its share of them.
+_Avoid_: Donor (unqualified; the neighbour plot and the young plot are not donor plots)
+
+**Representative plot**:
+A management unit's largest donor plot, once its parent stands' donor weights are combined by
+acreage. Under the plot layout, the unit runs on it.
+
+**Proximity group**:
+Small parent stands near each other that LETO gives one ID without changing their geometry.
+_Avoid_: BIO_MU, biological unit
+
+**Speckle**:
+A management unit under the minimum unit area once LETO has split parent stands; ARTEMIS
+merges it into a neighbour.
+_Avoid_: Sliver, salt and pepper
 
 ### Management
 

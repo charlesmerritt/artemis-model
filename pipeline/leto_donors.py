@@ -2,7 +2,7 @@
 
 Ports aauslander480/Leto `LETO_v1_project/leto/stage3_crosswalk.py`
 (`build_weights_table`, `expand_parent_weights_to_management_units`) and
-`pipeline.py` (`_filter_weights`):
+`donor_weights.py` (`filter_weights`, `pipeline._filter_weights` before 13bcf13):
 
 - Weights are each TreeMap plot's pixel share of its **parent segment** (SEG_ID), not of the
   management unit, so the riparian and upland pieces of one stand carry the same donor mix.
@@ -49,10 +49,16 @@ def expand_to_units(weights: pd.DataFrame, units: pd.DataFrame) -> pd.DataFrame:
 
 
 def filter_weights(weights: pd.DataFrame, minimum_weight: float = MINIMUM_PLOT_WEIGHT, *,
-                   key: str) -> pd.DataFrame:
-    """Drop donors under ``minimum_weight``, keeping each ``key``'s largest donor if none pass."""
+                   key: str = "SEG_ID") -> pd.DataFrame:
+    """Drop donors under ``minimum_weight``, keeping each ``key``'s largest donor if none pass.
+
+    Rows missing ``key``, ``PLT_CN`` or a positive weight are discarded first. Upstream's
+    ``leto.donor_weights.filter_weights`` is this with ``key="SEG_ID"``, except that it also
+    requires a ``STAND_ID`` column and discards rows missing one.
+    """
     w = weights.copy()
     w["WEIGHT_ORIGINAL"] = pd.to_numeric(w["WEIGHT"], errors="coerce")
+    w = w.dropna(subset=[key, "PLT_CN"])
     w = w[w["WEIGHT_ORIGINAL"] > 0]
     retained = w[w["WEIGHT_ORIGINAL"] >= minimum_weight]
     lost = set(w[key]) - set(retained[key])

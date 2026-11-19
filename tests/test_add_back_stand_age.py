@@ -52,6 +52,25 @@ def test_a_detector_that_has_not_run_dates_nothing():
         cut_year(None, None)
 
 
+def test_landfire_is_a_third_detector_and_the_latest_of_the_three_wins():
+    obata = np.array([2014, 0, 2012, 0, 2016])
+    lossyear = np.array([0, 15, 18, 0, 16])
+    landfire = np.array([2016, 2015, 2013, 0, 2016])     # its own years, already harvest-only
+    year, detector = cut_year(obata, lossyear, landfire)
+    assert year.tolist() == [2016, 2015, 2018, 0, 2016]
+    assert detector.tolist() == [D.LANDFIRE, D.HANSEN | D.LANDFIRE, D.HANSEN, 0,
+                                 D.OBATA | D.HANSEN | D.LANDFIRE]
+
+
+def test_landfire_alone_dates_a_pixel_and_leaves_pixels_it_does_not_date_unchanged():
+    year, detector = cut_year(None, None, np.array([2015, 2023]))
+    assert year.tolist() == [2015, 0]
+    assert detector.tolist() == [D.LANDFIRE, 0]
+    without = cut_year(np.array([2014, 0]), np.array([0, 16]))
+    with_ = cut_year(np.array([2014, 0]), np.array([0, 16]), np.array([0, 0]))
+    assert [a.tolist() for a in with_] == [a.tolist() for a in without]
+
+
 def test_stand_age_counts_from_the_year_after_the_cut_and_a_2022_cut_is_age_0():
     assert stand_age(np.array([2021, 2022, 2014, 2001, 0])).tolist() == [0, 0, 7, 20, UNDATED]
 
@@ -126,3 +145,24 @@ def test_write_stand_age_reads_a_run_and_writes_the_cut_year_raster_and_the_tabl
     text = pd.read_csv(run / "add_back_stand_age.csv", dtype=str, keep_default_na=False)
     assert text["stand_age"].tolist() == ["5", "", "5"]    # whole years; undated is empty
     assert text["acres"].tolist() == ["0.2", "0.2", "0.2"]  # acres to a tenth
+
+
+def test_write_stand_age_dates_with_landfire_disturbance_when_given_its_folder(tmp_path, landfire_dist):
+    t = Affine(30, 0, 0, 0, -30, 60)
+    run = tmp_path / "aoi_5county"
+    run.mkdir()
+    _write(run / "treemap2022_provenance.tif",
+           np.array([[TP.PUBLISHED, TP.ADDED_BACK_YOUNG, TP.ADDED_BACK]], dtype=np.uint8), t, 255)
+    _write(run / "add_back_method_bits.tif", np.array([[0, 3, 1]], dtype=np.uint8), t, 255)
+    hansen = tmp_path / "hansen.tif"
+    _write(hansen, np.array([[[16, 16, 0]], [[90, 90, 90]]], dtype=np.uint8), t, None)
+    root = landfire_dist("2020", "18", [[421, 421, 431]],
+                         pd.DataFrame([(421, 2018, "Clearcut"), (431, 2018, "Harvest")],
+                                      columns=["VALUE", "DIST_YEAR", "DIST_TYPE"]), transform=t)
+
+    write_stand_age(run, hansen=hansen, landfire=root)
+
+    with rasterio.open(run / "add_back_cut_year.tif") as src:
+        assert src.read(1).tolist() == [[0, 2018, 2018]]
+    with rasterio.open(run / "add_back_cut_year_detector.tif") as src:
+        assert src.read(1).tolist() == [[0, D.LANDFIRE, D.LANDFIRE]]

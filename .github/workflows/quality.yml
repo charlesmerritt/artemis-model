@@ -108,7 +108,9 @@ jobs:
           else
             scope=(--rotation)
           fi
-          uv run python scripts/quality.py mutate "${scope[@]}" \
+          # Stop starting files before the job's timeout so the job ends cleanly and the cache
+          # step saves mutmut's results: a large PR then finishes over several pushes.
+          uv run python scripts/quality.py mutate "${scope[@]}" --budget-minutes 100 \
             ${MUTATION_SCORE_MIN:+--min-score "$MUTATION_SCORE_MIN"} --summary mutation.md || status=$?
           cat mutation.md >> "$GITHUB_STEP_SUMMARY"
           exit "${status:-0}"

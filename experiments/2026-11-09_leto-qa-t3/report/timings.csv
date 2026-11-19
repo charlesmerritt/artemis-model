@@ -1,0 +1,2 @@
+county_fips,county,clip_seconds,attributes_seconds,segment_seconds,polygons_seconds,riparian_seconds,donors_seconds,speckle_seconds,inventory_seconds,qa_tables_seconds,write_seconds,maps_seconds,total_seconds,peak_rss_mb,memory_scope
+12125,Union,0.072,0.658,11.724,1.956,12.688,0.127,5.893,0.822,1.656,1.188,27.686,64.469,743.2,process

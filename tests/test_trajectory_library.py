@@ -1,6 +1,8 @@
 """The trajectory library: every stand's eligible options, rendered to FVS keyfiles and run."""
 
+import sqlite3
 import stat
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -143,3 +145,147 @@ def test_the_open_library_is_the_decks_repeat_offsets_25(policy):
     assert policy.rotations is tl.RotationMode.REPEAT
     assert policy.forest_types is tl.ForestTypeRule.FILTER
     assert policy.offsets == (0, 5, 10, 15, 20, 25)
+
+
+def test_stand_sdi_tables_read_letos_alpha_species_and_a_tree_table_without_history():
+    # leto_database.prepare_trees: SPECIES through the crosswalk (SN alpha), no HISTORY column
+    trees = pd.DataFrame({"STAND_CN": ["12001-7"] * 3, "SPECIES": ["LP", "SU", "131"],
+                          "TREE_COUNT": [10.0, 5.0, 2.0], "DIAMETER": [10.0, 10.0, 10.0]})
+
+    sdi = tl.stand_sdi_tables(trees)
+
+    assert set(sdi["12001-7"]) == {"LP", "SU"}
+    assert sdi["12001-7"]["LP"] == pytest.approx(12.0 / 5.0 * sdi["12001-7"]["SU"])
+
+
+def _inventory_db(path, trees):
+    with sqlite3.connect(path) as con:
+        pd.DataFrame({"STAND_CN": ["1234567890123456789", "2"], "AGE": [30, 30]}).to_sql(
+            tl.PLOT_TABLES.stand, con, index=False)
+        pd.DataFrame(trees).to_sql(tl.PLOT_TABLES.tree, con, index=False)
+
+
+def test_inventory_fingerprints_change_only_for_the_stand_whose_trees_changed(tmp_path):
+    rows = {"STAND_CN": ["1234567890123456789", "2", "2"], "SPECIES": ["LP", "LP", "SA"],
+            "DIAMETER": [8.0, 6.0, 4.0]}
+    _inventory_db(tmp_path / "a.db", rows)
+    _inventory_db(tmp_path / "b.db", {**rows, "DIAMETER": [8.0, 6.0, 5.0]})
+    _inventory_db(tmp_path / "c.db", {k: v[::-1] for k, v in rows.items()})   # rows reordered
+
+    a, b, c = (tl.inventory_fingerprints(sqlite3.connect(tmp_path / f"{n}.db"), tl.PLOT_TABLES)
+               for n in "abc")
+
+    assert set(a) == {"1234567890123456789", "2"}
+    assert a["1234567890123456789"] == b["1234567890123456789"]
+    assert a["2"] != b["2"]
+    assert a == c
+
+
+def test_a_stand_whose_inventory_changed_gets_a_new_run_even_with_the_same_keyfile():
+    def hashes(inventory):
+        lib = tl.enumerate_library(tl.OPEN_LIBRARY, _stands(), sdi={}, keyfiles={},
+                                   config=CONFIG, inventory=inventory)
+        return set(lib["run_hash"])
+
+    assert hashes({"1234567890123456789": "old"}) == hashes({"1234567890123456789": "old"})
+    assert hashes({"1234567890123456789": "old"}).isdisjoint(hashes({"1234567890123456789": "new"}))
+
+
+def _succeeding_fvs(tmp_path):
+    """A stand-in FVSsn that writes a complete FVS_Summary2 and logs each call."""
+    calls = tmp_path / "calls.log"
+    fake = tmp_path / "FVSsn"
+    fake.write_text(f"""#!/usr/bin/env python3
+import sqlite3
+open({str(calls)!r}, "a").write("run\\n")
+con = sqlite3.connect("FVS_Out.db")
+con.execute("CREATE TABLE FVS_Summary2 (Year INT, RmvCode INT, Age INT, BA REAL, MCuFt REAL,"
+            " RTpa REAL, RTCuFt REAL, RMCuFt REAL, RBdFt REAL)")
+for c in range({tl.NUM_CYCLE + 1}):
+    con.execute("INSERT INTO FVS_Summary2 VALUES (?,0,?,?,?,0,0,?,0)",
+                ({tl.INV_YEAR} + 5 * c, 10 + 5 * c, 50.5 + c, 1000.25 + c, 0.1 * c))
+con.commit()
+""")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    data_db = tmp_path / "FVS_Data.db"
+    data_db.write_bytes(b"")
+    return tl.RunPaths(work=tmp_path / "work", data_db=data_db, fvs_bin=fake), calls
+
+
+def test_runs_finished_before_a_crash_are_kept_and_not_rerun(tmp_path, monkeypatch):
+    paths, calls = _succeeding_fvs(tmp_path)
+    keyfiles = {f"h{i}": f"keyfile {i}" for i in range(3)}
+    plt_of = {h: "1234567890123456789" for h in keyfiles}
+    write_part = tl._write_part
+    written = []
+
+    def crash_after_first_part(*args, **kwargs):
+        if written:
+            raise RuntimeError("killed")
+        written.append(write_part(*args, **kwargs))
+
+    monkeypatch.setattr(tl, "_write_part", crash_after_first_part)
+    with pytest.raises(RuntimeError):
+        tl.run_fvs(keyfiles, plt_of, paths, workers=1, checkpoint_runs=1)
+    monkeypatch.setattr(tl, "_write_part", write_part)
+    before = len(calls.read_text().splitlines())
+
+    tl.run_fvs(keyfiles, plt_of, paths, workers=1, checkpoint_runs=1)
+
+    assert len(calls.read_text().splitlines()) - before == 2
+    cycles = pd.read_csv(paths.cycles, dtype={"PLT_CN": str})
+    assert sorted(cycles["run_hash"].unique()) == ["h0", "h1", "h2"]
+    assert not paths.parts.exists()
+
+
+def test_checkpointed_cycles_equal_one_pass_and_keep_exact_ids(tmp_path):
+    paths, _ = _succeeding_fvs(tmp_path)
+    keyfiles = {f"h{i}": f"keyfile {i}" for i in range(5)}
+    plt_of = {h: ("1234567890123456789" if i % 2 else "987654321098765432")
+              for i, h in enumerate(keyfiles)}
+
+    tl.run_fvs(keyfiles, plt_of, paths, workers=2, checkpoint_runs=2)
+
+    cycles = pd.read_csv(paths.cycles, dtype={"PLT_CN": str})
+    assert list(cycles.columns) == ["run_hash", "PLT_CN", "cycle", "calendar_year", "Age", "BA",
+                                    "MCuFt", "removed_merch_cuft_per_ac"]
+    key = ["PLT_CN", "run_hash", "calendar_year"]
+    assert cycles[key].equals(cycles.sort_values(key)[key].reset_index(drop=True))
+    assert set(cycles["PLT_CN"]) == {"1234567890123456789", "987654321098765432"}
+    assert len(cycles) == 5 * (tl.NUM_CYCLE + 1)
+    assert cycles["MCuFt"].iloc[1] == 1001.25
+
+
+def test_a_relative_run_folder_still_gives_fvs_its_data(tmp_path, monkeypatch):
+    paths, _ = _succeeding_fvs(tmp_path)
+    fake = paths.fvs_bin
+    fake.write_text(fake.read_text().replace(
+        "import sqlite3\n", "import os, sqlite3, sys\nos.path.exists('FVS_Data.db') or sys.exit(20)\n", 1))
+    monkeypatch.chdir(tmp_path)
+    relative = tl.RunPaths(work=Path("work"), data_db=Path("FVS_Data.db"), fvs_bin=fake)
+
+    tl.run_fvs({"h1": "keyfile"}, {"h1": "1"}, relative, workers=1)
+
+    assert pd.read_csv(relative.failures).empty
+    assert set(pd.read_csv(relative.cycles)["run_hash"]) == {"h1"}
+
+
+def test_finished_runs_are_released_once_checkpointed(tmp_path, monkeypatch):
+    import gc
+    import weakref
+
+    paths, _ = _succeeding_fvs(tmp_path)
+    keyfiles = {f"h{i}": f"keyfile {i}" for i in range(6)}
+    write_part = tl._write_part
+    checkpointed, alive = [], []
+
+    def track_checkpointed_rows(parts, frames):
+        gc.collect()
+        alive.append(sum(ref() is not None for ref in checkpointed))
+        checkpointed.extend(weakref.ref(f) for f in frames)
+        return write_part(parts, frames)
+
+    monkeypatch.setattr(tl, "_write_part", track_checkpointed_rows)
+    tl.run_fvs(keyfiles, {h: "1" for h in keyfiles}, paths, workers=1, checkpoint_runs=1)
+
+    assert len(alive) == 6 and max(alive) == 0

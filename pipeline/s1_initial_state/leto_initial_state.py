@@ -78,7 +78,7 @@ def filter_and_normalize_weights(
     """Apply LETO's donor threshold and renormalize within each retained unit.
 
     A unit whose donors all fall below the threshold keeps its largest one
-    (LETO v1 `pipeline._filter_weights`, via `pipeline.leto_donors.filter_weights`).
+    (LETO v1 `donor_weights.filter_weights`, via `pipeline.leto_donors.filter_weights`).
     """
     retained = weights.copy()
     retained["MU_ID"] = retained["MU_ID"].astype("string")
