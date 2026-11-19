@@ -16,8 +16,9 @@ set -euo pipefail
 # it is caught here.
 #
 # Set ARTEMIS_SKIP_LOCK_CHECK=1 to bypass (e.g. pushing a deliberate WIP).
-
-[ "${ARTEMIS_SKIP_LOCK_CHECK:-0}" = "1" ] && exit 0
+#
+# Then run the test suite, which pre-commit leaves out because it takes over ten
+# minutes. Set ARTEMIS_SKIP_TESTS=1 to bypass when the suite just passed.
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
@@ -29,31 +30,41 @@ fail() {
   exit 1
 }
 
-# The exact shape of the bug: a lockfile fix that exists on disk but not in any
-# commit. Checked first because it has the most specific, most actionable
-# message, and because `uv lock --check` below would report the working tree as
-# perfectly fine while the push carried something else entirely.
-if ! git diff --quiet HEAD -- uv.lock; then
-  fail "uv.lock has uncommitted changes — the committed lockfile is not what you just verified"
+check_lock() {
+  # The exact shape of the bug: a lockfile fix that exists on disk but not in any
+  # commit. Checked first because it has the most specific, most actionable
+  # message, and because `uv lock --check` below would report the working tree as
+  # perfectly fine while the push carried something else entirely.
+  if ! git diff --quiet HEAD -- uv.lock; then
+    fail "uv.lock has uncommitted changes — the committed lockfile is not what you just verified"
+  fi
+
+  command -v uv >/dev/null 2>&1 || return 0
+
+  # Catches staleness from any other cause: a hand-edited pyproject.toml, a
+  # rebase that dropped the lock update, a cherry-pick that took one and not the
+  # other. Working tree and HEAD agree by this point, so checking either is
+  # checking both.
+  #
+  # Network-dependent, and a push should not fail because someone is on a train.
+  # Distinguish "uv says the lockfile is stale" from "uv could not tell": only the
+  # first is a real answer, and only the first blocks.
+  if check_output="$(uv lock --check 2>&1)"; then
+    return 0
+  fi
+
+  if printf '%s' "$check_output" | grep -q 'needs to be updated'; then
+    fail "uv.lock is out of sync with pyproject.toml"
+  fi
+
+  printf 'pre-push: could not verify uv.lock (offline?); pushing anyway\n' >&2
+}
+
+[ "${ARTEMIS_SKIP_LOCK_CHECK:-0}" = "1" ] || check_lock
+
+if [ "${ARTEMIS_SKIP_TESTS:-0}" != "1" ]; then
+  uv run --quiet pytest -q -p no:cacheprovider || {
+    printf 'pre-push: tests failed; bypass with:  ARTEMIS_SKIP_TESTS=1 git push\n' >&2
+    exit 1
+  }
 fi
-
-command -v uv >/dev/null 2>&1 || exit 0
-
-# Catches staleness from any other cause: a hand-edited pyproject.toml, a
-# rebase that dropped the lock update, a cherry-pick that took one and not the
-# other. Working tree and HEAD agree by this point, so checking either is
-# checking both.
-#
-# Network-dependent, and a push should not fail because someone is on a train.
-# Distinguish "uv says the lockfile is stale" from "uv could not tell": only the
-# first is a real answer, and only the first blocks.
-if check_output="$(uv lock --check 2>&1)"; then
-  exit 0
-fi
-
-if printf '%s' "$check_output" | grep -q 'needs to be updated'; then
-  fail "uv.lock is out of sync with pyproject.toml"
-fi
-
-printf 'pre-push: could not verify uv.lock (offline?); pushing anyway\n' >&2
-exit 0

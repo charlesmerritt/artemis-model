@@ -7,16 +7,35 @@
 # Safe to re-run: every step is idempotent.
 set -euo pipefail
 
+repo_root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+cd "$repo_root"
+
+log() { printf 'session-start: %s\n' "$1" >&2; }
+
+# Tracked git hooks: pre-commit (files over 99 MiB, ruff, conventions, docs), the
+# post-merge uv.lock re-resolve, and pre-push (the committed lockfile matches
+# pyproject.toml, then the test suite). Part of the README quickstart; a fresh clone
+# does not pick them up on its own. Set on every checkout, local or web: with them
+# unset locally, a broken docs reference reached CI on six pushes (Nov 9-16).
+log "enabling tracked git hooks"
+git config core.hooksPath .githooks
+
+# Merge driver for uv.lock, declared in .gitattributes. Git deliberately
+# refuses to take a driver command from a tracked file — that would let a
+# fetched branch run arbitrary code on merge — so the name in .gitattributes
+# only resolves once the clone maps it to a command here. Same fresh-clone gap
+# as the hooks above, same fix, and listed in the README quickstart alongside
+# it. Without this, .gitattributes is inert and git falls back to the ordinary
+# 3-way merge, so this is a convenience, not a correctness requirement.
+log "registering the uv.lock merge driver"
+git config merge.uv-lock.name "regenerate uv.lock from the merged pyproject.toml"
+git config merge.uv-lock.driver "scripts/merge-uv-lock.sh %O %A %B"
+
 # Local checkouts already have a working environment; only the ephemeral web
 # container needs building from scratch.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
-
-repo_root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-cd "$repo_root"
-
-log() { printf 'session-start: %s\n' "$1" >&2; }
 
 # 1. Python environment. `uv sync` also fetches the CPython 3.14 required by
 # pyproject.toml, which the base image does not ship.
@@ -54,23 +73,5 @@ else
     "$extension_dir/"
   log "staged sqlite_scanner ${duckdb_version} for ${duckdb_platform}"
 fi
-
-# 3. Tracked git hooks: the pre-commit guard against files over 99 MiB, the
-# post-merge uv.lock re-resolve, and the pre-push check that the committed
-# lockfile matches pyproject.toml. Part of the README quickstart; a fresh clone
-# does not pick them up on its own.
-log "enabling tracked git hooks"
-git config core.hooksPath .githooks
-
-# 4. Merge driver for uv.lock, declared in .gitattributes. Git deliberately
-# refuses to take a driver command from a tracked file — that would let a
-# fetched branch run arbitrary code on merge — so the name in .gitattributes
-# only resolves once the clone maps it to a command here. Same fresh-clone gap
-# as the hooks above, same fix, and listed in the README quickstart alongside
-# it. Without this, .gitattributes is inert and git falls back to the ordinary
-# 3-way merge, so this is a convenience, not a correctness requirement.
-log "registering the uv.lock merge driver"
-git config merge.uv-lock.name "regenerate uv.lock from the merged pyproject.toml"
-git config merge.uv-lock.driver "scripts/merge-uv-lock.sh %O %A %B"
 
 log "ready"
